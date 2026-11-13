@@ -7,67 +7,9 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-
-	"maibot-go/internal/webui/middleware"
 )
 
 const webuiTokenSourceConfigured = "configured"
-
-func (d Deps) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
-	if d.AdminAuth == nil || !d.AdminAuth.Enabled() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"success": false,
-			"message": "管理后台鉴权未启用，请配置 MAIBOT_WEB_ADMIN_KEY",
-		})
-		return
-	}
-
-	credential, err := parseLoginCredential(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"success": false,
-			"message": "请求格式错误",
-		})
-		return
-	}
-	if credential == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"success": false,
-			"valid":   false,
-			"message": "请提供 token、password 或 admin_key",
-		})
-		return
-	}
-
-	if !d.AdminAuth.CheckKey(credential) {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{
-			"success": false,
-			"valid":   false,
-			"message": "密钥错误",
-		})
-		return
-	}
-
-	token, expiresAt, err := d.AdminAuth.CreateSession()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"success": false,
-			"message": "登录失败，请稍后再试",
-		})
-		return
-	}
-
-	d.AdminAuth.SetSessionCookie(w, token, expiresAt)
-	firstSetup, tokenSource, requiresCustom := d.webUISetupState()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success":               true,
-		"valid":                 true,
-		"message":               "登录成功",
-		"is_first_setup":        firstSetup,
-		"token_source":          tokenSource,
-		"requires_custom_token": requiresCustom,
-	})
-}
 
 func (d Deps) handleAuthVerify(w http.ResponseWriter, r *http.Request) {
 	if !validateRequestBodyForRoute(w, r) {
@@ -77,10 +19,10 @@ func (d Deps) handleAuthVerify(w http.ResponseWriter, r *http.Request) {
 	if d.writeAuthRateLimited(w, r) {
 		return
 	}
-	if d.AdminAuth == nil || !d.AdminAuth.Enabled() {
+	if d.AdminAuth == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"valid":   false,
-			"message": "管理后台鉴权未启用，请配置 MAIBOT_WEB_ADMIN_KEY",
+			"message": "WebUI 鉴权未初始化",
 		})
 		return
 	}
@@ -102,18 +44,9 @@ func (d Deps) handleAuthVerify(w http.ResponseWriter, r *http.Request) {
 		d.AuthRateLimiter.ResetFailures(r)
 	}
 
-	sessionToken, expiresAt, err := d.AdminAuth.CreateSession()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"valid":   false,
-			"message": "Token 验证失败",
-		})
-		return
-	}
-
-	d.AdminAuth.SetSessionCookie(w, sessionToken, expiresAt)
-	// 对齐 Python set_auth_cookie：maibot_session 持有访问口令本身（非 ASCII 走 quote 编码）
-	d.AdminAuth.SetWebUISessionCookie(w, EncodeCookieToken(token), expiresAt)
+	// 对齐 Python set_auth_cookie：maibot_session 直接持有访问口令本身
+	// （非 ASCII 走 quote 编码，与 verify_cookie_token 的解码口径配对）
+	d.AdminAuth.SetSessionCookie(w, EncodeCookieToken(token))
 	firstSetup, tokenSource, requiresCustom := d.webUISetupState()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"valid":                 true,
@@ -162,32 +95,16 @@ func (d Deps) writeAuthVerifyFailure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
-	if d.AdminAuth != nil {
-		for _, name := range []string{auth.SessionCookieName, auth.WebUISessionCookieName} {
-			if cookie, err := r.Cookie(name); err == nil {
-				d.AdminAuth.DeleteSession(cookie.Value)
-			}
-		}
-	}
-
 	d.AdminAuth.ClearSessionCookie(w)
-	d.AdminAuth.ClearWebUISessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "已成功登出",
 	})
 }
 
-// acceptedWebUIToken 同时接受管理密钥与 data/webui.json 中的访问令牌
+// acceptedWebUIToken 判定令牌是否为 data/webui.json 中的访问令牌
 func (d Deps) acceptedWebUIToken(token string) bool {
-	if d.AdminAuth != nil && d.AdminAuth.CheckKey(token) {
-		return true
-	}
-	manager, err := d.webUITokenManager()
-	if err != nil {
-		return false
-	}
-	return manager.verifyToken(token)
+	return d.AdminAuth.ValidateToken(token)
 }
 
 // webUISetupState 返回首次配置状态，无法读取实例目录时回退为已完成
@@ -225,35 +142,5 @@ func parseVerifyToken(r *http.Request) (string, error) {
 	return strings.TrimSpace(r.FormValue("token")), nil
 }
 
-func parseLoginCredential(r *http.Request) (string, error) {
-	ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
-	if strings.HasPrefix(ct, "application/json") {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		if err != nil {
-			return "", err
-		}
-		if len(body) == 0 {
-			return "", nil
-		}
-		var payload map[string]string
-		if err := sonic.Unmarshal(body, &payload); err != nil {
-			return "", err
-		}
-		for _, key := range []string{"token", "password", "admin_key"} {
-			if v := strings.TrimSpace(payload[key]); v != "" {
-				return v, nil
-			}
-		}
-		return "", nil
-	}
 
-	if err := r.ParseForm(); err != nil {
-		return "", err
-	}
-	for _, key := range []string{"token", "password", "admin_key"} {
-		if v := strings.TrimSpace(r.FormValue(key)); v != "" {
-			return v, nil
-		}
-	}
-	return "", nil
-}
+

@@ -29,7 +29,7 @@ Python 来源：`MaiBot/src/webui/routes.py`、`routers/__init__.py` 及各 `rou
 | GET | `/api/files/{file_ref}/text`、`/api/webui/files/{file_ref}/text` | 管理员会话 | **done**（TXT/Markdown/CSV/JSON，utf-8/utf-8-sig/utf-16/gb18030） |
 | DELETE | `/api/files/{file_ref}`、`/api/webui/files/{file_ref}` | 管理员会话 | **done**（`cache_only=true` 仅清理远程缓存） |
 
-鉴权：MaiBot 使用 Cookie `maibot_session` + `require_auth`。Dashboard 原版登录走 `POST /auth/verify`（body `{ "token" }`，校验 `MAIBOT_WEB_ADMIN_KEY`），成功后写入 `maibot_session` 与 `maibot_admin_session`（同一会话令牌）；`/auth/logout` 清除两个 Cookie；`/auth/check` 只读探测。
+鉴权：Cookie `maibot_session` 直接持有 `data/webui.json` 的 `access_token`，`require_auth` 每次与该令牌比对。Dashboard 原版登录走 `POST /auth/verify`（body `{ "token" }`），成功后写入 `maibot_session`；`/auth/logout` 清除该 Cookie；`/auth/check` 只读探测。
 
 ## Dashboard 静态 SPA（P2-03）
 
@@ -53,9 +53,8 @@ Python 来源：`MaiBot/src/webui/routes.py`、`routers/__init__.py` 及各 `rou
 | --- | --- | --- | --- |
 | GET | `/health` | `routes.health_check` | **done** |
 | GET | `/version-compatibility` | `routes.get_version_compatibility` | **done**（`version_compat.go` PEP440 子集比对 `RequiredWebUIVersion` / Baseline，oracle 对拍） |
-| POST | `/auth/login` | （Go 扩展）admin 密钥登录 | **done**（`token`/`password`/`admin_key` → `maibot_admin_session`） |
-| POST | `/auth/verify` | Token 验证 + Cookie | **done**（`MAIBOT_WEB_ADMIN_KEY` → `maibot_session` + `maibot_admin_session`，响应对齐 `TokenVerifyResponse`） |
-| POST | `/auth/logout` | 清除 Cookie | **done**（清除 `maibot_admin_session` 与 `maibot_session`） |
+| POST | `/auth/verify` | Token 验证 + Cookie | **done**（`access_token` → `maibot_session`，响应对齐 `TokenVerifyResponse`） |
+| POST | `/auth/logout` | 清除 Cookie | **done**（清除 `maibot_session`） |
 | GET | `/auth/check` | 认证状态 | **done**（`authenticated`/`token_source`/`requires_custom_token`，对齐 Dashboard `AuthStatus`） |
 | POST | `/auth/update` | 更新 Token | **done**（校验 10 位/大小写/特殊符号；写入 `data/webui.json` 的 `access_token` 并清 Cookie） |
 | POST | `/auth/regenerate` | 重新生成 Token | **done**（64 位 hex，`token_source=configured`，清 Cookie） |
@@ -63,7 +62,7 @@ Python 来源：`MaiBot/src/webui/routes.py`、`routers/__init__.py` 及各 `rou
 | POST | `/setup/complete` | 标记首次配置完成 | **done**（写 `first_setup_completed=true` 与 `setup_completed_at`） |
 | POST | `/setup/reset` | 重置首次配置 | **done**（可选 `reset_password` 生成临时 Token 并续上 Cookie，`Cache-Control: no-store`） |
 | GET | `/ws-token` | WebSocket 临时 token | **done**（需 Cookie 会话；60s 一次性 token） |
-| GET | `/ws/logs` | 日志 WebSocket（legacy JSON 行） | **done**（ring buffer 回放 + 实时推送；`token` query 或 `maibot_session`/`maibot_admin_session`） |
+| GET | `/ws/logs` | 日志 WebSocket（legacy JSON 行） | **done**（ring buffer 回放 + 实时推送；`token` query 或 `maibot_session`） |
 | GET | `/ws` | 统一 WebSocket | **done**（`system.ready`、ping/pong；域 **logs** / **chat:main** / **plugin_progress:main** / **plugin_runtime:main** / **maisaka_monitor:main** 均已接；chat `session.open` 含虚拟身份与频道隔离；monitor 账本回放/`history.load`；plugin_progress snapshot+update；plugin_runtime `changed`） |
 
 ## 无尾斜杠精确别名（chi.Walk 盲区）

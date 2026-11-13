@@ -3,11 +3,8 @@ package webuiapi
 import (
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/bytedance/sonic"
-
-	"maibot-go/internal/webui/middleware"
 )
 
 func (d Deps) handleAuthUpdateToken(w http.ResponseWriter, r *http.Request) {
@@ -134,17 +131,11 @@ func (d Deps) handleSetupReset(w http.ResponseWriter, r *http.Request) {
 	}
 	success := manager.resetSetupStatus(resetPassword)
 	if success && resetPassword {
-		// 旧凭证立即失效：/admin 会话重建，maibot_session 续上新的访问口令（对齐 Python set_auth_cookie）
-		if d.AdminAuth != nil && d.AdminAuth.Enabled() {
-			if sessionToken, expiresAt, err := d.AdminAuth.CreateSession(); err == nil {
-				d.AdminAuth.SetSessionCookie(w, sessionToken, expiresAt)
-				d.AdminAuth.SetWebUISessionCookie(w, EncodeCookieToken(manager.token()), expiresAt)
-			} else {
-				d.clearWebUICookies(w, r)
-			}
-		} else if token := manager.token(); token != "" {
-			// 鉴权未启用时仍写入 Python 兼容的令牌 Cookie
-			d.AdminAuth.SetWebUISessionCookie(w, EncodeCookieToken(token), time.Now().Add(auth.SessionTTL))
+		// 旧凭证立即失效：maibot_session 换成新的访问口令（对齐 Python set_auth_cookie）
+		if token := manager.token(); token != "" {
+			d.AdminAuth.SetSessionCookie(w, EncodeCookieToken(token))
+		} else {
+			d.clearWebUICookies(w, r)
 		}
 		w.Header().Set("Cache-Control", "no-store")
 	}
@@ -157,5 +148,4 @@ func (d Deps) handleSetupReset(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) clearWebUICookies(w http.ResponseWriter, _ *http.Request) {
 	d.AdminAuth.ClearSessionCookie(w)
-	d.AdminAuth.ClearWebUISessionCookie(w)
 }

@@ -1301,7 +1301,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			})
 		}
 	} else {
-		zap.L().Info("插件运行时 Host 已就绪（未启 Runner；设 MAIBOT_PLUGIN_SPAWN=1 可拉起 Python Runner）",
+		zap.L().Info("插件运行时 Host 已就绪（MAIBOT_PLUGIN_SPAWN=0，仅宿主内置组件）",
 			zap.Int("hook_specs", len(pluginHost.HookSpecs().ListHookSpecs())),
 			zap.Strings("host_capabilities", registeredCaps))
 	}
@@ -1595,6 +1595,8 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	)
 	marketPort.SetService(app.PluginMarket())
 	fileService.SetPluginSender(app.SendFileToChat)
+	// 对齐 Python http_service/app.py:57-60：WebUI 挂载后输出登录 Token
+	webuiapi.LogStartupAccessToken(os.Getenv("MAIBOT_INSTANCE_DIR"))
 	httpServer := app.Server()
 	startup.AddCleanup("关闭 HTTP 服务", func(ctx context.Context) error {
 		selfUpdateManager.StopBackgroundRefresh()

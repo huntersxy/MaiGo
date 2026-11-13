@@ -12,6 +12,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"maibot-go/internal/common/i18n"
+
+	"go.uber.org/zap"
 )
 
 // WebUI 访问令牌来源，对齐 MaiBot core/security.py
@@ -23,6 +27,40 @@ type webuiTokenManager struct {
 	mu   sync.Mutex
 	path string
 	raw  map[string]any
+}
+
+// VerifyAccessToken 判定令牌是否为实例 webui.json 的 access_token
+//
+// 对齐 Python TokenManager.verify_cookie_token：同时接受原始值与 URL 解码后的值，
+// 因为 Cookie 里的非 ASCII 令牌会被 EncodeCookieToken 编码。
+func VerifyAccessToken(instanceDir, token string) bool {
+	manager, err := Deps{InstanceDir: instanceDir}.webUITokenManager()
+	if err != nil {
+		return false
+	}
+	return manager.verifyCookieToken(token)
+}
+
+// LogStartupAccessToken 初始化实例 WebUI 令牌并在临时令牌下打印，对齐 show_access_token
+//
+// 首次启动创建 data/webui.json 并生成 access_token。系统生成的 64 位 hex 属临时令牌，
+// 每次启动重新生成，必须打印出来用户才能登录；用户自定义令牌不打印。
+// 必须走 webUITokenManager 以复用进程内缓存：绕过缓存会二次加载并重新生成临时令牌，
+// 打印值与 webui.json 里的实际值不一致。
+func LogStartupAccessToken(instanceDir string) {
+	if strings.TrimSpace(instanceDir) == "" {
+		return
+	}
+	manager, err := Deps{InstanceDir: instanceDir}.webUITokenManager()
+	if err != nil {
+		zap.L().Error(i18n.T("startup.webui_access_token_failed", map[string]string{"error": err.Error()}))
+		return
+	}
+	if manager.resolveTokenSource() != webuiTokenSourceTemporary {
+		return
+	}
+	zap.L().Info(i18n.T("startup.webui_access_token", map[string]string{"token": manager.token()}))
+	zap.L().Info(i18n.T("startup.webui_access_token_login_hint", nil))
 }
 
 // webUITokenManager 返回实例数据目录下的 WebUI 令牌管理器

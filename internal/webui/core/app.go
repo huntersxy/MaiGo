@@ -60,17 +60,16 @@ type App struct {
 }
 
 func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService) *App {
-	instanceDir := strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR"))
-	if instanceDir == "" {
-		// 与 main.go 的 instanceRoot 一致：未显式设置时以工作目录为实例根，读取 config/bot_config.toml
-		instanceDir, _ = os.Getwd()
-	}
+	instanceDir := config.InstanceRoot()
 	securityConfig, err := loadAntiCrawlerConfig(instanceDir)
 	if err != nil {
 		// main.go 的 New 调用没有错误返回值，坏 TOML 用 panic 拒绝启动，避免静默降级
 		panic(err)
 	}
-	authManager := auth.NewManager(boot.WebAdminKey, auth.SessionTTL)
+	// 鉴权令牌即实例 data/webui.json 的 access_token，对齐 Python TokenManager
+	authManager := auth.NewManager(func(token string) bool {
+		return webuiapi.VerifyAccessToken(instanceDir, token)
+	})
 	authManager.SetSecureCookie(securityConfig.secureCookie)
 	app := &App{
 		boot:             boot,
@@ -173,7 +172,7 @@ func (a *App) routes() http.Handler {
 		PlatformAdapters:      a.platformAdapters,
 		Avatar:                a.avatar,
 		EnforcePublicOutbound: a.enforcePublicOutboundEnabled,
-		InstanceDir:           strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR")),
+		InstanceDir:           config.InstanceRoot(),
 		BuildVersion:          version.String(),
 	})
 

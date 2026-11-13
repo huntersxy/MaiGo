@@ -77,23 +77,16 @@ func SessionToken(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	for _, name := range []string{auth.WebUISessionCookieName, auth.SessionCookieName} {
-		if cookie, err := r.Cookie(name); err == nil {
-			if v := strings.TrimSpace(cookie.Value); v != "" {
-				return v
-			}
-		}
+	cookie, err := r.Cookie(auth.WebUISessionCookieName)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(cookie.Value)
 }
 
 // ValidSessionToken 校验会话令牌是否有效
 func ValidSessionToken(manager *auth.Manager, token string) bool {
-	token = strings.TrimSpace(token)
-	if token == "" || manager == nil || !manager.Enabled() {
-		return false
-	}
-	return manager.IsAuthenticated(token) || manager.CheckKey(token)
+	return manager.ValidateToken(strings.TrimSpace(token))
 }
 
 // AuthorizeWebSocket 支持 query token（一次性 WS 令牌或有效会话）与 Cookie 会话

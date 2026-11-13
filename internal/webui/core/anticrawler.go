@@ -280,16 +280,14 @@ func containsAny(value string, candidates []string) bool {
 }
 
 func (m *antiCrawlerMiddleware) hasValidSession(r *http.Request) bool {
-	if m.auth == nil || !m.auth.Enabled() {
+	if m.auth == nil {
 		return false
 	}
-	for _, name := range []string{auth.WebUISessionCookieName, auth.SessionCookieName} {
-		cookie, err := r.Cookie(name)
-		if err == nil && m.auth.IsAuthenticated(cookie.Value) {
-			return true
-		}
+	cookie, err := r.Cookie(auth.WebUISessionCookieName)
+	if err != nil {
+		return false
 	}
-	return false
+	return m.auth.ValidateToken(cookie.Value)
 }
 
 func (m *antiCrawlerMiddleware) clientIP(r *http.Request) string {

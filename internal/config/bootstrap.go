@@ -11,7 +11,6 @@ import (
 // Bootstrap 是进程启动期不可变的连接与密钥配置
 type Bootstrap struct {
 	DatabaseDSN string
-	WebAdminKey string
 	ServerPort  int
 	MediaDir    string
 	StickerDir  string
@@ -26,7 +25,6 @@ var boot Bootstrap
 func LoadBootstrap() (Bootstrap, error) {
 	b := Bootstrap{
 		DatabaseDSN: strings.TrimSpace(os.Getenv("MAIBOT_DATABASE_DSN")),
-		WebAdminKey: os.Getenv("MAIBOT_WEB_ADMIN_KEY"),
 		MediaDir:    strings.TrimSpace(os.Getenv("MAIBOT_MEDIA_DIR")),
 		StickerDir:  strings.TrimSpace(os.Getenv("MAIBOT_STICKER_DIR")),
 		LogLevel:    strings.TrimSpace(os.Getenv("MAIBOT_LOG_LEVEL")),

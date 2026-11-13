@@ -18,21 +18,23 @@ type SpawnConfig struct {
 	ProjectRoot string
 }
 
-// envTruthy 判断 MAIBOT_PLUGIN_SPAWN 等开关
-func envTruthy(name string) bool {
+// envDefaultOn 未设置时返回 true，显式设为 0/false/no/off 才关闭
+func envDefaultOn(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
+	case "0", "false", "no", "off":
 		return false
+	default:
+		return true
 	}
 }
 
 // LoadSpawnConfigFromEnv 读取 MAIBOT_PLUGIN_SPAWN 与 Python/脚本路径默认值
+// Runner 默认拉起：拉起失败只降级为宿主内置组件并告警，不阻断启动。
+// 需要纯宿主模式时显式设 MAIBOT_PLUGIN_SPAWN=0。
 func LoadSpawnConfigFromEnv() SpawnConfig {
 	root := resolvePluginProjectRoot("")
 	cfg := SpawnConfig{
-		Enabled:     envTruthy(EnvPluginSpawn),
+		Enabled:     envDefaultOn(EnvPluginSpawn),
 		PythonBin:   strings.TrimSpace(os.Getenv(EnvPluginPython)),
 		ScriptPath:  strings.TrimSpace(os.Getenv(EnvPluginRunnerScript)),
 		ProjectRoot: root,

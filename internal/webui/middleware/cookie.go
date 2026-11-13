@@ -7,50 +7,35 @@ import (
 
 const WebUISessionCookieName = "maibot_session"
 
-// SetSessionCookie 写入 maibot_admin_session，与 templ /login 一致
-func (m *Manager) SetSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
-	setNamedSessionCookie(w, SessionCookieName, token, expiresAt, m.SecureCookie())
-}
+// SessionCookieMaxAgeSeconds 对齐 Python src/webui/core/auth.py 的 COOKIE_MAX_AGE=604800
+const SessionCookieMaxAgeSeconds = 7 * 24 * 60 * 60
 
-// SetWebUISessionCookie 写入 Dashboard 使用的 maibot_session
-func (m *Manager) SetWebUISessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
-	setNamedSessionCookie(w, WebUISessionCookieName, token, expiresAt, m.SecureCookie())
-}
-
-// ClearSessionCookie 清除 maibot_admin_session
-func (m *Manager) ClearSessionCookie(w http.ResponseWriter) {
-	clearNamedSessionCookie(w, SessionCookieName, m.SecureCookie())
-}
-
-// ClearWebUISessionCookie 清除 maibot_session
-func (m *Manager) ClearWebUISessionCookie(w http.ResponseWriter) {
-	clearNamedSessionCookie(w, WebUISessionCookieName, m.SecureCookie())
-}
-
-func setNamedSessionCookie(w http.ResponseWriter, name, token string, expiresAt time.Time, secure bool) {
+// SetSessionCookie 写入 maibot_session，对齐 Python set_auth_cookie
+func (m *Manager) SetSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     name,
+		Name:     WebUISessionCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   m.SecureCookie(),
 		SameSite: http.SameSiteLaxMode,
-		Expires:  expiresAt,
+		Expires:  time.Now().Add(SessionCookieMaxAgeSeconds * time.Second),
 		MaxAge:   SessionCookieMaxAgeSeconds,
 	})
 }
 
-func clearNamedSessionCookie(w http.ResponseWriter, name string, secure bool) {
+// ClearSessionCookie 清除 maibot_session，对齐 Python delete_auth_cookie
+func (m *Manager) ClearSessionCookie(w http.ResponseWriter) {
 	sameSite := http.SameSiteLaxMode
-	if secure {
+	if m.SecureCookie() {
 		sameSite = http.SameSiteStrictMode
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     name,
+		Name:     WebUISessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   m.SecureCookie(),
 		SameSite: sameSite,
 		MaxAge:   -1,
 	})

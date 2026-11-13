@@ -17,7 +17,6 @@ func Mount(r chi.Router, d Deps) {
 		api.Get("/version-compatibility", d.handleVersionCompatibility)
 
 		api.Get("/auth/check", d.handleAuthCheck)
-		api.Post("/auth/login", d.handleAuthLogin)
 		api.Post("/auth/verify", d.handleAuthVerify)
 		api.Post("/auth/logout", d.handleAuthLogout)
 		api.Post("/auth/update", d.handleAuthUpdateToken)

@@ -415,19 +415,14 @@ type errText string
 func (e errText) Error() string { return string(e) }
 
 func adminSessionOK(r *http.Request, adminAuth *auth.Manager) bool {
-	if adminAuth == nil || !adminAuth.Enabled() {
+	if adminAuth == nil {
 		return false
 	}
-	for _, name := range []string{auth.SessionCookieName, auth.WebUISessionCookieName} {
-		cookie, err := r.Cookie(name)
-		if err != nil || cookie.Value == "" {
-			continue
-		}
-		if adminAuth.IsAuthenticated(cookie.Value) {
-			return true
-		}
+	cookie, err := r.Cookie(auth.WebUISessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
 	}
-	return false
+	return adminAuth.ValidateToken(cookie.Value)
 }
 
 func requireFileAdmin(w http.ResponseWriter, r *http.Request, adminAuth *auth.Manager) bool {
