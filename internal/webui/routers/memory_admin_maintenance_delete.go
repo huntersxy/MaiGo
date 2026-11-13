@@ -75,10 +75,7 @@ func (d Deps) handleMemoryMaintenanceProtect(w http.ResponseWriter, r *http.Requ
 }
 
 func (d Deps) handleMemoryV5Status(w http.ResponseWriter, r *http.Request) {
-	target, ok := mqRequiredString(w, r, "target")
-	if !ok {
-		return
-	}
+	target := mqString(r, "target")
 	limit, ok := mqInt(w, r, "limit", 50, 1, 200)
 	if !ok {
 		return
@@ -153,10 +150,7 @@ func (d Deps) handleMemoryDeleteRestore(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	mode, ok := bodyRequiredString(w, payload, "mode")
-	if !ok {
-		return
-	}
+	mode := anyTrimmed(payload["mode"])
 	args := map[string]any{
 		"mode": mode, "selector": payload["selector"],
 		"operation_id": anyTrimmed(payload["operation_id"]),

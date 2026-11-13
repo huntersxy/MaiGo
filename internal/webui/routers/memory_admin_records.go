@@ -143,6 +143,10 @@ func (d Deps) handleMemoryAdminRecordsSearch(w http.ResponseWriter, r *http.Requ
 
 	items := make([]map[string]any, 0, limit)
 	counts := map[string]int{}
+	// 对齐 Python result_counts：每个选中的 type 都出键，没有命中时保留 0
+	for _, recordType := range types {
+		counts[recordType] = 0
+	}
 	for _, recordType := range types {
 		for _, row := range rowsByType[recordType] {
 			items = append(items, memoryRecordPayload(recordType, row))
@@ -689,10 +693,7 @@ func memoryAnyParams(values []string) []any {
 }
 
 func (d Deps) handleMemoryQueryAggregate(w http.ResponseWriter, r *http.Request) {
-	query, ok := mqRequiredString(w, r, "query")
-	if !ok {
-		return
-	}
+	query := mqString(r, "query")
 	limit, ok := mqInt(w, r, "limit", 20, 1, 200)
 	if !ok {
 		return

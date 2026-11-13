@@ -606,15 +606,14 @@ func (d Deps) handleMemoryConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rawConfig, exists := payload["config"]
-	if !exists {
-		writeValidationError(w, "config 不能为空")
-		return
-	}
-	config, ok := rawConfig.(map[string]any)
-	if !ok {
-		writeAPIError(w, http.StatusBadRequest, "配置数据验证失败: config 必须是对象")
-		return
+	config := map[string]any{}
+	if rawConfig, exists := payload["config"]; exists && rawConfig != nil {
+		parsed, ok := rawConfig.(map[string]any)
+		if !ok {
+			writeAPIError(w, http.StatusBadRequest, "配置数据验证失败: config 必须是对象")
+			return
+		}
+		config = parsed
 	}
 	result, err := service.UpdateConfig(r.Context(), config)
 	if err != nil {
@@ -634,15 +633,14 @@ func (d Deps) handleMemoryConfigUpdateRaw(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	rawConfig, exists := payload["config"]
-	if !exists {
-		writeValidationError(w, "config 不能为空")
-		return
-	}
-	text, ok := rawConfig.(string)
-	if !ok {
-		writeValidationError(w, "config 必须是 TOML 字符串")
-		return
+	text := ""
+	if rawConfig, exists := payload["config"]; exists && rawConfig != nil {
+		parsed, ok := rawConfig.(string)
+		if !ok {
+			writeValidationError(w, "config 必须是 TOML 字符串")
+			return
+		}
+		text = parsed
 	}
 	result, err := service.UpdateRawConfig(r.Context(), text)
 	if err != nil {
