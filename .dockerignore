@@ -7,3 +7,6 @@
 !main.go
 !internal/
 !internal/**
+# 内置插件清单是运行期真实读取的产品文件（host.readBuiltinPluginManifest）
+!plugins/
+!plugins/built_in/plugin_management/_manifest.json

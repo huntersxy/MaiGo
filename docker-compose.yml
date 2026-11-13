@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     init: true
     read_only: true
+    # 进程关停预算是 Worker 50s + Runner 15s；Docker 默认只给 10s 就 SIGKILL，
+    # 会截断正在落盘的 SQLite 与配置写回（对齐 MaiBot compose 的 70s）
+    stop_grace_period: 70s
     environment:
       MAIBOT_WEB_ADMIN_KEY: ${MAIBOT_WEB_ADMIN_KEY:?set MAIBOT_WEB_ADMIN_KEY in .env}
       MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:?set MAIBOT_SECRET_KEY in .env}

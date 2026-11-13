@@ -39,6 +39,8 @@ COPY --from=build /out/maibot-go /app/maibot-go
 COPY --from=dashboard /out/maibot_dashboard/dist /app/dashboard/dist
 # Python Runner 独立 venv；MAIBOT_PLUGIN_SPAWN=1 时直接用它拉起原版 runner_main
 COPY --from=plugin-runtime /runner /app/plugin-runtime
+# 内置插件清单随镜像分发：host 启动期读取 plugins/built_in/plugin_management/_manifest.json
+COPY plugins/built_in/plugin_management/_manifest.json /app/plugins/built_in/plugin_management/_manifest.json
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # config/data/logs/plugins 与 media/stickers 一样预建并改属主，供命名卷首次挂载时继承
 # temp 是 Runner 的非持久运行时目录（Python build_plugin_paths 写 temp/plugins）
