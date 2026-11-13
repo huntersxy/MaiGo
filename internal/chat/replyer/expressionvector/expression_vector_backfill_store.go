@@ -144,7 +144,11 @@ func (s *PersistentExpressionVectorStore) SetActiveEmbeddingProfile(profile Expr
 	}
 	if oldMarker != profile.Marker {
 		items := append([]persistentExpressionVector(nil), state.expressions...)
-		s.mem.Replace(items)
+		var centers [][]float32
+		for index := 0; index < state.clusterCenters.rows; index++ {
+			centers = append(centers, state.clusterCenters.row(index))
+		}
+		s.mem.ReplaceWithClusters(items, centers)
 		s.pendingClusterChanges = nil
 	}
 	s.activeMarker = profile.Marker
@@ -169,17 +173,27 @@ func (s *PersistentExpressionVectorStore) ApplyExpressionBackfillBatch(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	successIDs := make(map[uint]struct{}, len(successes))
+	applied := 0
 	for _, success := range successes {
 		if success.Meta.ID == 0 || len(success.Vector) == 0 {
 			continue
 		}
+		// 对齐 _commit_expression_batch：拿到写锁后按当前 DB 指纹复核，
+		// 结果过期（表达已被改动）就丢弃，交给下一轮补建重做。
+		if len(currentFingerprints) > 0 {
+			current, ok := currentFingerprints[success.Meta.ID]
+			if !ok || current != expressionVectorFingerprint(success.Meta.ID, success.Meta.Situation, success.Meta.Style) {
+				continue
+			}
+		}
 		s.mem.UpsertExpression(success.Meta, success.Vector)
 		s.markClusterChangeLocked(success.Meta.ID)
 		successIDs[success.Meta.ID] = struct{}{}
+		applied++
 		delete(s.embeddingFailures, success.Meta.ID)
 	}
 	isolated := s.mergeEmbeddingFailureRecordsLocked(profile, failures, successIDs, currentFingerprints, now, policy)
-	if len(successes) == 0 {
+	if applied == 0 {
 		if len(failures) == 0 {
 			return isolated, nil
 		}

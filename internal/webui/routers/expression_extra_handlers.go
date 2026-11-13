@@ -268,49 +268,94 @@ func (d Deps) handleExpressionVectorBuildProgress(w http.ResponseWriter, r *http
 		writeJSON(w, http.StatusOK, map[string]any{"status": "unconfigured", "completed": 0, "total": 0, "percent": 0.0})
 		return
 	}
-	store := learnerStore()
-	total := 0
-	if store != nil {
-		stats, err := store.ExpressionStats(r.Context(), true)
-		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "获取表达向量补建进度失败: "+err.Error())
-			return
-		}
-		total = stats.Total
+	// 未配置 embedding 模型时无法判定完成度，对齐 Python 返回 unconfigured
+	currentProfile, hasProfile := learners.ExpressionVectorCurrentProfile(learners.DefaultRegistry())
+	if !hasProfile || strings.TrimSpace(currentProfile.Marker) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"status": "unconfigured", "completed": 0, "total": 0, "percent": 0.0})
+		return
 	}
 	_, payload, exists, err := d.loadExpressionVectorPayload(settings.ExpressionVectorIndexPath)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "获取表达向量补建进度失败: "+err.Error())
 		return
 	}
-	indexed := map[uint]struct{}{}
+
+	// 索引里的 embedding_profile 必须与当前 profile 同源，否则向量不可算作已完成
+	marker := ""
+	dimension := 0
 	if exists {
-		for _, item := range listValue(payload["expressions"]) {
-			if raw, ok := item.(map[string]any); ok {
-				if id := uint(intValue(raw["id"], 0)); id > 0 {
-					indexed[id] = struct{}{}
-				}
+		rawProfile, _ := payload["embedding_profile"].(map[string]any)
+		if rawProfile != nil {
+			storedMarker := strings.TrimSpace(anyTrimmed(rawProfile["marker"]))
+			if storedMarker == strings.TrimSpace(currentProfile.Marker) {
+				marker = storedMarker
+				dimension = intValue(rawProfile["dimension"], 0)
 			}
 		}
-		for _, item := range listValue(payload["items"]) {
-			if raw, ok := item.(map[string]any); ok {
+	}
+
+	indexedByID := map[uint]map[string]any{}
+	if exists {
+		for _, key := range []string{"expressions", "items"} {
+			for _, item := range listValue(payload[key]) {
+				raw, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
 				if id := uint(intValue(raw["id"], 0)); id > 0 {
-					indexed[id] = struct{}{}
+					indexedByID[id] = raw
 				}
 			}
 		}
 	}
-	completed := len(indexed)
-	if completed > total {
-		completed = total
+
+	// 统计口径对齐 Python：遍历全表，跳过空 situation/style
+	total := 0
+	completed := 0
+	store := learnerStore()
+	if store != nil {
+		rows, err := store.ListExpressionsForVectorProgress(r.Context())
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, "获取表达向量补建进度失败: "+err.Error())
+			return
+		}
+		for _, row := range rows {
+			situation := strings.TrimSpace(row.Situation)
+			style := strings.TrimSpace(row.Style)
+			if row.ID == 0 || situation == "" || style == "" {
+				continue
+			}
+			total++
+			indexed, ok := indexedByID[row.ID]
+			if !ok || marker == "" {
+				continue
+			}
+			if strings.TrimSpace(anyTrimmed(indexed["embedding_profile_marker"])) != marker {
+				continue
+			}
+			if intValue(indexed["embedding_dimension"], 0) != dimension {
+				continue
+			}
+			if strings.TrimSpace(anyTrimmed(indexed["fingerprint"])) !=
+				learners.ExpressionFingerprint(row.ID, situation, style) {
+				continue
+			}
+			completed++
+		}
 	}
+
 	percent := 100.0
 	if total > 0 {
 		percent = math.Round(float64(completed)*1000/float64(total)) / 10
 	}
 	status := "pending"
-	if completed >= total {
+	switch {
+	case marker == "":
+		status = "waiting_profile"
+	case completed >= total:
 		status = "completed"
+	case learners.DefaultRegistry().ExpressionVectorSyncStatus().Running:
+		status = "running"
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":    status,

@@ -18,6 +18,8 @@ type WebUIStore interface {
 	ExpressionChatTargets(ctx context.Context, includeLegacy bool) ([]ChatInfo, error)
 	// ExpressionStats 表达方式统计，对齐 get_expression_stats
 	ExpressionStats(ctx context.Context, includeLegacy bool) (ExpressionStats, error)
+	// ListExpressionsForVectorProgress 遍历全表取补建进度所需的表达行
+	ListExpressionsForVectorProgress(ctx context.Context) ([]ExpressionVectorProgressRow, error)
 	// ExpressionReviewStats 审核统计，对齐 get_review_stats
 	ExpressionReviewStats(ctx context.Context) (ReviewStats, error)
 	// ExpressionReviewRows 审核列表，对齐 get_review_list
@@ -357,6 +359,10 @@ func (NoopWebUIStore) ExpressionChats(context.Context, bool) ([]ChatInfo, error)
 func (NoopWebUIStore) ExpressionChatTargets(context.Context, bool) ([]ChatInfo, error) {
 	return nil, nil
 }
+func (NoopWebUIStore) ListExpressionsForVectorProgress(context.Context) ([]ExpressionVectorProgressRow, error) {
+	return nil, nil
+}
+
 func (NoopWebUIStore) ExpressionStats(context.Context, bool) (ExpressionStats, error) {
 	return ExpressionStats{TopChats: map[string]int{}}, nil
 }

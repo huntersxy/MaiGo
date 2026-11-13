@@ -119,6 +119,8 @@ type expressionBackfillRunner struct {
 	cachedAt          time.Time
 	lastEmptyAt       time.Time
 	lastFailureAt     time.Time
+	// drift 记录 embedding 向量空间漂移的连续确认状态
+	drift expressionProfileDriftState
 }
 
 // expressionBackfillSettingsSignature 生成影响补建循环的学习配置签名
@@ -205,6 +207,8 @@ func (r *expressionBackfillRunner) run() {
 		if r.generationChanged(generation) {
 			continue
 		}
+		// 用持久化基准校验本次探针结果，识别向量空间漂移
+		profile = r.resolveProfileDrift(store, profile)
 		if err := store.SetActiveEmbeddingProfile(profile); err != nil {
 			lastErr = err
 			r.reg.RecordExpressionVectorSyncError(err)
@@ -331,6 +335,22 @@ func (r *expressionBackfillRunner) ensureProfile(embedder TextEmbedder, generati
 	}
 	r.mu.Unlock()
 	return profile, nil
+}
+
+// resolveProfileDrift 用持久化基准校验新探针结果，识别向量空间漂移
+//
+// 对齐 _resolve_embedding_profile_candidate：同名模型探针相似度低于阈值时
+// 需连续确认三次，才把 revision+1 的新 profile 当作基准，避免一次抖动就重建全部向量。
+func (r *expressionBackfillRunner) resolveProfileDrift(store *PersistentExpressionVectorStore, candidate ExpressionEmbeddingProfile) ExpressionEmbeddingProfile {
+	persisted := store.persistedEmbeddingProfile()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	resolved, switched := r.drift.resolve(persisted, candidate)
+	if switched {
+		r.cachedProfile = nil
+		r.cachedGeneration = 0
+	}
+	return resolved
 }
 
 func (r *expressionBackfillRunner) cachedProfileFor(generation uint64) *ExpressionEmbeddingProfile {

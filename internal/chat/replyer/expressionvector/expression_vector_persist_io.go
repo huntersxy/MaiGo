@@ -38,7 +38,8 @@ func (s *PersistentExpressionVectorStore) loadLocked() error {
 		s.resetLocked()
 		return nil
 	}
-	if payload.Version > expressionVectorIndexFileVersion {
+	// 对齐 Python：只接受 1..2 的索引版本，0 与超过上限都拒绝
+	if payload.Version < 1 || payload.Version > expressionVectorIndexFileVersion {
 		return fmt.Errorf("表达向量索引版本不匹配: %d", payload.Version)
 	}
 	legacyInline := persistentExpressionVectorsInline(payload.Expressions) || persistentExpressionVectorsInline(payload.Items)
@@ -46,7 +47,14 @@ func (s *PersistentExpressionVectorStore) loadLocked() error {
 	if err != nil {
 		return err
 	}
-	s.mem.Replace(decoded.activeItems)
+	// 优先沿用索引持久化的簇中心；没有中心时由内存库按需重算
+	var centers [][]float32
+	if active, ok := decoded.profiles[decoded.activeMarker]; ok && active != nil {
+		for index := 0; index < active.clusterCenters.rows; index++ {
+			centers = append(centers, active.clusterCenters.row(index))
+		}
+	}
+	s.mem.ReplaceWithClusters(decoded.activeItems, centers)
 	s.generatedAt = strings.TrimSpace(payload.GeneratedAt)
 	s.activeMarker = decoded.activeMarker
 	s.profiles = decoded.profiles
@@ -302,6 +310,11 @@ func decodeExpressionVectorItems(payload persistentExpressionVectorFile, express
 			continue
 		}
 		vectorIndex := item.VectorIndex
+		// 旧格式没有 vector_index（或显式写 0 而向量表里没有第 0 行）时用列表下标，
+		// 对齐 Python _load_snapshot 对缺省值的处理
+		if vectorIndex == 0 && index != 0 && profile.vectors.rows > index {
+			vectorIndex = index
+		}
 		if len(profile.vectors.data) > 0 && (vectorIndex < 0 || vectorIndex >= profile.vectors.rows) {
 			return nil, fmt.Errorf("表达向量索引 vector_index 越界: id=%d, marker=%s, vector_index=%d, vectors=%d",
 				item.ID, marker, vectorIndex, profile.vectors.rows)

@@ -167,6 +167,39 @@ func (s *InMemoryExpressionVectorStore) Replace(items []persistentExpressionVect
 	s.invalidateClusters()
 }
 
+// ReplaceWithClusters 载入条目并沿用索引持久化的簇划分与簇中心
+//
+// 对齐 Python：检索期直接用索引里的 cluster_id 与 cluster_centers_*，
+// 不在查询时重跑 k-means，避免 WebUI 聚类页与检索召回分簇不一致。
+func (s *InMemoryExpressionVectorStore) ReplaceWithClusters(items []persistentExpressionVector, centers [][]float32) {
+	if s == nil {
+		return
+	}
+	s.Replace(items)
+	labels := make(map[uint]int, len(items))
+	for _, item := range items {
+		if item.ID == 0 {
+			continue
+		}
+		labels[item.ID] = item.ClusterID
+	}
+	dimension := 0
+	if len(centers) > 0 {
+		dimension = len(centers[0])
+	}
+	s.clusterMu.Lock()
+	if len(centers) > 0 && len(labels) > 0 {
+		s.clusterState = &expressionVectorClusterState{
+			labels: labels, centers: centers, dimension: dimension,
+		}
+		s.clusterDirty = false
+	} else {
+		s.clusterState = nil
+		s.clusterDirty = true
+	}
+	s.clusterMu.Unlock()
+}
+
 // snapshotItems 导出可落盘条目，按 id 升序保证文件稳定
 func (s *InMemoryExpressionVectorStore) snapshotItems() []persistentExpressionVector {
 	if s == nil {

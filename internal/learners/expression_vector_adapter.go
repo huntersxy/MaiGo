@@ -265,3 +265,29 @@ func SyncExpressionVectorIndex(ctx context.Context, reg *Registry) (int, error) 
 	}
 	return expressionvector.SyncExpressionVectorIndex(ctx, reg)
 }
+
+// ExpressionVectorProgressRow 补建进度所需的表达行
+type ExpressionVectorProgressRow struct {
+	ID        uint
+	Situation string
+	Style     string
+}
+
+// ListExpressionsForVectorProgress 遍历全表取补建进度所需的表达行
+//
+// 对齐 Python _load_expression_rows_snapshot 的口径：不做聊天范围过滤，
+// 空 situation/style 由调用方跳过。
+func (s *gormWebUIStore) ListExpressionsForVectorProgress(ctx context.Context) ([]ExpressionVectorProgressRow, error) {
+	var rows []ExpressionVectorProgressRow
+	if err := s.db.WithContext(ctx).Model(&Expression{}).
+		Select("id, situation, style").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ExpressionFingerprint 暴露索引指纹算法，供 WebUI 校验完成度
+func ExpressionFingerprint(id uint, situation, style string) string {
+	return expressionvector.ExpressionFingerprint(id, situation, style)
+}

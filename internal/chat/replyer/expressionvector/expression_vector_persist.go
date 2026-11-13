@@ -439,3 +439,8 @@ func SyncExpressionVectorIndex(ctx context.Context, reg Port) (int, error) {
 }
 
 var _ = sonic.Marshal
+
+// ExpressionFingerprint 暴露索引指纹算法（id + 归一化 situation + 归一化 style）
+func ExpressionFingerprint(id uint, situation, style string) string {
+	return expressionVectorFingerprint(id, situation, style)
+}
