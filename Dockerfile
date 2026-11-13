@@ -32,7 +32,8 @@ FROM alpine:3.23
 ENV TZ=Asia/Shanghai
 # 数据库是 SQLite（对齐 MaiBot src/common/database/database.py:33），
 # 库文件在 /app/data/MaiBot.db，随 data 卷一起备份，无需 postgresql 客户端
-RUN apk add --no-cache ca-certificates su-exec tzdata wget python3 && \
+# git 供插件市场下载/更新插件使用
+RUN apk add --no-cache ca-certificates su-exec tzdata wget python3 git && \
     addgroup -S maibot && adduser -S -G maibot maibot
 WORKDIR /app
 COPY --from=build /out/maibot-go /app/maibot-go
