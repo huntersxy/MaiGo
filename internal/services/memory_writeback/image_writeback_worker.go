@@ -474,7 +474,7 @@ func (s *ImageWritebackService) ingestCompensation(ctx context.Context, item map
 			"image_message_id":     strings.TrimSpace(imageWritebackString(item["message_id"])),
 			"summary_review_count": 2,
 		},
-		RespectFilter: true,
+		RespectFilter: memoryWritebackBoolPtr(true),
 	}
 	result, err := kernel.IngestSummary(ctx, params)
 	if err != nil {

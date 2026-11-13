@@ -23,7 +23,8 @@ func (r *Runtime) recoverEmbeddingOnce(ctx context.Context, sampleText string) (
 func (r *Runtime) vectorRuntimeDeps() services.VectorRuntimeDeps {
 	return services.VectorRuntimeDeps{
 		Metadata: func() *storage.Store { return r.metadataStore },
-		Cfg:      r.kernel.Cfg,
+		Cfg:        r.kernel.Cfg,
+		FullConfig: r.kernel.Config,
 		Persist:  r.persistKernel,
 		StoredVectorDimension: func() *int {
 			return r.kernel.StoredVectorDimension(r.vectorStore)

@@ -33,7 +33,7 @@ func (a *searchAdapter) SearchMemory(ctx context.Context, request memruntime.Ker
 		UserID:        request.UserID,
 		SharedChatIDs: request.SharedChatIDs,
 		PersonID:      request.PersonID,
-		RespectFilter: request.RespectFilter,
+		RespectFilter: respectFilterBool(request.RespectFilter),
 		TimeStart:     request.TimeStart,
 		TimeEnd:       request.TimeEnd,
 	})
@@ -168,7 +168,7 @@ func (a *ingestAdapter) IngestSummary(ctx context.Context, params memruntime.Ing
 	return a.inner.IngestSummary(ctx, services.IngestSummaryParams{
 		ExternalID: params.ExternalID, ChatID: params.ChatID, Text: params.Text,
 		Participants: params.Participants, TimeStart: params.TimeStart, TimeEnd: params.TimeEnd,
-		Tags: params.Tags, Metadata: params.Metadata, RespectFilter: params.RespectFilter,
+		Tags: params.Tags, Metadata: params.Metadata, RespectFilter: respectFilterBool(params.RespectFilter),
 		UserID: params.UserID, GroupID: params.GroupID,
 	})
 }
@@ -180,7 +180,7 @@ func (a *ingestAdapter) IngestText(ctx context.Context, params memruntime.Ingest
 		ChatID: params.ChatID, PersonIDs: params.PersonIDs, Participants: params.Participants,
 		Timestamp: params.Timestamp, TimeStart: params.TimeStart, TimeEnd: params.TimeEnd,
 		Tags: params.Tags, Metadata: params.Metadata, Entities: params.Entities,
-		Relations: params.Relations, RespectFilter: params.RespectFilter,
+		Relations: params.Relations, RespectFilter: respectFilterBool(params.RespectFilter),
 		UserID: params.UserID, GroupID: params.GroupID,
 	})
 }
@@ -278,4 +278,12 @@ func describeSearchError(message string) error {
 		return fmt.Errorf("检索执行失败")
 	}
 	return fmt.Errorf("%s", message)
+}
+
+// respectFilterBool 内核参数指针归一为 bool，未设置按 Python 默认 true
+func respectFilterBool(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
 }

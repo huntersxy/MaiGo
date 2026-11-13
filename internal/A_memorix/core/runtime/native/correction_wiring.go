@@ -23,12 +23,12 @@ func (r *Runtime) correctionAdminOptions() services.CorrectionAdminOptions {
 				ChatID: params.ChatID, PersonIDs: params.PersonIDs, Participants: params.Participants,
 				Timestamp: params.Timestamp, TimeStart: params.TimeStart, TimeEnd: params.TimeEnd,
 				Tags: params.Tags, Metadata: params.Metadata, Entities: params.Entities,
-				Relations: params.Relations, RespectFilter: params.RespectFilter,
+				Relations: params.Relations, RespectFilter: boolPtr(params.RespectFilter),
 				UserID: params.UserID, GroupID: params.GroupID,
 			})
 		},
 		RefreshPersonProfile: func(ctx context.Context, personID string) (map[string]any, error) {
-			return r.kernel.RefreshPersonProfile(ctx, personID, 0, false)
+			return r.kernel.RefreshPersonProfile(ctx, personID, 10, true)
 		},
 		DeleteParagraphs: func(ctx context.Context, hashes []string, requestedBy string, reason string) (map[string]any, error) {
 			result, err := r.kernel.MemoryDeleteAdmin(ctx, "execute", map[string]any{
@@ -69,4 +69,9 @@ func (r *Runtime) correctionAdminOptions() services.CorrectionAdminOptions {
 			return r.personProfile.ResolvePersonID(ctx, identifier)
 		},
 	}
+}
+
+// boolPtr 返回 bool 指针
+func boolPtr(value bool) *bool {
+	return &value
 }

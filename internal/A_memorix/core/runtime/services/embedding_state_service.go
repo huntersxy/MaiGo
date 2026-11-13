@@ -869,3 +869,14 @@ func mathMax(a float64, b float64) float64 {
 	}
 	return b
 }
+
+// spaceFloatOrDefault 取浮点，缺省或无法解析时用 fallback
+func spaceFloatOrDefault(value any, fallback float64) float64 {
+	if value == nil {
+		return fallback
+	}
+	if parsed, ok := asFloat(value); ok {
+		return parsed
+	}
+	return fallback
+}

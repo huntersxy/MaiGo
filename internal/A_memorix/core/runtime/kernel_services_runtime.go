@@ -49,7 +49,8 @@ type IngestTextParams struct {
 	Metadata      map[string]any
 	Entities      []string
 	Relations     []map[string]any
-	RespectFilter bool
+	// RespectFilter 为空表示未设置，按 Python 默认 true 处理
+	RespectFilter *bool
 	UserID        string
 	GroupID       string
 }
@@ -64,7 +65,8 @@ type IngestSummaryParams struct {
 	TimeEnd       *float64
 	Tags          []string
 	Metadata      map[string]any
-	RespectFilter bool
+	// RespectFilter 为空表示未设置，按 Python 默认 true 处理
+	RespectFilter *bool
 	UserID        string
 	GroupID       string
 }
@@ -186,4 +188,12 @@ type EmbeddingStateService interface {
 	NormalizeEmbeddingFingerprint(value any) map[string]any
 	EmbeddingFingerprintStatus(current map[string]any, stored map[string]any, hasStoredVectors bool) string
 	SelfCheckEffectiveDimension(report map[string]any) int
+}
+
+// respectFilterOrDefault 归一内核参数：未设置按 Python 默认 true
+func respectFilterOrDefault(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
 }

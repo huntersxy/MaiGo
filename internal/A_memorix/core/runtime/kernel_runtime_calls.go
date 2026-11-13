@@ -56,6 +56,7 @@ func (k *Kernel) IngestSummary(ctx context.Context, params IngestSummaryParams) 
 	if k.services.Ingest == nil {
 		return map[string]any{}, nil
 	}
+	params.RespectFilter = boolPtrValue(respectFilterOrDefault(params.RespectFilter))
 	return k.services.Ingest.IngestSummary(ctx, params)
 }
 
@@ -64,6 +65,7 @@ func (k *Kernel) IngestText(ctx context.Context, params IngestTextParams) (map[s
 	if k.services.Ingest == nil {
 		return map[string]any{}, nil
 	}
+	params.RespectFilter = boolPtrValue(respectFilterOrDefault(params.RespectFilter))
 	return k.services.Ingest.IngestText(ctx, params)
 }
 
@@ -88,6 +90,7 @@ func (k *Kernel) SearchMemory(ctx context.Context, request KernelSearchRequest) 
 	if k.services.Search == nil {
 		return map[string]any{}, nil
 	}
+	request.RespectFilter = boolPtrValue(request.RespectFilterEnabled())
 	return k.services.Search.SearchMemory(ctx, request)
 }
 
@@ -129,9 +132,13 @@ func (k *Kernel) GetPersonProfile(ctx context.Context, personID string, chatID s
 }
 
 // RefreshPersonProfile 对齐 refresh_person_profile
+// limit<=0 时按 Python 默认 10 处理
 func (k *Kernel) RefreshPersonProfile(ctx context.Context, personID string, limit int, markActive bool) (map[string]any, error) {
 	if k.services.ProfileAdmin == nil {
 		return EmptyPersonProfileResponse(personID, ""), nil
+	}
+	if limit <= 0 {
+		limit = 10
 	}
 	payload := map[string]any{"person_id": personID, "limit": limit, "mark_active": markActive}
 	return k.services.ProfileAdmin.RefreshPersonProfile(ctx, payload)
@@ -428,4 +435,9 @@ func (k *Kernel) ProcessPersonProfileRefreshQueueBatch(limit int) (map[string]an
 		return mapped, nil
 	}
 	return map[string]any{}, nil
+}
+
+// boolPtrValue 取地址，供内核门面把归一后的 bool 回填到指针字段
+func boolPtrValue(value bool) *bool {
+	return &value
 }

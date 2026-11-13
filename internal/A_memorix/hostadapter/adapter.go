@@ -98,7 +98,7 @@ func (r *RuntimeKernel) SearchMemory(ctx context.Context, req memorix.HostKernel
 		PersonID:      req.PersonID,
 		TimeStart:     req.TimeStart,
 		TimeEnd:       req.TimeEnd,
-		RespectFilter: req.RespectFilter,
+		RespectFilter: hostadapterBoolPtr(req.RespectFilter),
 		UserID:        req.UserID,
 		GroupID:       req.GroupID,
 	})
@@ -118,7 +118,7 @@ func (r *RuntimeKernel) IngestSummary(ctx context.Context, params memorix.HostIn
 		TimeEnd:       numericPtr(params.TimeEnd),
 		Tags:          append([]string(nil), params.Tags...),
 		Metadata:      cloneMap(params.Metadata),
-		RespectFilter: params.RespectFilter,
+		RespectFilter: hostadapterBoolPtr(params.RespectFilter),
 		UserID:        params.UserID,
 		GroupID:       params.GroupID,
 	})
@@ -143,7 +143,7 @@ func (r *RuntimeKernel) IngestText(ctx context.Context, params memorix.HostInges
 		Metadata:      cloneMap(params.Metadata),
 		Entities:      append([]string(nil), params.Entities...),
 		Relations:     cloneRelations(params.Relations),
-		RespectFilter: params.RespectFilter,
+		RespectFilter: hostadapterBoolPtr(params.RespectFilter),
 		UserID:        params.UserID,
 		GroupID:       params.GroupID,
 	})
@@ -302,4 +302,9 @@ func cloneRelations(source []map[string]any) []map[string]any {
 		out = append(out, cloneMap(item))
 	}
 	return out
+}
+
+// hostadapterBoolPtr 返回 bool 指针，供内核参数表达「显式设置」
+func hostadapterBoolPtr(value bool) *bool {
+	return &value
 }

@@ -302,7 +302,7 @@ func (s *ChatSummaryWritebackService) HandleMessage(ctx context.Context, event C
 			"trigger_message_count":          total,
 			"summary_review_count":           2,
 		},
-		RespectFilter: true,
+		RespectFilter: memoryWritebackBoolPtr(true),
 		UserID:        strings.TrimSpace(event.UserID),
 		GroupID:       strings.TrimSpace(event.GroupID),
 	}
@@ -515,4 +515,9 @@ func maxChatSummaryInt(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+// memoryWritebackBoolPtr 返回 bool 指针，供内核参数表达「显式设置」
+func memoryWritebackBoolPtr(value bool) *bool {
+	return &value
 }

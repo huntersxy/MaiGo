@@ -750,8 +750,9 @@ func (s *IngestService) ProcessEpisodeSourceRebuildBatch(ctx context.Context, pa
 		return nil, fmt.Errorf("max_retry 必须至少为1")
 	}
 	limit := intOr(params["limit"], 20, 1)
-	leaseSeconds := mathMax(1.0, spaceFloatAny(params["lease_seconds"]))
-	maxWaitSeconds := mathMax(0.0, spaceFloatAny(params["max_wait_seconds"]))
+	// 缺省值对齐 Python：lease_seconds=1800.0、max_wait_seconds=60.0
+	leaseSeconds := mathMax(1.0, spaceFloatOrDefault(params["lease_seconds"], 1800.0))
+	maxWaitSeconds := mathMax(0.0, spaceFloatOrDefault(params["max_wait_seconds"], 60.0))
 	if err := s.initialize(ctx); err != nil {
 		return nil, err
 	}

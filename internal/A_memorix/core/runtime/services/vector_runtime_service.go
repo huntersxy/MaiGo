@@ -17,7 +17,9 @@ import (
 type VectorRuntimeDeps struct {
 	Metadata func() *storage.Store
 	Cfg      func(key string, fallback any) any
-	Persist  func()
+	// FullConfig 返回完整运行时配置，供 get_config 回显
+	FullConfig func() map[string]any
+	Persist    func()
 
 	StoredVectorDimension                    func() *int
 	CurrentEmbeddingStatusDimension          func() int
@@ -538,11 +540,10 @@ func (s *VectorRuntimeService) runtimeConfigStatus(ctx context.Context) (map[str
 		}
 	}
 	config := map[string]any{}
-	if s.deps.Cfg != nil {
-		if value, ok := s.deps.Cfg("__full_config__", nil).(map[string]any); ok {
-			for key, item := range value {
-				config[key] = item
-			}
+	// 对齐 Python get_config：返回完整运行时配置
+	if s.deps.FullConfig != nil {
+		for key, item := range s.deps.FullConfig() {
+			config[key] = item
 		}
 	}
 	result := map[string]any{

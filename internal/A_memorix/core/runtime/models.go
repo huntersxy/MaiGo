@@ -12,14 +12,16 @@ type KernelSearchRequest struct {
 	PersonID      string
 	TimeStart     any
 	TimeEnd       any
-	RespectFilter bool
+	// RespectFilter 为空表示未设置，按 Python 默认 true 处理
+	RespectFilter *bool
 	UserID        string
 	GroupID       string
 }
 
 // NewKernelSearchRequest 返回与 Python dataclass 默认值一致的请求
 func NewKernelSearchRequest() KernelSearchRequest {
-	return KernelSearchRequest{Limit: 5, Mode: "search", RespectFilter: true}
+	enabled := true
+	return KernelSearchRequest{Limit: 5, Mode: "search", RespectFilter: &enabled}
 }
 
 // NormalizedSearchTimeWindow 对应 _NormalizedSearchTimeWindow
@@ -28,4 +30,12 @@ type NormalizedSearchTimeWindow struct {
 	NumericEnd   *float64
 	QueryStart   *string
 	QueryEnd     *string
+}
+
+// RespectFilterEnabled 返回过滤开关，未设置时按 Python 默认 true
+func (r KernelSearchRequest) RespectFilterEnabled() bool {
+	if r.RespectFilter == nil {
+		return true
+	}
+	return *r.RespectFilter
 }
