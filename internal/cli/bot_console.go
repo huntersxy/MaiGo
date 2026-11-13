@@ -47,10 +47,22 @@ var BotConsoleCommandCompletions = []string{
 	"exit()",
 }
 
+// ConsoleInput 终端输入读取器；InputReader 与 ReadlineInputReader 都实现了它
+type ConsoleInput interface {
+	Start()
+	Next(ctx context.Context) (string, error)
+	Close()
+}
+
+// SelfPromptingInput 自带提示符的读取器，调用方不再单独打印提示符
+type SelfPromptingInput interface {
+	OwnsPrompt() bool
+}
+
 // BotConsoleOptions BotConsole 依赖
 type BotConsoleOptions struct {
 	Console  *Console
-	Input    *InputReader
+	Input    ConsoleInput
 	Driver   *BotConsoleDriver
 	Platform *platformio.Manager
 	Nickname func() string
@@ -65,7 +77,7 @@ type BotConsoleOptions struct {
 // BotConsole 读取本地终端输入并交给正式消息处理链
 type BotConsole struct {
 	console        *Console
-	input          *InputReader
+	input          ConsoleInput
 	driver         *BotConsoleDriver
 	platform       *platformio.Manager
 	dispatch       func(ctx context.Context, message *SessionMessage) (string, error)
@@ -106,7 +118,12 @@ func (b *BotConsole) Run(ctx context.Context) error {
 		if err := EnsureInteractiveStdin(); err != nil {
 			return err
 		}
-		b.input = NewStdinInputReader()
+		reader, err := NewReadlineInputReader(b.CommandCompletions, b.console.Out, b.console.Err)
+		if err != nil {
+			b.input = NewStdinInputReader()
+		} else {
+			b.input = reader
+		}
 		b.ownsInput = true
 	}
 	b.input.Start()
@@ -126,7 +143,9 @@ func (b *BotConsole) Run(ctx context.Context) error {
 
 	b.showBanner()
 	for {
-		b.console.Prompt(StyleBoldCyan, "> ")
+		if own, ok := b.input.(SelfPromptingInput); !ok || !own.OwnsPrompt() {
+			b.console.Prompt(StyleBoldCyan, "> ")
+		}
 		line, err := b.input.Next(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) {

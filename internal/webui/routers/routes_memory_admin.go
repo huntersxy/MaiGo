@@ -199,7 +199,7 @@ func mountMemoryCompatRoutes(ar chi.Router, d Deps) {
 	ar.Post("/person_profile/override", d.handleMemoryProfileSetOverride)
 	ar.Delete("/person_profile/override/{person_id}", d.handleMemoryProfileDeleteOverride)
 	ar.Post("/save", d.handleMemoryRuntimeSave)
-	ar.Get("/config", d.handleMemoryConfigGet)
+	ar.Get("/config", d.handleMemoryRuntimeConfig)
 	ar.Get("/runtime/self_check", d.handleMemoryRuntimeSelfCheck)
 	ar.Post("/runtime/self_check/refresh", d.handleMemoryRuntimeRefreshSelfCheck)
 	ar.Get("/config/auto_save", d.handleMemoryRuntimeAutoSaveGet)

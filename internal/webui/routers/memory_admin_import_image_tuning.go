@@ -574,9 +574,121 @@ func (d Deps) handleMemoryImageSearch(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d.handleMemoryImageInvoke("search", func(r *http.Request) (map[string]any, bool) {
-		return map[string]any{"asset_id": assetID, "limit": limit, "threshold": threshold, "chat_id": mqString(r, "chat_id")}, true
-	})(w, r)
+	chatID := strings.TrimSpace(mqString(r, "chat_id"))
+	if chatID != "" {
+		db := d.chatDeps().ChatDB()
+		if db == nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "会话数据库尚未就绪")
+			return
+		}
+		if _, err := chatsession.NewManager(db).GetExistingBySessionID(r.Context(), chatID); err != nil {
+			if errors.Is(err, chatsession.ErrNotFound) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "聊天流不存在"})
+				return
+			}
+			writeAPIError(w, http.StatusInternalServerError, "查询聊天流失败: "+err.Error())
+			return
+		}
+	}
+
+	caller := memorixHostCaller()
+	asset, err := caller.invoke(r, "image_memory", "get", map[string]any{
+		"action": "get", "asset_id": assetID, "chat_ids": nil,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if asset == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: image_memory/get")
+		return
+	}
+	assetPayload, _ := asset.(map[string]any)
+	if assetPayload == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: image_memory/get")
+		return
+	}
+	if success, _ := assetPayload["success"].(bool); !success {
+		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "图片不存在"})
+		return
+	}
+	assetBody, _ := assetPayload["asset"].(map[string]any)
+	contentHash := anyTrimmed(assetBody["content_hash"])
+	if contentHash == "" {
+		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "图片不存在"})
+		return
+	}
+
+	payload := map[string]any{
+		"action":               "search",
+		"content_hash":         contentHash,
+		"candidate_limit":      limit,
+		"similarity_threshold": threshold,
+	}
+	if chatID != "" {
+		payload["chat_ids"] = []string{chatID}
+	}
+	result, err := caller.invoke(r, "image_memory", "search", payload)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	resultPayload, _ := result.(map[string]any)
+	if resultPayload == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: image_memory/search")
+		return
+	}
+	if success, _ := resultPayload["success"].(bool); !success {
+		detail := anyTrimmed(resultPayload["error"])
+		if detail == "" {
+			detail = "图片检索失败"
+		}
+		writeAPIError(w, http.StatusBadGateway, detail)
+		return
+	}
+	d.decorateMemoryImageSearchHits(r.Context(), resultPayload)
+	resultPayload["success"] = true
+	writeJSON(w, http.StatusOK, resultPayload)
+}
+
+// decorateMemoryImageSearchHits 为命中项的每条出现补 chat_name，对齐 Python 搜索返回
+func (d Deps) decorateMemoryImageSearchHits(ctx context.Context, result map[string]any) {
+	hits, _ := result["hits"].([]any)
+	var sessionIDs []string
+	seen := map[string]struct{}{}
+	for _, rawHit := range hits {
+		hit, _ := rawHit.(map[string]any)
+		occurrences, _ := hit["occurrences"].([]any)
+		for _, rawOccurrence := range occurrences {
+			occurrence, _ := rawOccurrence.(map[string]any)
+			sessionID := anyTrimmed(occurrence["chat_id"])
+			if sessionID == "" {
+				continue
+			}
+			if _, exists := seen[sessionID]; exists {
+				continue
+			}
+			seen[sessionID] = struct{}{}
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+	names, err := d.memoryChatDisplayNames(ctx, sessionIDs)
+	if err != nil {
+		return
+	}
+	for _, rawHit := range hits {
+		hit, _ := rawHit.(map[string]any)
+		occurrences, _ := hit["occurrences"].([]any)
+		for _, rawOccurrence := range occurrences {
+			occurrence, _ := rawOccurrence.(map[string]any)
+			sessionID := anyTrimmed(occurrence["chat_id"])
+			if name, exists := names[sessionID]; exists && name != "" {
+				occurrence["chat_name"] = name
+				continue
+			}
+			occurrence["chat_name"] = "全局或来源已移除"
+		}
+	}
 }
 
 func (d Deps) handleMemoryImageContent(w http.ResponseWriter, r *http.Request) {

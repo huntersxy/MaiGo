@@ -235,7 +235,7 @@ func trimMemoryText(value any, limit int) string {
 	if len(runes) <= limit {
 		return text
 	}
-	return string(runes[:limit])
+	return string(runes[:limit]) + "..."
 }
 
 func decodeMemoryJSONPayload(raw any, fallback any) any {
@@ -264,14 +264,11 @@ func decodeMemoryMetadata(raw any) map[string]any {
 func formatMemoryRelation(subject, predicate, object string) string {
 	parts := make([]string, 0, 3)
 	for _, item := range []string{subject, predicate, object} {
-		if strings.TrimSpace(item) != "" {
-			parts = append(parts, strings.TrimSpace(item))
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			parts = append(parts, trimmed)
 		}
 	}
-	if len(parts) == 0 {
-		return "未命名关系"
-	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, " ")
 }
 
 func readableFactKey(key string) string {

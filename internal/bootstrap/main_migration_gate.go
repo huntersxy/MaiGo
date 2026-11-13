@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"maibot-go/internal/common/database"
 	"maibot-go/internal/common/database/migrations"
 	maibotcfg "maibot-go/internal/config/maibot"
 
@@ -15,7 +16,7 @@ import (
 // migrateSchemaAtStartup 先探测数据库结构再执行迁移
 // 空库、完整 v17 结构与旧版本记录都按 GuardSchema 决策处理，无法自动升级的旧库真实终止
 func migrateSchemaAtStartup(db *gorm.DB) error {
-	if err := checkLegacyConfigUpgradeAtStartup(); err != nil {
+	if err := checkLegacyConfigUpgradeAtStartup(db); err != nil {
 		return err
 	}
 	decision, err := migration.GuardSchema(db)
@@ -61,12 +62,13 @@ func schemaMigrationPlan(decision migration.GuardDecision) (bool, error) {
 
 // checkLegacyConfigUpgradeAtStartup 在任何配置加载/数据库升级前检查 0.x 旧配置
 // 未设置 MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED=1 时终止启动，避免静默改写旧实例
-func checkLegacyConfigUpgradeAtStartup() error {
+func checkLegacyConfigUpgradeAtStartup(db *gorm.DB) error {
 	instanceRoot := strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR"))
 	if instanceRoot == "" {
 		return nil
 	}
-	if err := maibotcfg.RequireLegacyUpgradeConfirmation(instanceRoot, os.Getenv); err != nil {
+	detectLegacyDB := func(string) bool { return memory.DetectLegacy0XDatabase(db) }
+	if err := maibotcfg.RequireLegacyUpgradeConfirmation(instanceRoot, os.Getenv, detectLegacyDB); err != nil {
 		return fmt.Errorf("旧版配置升级未确认: %w", err)
 	}
 	return nil

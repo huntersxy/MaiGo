@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	memory "maibot-go/internal/common/database"
 	maibotcfg "maibot-go/internal/config/maibot"
 
 	"github.com/pelletier/go-toml/v2"
@@ -51,7 +52,15 @@ func (d Deps) handleConfigUpgradeStatus(w http.ResponseWriter, r *http.Request) 
 	bot := inspectConfigUpgradeFile(botPath, maibotcfg.BotConfigTargetVersion, legacy0XBotConfigBoundary)
 	model := inspectConfigUpgradeFile(modelPath, maibotcfg.ModelConfigTargetVersion, legacy0XModelConfigBoundary)
 
-	reasons := make([]string, 0, 2)
+	dbPath := filepath.Join(dir, "data", "MaiBot.db")
+	legacyDB := false
+	if d.Memory != nil {
+		legacyDB = memory.DetectLegacy0XDatabase(d.Memory.GetDB())
+	}
+	reasons := make([]string, 0, 3)
+	if legacyDB {
+		reasons = append(reasons, "检测到旧版 0.x 数据库结构，将更新数据库："+dbPath)
+	}
 	if bot.NeedsConfirmation {
 		reasons = append(reasons, "检测到主配置文件版本较旧，将更新配置文件："+
 			bot.Path+" ("+bot.CurrentVersion+" -> "+bot.TargetVersion+")")
@@ -67,10 +76,10 @@ func (d Deps) handleConfigUpgradeStatus(w http.ResponseWriter, r *http.Request) 
 		Bot:               bot,
 		Model:             model,
 		Database: map[string]any{
-			"legacy_sqlite_checked": false,
+			"legacy_sqlite_checked": true,
 			"backend":               "sqlite",
-			"database_path":         filepath.Join(d.InstanceDir, "data", "MaiBot.db"),
-			"reason":                "配置升级状态只读展示；旧版 data/MaiBot.db 迁移检测未接线",
+			"database_path":         dbPath,
+			"legacy":                legacyDB,
 		},
 	})
 }

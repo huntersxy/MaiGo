@@ -12,7 +12,7 @@ func (d Deps) handleMemoryMaintenanceRecycleBin(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_v5_admin", "recycle_bin", map[string]any{"limit": limit})
+	d.invokeMemoryAdmin(w, r, "maintain_memory", "recycle_bin", map[string]any{"limit": limit})
 }
 
 func (d Deps) handleMemoryMaintenanceRestore(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +24,7 @@ func (d Deps) handleMemoryMaintenanceRestore(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_v5_admin", "restore", map[string]any{"target": target})
+	d.invokeMemoryAdmin(w, r, "maintain_memory", "restore", map[string]any{"target": target})
 }
 
 func (d Deps) handleMemoryMaintenanceReinforce(w http.ResponseWriter, r *http.Request) {
@@ -50,9 +50,7 @@ func (d Deps) handleMemoryMaintenanceFreeze(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_v5_admin", "freeze", map[string]any{
-		"target": target, "reason": "WebUI 手动冻结", "updated_by": "webui",
-	})
+	d.invokeMemoryAdmin(w, r, "maintain_memory", "freeze", map[string]any{"target": target})
 }
 
 func (d Deps) handleMemoryMaintenanceProtect(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +62,7 @@ func (d Deps) handleMemoryMaintenanceProtect(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	args := map[string]any{"target": target, "reason": "WebUI 手动保护", "updated_by": "webui"}
+	args := map[string]any{"target": target}
 	if hours, exists := payload["hours"]; exists && hours != nil {
 		parsed, ok := anyFloat(hours)
 		if !ok || parsed < 0 {
@@ -73,7 +71,7 @@ func (d Deps) handleMemoryMaintenanceProtect(w http.ResponseWriter, r *http.Requ
 		}
 		args["hours"] = parsed
 	}
-	d.invokeMemoryAdmin(w, r, "memory_v5_admin", "protect", args)
+	d.invokeMemoryAdmin(w, r, "maintain_memory", "protect", args)
 }
 
 func (d Deps) handleMemoryV5Status(w http.ResponseWriter, r *http.Request) {

@@ -83,11 +83,19 @@ func readConfigInnerVersion(path string) string {
 }
 
 // CollectLegacyUpgradeReasons 收集启动前需要用户确认的 0.x 配置升级风险
-// 旧版 data/MaiBot.db 迁移探测另挂 legacy_sqlite_checked；此处只收集配置升级确认项
-func CollectLegacyUpgradeReasons(instanceRoot string) []LegacyUpgradeReason {
+// 旧库探测由调用方通过 detectLegacyDB 注入，避免 config 包依赖数据库层
+func CollectLegacyUpgradeReasons(instanceRoot string, detectLegacyDB func(dbPath string) bool) []LegacyUpgradeReason {
 	root := filepath.Clean(instanceRoot)
 	configDir := filepath.Join(root, "config")
 	var reasons []LegacyUpgradeReason
+
+	dbPath := filepath.Join(root, "data", "MaiBot.db")
+	if detectLegacyDB != nil && detectLegacyDB(dbPath) {
+		reasons = append(reasons, LegacyUpgradeReason{
+			Path:    dbPath,
+			Message: "检测到旧版 0.x 数据库结构，将更新数据库：" + dbPath,
+		})
+	}
 
 	botPath := filepath.Join(configDir, botConfigFileName)
 	botVersion := readConfigInnerVersion(botPath)
@@ -117,14 +125,14 @@ func CollectLegacyUpgradeReasons(instanceRoot string) []LegacyUpgradeReason {
 
 // RequireLegacyUpgradeConfirmation 在自动升级前要求显式确认
 // Python 在交互终端提示输入 y；Go 服务化启动改为读取环境变量，未确认时返回可诊断错误
-func RequireLegacyUpgradeConfirmation(instanceRoot string, getenv func(string) string) error {
+func RequireLegacyUpgradeConfirmation(instanceRoot string, getenv func(string) string, detectLegacyDB func(dbPath string) bool) error {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
 	if strings.TrimSpace(getenv(LegacyUpgradeConfirmEnv)) == "1" {
 		return nil
 	}
-	reasons := CollectLegacyUpgradeReasons(instanceRoot)
+	reasons := CollectLegacyUpgradeReasons(instanceRoot, detectLegacyDB)
 	if len(reasons) == 0 {
 		return nil
 	}

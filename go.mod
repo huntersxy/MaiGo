@@ -87,6 +87,7 @@ require (
 	github.com/bogdanfinn/fhttp v0.6.9
 	github.com/bogdanfinn/tls-client v1.16.0
 	github.com/bytedance/sonic v1.15.4
+	github.com/chzyer/readline v1.5.1
 	github.com/cloudwego/eino-ext/components/model/agenticopenai v0.2.4
 	github.com/cloudwego/eino-ext/components/tool/mcp v0.0.8
 	github.com/coder/websocket v1.8.15

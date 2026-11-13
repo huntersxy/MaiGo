@@ -5,6 +5,7 @@ package webuiapi
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	memruntime "maibot-go/internal/A_memorix/core/runtime"
@@ -142,53 +143,157 @@ func (d Deps) handleMemoryGraphParagraphDetail(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	rows, err := queryMemoryRows(`SELECT hash, content, source, knowledge_type, word_count, vector_index,
-		created_at, updated_at, metadata, is_deleted FROM paragraphs WHERE hash = ? LIMIT 1`, paragraphHash)
+	rows, err := queryMemoryRows(`SELECT hash, content, source, created_at, updated_at, is_deleted, deleted_at
+		FROM paragraphs WHERE hash = ? LIMIT 1`, paragraphHash)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "查询长期记忆 metadata 失败: "+err.Error())
 		return
 	}
-	if len(rows) == 0 || anyBoolInt(rows[0]["is_deleted"]) {
+	if len(rows) == 0 {
 		writeAPIError(w, http.StatusNotFound, "未找到段落: "+paragraphHash)
 		return
 	}
 	row := rows[0]
-	entities := queryMemoryRowsOptional(`SELECT e.hash, e.name, e.appearance_count FROM paragraph_entities pe
-		JOIN entities e ON e.hash = pe.entity_hash
-		WHERE pe.paragraph_hash = ? AND COALESCE(e.is_deleted, 0) = 0
-		ORDER BY e.appearance_count DESC LIMIT ?`, paragraphHash, evidenceLimit)
-	relations := queryMemoryRowsOptional(`SELECT r.hash, r.subject, r.predicate, r.object, r.confidence
-		FROM paragraph_relations pr JOIN relations r ON r.hash = pr.relation_hash
-		WHERE pr.paragraph_hash = ? ORDER BY COALESCE(r.last_reinforced, r.created_at, 0) DESC LIMIT ?`, paragraphHash, evidenceLimit)
-	entityItems := make([]map[string]any, 0, len(entities))
-	for _, item := range entities {
-		entityItems = append(entityItems, map[string]any{
-			"hash": anyTrimmed(item["hash"]), "name": anyTrimmed(item["name"]),
-			"appearance_count": anyInt(item["appearance_count"]),
-		})
+	if anyBoolInt(row["is_deleted"]) || row["deleted_at"] != nil {
+		writeAPIError(w, http.StatusNotFound, "段落已删除: "+paragraphHash)
+		return
 	}
-	relationItems := make([]map[string]any, 0, len(relations))
-	for _, item := range relations {
-		relationItems = append(relationItems, map[string]any{
-			"hash": anyTrimmed(item["hash"]), "subject": anyTrimmed(item["subject"]),
-			"predicate": anyTrimmed(item["predicate"]), "object": anyTrimmed(item["object"]),
-			"confidence": memoryFloatOrNil(item["confidence"]),
-			"title":      formatMemoryRelation(anyTrimmed(item["subject"]), anyTrimmed(item["predicate"]), anyTrimmed(item["object"])),
-		})
+
+	entityRows := queryMemoryRowsOptional(`SELECT e.hash, e.name, pe.mention_count
+		FROM paragraph_entities pe
+		LEFT JOIN entities e ON e.hash = pe.entity_hash
+		WHERE pe.paragraph_hash = ?
+		ORDER BY COALESCE(pe.mention_count, 1) DESC, e.name ASC`, paragraphHash)
+	relationRows := queryMemoryRowsOptional(`SELECT r.hash, r.subject, r.predicate, r.object, r.confidence
+		FROM paragraph_relations pr
+		JOIN relations r ON r.hash = pr.relation_hash
+		WHERE pr.paragraph_hash = ?
+		  AND (r.is_inactive IS NULL OR r.is_inactive = 0)
+		ORDER BY r.confidence DESC, r.created_at DESC`, paragraphHash)
+
+	entityNames := make([]string, 0, len(entityRows))
+	for _, item := range entityRows {
+		name := anyTrimmed(item["name"])
+		if name == "" {
+			name = anyTrimmed(item["hash"])
+		}
+		if name != "" {
+			entityNames = append(entityNames, name)
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"paragraph": map[string]any{
-			"hash": anyTrimmed(row["hash"]), "content": anyTrimmed(row["content"]),
-			"source": anyTrimmed(row["source"]), "knowledge_type": firstNonEmptyText(row["knowledge_type"], "mixed"),
-			"word_count": anyInt(row["word_count"]), "vector_indexed": row["vector_index"] != nil,
-			"created_at": memoryFloatOrNil(row["created_at"]), "updated_at": memoryFloatOrNil(row["updated_at"]),
-			"metadata": decodeMemoryMetadata(row["metadata"]),
+	relationTexts := make([]string, 0, len(relationRows))
+	for _, item := range relationRows {
+		relationTexts = append(relationTexts, formatMemoryRelation(
+			anyTrimmed(item["subject"]), anyTrimmed(item["predicate"]), anyTrimmed(item["object"])))
+	}
+
+	content := anyTrimmed(row["content"])
+	paragraph := map[string]any{
+		"hash": anyTrimmed(row["hash"]), "content": content,
+		"preview": trimMemoryText(content, 160), "source": anyTrimmed(row["source"]),
+		"created_at": memoryFloatOrNil(row["created_at"]), "updated_at": memoryFloatOrNil(row["updated_at"]),
+		"entity_count": len(entityNames), "relation_count": len(relationTexts),
+		"entities": entityNames, "relations": relationTexts,
+	}
+
+	nodes := []map[string]any{{
+		"id":      "paragraph:" + paragraphHash,
+		"type":    "paragraph",
+		"content": anyTrimmed(row["content"]),
+		"metadata": map[string]any{
+			"hash": paragraphHash, "source": paragraph["source"], "updated_at": paragraph["updated_at"],
+			"entity_count": len(entityNames), "relation_count": len(relationTexts), "preview": paragraph["preview"],
 		},
-		"entities":       entityItems,
-		"relations":      relationItems,
-		"counts":         map[string]any{"entities": len(entityItems), "relations": len(relationItems)},
-		"evidence_nodes": []any{},
+	}}
+	edges := make([]map[string]any, 0, len(entityRows)+len(relationRows))
+	nodeIDs := map[string]struct{}{"paragraph:" + paragraphHash: {}}
+
+	for _, item := range entityRows {
+		entityName := anyTrimmed(item["name"])
+		if entityName == "" {
+			entityName = anyTrimmed(item["hash"])
+		}
+		if entityName == "" {
+			continue
+		}
+		nodeID := "entity:" + entityName
+		if _, exists := nodeIDs[nodeID]; !exists {
+			nodeIDs[nodeID] = struct{}{}
+			nodes = append(nodes, map[string]any{
+				"id": nodeID, "type": "entity", "content": entityName,
+				"metadata": map[string]any{"entity_name": entityName},
+			})
+		}
+		mentionCount := anyInt(item["mention_count"])
+		if mentionCount < 1 {
+			mentionCount = 1
+		}
+		label := "提及"
+		if mentionCount > 1 {
+			label = "提及 ×" + strconv.Itoa(mentionCount)
+		}
+		edges = append(edges, map[string]any{
+			"source": "paragraph:" + paragraphHash, "target": nodeID,
+			"kind": "mentions", "label": label, "weight": float64(mentionCount),
+		})
+	}
+
+	for _, item := range relationRows {
+		relationHash := anyTrimmed(item["hash"])
+		if relationHash == "" {
+			continue
+		}
+		nodeID := "relation:" + relationHash
+		relationText := formatMemoryRelation(
+			anyTrimmed(item["subject"]), anyTrimmed(item["predicate"]), anyTrimmed(item["object"]))
+		if _, exists := nodeIDs[nodeID]; !exists {
+			nodeIDs[nodeID] = struct{}{}
+			confidence, _ := anyFloat(item["confidence"])
+			nodes = append(nodes, map[string]any{
+				"id": nodeID, "type": "relation", "content": relationText,
+				"metadata": map[string]any{
+					"hash": relationHash, "subject": anyTrimmed(item["subject"]),
+					"predicate": anyTrimmed(item["predicate"]), "object": anyTrimmed(item["object"]),
+					"confidence": confidence, "paragraph_count": 1,
+					"paragraph_hashes": []string{paragraphHash}, "text": relationText,
+				},
+			})
+		}
+		edges = append(edges, map[string]any{
+			"source": "paragraph:" + paragraphHash, "target": nodeID,
+			"kind": "supports", "label": "支撑", "weight": 1.0,
+		})
+	}
+
+	if len(nodes) > evidenceLimit {
+		kept := make(map[string]struct{}, evidenceLimit)
+		for _, node := range nodes[:evidenceLimit] {
+			kept[anyTrimmed(node["id"])] = struct{}{}
+		}
+		filteredNodes := make([]map[string]any, 0, len(kept))
+		for _, node := range nodes {
+			if _, exists := kept[anyTrimmed(node["id"])]; exists {
+				filteredNodes = append(filteredNodes, node)
+			}
+		}
+		nodes = filteredNodes
+		filteredEdges := make([]map[string]any, 0, len(edges))
+		for _, edge := range edges {
+			_, sourceKept := kept[anyTrimmed(edge["source"])]
+			_, targetKept := kept[anyTrimmed(edge["target"])]
+			if sourceKept && targetKept {
+				filteredEdges = append(filteredEdges, edge)
+			}
+		}
+		edges = filteredEdges
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":   true,
+		"paragraph": paragraph,
+		"evidence_graph": map[string]any{
+			"nodes": nodes, "edges": edges, "focus_entities": entityNames,
+		},
 	})
 }
 
