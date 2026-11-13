@@ -52,7 +52,7 @@ func (d Deps) handleConfigUpgradeStatus(w http.ResponseWriter, r *http.Request) 
 	bot := inspectConfigUpgradeFile(botPath, maibotcfg.BotConfigTargetVersion, legacy0XBotConfigBoundary)
 	model := inspectConfigUpgradeFile(modelPath, maibotcfg.ModelConfigTargetVersion, legacy0XModelConfigBoundary)
 
-	dbPath := filepath.Join(dir, "data", "MaiBot.db")
+	dbPath := filepath.Join(d.InstanceDir, "data", "MaiBot.db")
 	legacyDB := false
 	if d.Memory != nil {
 		legacyDB = memory.DetectLegacy0XDatabase(d.Memory.GetDB())
