@@ -7,11 +7,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"maibot-go/internal/webui/routers/chat"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -96,8 +98,81 @@ func chatTargetIDGroup(rec *chatsession.Record) string {
 }
 
 func (d Deps) handleMemoryImportGuide(w http.ResponseWriter, r *http.Request) {
-	limitTimeout := 600000
-	d.invokeMemoryAdminTimeout(w, r, "memory_import_admin", "get_guide", map[string]any{}, &limitTimeout)
+	result, err := callMemoryAdmin(r, "memory_import_admin", "get_guide", map[string]any{})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		payload = map[string]any{"success": false, "error": "invalid_payload"}
+	}
+	if _, ok := payload["content"].(string); ok {
+		writeJSON(w, http.StatusOK, payload)
+		return
+	}
+	// 对齐 _import_guide：没有 content 时按 settings 生成说明并补齐 source/path
+	settings, _ := payload["settings"].(map[string]any)
+	if settings == nil {
+		if settingsPayload, settingsErr := callMemoryAdmin(r, "memory_import_admin", "get_settings", map[string]any{}); settingsErr == nil {
+			if mapped, ok := settingsPayload.(map[string]any); ok {
+				settings, _ = mapped["settings"].(map[string]any)
+			}
+		}
+	}
+	if settings == nil {
+		settings = map[string]any{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":  true,
+		"source":   "local",
+		"path":     "generated://memory_import_guide",
+		"content":  buildImportGuideMarkdown(settings),
+		"settings": settings,
+	})
+}
+
+// buildImportGuideMarkdown 对齐 _build_import_guide_markdown
+func buildImportGuideMarkdown(settings map[string]any) string {
+	aliases, _ := settings["path_aliases"].(map[string]any)
+	names := make([]string, 0, len(aliases))
+	for name := range aliases {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	aliasLines := make([]string, 0, len(names))
+	for _, name := range names {
+		path := strings.TrimSpace(anyTrimmed(aliases[name]))
+		if strings.TrimSpace(name) == "" || path == "" {
+			continue
+		}
+		aliasLines = append(aliasLines, "- `"+name+"` -> `"+path+"`")
+	}
+	if len(aliasLines) == 0 {
+		aliasLines = []string{"- 当前未配置路径别名"}
+	}
+	lines := []string{
+		"# 长期记忆导入说明",
+		"",
+		"支持的导入方式：",
+		"- 上传文件：适合零散文档、日志、聊天导出文本。",
+		"- 粘贴文本：适合一次性导入少量整理好的内容。",
+		"- Raw Scan：扫描白名单目录内的原始文本文件。",
+		"- LPMM OpenIE / Convert：处理既有 LPMM 数据。",
+		"- Temporal Backfill：补回已有数据中的时间信息。",
+		"- MaiBot Migration：从宿主数据库迁移历史聊天记忆。",
+		"",
+		"当前路径别名：",
+	}
+	lines = append(lines, aliasLines...)
+	lines = append(lines,
+		"",
+		"执行建议：",
+		"- 首次导入先小批量试跑，确认切分和抽取结果正常。",
+		"- 大批量导入时优先关注任务状态、失败块与重试结果。",
+		"- 若路径解析失败，请先检查路径别名与相对路径是否仍然有效。",
+	)
+	return strings.Join(lines, "\n")
 }
 
 func (d Deps) handleMemoryImportResolvePath(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +180,7 @@ func (d Deps) handleMemoryImportResolvePath(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_import_admin", "resolve_path", payload)
+	d.invokeMemoryAdmin(w, r, "memory_import_admin", "resolve_path", unwrapMemoryImportPayload(payload))
 }
 
 func (d Deps) handleMemoryImportCreate(action string) http.HandlerFunc {
@@ -114,8 +189,31 @@ func (d Deps) handleMemoryImportCreate(action string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		d.invokeMemoryAdmin(w, r, "memory_import_admin", action, payload)
+		normalized := unwrapMemoryImportPayload(payload)
+		if !d.validateBundleImportChatID(w, r.Context(), normalized) {
+			return
+		}
+		d.invokeMemoryAdmin(w, r, "memory_import_admin", action, normalized)
 	}
+}
+
+// unwrapMemoryImportPayload 对齐 _unwrap_payload：优先取嵌套的 payload 子对象
+func unwrapMemoryImportPayload(payload map[string]any) map[string]any {
+	if payload == nil {
+		return map[string]any{}
+	}
+	if nested, ok := payload["payload"].(map[string]any); ok {
+		out := make(map[string]any, len(nested))
+		for key, value := range nested {
+			out[key] = value
+		}
+		return out
+	}
+	out := make(map[string]any, len(payload))
+	for key, value := range payload {
+		out[key] = value
+	}
+	return out
 }
 
 // handleMemoryImportUpload 接收 multipart 文件并落到 runtime 数据目录的临时 staging
@@ -151,14 +249,14 @@ func (d Deps) handleMemoryImportUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	staged := make([]map[string]any, 0, len(files))
-	for _, header := range files {
+	for index, header := range files {
 		source, err := header.Open()
 		if err != nil {
 			_ = os.RemoveAll(stagingDir)
 			writeAPIError(w, http.StatusBadRequest, "读取上传文件失败: "+err.Error())
 			return
 		}
-		name := filepath.Base(header.Filename)
+		name := fmt.Sprintf("%03d_%s", index, filepath.Base(header.Filename))
 		target := filepath.Join(stagingDir, name)
 		destination, err := os.Create(target)
 		if err != nil {
@@ -176,11 +274,13 @@ func (d Deps) handleMemoryImportUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		staged = append(staged, map[string]any{
-			"filename": name, "staged_path": target, "size": written,
+			"filename": filepath.Base(header.Filename), "staged_path": target, "size": written,
 		})
 	}
 	payload["staged_files"] = staged
 	payload["staging_dir"] = stagingDir
+	// 对齐 Python：登记任务后无论成败都清理暂存目录
+	defer func() { _ = os.RemoveAll(stagingDir) }()
 	d.invokeMemoryAdmin(w, r, "memory_import_admin", "create_upload", payload)
 }
 
@@ -189,7 +289,31 @@ func (d Deps) handleMemoryImportTasks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_import_admin", "list", map[string]any{"limit": limit})
+	result, err := callMemoryAdmin(r, "memory_import_admin", "list", map[string]any{"limit": limit})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	listing, ok := result.(map[string]any)
+	if !ok {
+		listing = map[string]any{"success": false, "items": []any{}}
+	}
+	if _, exists := listing["success"]; !exists {
+		listing["success"] = true
+	}
+	if _, exists := listing["items"]; !exists {
+		listing["items"] = []any{}
+	}
+	// 对齐 _import_list：列表额外附带 settings
+	settingsPayload, settingsErr := callMemoryAdmin(r, "memory_import_admin", "get_settings", map[string]any{})
+	if settingsErr == nil {
+		if mapped, ok := settingsPayload.(map[string]any); ok {
+			if settings, ok := mapped["settings"].(map[string]any); ok {
+				listing["settings"] = settings
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, listing)
 }
 
 func (d Deps) handleMemoryImportTaskGet(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +342,7 @@ func (d Deps) handleMemoryImportTaskChunks(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	limit, ok := mqInt(w, r, "limit", 100, 1, 500)
+	limit, ok := mqInt(w, r, "limit", 50, 1, 200)
 	if !ok {
 		return
 	}
@@ -403,8 +527,9 @@ func (d Deps) validateBundleImportChatID(w http.ResponseWriter, ctx context.Cont
 }
 
 func (d Deps) handleMemoryBundleDownload(w http.ResponseWriter, r *http.Request) {
-	fileName := strings.TrimSpace(chiURLParam(r, "file_name"))
-	if fileName == "" {
+	// 对齐 Python Path(file_name).name：只取 basename，避免路径穿越
+	fileName := filepath.Base(strings.TrimSpace(chiURLParam(r, "file_name")))
+	if fileName == "" || fileName == "." || fileName == string(filepath.Separator) {
 		writeAPIError(w, http.StatusBadRequest, "file_name 不能为空")
 		return
 	}
@@ -460,7 +585,7 @@ func (d Deps) handleMemoryImageInvoke(action string, build func(r *http.Request)
 }
 
 func (d Deps) handleMemoryImagesList(w http.ResponseWriter, r *http.Request) {
-	limit, ok := mqInt(w, r, "limit", 50, 1, 500)
+	limit, ok := mqInt(w, r, "limit", 50, 1, 200)
 	if !ok {
 		return
 	}
@@ -479,9 +604,48 @@ func (d Deps) handleMemoryImagesGet(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "asset_id 不能为空")
 		return
 	}
-	d.handleMemoryImageInvoke("get", func(r *http.Request) (map[string]any, bool) {
-		return map[string]any{"asset_id": assetID}, true
-	})(w, r)
+	result, err := memorixHostCaller().invoke(r, "image_memory", "get", map[string]any{
+		"action": "get", "asset_id": assetID, "chat_ids": nil,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	payload, _ := result.(map[string]any)
+	if payload == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: image_memory/get")
+		return
+	}
+	// 对齐 get_image_memory：为每条出现补 chat_name，空 chat_id 视为全局记忆
+	occurrences, _ := payload["occurrences"].([]any)
+	chatIDs := make([]string, 0, len(occurrences))
+	for _, raw := range occurrences {
+		occurrence, _ := raw.(map[string]any)
+		if occurrence == nil {
+			continue
+		}
+		if chatID := anyTrimmed(occurrence["chat_id"]); chatID != "" {
+			chatIDs = append(chatIDs, chatID)
+		}
+	}
+	names := d.memorySourceChatNames(r.Context(), chatIDs)
+	for _, raw := range occurrences {
+		occurrence, _ := raw.(map[string]any)
+		if occurrence == nil {
+			continue
+		}
+		chatID := anyTrimmed(occurrence["chat_id"])
+		if chatID == "" {
+			occurrence["chat_name"] = "全局记忆"
+			continue
+		}
+		name := names[chatID]
+		if name == "" {
+			name = chatID
+		}
+		occurrence["chat_name"] = name
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (d Deps) handleMemoryImagesStatus(w http.ResponseWriter, r *http.Request) {
@@ -489,11 +653,51 @@ func (d Deps) handleMemoryImagesStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) handleMemoryImagesChats(w http.ResponseWriter, r *http.Request) {
-	d.handleMemoryImageInvoke("list_chats", nil)(w, r)
+	result, err := memorixHostCaller().invoke(r, "image_memory", "list_chats", map[string]any{"action": "list_chats"})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	payload, _ := result.(map[string]any)
+	if payload == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: image_memory/list_chats")
+		return
+	}
+	rows, _ := payload["items"].([]any)
+	chatIDs := make([]string, 0, len(rows))
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		if row == nil {
+			continue
+		}
+		if chatID := anyTrimmed(row["chat_id"]); chatID != "" {
+			chatIDs = append(chatIDs, chatID)
+		}
+	}
+	names := d.memorySourceChatNames(r.Context(), chatIDs)
+	items := make([]map[string]any, 0, len(rows))
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		if row == nil {
+			continue
+		}
+		chatID := anyTrimmed(row["chat_id"])
+		if chatID == "" {
+			continue
+		}
+		name := names[chatID]
+		if name == "" {
+			name = chatID
+		}
+		items = append(items, map[string]any{
+			"chat_id": chatID, "chat_name": name, "asset_count": anyInt(row["asset_count"]),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "items": items})
 }
 
 func (d Deps) handleMemoryImageJobs(w http.ResponseWriter, r *http.Request) {
-	limit, ok := mqInt(w, r, "limit", 50, 1, 500)
+	limit, ok := mqInt(w, r, "limit", 50, 1, 200)
 	if !ok {
 		return
 	}
@@ -857,9 +1061,48 @@ func (d Deps) handleMemoryTuningApplyBest(w http.ResponseWriter, r *http.Request
 			validate = typed
 		}
 	}
-	d.invokeMemoryAdmin(w, r, "memory_tuning_admin", "apply_best", map[string]any{
-		"task_id": taskID, "persist": persist, "validate": validate,
+	result, err := callMemoryAdmin(r, "memory_tuning_admin", "apply_best", map[string]any{
+		"task_id": taskID, "validate": validate,
 	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	mapped, ok := result.(map[string]any)
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "invalid_payload", "persisted": false})
+		return
+	}
+	if _, exists := mapped["persisted"]; !exists {
+		mapped["persisted"] = false
+	}
+	success, _ := mapped["success"].(bool)
+	if !success || !persist {
+		writeJSON(w, http.StatusOK, mapped)
+		return
+	}
+	// 对齐 _tuning_apply_best：persist 时取运行时配置回写，并回报 persisted/persist_result
+	runtimeResult, runtimeErr := callMemoryAdmin(r, "memory_runtime_admin", "get_config", map[string]any{})
+	runtimePayload, _ := runtimeResult.(map[string]any)
+	runtimeConfig, _ := runtimePayload["config"].(map[string]any)
+	service := memoryHostService()
+	if runtimeErr != nil || runtimeConfig == nil || service == nil {
+		mapped["persisted"] = false
+		mapped["persist_error"] = "runtime_config_unavailable"
+		writeJSON(w, http.StatusOK, mapped)
+		return
+	}
+	persistResult, persistErr := service.UpdateConfig(r.Context(), runtimeConfig)
+	if persistErr != nil {
+		mapped["persisted"] = false
+		mapped["persist_error"] = "persist_failed: " + persistErr.Error()
+		writeJSON(w, http.StatusOK, mapped)
+		return
+	}
+	persisted, _ := persistResult["success"].(bool)
+	mapped["persisted"] = persisted
+	mapped["persist_result"] = persistResult
+	writeJSON(w, http.StatusOK, mapped)
 }
 
 func (d Deps) handleMemoryTuningReport(w http.ResponseWriter, r *http.Request) {
@@ -868,8 +1111,29 @@ func (d Deps) handleMemoryTuningReport(w http.ResponseWriter, r *http.Request) {
 	if format == "" {
 		format = "md"
 	}
-	d.invokeMemoryAdmin(w, r, "memory_tuning_admin", "get_report", map[string]any{
+	result, err := callMemoryAdmin(r, "memory_tuning_admin", "get_report", map[string]any{
 		"task_id": taskID, "format": format,
+	})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	// 对齐 _tuning_report：把 report 子对象展平到顶层
+	payload, _ := result.(map[string]any)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	report, _ := payload["report"].(map[string]any)
+	if report == nil {
+		report = map[string]any{}
+	}
+	success, _ := payload["success"].(bool)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": success,
+		"format":  firstNonEmptyText(report["format"], format),
+		"content": firstNonEmptyText(report["content"], ""),
+		"path":    firstNonEmptyText(report["path"], ""),
+		"error":   firstNonEmptyText(payload["error"], ""),
 	})
 }
 

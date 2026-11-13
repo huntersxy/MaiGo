@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"maibot-go/internal/A_memorix"
+	personinfo "maibot-go/internal/person_info"
 )
 
 func (d Deps) handleMemoryProfileQuery(w http.ResponseWriter, r *http.Request) {
@@ -19,9 +20,16 @@ func (d Deps) handleMemoryProfileQuery(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// 未给 person_id 时按 platform + user_id 解析，对齐 resolve_person_id_for_memory
+	personID := mqString(r, "person_id")
+	platform := mqString(r, "platform")
+	userID := mqString(r, "user_id")
+	if personID == "" && platform != "" && userID != "" {
+		personID = personinfo.DefaultRegistry().ResolvePersonID(r.Context(), platform, userID, "", false)
+	}
 	d.invokeMemoryAdmin(w, r, "memory_profile_admin", "query", map[string]any{
-		"person_id": mqString(r, "person_id"), "person_keyword": mqString(r, "person_keyword"),
-		"platform": mqString(r, "platform"), "user_id": mqString(r, "user_id"),
+		"person_id": personID, "person_keyword": mqString(r, "person_keyword"),
+		"platform": platform, "user_id": userID,
 		"limit": limit, "force_refresh": forceRefresh,
 	})
 }
@@ -31,7 +39,17 @@ func (d Deps) handleMemoryProfileList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d.invokeMemoryAdmin(w, r, "memory_profile_admin", "list", map[string]any{"limit": limit})
+	result, err := callMemoryAdmin(r, "memory_profile_admin", "list", map[string]any{"limit": limit})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: memory_profile_admin/list")
+		return
+	}
+	writeJSON(w, http.StatusOK, d.decorateMemoryProfileIdentities(r.Context(), payload))
 }
 
 func (d Deps) handleMemoryProfileSearch(w http.ResponseWriter, r *http.Request) {

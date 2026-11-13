@@ -148,7 +148,9 @@ func (d Deps) handleMemoryAdminRecordsSearch(w http.ResponseWriter, r *http.Requ
 		counts[recordType] = 0
 	}
 	for _, recordType := range types {
-		for _, row := range rowsByType[recordType] {
+		rows := rowsByType[recordType]
+		d.decorateMemoryRecordOrigins(r.Context(), rows)
+		for _, row := range rows {
 			items = append(items, memoryRecordPayload(recordType, row))
 		}
 	}
@@ -316,7 +318,9 @@ func memoryRecordPayload(recordType string, row map[string]any) map[string]any {
 		}
 		return map[string]any{
 			"type": recordType, "id": anyTrimmed(row["hash"]), "title": title,
-			"summary": trimMemoryText(content, 240), "source": source, "source_label": source,
+			"summary": trimMemoryText(content, 240), "source": source,
+			// 段落来源可能是导入批次等本身可读的标记，允许直接展示
+			"source_label": memoryRecordOriginLabel(row, true),
 			"status": status, "created_at": memoryFloatOrNil(row["created_at"]),
 			"updated_at": memoryFloatOrNil(row["updated_at"]),
 			"metadata": map[string]any{
@@ -360,7 +364,9 @@ func memoryRecordPayload(recordType string, row map[string]any) map[string]any {
 			"type": recordType, "id": anyTrimmed(row["hash"]),
 			"title":   formatMemoryRelation(subject, predicate, object),
 			"summary": fmt.Sprintf("置信度 %.2f", confidence),
-			"source":  strings.TrimSpace(anyTrimmed(row["source_paragraph"])), "source_label": "",
+			"source": strings.TrimSpace(anyTrimmed(row["source_paragraph"])),
+			// 关系来源是证据段落哈希，只在解析出聊天流/人物名称时展示
+			"source_label": memoryRecordOriginLabel(row, false),
 			"status": status, "created_at": memoryFloatOrNil(row["created_at"]),
 			"updated_at": memoryFloatOrNil(row["last_reinforced"]),
 			"metadata": map[string]any{
@@ -378,9 +384,20 @@ func memoryRecordPayload(recordType string, row map[string]any) map[string]any {
 			title = "未命名 Episode"
 		}
 		source := strings.TrimSpace(anyTrimmed(row["source"]))
+		// 回退标题把内部来源标记写进了前缀，换成聊天流名称；换过就不再重复展示
+		chatName := strings.TrimSpace(anyTrimmed(row["chat_name"]))
+		originInTitle := false
+		if source != "" && chatName != "" && strings.HasPrefix(title, source) {
+			title = chatName + strings.TrimPrefix(title, source)
+			originInTitle = true
+		}
+		sourceLabel := ""
+		if !originInTitle {
+			sourceLabel = memoryRecordOriginLabel(row, false)
+		}
 		return map[string]any{
 			"type": recordType, "id": anyTrimmed(row["episode_id"]), "title": title,
-			"summary": trimMemoryText(summary, 240), "source": source, "source_label": "",
+			"summary": trimMemoryText(summary, 240), "source": source, "source_label": sourceLabel,
 			"status": "active", "created_at": memoryFloatOrNil(row["created_at"]),
 			"updated_at": memoryFloatOrNil(row["updated_at"]),
 			"metadata": map[string]any{
@@ -549,6 +566,55 @@ func memoryRecordContext(recordType, recordID string, limit int) (map[string]any
 	for _, item := range relations {
 		if id := anyTrimmed(item["id"]); id != "" {
 			relationIDs = append(relationIDs, id)
+		}
+	}
+	// 画像快照通过 evidence_ids_json / fact_claim_ids_json 与段落、事实关联，对齐 Python
+	paragraphHashes := make([]string, 0, len(paragraphs))
+	for _, item := range paragraphs {
+		if hash := anyTrimmed(item["id"]); hash != "" {
+			paragraphHashes = append(paragraphHashes, hash)
+		}
+	}
+	factIDs := make([]string, 0, len(facts))
+	for _, item := range facts {
+		if id := anyTrimmed(item["id"]); id != "" {
+			factIDs = append(factIDs, id)
+		}
+	}
+	profileClauses := make([]string, 0, 2)
+	profileParams := make([]any, 0, len(paragraphHashes)+len(factIDs)+1)
+	if len(paragraphHashes) > 0 {
+		profileClauses = append(profileClauses, `EXISTS (
+			SELECT 1 FROM json_each(COALESCE(s.evidence_ids_json, '[]')) evidence
+			WHERE CAST(evidence.value AS TEXT) IN (`+memoryPlaceholders(len(paragraphHashes))+`))`)
+		profileParams = append(profileParams, memoryAnyParams(paragraphHashes)...)
+	}
+	if len(factIDs) > 0 {
+		profileClauses = append(profileClauses, `EXISTS (
+			SELECT 1 FROM json_each(COALESCE(s.fact_claim_ids_json, '[]')) claim
+			WHERE CAST(claim.value AS TEXT) IN (`+memoryPlaceholders(len(factIDs))+`))`)
+		profileParams = append(profileParams, memoryAnyParams(factIDs)...)
+	}
+	if len(profileClauses) > 0 {
+		profileParams = append(profileParams, limit)
+		profileRows := queryMemoryRowsOptional(`SELECT s.person_id, s.profile_version, s.profile_text,
+			       s.updated_at, s.source_note
+			FROM person_profile_snapshots s
+			JOIN (
+				SELECT person_id, MAX(profile_version) AS max_version
+				FROM person_profile_snapshots GROUP BY person_id
+			) latest ON latest.person_id = s.person_id AND latest.max_version = s.profile_version
+			WHERE `+strings.Join(profileClauses, " OR ")+`
+			ORDER BY s.updated_at DESC
+			LIMIT ?`, profileParams...)
+		for _, item := range profileRows {
+			profiles = append(profiles, map[string]any{
+				"person_id":       anyTrimmed(item["person_id"]),
+				"profile_version": anyInt(item["profile_version"]),
+				"profile_text":    trimMemoryText(item["profile_text"], 200),
+				"updated_at":      memoryFloatOrNil(item["updated_at"]),
+				"source_note":     anyTrimmed(item["source_note"]),
+			})
 		}
 	}
 	graphJobs := []map[string]any{}
@@ -756,6 +822,11 @@ func (d Deps) handleMemoryTimeline(w http.ResponseWriter, r *http.Request) {
 			accepted[item] = struct{}{}
 		}
 	}
+	chatName, chatExists := d.memoryTimelineChatInfo(r.Context(), chatID)
+	if !chatExists {
+		writeAPIError(w, http.StatusBadRequest, "聊天流不存在: "+chatID)
+		return
+	}
 	events := []map[string]any{}
 	paragraphEvents, err := memoryTimelineParagraphs(chatID, timeStart, timeEnd, accepted, limit)
 	if err != nil {
@@ -765,6 +836,10 @@ func (d Deps) handleMemoryTimeline(w http.ResponseWriter, r *http.Request) {
 	events = append(events, paragraphEvents...)
 	events = append(events, memoryTimelineEpisodes(chatID, timeStart, timeEnd, accepted, limit)...)
 	events = append(events, memoryTimelineFacts(chatID, timeStart, timeEnd, accepted, limit)...)
+	events = append(events, memoryTimelineFeedbackEvents(chatID, timeStart, timeEnd, accepted, limit)...)
+	events = append(events, memoryTimelineDeleteEvents(chatID, timeStart, timeEnd, accepted, limit)...)
+	events = append(events, memoryTimelineProfileEvents(chatID, timeStart, timeEnd, accepted, limit)...)
+	events = append(events, memoryTimelineMaintenanceEvents(chatID, timeStart, timeEnd, accepted, limit)...)
 	events = memoryDedupeEvents(events)
 	sort.SliceStable(events, func(i, j int) bool {
 		left, _ := anyFloat(events[i]["occurred_at"])
@@ -803,7 +878,7 @@ func (d Deps) handleMemoryTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
-		"chat":    map[string]any{"chat_id": chatID, "chat_name": chatID},
+		"chat":    map[string]any{"chat_id": chatID, "chat_name": chatName},
 		"range": map[string]any{
 			"time_start": startValue, "time_end": endValue,
 			"min_time": minTime, "max_time": maxTime,

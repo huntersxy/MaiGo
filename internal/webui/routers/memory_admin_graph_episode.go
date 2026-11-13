@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	memruntime "maibot-go/internal/A_memorix/core/runtime"
+	personinfo "maibot-go/internal/person_info"
 )
 
 func bodyRequiredString(w http.ResponseWriter, payload map[string]any, key string) (string, bool) {
@@ -384,10 +385,6 @@ func (d Deps) handleMemoryGraphDeleteEdge(w http.ResponseWriter, r *http.Request
 	hash := anyTrimmed(payload["hash"])
 	subject := anyTrimmed(payload["subject"])
 	object := anyTrimmed(payload["object"])
-	if hash == "" && (subject == "" || object == "") {
-		writeValidationError(w, "hash 或 subject+object 至少需要提供一组")
-		return
-	}
 	d.invokeMemoryAdmin(w, r, "memory_graph_admin", "delete_edge", map[string]any{
 		"hash": hash, "subject": subject, "object": object,
 		"reason": anyTrimmed(payload["reason"]), "updated_by": defaultUpdatedBy(payload),
@@ -424,7 +421,17 @@ func defaultUpdatedBy(payload map[string]any) string {
 }
 
 func (d Deps) handleMemorySourcesList(w http.ResponseWriter, r *http.Request) {
-	d.invokeMemoryAdmin(w, r, "memory_source_admin", "list", map[string]any{})
+	result, err := callMemoryAdmin(r, "memory_source_admin", "list", map[string]any{})
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		writeAPIError(w, http.StatusServiceUnavailable, "A_Memorix 服务未接线: memory_source_admin/list")
+		return
+	}
+	writeJSON(w, http.StatusOK, d.decorateMemorySources(r.Context(), payload))
 }
 
 func (d Deps) handleMemorySourceDelete(w http.ResponseWriter, r *http.Request) {
@@ -472,6 +479,11 @@ func (d Deps) handleMemoryEpisodesList(w http.ResponseWriter, r *http.Request) {
 		"query": mqString(r, "query"), "limit": limit, "source": mqString(r, "source"),
 		"person_id": mqString(r, "person_id"), "platform": mqString(r, "platform"),
 		"user_id": mqString(r, "user_id"),
+	}
+	// 未给 person_id 时按 platform + user_id 解析，对齐 resolve_person_id_for_memory
+	if payload["person_id"] == "" && payload["platform"] != "" && payload["user_id"] != "" {
+		payload["person_id"] = personinfo.DefaultRegistry().ResolvePersonID(
+			r.Context(), anyTrimmed(payload["platform"]), anyTrimmed(payload["user_id"]), "", false)
 	}
 	if raw := mqString(r, "time_start"); raw != "" {
 		payload["time_start"] = raw
