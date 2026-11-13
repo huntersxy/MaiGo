@@ -1,0 +1,76 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+/node_modules
+
+# 运行时数据（进程按相对路径落盘）
+/data/
+/logs/
+
+# pluginruntime 测试产物（UsageTracker 相对工作目录落盘）
+/internal/pluginruntime/data/plugin_runtime/plugin_usage.json
+
+# Python oracle venv（仅本地校验，不提交）
+/.venv-oracle/
+
+# pip/build 临时目录（须落在 agents/tmp；根目录误生成也忽略）
+/pip-*/
+/tmp*/
+/agents/tmp/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
+# CodeGraph 本地索引
+/.codegraph/
+
+# 迁移过程产生的数据快照（v54 导出 images 全量 CSV，落在实例 data 目录，仅本机诊断用）
+images-backup-v54.csv
+
+# 验收工具的本地产物（二进制/实例数据/报告）
+agents/acceptance/*
+!agents/acceptance/probe_webui.py
+!agents/acceptance/README.md
+!agents/acceptance/probe_plugin/
+!agents/acceptance/probe_plugin/**
+!agents/acceptance/full_turn/
+!agents/acceptance/full_turn/**
+agents/acceptance/full_turn/data/
+agents/acceptance/full_turn/logs/
+!agents/acceptance/agent_outbound/
+!agents/acceptance/agent_outbound/**
+!agents/acceptance/container/
+!agents/acceptance/container/**
+!agents/acceptance/config_schema/
+!agents/acceptance/config_schema/**
+agents/FILE_MAPPING_WORK.json
+
+# MaiBot oracle 副作用（相对 cwd / 依赖缓存）
+/depends-data/
+jieba.cache
+
+/.zcode
+/.workbuddy

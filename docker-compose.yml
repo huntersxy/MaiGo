@@ -1,0 +1,50 @@
+services:
+  # 平台接入走插件适配器（WebUI「适配器设置」），本体不内置协议端连接
+  maibot-go:
+    image: maibot-go:local
+    build: .
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    read_only: true
+    environment:
+      MAIBOT_WEB_ADMIN_KEY: ${MAIBOT_WEB_ADMIN_KEY:?set MAIBOT_WEB_ADMIN_KEY in .env}
+      MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:?set MAIBOT_SECRET_KEY in .env}
+      MAIBOT_SERVER_PORT: ${MAIBOT_SERVER_PORT:-7468}
+      MAIBOT_INSTANCE_DIR: /app
+      MAIBOT_MEDIA_DIR: /app/media
+      MAIBOT_STICKER_DIR: /app/stickers
+      MAIBOT_LOG_LEVEL: ${MAIBOT_LOG_LEVEL:-info}
+      MAIBOT_DEBUG: ${MAIBOT_DEBUG:-false}
+      MAIBOT_STATISTICS_REPORT_PATH: /app/data/maibot_statistics.html
+      # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
+      HTTP_HOST: 0.0.0.0
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - ${MAIBOT_WEB_PORT:-7468}:${MAIBOT_SERVER_PORT:-7468}
+    volumes:
+      - maibot-config:/app/config
+      - maibot-data:/app/data
+      - maibot-logs:/app/logs
+      - maibot-plugins:/app/plugins
+      - stickers:/app/stickers
+      - media:/app/media
+    tmpfs:
+      - /tmp
+      # Runner 的非持久运行时目录（Python build_plugin_paths 会写 temp/plugins）
+      - /app/temp
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${MAIBOT_SERVER_PORT:-7468}/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  maibot-config:
+  maibot-data:
+  maibot-logs:
+  maibot-plugins:
+  stickers:
+  media:

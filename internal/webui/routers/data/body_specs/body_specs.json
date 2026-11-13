@@ -1,0 +1,6258 @@
+{
+ "source": {
+  "maibot_root": "/mnt/d/CODE/bot/MaiBot",
+  "maibot_version": "1.3.19",
+  "fastapi": "0.162.0",
+  "pydantic": "2.14.3"
+ },
+ "routes": [
+  {
+   "method": "PUT",
+   "path": "/api/chat/adapters/plugins/{plugin_id}/policy",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "AdapterHostPolicyGroupRequest": {
+      "description": "配置域内保存的一组群聊与私聊策略。",
+      "properties": {
+       "id": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Id",
+        "type": "string"
+       },
+       "name": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+       },
+       "group": {
+        "$ref": "#/$defs/AdapterHostPolicySectionRequest"
+       },
+       "private": {
+        "$ref": "#/$defs/AdapterHostPolicySectionRequest"
+       }
+      },
+      "required": [
+       "id",
+       "name"
+      ],
+      "title": "AdapterHostPolicyGroupRequest",
+      "type": "object",
+      "x-order": [
+       "id",
+       "name",
+       "group",
+       "private"
+      ]
+     },
+     "AdapterHostPolicySectionRequest": {
+      "description": "单类聊天的主程序适配器放行规则。",
+      "properties": {
+       "default_action": {
+        "default": "inherit",
+        "enum": [
+         "inherit",
+         "allow",
+         "block"
+        ],
+        "title": "Default Action",
+        "type": "string"
+       },
+       "allow_ids": {
+        "items": {
+         "type": "string"
+        },
+        "title": "Allow Ids",
+        "type": "array"
+       },
+       "deny_ids": {
+        "items": {
+         "type": "string"
+        },
+        "title": "Deny Ids",
+        "type": "array"
+       }
+      },
+      "title": "AdapterHostPolicySectionRequest",
+      "type": "object",
+      "x-order": [
+       "default_action",
+       "allow_ids",
+       "deny_ids"
+      ]
+     }
+    },
+    "description": "按适配器插件编辑主程序放行规则的请求。",
+    "properties": {
+     "group": {
+      "$ref": "#/$defs/AdapterHostPolicySectionRequest"
+     },
+     "private": {
+      "$ref": "#/$defs/AdapterHostPolicySectionRequest"
+     },
+     "policy_groups": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/$defs/AdapterHostPolicyGroupRequest"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Policy Groups"
+     },
+     "active_group": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Active Group"
+     }
+    },
+    "title": "AdapterHostPolicyUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "group",
+     "private",
+     "policy_groups",
+     "active_group"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/adapters/policy/defaults",
+   "required": true,
+   "schema": {
+    "description": "适配器全局默认放行策略编辑请求。",
+    "properties": {
+     "group": {
+      "default": "allow",
+      "enum": [
+       "allow",
+       "block"
+      ],
+      "title": "Group",
+      "type": "string"
+     },
+     "private": {
+      "default": "allow",
+      "enum": [
+       "allow",
+       "block"
+      ],
+      "title": "Private",
+      "type": "string"
+     }
+    },
+    "title": "AdapterPolicyDefaultsUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "group",
+     "private"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/chat/resolve-targets",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "ChatTargetResolveItem": {
+      "description": "配置目标解析请求项。",
+      "properties": {
+       "platform": {
+        "default": "",
+        "title": "Platform",
+        "type": "string"
+       },
+       "item_id": {
+        "default": "",
+        "title": "Item Id",
+        "type": "string"
+       },
+       "rule_type": {
+        "default": "group",
+        "title": "Rule Type",
+        "type": "string"
+       }
+      },
+      "title": "ChatTargetResolveItem",
+      "type": "object",
+      "x-order": [
+       "platform",
+       "item_id",
+       "rule_type"
+      ]
+     }
+    },
+    "description": "批量解析配置目标请求。",
+    "properties": {
+     "targets": {
+      "items": {
+       "$ref": "#/$defs/ChatTargetResolveItem"
+      },
+      "title": "Targets",
+      "type": "array"
+     }
+    },
+    "title": "ChatTargetResolveBatchRequest",
+    "type": "object",
+    "x-order": [
+     "targets"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/chat/sessions/adapter-status",
+   "required": true,
+   "schema": {
+    "description": "批量查询聊天流适配器放行状态的请求。",
+    "properties": {
+     "session_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Session Ids",
+      "type": "array"
+     }
+    },
+    "title": "SessionAdapterStatusRequest",
+    "type": "object",
+    "x-order": [
+     "session_ids"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/sessions/{session_id}/adapters/policy",
+   "required": true,
+   "schema": {
+    "description": "聊天流适配器放行策略编辑请求。",
+    "properties": {
+     "adapter_id": {
+      "default": "",
+      "title": "Adapter Id",
+      "type": "string"
+     },
+     "action": {
+      "default": "",
+      "title": "Action",
+      "type": "string"
+     }
+    },
+    "title": "AdapterPolicyUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "adapter_id",
+     "action"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/sessions/{session_id}/learning/{kind}",
+   "required": true,
+   "schema": {
+    "description": "聊天流学习配置编辑请求。",
+    "properties": {
+     "use": {
+      "default": true,
+      "title": "Use",
+      "type": "boolean"
+     },
+     "learn": {
+      "default": true,
+      "title": "Learn",
+      "type": "boolean"
+     }
+    },
+    "title": "LearningUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "use",
+     "learn"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/sessions/{session_id}/private-reply-pause",
+   "required": true,
+   "schema": {
+    "description": "单个私聊暂停设置；null 表示恢复跟随全局。",
+    "properties": {
+     "paused": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Paused"
+     }
+    },
+    "required": [
+     "paused"
+    ],
+    "title": "PrivateReplyPauseUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "paused"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/sessions/{session_id}/prompts",
+   "required": true,
+   "schema": {
+    "description": "聊天流专属 Prompt 编辑请求。",
+    "properties": {
+     "prompt": {
+      "default": "",
+      "title": "Prompt",
+      "type": "string"
+     }
+    },
+    "title": "ChatPromptUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "prompt"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/chat/sessions/{session_id}/talk-frequency",
+   "required": true,
+   "schema": {
+    "description": "聊天流发言频率编辑请求。",
+    "properties": {
+     "previous_time": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Previous Time"
+     },
+     "time": {
+      "default": "*",
+      "title": "Time",
+      "type": "string"
+     },
+     "value": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Value",
+      "type": "number"
+     }
+    },
+    "required": [
+     "value"
+    ],
+    "title": "TalkFrequencyUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "previous_time",
+     "time",
+     "value"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/config/auto_save",
+   "required": true,
+   "schema": {
+    "properties": {
+     "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "enabled"
+    ],
+    "title": "AutoSaveRequest",
+    "type": "object",
+    "x-order": [
+     "enabled"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/edge",
+   "required": true,
+   "schema": {
+    "properties": {
+     "hash": {
+      "default": "",
+      "title": "Hash",
+      "type": "string"
+     },
+     "subject": {
+      "default": "",
+      "title": "Subject",
+      "type": "string"
+     },
+     "object": {
+      "default": "",
+      "title": "Object",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "title": "EdgeDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "hash",
+     "subject",
+     "object",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/edge",
+   "required": true,
+   "schema": {
+    "properties": {
+     "subject": {
+      "minLength": 1,
+      "title": "Subject",
+      "type": "string"
+     },
+     "predicate": {
+      "minLength": 1,
+      "title": "Predicate",
+      "type": "string"
+     },
+     "object": {
+      "minLength": 1,
+      "title": "Object",
+      "type": "string"
+     },
+     "confidence": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "subject",
+     "predicate",
+     "object"
+    ],
+    "title": "EdgeCreateRequest",
+    "type": "object",
+    "x-order": [
+     "subject",
+     "predicate",
+     "object",
+     "confidence",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/edge/weight",
+   "required": true,
+   "schema": {
+    "properties": {
+     "hash": {
+      "default": "",
+      "title": "Hash",
+      "type": "string"
+     },
+     "subject": {
+      "default": "",
+      "title": "Subject",
+      "type": "string"
+     },
+     "object": {
+      "default": "",
+      "title": "Object",
+      "type": "string"
+     },
+     "weight": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Weight",
+      "type": "number"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "weight"
+    ],
+    "title": "EdgeWeightRequest",
+    "type": "object",
+    "x-order": [
+     "hash",
+     "subject",
+     "object",
+     "weight",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/episodes/process_pending",
+   "required": true,
+   "schema": {
+    "properties": {
+     "limit": {
+      "default": 20,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "max_retry": {
+      "default": 3,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Retry",
+      "type": "integer"
+     }
+    },
+    "title": "EpisodeProcessPendingRequest",
+    "type": "object",
+    "x-order": [
+     "limit",
+     "max_retry"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/episodes/rebuild",
+   "required": true,
+   "schema": {
+    "properties": {
+     "source": {
+      "default": "",
+      "title": "Source",
+      "type": "string"
+     },
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+     },
+     "all": {
+      "default": false,
+      "title": "All",
+      "type": "boolean"
+     }
+    },
+    "title": "EpisodeRebuildRequest",
+    "type": "object",
+    "x-order": [
+     "source",
+     "sources",
+     "all"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/lpmm_convert",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/lpmm_openie",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/maibot_migration",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/paste",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/raw_scan",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/resolve_path",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/lpmm_convert",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/lpmm_openie",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/maibot_migration",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/paste",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/raw_scan",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/temporal_backfill",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/{task_id}/retry",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/tasks/{task_id}/retry_failed",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/import/temporal_backfill",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/memory/freeze",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/memory/protect",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/memory/reinforce",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/memory/restore",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/node",
+   "required": true,
+   "schema": {
+    "properties": {
+     "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "NodeRequest",
+    "type": "object",
+    "x-order": [
+     "name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/node",
+   "required": true,
+   "schema": {
+    "properties": {
+     "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "NodeRequest",
+    "type": "object",
+    "x-order": [
+     "name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/node/rename",
+   "required": true,
+   "schema": {
+    "properties": {
+     "old_name": {
+      "minLength": 1,
+      "title": "Old Name",
+      "type": "string"
+     },
+     "new_name": {
+      "minLength": 1,
+      "title": "New Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "old_name",
+     "new_name"
+    ],
+    "title": "NodeRenameRequest",
+    "type": "object",
+    "x-order": [
+     "old_name",
+     "new_name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/person_profile/override",
+   "required": true,
+   "schema": {
+    "properties": {
+     "person_id": {
+      "minLength": 1,
+      "title": "Person Id",
+      "type": "string"
+     },
+     "override_text": {
+      "default": "",
+      "title": "Override Text",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "",
+      "title": "Updated By",
+      "type": "string"
+     },
+     "source": {
+      "default": "webui",
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "person_id"
+    ],
+    "title": "ProfileOverrideRequest",
+    "type": "object",
+    "x-order": [
+     "person_id",
+     "override_text",
+     "updated_by",
+     "source"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/retrieval_tuning/profile/apply",
+   "required": true,
+   "schema": {
+    "properties": {
+     "profile": {
+      "additionalProperties": true,
+      "title": "Profile",
+      "type": "object"
+     },
+     "reason": {
+      "default": "manual",
+      "title": "Reason",
+      "type": "string"
+     },
+     "validate": {
+      "default": true,
+      "title": "Validate",
+      "type": "boolean"
+     }
+    },
+    "title": "TuningApplyProfileRequest",
+    "type": "object",
+    "x-order": [
+     "profile",
+     "reason",
+     "validate"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/retrieval_tuning/tasks",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/retrieval_tuning/tasks/{task_id}/apply-best",
+   "required": false,
+   "schema": {
+    "properties": {
+     "persist": {
+      "default": false,
+      "title": "Persist",
+      "type": "boolean"
+     },
+     "validate": {
+      "default": true,
+      "title": "Validate",
+      "type": "boolean"
+     }
+    },
+    "title": "TuningApplyBestRequest",
+    "type": "object",
+    "x-order": [
+     "persist",
+     "validate"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/retrieval_tuning/tasks/{task_id}/apply_best",
+   "required": false,
+   "schema": {
+    "properties": {
+     "persist": {
+      "default": false,
+      "title": "Persist",
+      "type": "boolean"
+     },
+     "validate": {
+      "default": true,
+      "title": "Validate",
+      "type": "boolean"
+     }
+    },
+    "title": "TuningApplyBestRequest",
+    "type": "object",
+    "x-order": [
+     "persist",
+     "validate"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/runtime/vectors/rebuild",
+   "required": true,
+   "schema": {
+    "properties": {
+     "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
+     },
+     "batch_size": {
+      "default": 32,
+      "maximum": 512,
+      "minimum": 1,
+      "title": "Batch Size",
+      "type": "integer"
+     },
+     "include_relations": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Include Relations"
+     }
+    },
+    "title": "VectorRebuildRequest",
+    "type": "object",
+    "x-order": [
+     "dry_run",
+     "batch_size",
+     "include_relations"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/source/batch_delete",
+   "required": true,
+   "schema": {
+    "properties": {
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+     }
+    },
+    "title": "SourceBatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "sources"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/source/delete",
+   "required": true,
+   "schema": {
+    "properties": {
+     "source": {
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "source"
+    ],
+    "title": "SourceDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "source"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/agent/control",
+   "required": true,
+   "schema": {
+    "properties": {
+     "operation": {
+      "enum": [
+       "pause",
+       "resume"
+      ],
+      "title": "Operation",
+      "type": "string"
+     }
+    },
+    "required": [
+     "operation"
+    ],
+    "title": "AgentControl",
+    "type": "object",
+    "x-order": [
+     "operation"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/agent/message",
+   "required": true,
+   "schema": {
+    "properties": {
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "AgentMessage",
+    "type": "object",
+    "x-order": [
+     "text"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/auth/update",
+   "required": true,
+   "schema": {
+    "description": "Token 更新请求",
+    "properties": {
+     "new_token": {
+      "description": "新的访问令牌",
+      "minLength": 10,
+      "title": "New Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "new_token"
+    ],
+    "title": "TokenUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "new_token"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/auth/verify",
+   "required": true,
+   "schema": {
+    "description": "Token 验证请求",
+    "properties": {
+     "token": {
+      "description": "访问令牌",
+      "title": "Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "token"
+    ],
+    "title": "TokenVerifyRequest",
+    "type": "object",
+    "x-order": [
+     "token"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/computer/control",
+   "required": true,
+   "schema": {
+    "properties": {
+     "operation": {
+      "enum": [
+       "pause",
+       "resume",
+       "takeover",
+       "stop",
+       "restart"
+      ],
+      "title": "Operation",
+      "type": "string"
+     }
+    },
+    "required": [
+     "operation"
+    ],
+    "title": "ComputerControl",
+    "type": "object",
+    "x-order": [
+     "operation"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/computer/input",
+   "required": true,
+   "schema": {
+    "properties": {
+     "actions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Actions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "actions"
+    ],
+    "title": "DesktopInput",
+    "type": "object",
+    "x-order": [
+     "actions"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/adapter-config",
+   "required": true,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/adapter-config/path",
+   "required": true,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/bot",
+   "required": true,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/model",
+   "required": true,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/model/versions",
+   "required": true,
+   "schema": {
+    "description": "模型配置文件副本创建请求。",
+    "properties": {
+     "label": {
+      "default": "",
+      "description": "副本展示名称",
+      "maxLength": 80,
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "title": "ModelConfigVersionCreateRequest",
+    "type": "object",
+    "x-order": [
+     "label"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/config/model/versions/{version_id}",
+   "required": true,
+   "schema": {
+    "description": "模型配置文件副本更新请求。",
+    "properties": {
+     "label": {
+      "description": "副本展示名称",
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label"
+    ],
+    "title": "ModelConfigVersionUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "label"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/config/model/versions/{version_id}/activate",
+   "required": true,
+   "schema": {
+    "description": "模型配置文件副本切换请求。",
+    "properties": {
+     "archive_current": {
+      "default": true,
+      "description": "切换前是否归档当前启用配置",
+      "title": "Archive Current",
+      "type": "boolean"
+     },
+     "archive_label": {
+      "default": "",
+      "description": "当前配置归档副本名",
+      "maxLength": 80,
+      "title": "Archive Label",
+      "type": "string"
+     }
+    },
+    "title": "ModelConfigVersionSwitchRequest",
+    "type": "object",
+    "x-order": [
+     "archive_current",
+     "archive_label"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/config/prompts/{language}/{filename}",
+   "required": true,
+   "schema": {
+    "description": "Prompt 保存请求。",
+    "properties": {
+     "content": {
+      "title": "Content",
+      "type": "string"
+     },
+     "version_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Version Id"
+     },
+     "label": {
+      "default": "",
+      "title": "Label",
+      "type": "string"
+     },
+     "create_version": {
+      "default": false,
+      "title": "Create Version",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "content"
+    ],
+    "title": "PromptUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "content",
+     "version_id",
+     "label",
+     "create_version"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/data-transfer/export",
+   "required": true,
+   "schema": {
+    "description": "数据导出请求。",
+    "properties": {
+     "include_plugins": {
+      "default": false,
+      "title": "Include Plugins",
+      "type": "boolean"
+     },
+     "include_logs": {
+      "default": false,
+      "title": "Include Logs",
+      "type": "boolean"
+     }
+    },
+    "title": "DataExportRequest",
+    "type": "object",
+    "x-order": [
+     "include_plugins",
+     "include_logs"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/emoji/batch/delete",
+   "required": true,
+   "schema": {
+    "description": "批量删除请求",
+    "properties": {
+     "emoji_ids": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Emoji Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "emoji_ids"
+    ],
+    "title": "BatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "emoji_ids"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/emoji/{emoji_id}",
+   "required": true,
+   "schema": {
+    "description": "表情包更新请求",
+    "properties": {
+     "description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Description"
+     },
+     "is_registered": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Is Registered"
+     },
+     "is_banned": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Is Banned"
+     },
+     "emotion": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Emotion"
+     }
+    },
+    "title": "EmojiUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "description",
+     "is_registered",
+     "is_banned",
+     "emotion"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/",
+   "required": true,
+   "schema": {
+    "description": "表达方式创建请求",
+    "properties": {
+     "situation": {
+      "title": "Situation",
+      "type": "string"
+     },
+     "style": {
+      "title": "Style",
+      "type": "string"
+     },
+     "chat_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Chat Id"
+     },
+     "is_global": {
+      "default": false,
+      "title": "Is Global",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "situation",
+     "style"
+    ],
+    "title": "ExpressionCreateRequest",
+    "type": "object",
+    "x-order": [
+     "situation",
+     "style",
+     "chat_id",
+     "is_global"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/batch/delete",
+   "required": true,
+   "schema": {
+    "description": "批量删除请求",
+    "properties": {
+     "ids": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "ids"
+    ],
+    "title": "BatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "ids"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/clear",
+   "required": true,
+   "schema": {
+    "description": "清除指定聊天流表达方式请求。",
+    "properties": {
+     "chat_id": {
+      "title": "Chat Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "chat_id"
+    ],
+    "title": "ExpressionClearRequest",
+    "type": "object",
+    "x-order": [
+     "chat_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/export",
+   "required": true,
+   "schema": {
+    "description": "表达方式导出请求。",
+    "properties": {
+     "chat_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Chat Id"
+     },
+     "chat_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Chat Ids"
+     },
+     "ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Ids"
+     }
+    },
+    "title": "ExpressionExportRequest",
+    "type": "object",
+    "x-order": [
+     "chat_id",
+     "chat_ids",
+     "ids"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/import",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "ExpressionExportItem": {
+      "description": "表达方式导出条目，不包含会话 ID。",
+      "properties": {
+       "situation": {
+        "title": "Situation",
+        "type": "string"
+       },
+       "style": {
+        "title": "Style",
+        "type": "string"
+       },
+       "content_list": {
+        "default": "[]",
+        "title": "Content List",
+        "type": "string"
+       },
+       "count": {
+        "default": 0,
+        "title": "Count",
+        "type": "integer"
+       },
+       "last_active_time": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Last Active Time"
+       },
+       "create_time": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Create Time"
+       },
+       "checked": {
+        "default": false,
+        "title": "Checked",
+        "type": "boolean"
+       },
+       "modified_by": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Modified By"
+       }
+      },
+      "required": [
+       "situation",
+       "style"
+      ],
+      "title": "ExpressionExportItem",
+      "type": "object",
+      "x-order": [
+       "situation",
+       "style",
+       "content_list",
+       "count",
+       "last_active_time",
+       "create_time",
+       "checked",
+       "modified_by"
+      ]
+     }
+    },
+    "description": "表达方式导入请求。",
+    "properties": {
+     "chat_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Chat Id"
+     },
+     "is_global": {
+      "default": false,
+      "title": "Is Global",
+      "type": "boolean"
+     },
+     "expressions": {
+      "items": {
+       "$ref": "#/$defs/ExpressionExportItem"
+      },
+      "title": "Expressions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "expressions"
+    ],
+    "title": "ExpressionImportRequest",
+    "type": "object",
+    "x-order": [
+     "chat_id",
+     "is_global",
+     "expressions"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/legacy-import/import",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "LegacyExpressionImportMapping": {
+      "description": "旧聊天流到新聊天流的导入映射。",
+      "properties": {
+       "old_chat_id": {
+        "title": "Old Chat Id",
+        "type": "string"
+       },
+       "target_chat_id": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Target Chat Id"
+       },
+       "target_chat_ids": {
+        "anyOf": [
+         {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Target Chat Ids"
+       }
+      },
+      "required": [
+       "old_chat_id"
+      ],
+      "title": "LegacyExpressionImportMapping",
+      "type": "object",
+      "x-order": [
+       "old_chat_id",
+       "target_chat_id",
+       "target_chat_ids"
+      ]
+     }
+    },
+    "description": "旧版表达方式导入请求。",
+    "properties": {
+     "db_path": {
+      "title": "Db Path",
+      "type": "string"
+     },
+     "mappings": {
+      "items": {
+       "$ref": "#/$defs/LegacyExpressionImportMapping"
+      },
+      "title": "Mappings",
+      "type": "array"
+     }
+    },
+    "required": [
+     "db_path",
+     "mappings"
+    ],
+    "title": "LegacyExpressionImportRequest",
+    "type": "object",
+    "x-order": [
+     "db_path",
+     "mappings"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/legacy-import/preview",
+   "required": true,
+   "schema": {
+    "description": "旧版表达方式导入预览请求。",
+    "properties": {
+     "db_path": {
+      "title": "Db Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "db_path"
+    ],
+    "title": "LegacyExpressionImportPreviewRequest",
+    "type": "object",
+    "x-order": [
+     "db_path"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/expression/review/batch",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "BatchReviewItem": {
+      "description": "批量审核项",
+      "properties": {
+       "id": {
+        "title": "Id",
+        "type": "integer"
+       },
+       "approved": {
+        "title": "Approved",
+        "type": "boolean"
+       },
+       "require_unchecked": {
+        "default": true,
+        "title": "Require Unchecked",
+        "type": "boolean"
+       }
+      },
+      "required": [
+       "id",
+       "approved"
+      ],
+      "title": "BatchReviewItem",
+      "type": "object",
+      "x-order": [
+       "id",
+       "approved",
+       "require_unchecked"
+      ]
+     }
+    },
+    "description": "批量审核请求",
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/$defs/BatchReviewItem"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "BatchReviewRequest",
+    "type": "object",
+    "x-order": [
+     "items"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/expression/{expression_id}",
+   "required": true,
+   "schema": {
+    "description": "表达方式更新请求",
+    "properties": {
+     "situation": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Situation"
+     },
+     "style": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Style"
+     },
+     "chat_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Chat Id"
+     }
+    },
+    "title": "ExpressionUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "situation",
+     "style",
+     "chat_id"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/expression/{expression_id}/review-status",
+   "required": true,
+   "schema": {
+    "description": "表达方式列表行审核状态切换请求。",
+    "properties": {
+     "approved": {
+      "title": "Approved",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "approved"
+    ],
+    "title": "ExpressionReviewStatusRequest",
+    "type": "object",
+    "x-order": [
+     "approved"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/files/{file_ref}/send",
+   "required": true,
+   "schema": {
+    "properties": {
+     "session_id": {
+      "title": "Session Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "session_id"
+    ],
+    "title": "SendFileRequest",
+    "type": "object",
+    "x-order": [
+     "session_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/jargon/",
+   "required": true,
+   "schema": {
+    "description": "黑话创建请求",
+    "properties": {
+     "content": {
+      "description": "黑话内容",
+      "title": "Content",
+      "type": "string"
+     },
+     "meaning": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "含义",
+      "title": "Meaning"
+     },
+     "session_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "聊天流ID",
+      "title": "Session Id"
+     },
+     "session_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "聊天流ID列表",
+      "title": "Session Ids"
+     },
+     "is_global": {
+      "default": false,
+      "description": "是否为全局黑话",
+      "title": "Is Global",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "content"
+    ],
+    "title": "JargonCreateRequest",
+    "type": "object",
+    "x-order": [
+     "content",
+     "meaning",
+     "session_id",
+     "session_ids",
+     "is_global"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/jargon/batch/delete",
+   "required": true,
+   "schema": {
+    "description": "批量删除请求",
+    "properties": {
+     "ids": {
+      "description": "要删除的黑话ID列表",
+      "items": {
+       "type": "integer"
+      },
+      "title": "Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "ids"
+    ],
+    "title": "BatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "ids"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/jargon/export",
+   "required": true,
+   "schema": {
+    "description": "黑话导出请求。",
+    "properties": {
+     "ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Ids"
+     },
+     "session_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Session Ids"
+     },
+     "include_chat_info": {
+      "default": false,
+      "title": "Include Chat Info",
+      "type": "boolean"
+     }
+    },
+    "title": "JargonExportRequest",
+    "type": "object",
+    "x-order": [
+     "ids",
+     "session_ids",
+     "include_chat_info"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/jargon/import",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "JargonCreatedBy": {
+      "enum": [
+       "AI",
+       "MANUAL"
+      ],
+      "title": "JargonCreatedBy",
+      "type": "string"
+     },
+     "JargonExportItem": {
+      "description": "黑话导出条目，不包含本机数据库 ID 或 session_id。",
+      "properties": {
+       "content": {
+        "title": "Content",
+        "type": "string"
+       },
+       "meaning": {
+        "default": "",
+        "title": "Meaning",
+        "type": "string"
+       },
+       "count": {
+        "default": 0,
+        "title": "Count",
+        "type": "integer"
+       },
+       "is_jargon": {
+        "default": false,
+        "title": "Is Jargon",
+        "type": "boolean"
+       },
+       "is_complete": {
+        "default": false,
+        "title": "Is Complete",
+        "type": "boolean"
+       },
+       "is_global": {
+        "default": false,
+        "title": "Is Global",
+        "type": "boolean"
+       },
+       "created_by": {
+        "$ref": "#/$defs/JargonCreatedBy",
+        "default": "MANUAL"
+       },
+       "targets": {
+        "anyOf": [
+         {
+          "items": {
+           "$ref": "#/$defs/JargonTargetInfo"
+          },
+          "type": "array"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Targets"
+       }
+      },
+      "required": [
+       "content"
+      ],
+      "title": "JargonExportItem",
+      "type": "object",
+      "x-order": [
+       "content",
+       "meaning",
+       "count",
+       "is_jargon",
+       "is_complete",
+       "is_global",
+       "created_by",
+       "targets"
+      ]
+     },
+     "JargonTargetInfo": {
+      "description": "黑话导出中的聊天目标信息。",
+      "properties": {
+       "platform": {
+        "title": "Platform",
+        "type": "string"
+       },
+       "id": {
+        "description": "群聊使用 group_id，私聊使用 user_id",
+        "title": "Id",
+        "type": "string"
+       },
+       "type": {
+        "enum": [
+         "group",
+         "private"
+        ],
+        "title": "Type",
+        "type": "string"
+       },
+       "account_id": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Account Id"
+       },
+       "scope": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Scope"
+       },
+       "count": {
+        "default": 0,
+        "title": "Count",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "platform",
+       "id",
+       "type"
+      ],
+      "title": "JargonTargetInfo",
+      "type": "object",
+      "x-order": [
+       "platform",
+       "id",
+       "type",
+       "account_id",
+       "scope",
+       "count"
+      ]
+     }
+    },
+    "description": "黑话导入请求。",
+    "properties": {
+     "target_session_ids": {
+      "description": "导入目标聊天流 ID 列表",
+      "items": {
+       "type": "string"
+      },
+      "title": "Target Session Ids",
+      "type": "array"
+     },
+     "is_global": {
+      "default": false,
+      "title": "Is Global",
+      "type": "boolean"
+     },
+     "jargons": {
+      "items": {
+       "$ref": "#/$defs/JargonExportItem"
+      },
+      "title": "Jargons",
+      "type": "array"
+     },
+     "conflict_strategy": {
+      "default": "skip",
+      "enum": [
+       "skip",
+       "overwrite"
+      ],
+      "title": "Conflict Strategy",
+      "type": "string"
+     }
+    },
+    "required": [
+     "jargons"
+    ],
+    "title": "JargonImportRequest",
+    "type": "object",
+    "x-order": [
+     "target_session_ids",
+     "is_global",
+     "jargons",
+     "conflict_strategy"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/jargon/{jargon_id}",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "JargonCreatedBy": {
+      "enum": [
+       "AI",
+       "MANUAL"
+      ],
+      "title": "JargonCreatedBy",
+      "type": "string"
+     }
+    },
+    "description": "黑话更新请求",
+    "properties": {
+     "content": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Content"
+     },
+     "meaning": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Meaning"
+     },
+     "session_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Session Id"
+     },
+     "session_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Session Ids"
+     },
+     "is_global": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Is Global"
+     },
+     "is_jargon": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Is Jargon"
+     },
+     "created_by": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/JargonCreatedBy"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null
+     }
+    },
+    "title": "JargonUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "content",
+     "meaning",
+     "session_id",
+     "session_ids",
+     "is_global",
+     "is_jargon",
+     "created_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/learning/text/extract",
+   "required": true,
+   "schema": {
+    "properties": {
+     "kind": {
+      "enum": [
+       "expression",
+       "jargon"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "text": {
+      "maxLength": 4500,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "text"
+    ],
+    "title": "ExtractTextRequest",
+    "type": "object",
+    "x-order": [
+     "kind",
+     "text"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/learning/text/prepare",
+   "required": true,
+   "schema": {
+    "properties": {
+     "text": {
+      "maxLength": 200000,
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "PrepareTextRequest",
+    "type": "object",
+    "x-order": [
+     "text"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/mcp/test",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "MCPAuthorizationConfig": {
+      "additionalProperties": false,
+      "description": "MCP HTTP 认证配置。",
+      "properties": {
+       "field_docs": {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "default": {},
+        "title": "Field Docs",
+        "type": "object"
+       },
+       "suppress_any_warning": {
+        "default": false,
+        "title": "Suppress Any Warning",
+        "type": "boolean"
+       },
+       "mode": {
+        "default": "none",
+        "enum": [
+         "none",
+         "bearer"
+        ],
+        "label": {
+         "zh_CN": "认证方式"
+        },
+        "title": "Mode",
+        "type": "string",
+        "x-option-labels": {
+         "bearer": "Bearer Token",
+         "none": "无认证"
+        },
+        "x-widget": "select"
+       },
+       "bearer_token": {
+        "default": "",
+        "label": {
+         "zh_CN": "Bearer Token"
+        },
+        "title": "Bearer Token",
+        "type": "string",
+        "x-widget": "password"
+       }
+      },
+      "title": "MCPAuthorizationConfig",
+      "type": "object",
+      "x-order": [
+       "field_docs",
+       "suppress_any_warning",
+       "mode",
+       "bearer_token"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "description": "单个 MCP 服务器配置。",
+    "properties": {
+     "field_docs": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Field Docs",
+      "type": "object"
+     },
+     "suppress_any_warning": {
+      "default": false,
+      "title": "Suppress Any Warning",
+      "type": "boolean"
+     },
+     "name": {
+      "default": "",
+      "label": {
+       "zh_CN": "服务名称"
+      },
+      "title": "Name",
+      "type": "string",
+      "x-widget": "input"
+     },
+     "enabled": {
+      "default": true,
+      "label": {
+       "zh_CN": "启用服务"
+      },
+      "title": "Enabled",
+      "type": "boolean",
+      "x-widget": "switch"
+     },
+     "transport": {
+      "default": "stdio",
+      "enum": [
+       "stdio",
+       "streamable_http",
+       "sse"
+      ],
+      "label": {
+       "zh_CN": "传输方式"
+      },
+      "title": "Transport",
+      "type": "string",
+      "x-option-labels": {
+       "sse": "旧版 SSE",
+       "stdio": "本地命令（stdio）",
+       "streamable_http": "远程 HTTP"
+      },
+      "x-widget": "select"
+     },
+     "command": {
+      "default": "",
+      "label": {
+       "zh_CN": "启动命令"
+      },
+      "title": "Command",
+      "type": "string",
+      "x-widget": "input"
+     },
+     "args": {
+      "items": {
+       "type": "string"
+      },
+      "label": {
+       "zh_CN": "命令参数"
+      },
+      "title": "Args",
+      "type": "array",
+      "x-widget": "custom"
+     },
+     "env": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "label": {
+       "zh_CN": "环境变量"
+      },
+      "title": "Env",
+      "type": "object",
+      "x-widget": "custom"
+     },
+     "url": {
+      "default": "",
+      "label": {
+       "zh_CN": "服务 URL"
+      },
+      "title": "Url",
+      "type": "string",
+      "x-widget": "input"
+     },
+     "headers": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "label": {
+       "zh_CN": "请求 Headers"
+      },
+      "title": "Headers",
+      "type": "object",
+      "x-widget": "custom"
+     },
+     "http_timeout_seconds": {
+      "default": 30.0,
+      "exclusiveMinimum": 0,
+      "label": {
+       "zh_CN": "HTTP 请求超时"
+      },
+      "title": "Http Timeout Seconds",
+      "type": "number",
+      "x-widget": "number"
+     },
+     "read_timeout_seconds": {
+      "default": 300.0,
+      "exclusiveMinimum": 0,
+      "label": {
+       "zh_CN": "会话读取超时"
+      },
+      "title": "Read Timeout Seconds",
+      "type": "number",
+      "x-widget": "number"
+     },
+     "authorization": {
+      "$ref": "#/$defs/MCPAuthorizationConfig",
+      "label": {
+       "zh_CN": "远程认证"
+      }
+     }
+    },
+    "title": "MCPServerItemConfig",
+    "type": "object",
+    "x-order": [
+     "field_docs",
+     "suppress_any_warning",
+     "name",
+     "enabled",
+     "transport",
+     "command",
+     "args",
+     "env",
+     "url",
+     "headers",
+     "http_timeout_seconds",
+     "read_timeout_seconds",
+     "authorization"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/bundles/export",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/memory/config",
+   "required": true,
+   "schema": {
+    "properties": {
+     "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+     }
+    },
+    "title": "MemoryConfigUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "config"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/memory/config/raw",
+   "required": true,
+   "schema": {
+    "properties": {
+     "config": {
+      "default": "",
+      "title": "Config",
+      "type": "string"
+     }
+    },
+    "title": "MemoryRawConfigUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "config"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/corrections/execute",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plan_id": {
+      "minLength": 1,
+      "title": "Plan Id",
+      "type": "string"
+     },
+     "confirmed": {
+      "default": true,
+      "title": "Confirmed",
+      "type": "boolean"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "plan_id"
+    ],
+    "title": "MemoryCorrectionExecuteRequest",
+    "type": "object",
+    "x-order": [
+     "plan_id",
+     "confirmed",
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/corrections/plans/{plan_id}/rollback",
+   "required": true,
+   "schema": {
+    "properties": {
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "title": "MemoryCorrectionRollbackRequest",
+    "type": "object",
+    "x-order": [
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/corrections/preview",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "MemoryCorrectionTarget": {
+      "properties": {
+       "type": {
+        "enum": [
+         "paragraph",
+         "relation"
+        ],
+        "title": "Type",
+        "type": "string"
+       },
+       "id": {
+        "minLength": 1,
+        "title": "Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "id"
+      ],
+      "title": "MemoryCorrectionTarget",
+      "type": "object",
+      "x-order": [
+       "type",
+       "id"
+      ]
+     }
+    },
+    "properties": {
+     "request_text": {
+      "minLength": 1,
+      "title": "Request Text",
+      "type": "string"
+     },
+     "targets": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/$defs/MemoryCorrectionTarget"
+        },
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Targets"
+     },
+     "scope": {
+      "default": "person_profile",
+      "title": "Scope",
+      "type": "string"
+     },
+     "person_id": {
+      "default": "",
+      "title": "Person Id",
+      "type": "string"
+     },
+     "person_keyword": {
+      "default": "",
+      "title": "Person Keyword",
+      "type": "string"
+     },
+     "chat_id": {
+      "default": "",
+      "title": "Chat Id",
+      "type": "string"
+     },
+     "limit": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Limit"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "request_text"
+    ],
+    "title": "MemoryCorrectionPreviewRequest",
+    "type": "object",
+    "x-order": [
+     "request_text",
+     "targets",
+     "scope",
+     "person_id",
+     "person_keyword",
+     "chat_id",
+     "limit",
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/delete/execute",
+   "required": true,
+   "schema": {
+    "properties": {
+     "mode": {
+      "minLength": 1,
+      "title": "Mode",
+      "type": "string"
+     },
+     "selector": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "string"
+       }
+      ],
+      "title": "Selector"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "title": "DeleteActionRequest",
+    "type": "object",
+    "x-order": [
+     "mode",
+     "selector",
+     "reason",
+     "requested_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/delete/preview",
+   "required": true,
+   "schema": {
+    "properties": {
+     "mode": {
+      "minLength": 1,
+      "title": "Mode",
+      "type": "string"
+     },
+     "selector": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "string"
+       }
+      ],
+      "title": "Selector"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode"
+    ],
+    "title": "DeleteActionRequest",
+    "type": "object",
+    "x-order": [
+     "mode",
+     "selector",
+     "reason",
+     "requested_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/delete/purge",
+   "required": true,
+   "schema": {
+    "properties": {
+     "grace_hours": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Grace Hours"
+     },
+     "limit": {
+      "default": 1000,
+      "maximum": 5000,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+     }
+    },
+    "title": "DeletePurgeRequest",
+    "type": "object",
+    "x-order": [
+     "grace_hours",
+     "limit"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/delete/restore",
+   "required": true,
+   "schema": {
+    "properties": {
+     "operation_id": {
+      "default": "",
+      "title": "Operation Id",
+      "type": "string"
+     },
+     "mode": {
+      "default": "",
+      "title": "Mode",
+      "type": "string"
+     },
+     "selector": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "string"
+       }
+      ],
+      "title": "Selector"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     }
+    },
+    "title": "DeleteRestoreRequest",
+    "type": "object",
+    "x-order": [
+     "operation_id",
+     "mode",
+     "selector",
+     "reason",
+     "requested_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/episodes/process-pending",
+   "required": true,
+   "schema": {
+    "properties": {
+     "limit": {
+      "default": 20,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "max_retry": {
+      "default": 3,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Retry",
+      "type": "integer"
+     }
+    },
+    "title": "EpisodeProcessPendingRequest",
+    "type": "object",
+    "x-order": [
+     "limit",
+     "max_retry"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/episodes/rebuild",
+   "required": true,
+   "schema": {
+    "properties": {
+     "source": {
+      "default": "",
+      "title": "Source",
+      "type": "string"
+     },
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+     },
+     "all": {
+      "default": false,
+      "title": "All",
+      "type": "boolean"
+     }
+    },
+    "title": "EpisodeRebuildRequest",
+    "type": "object",
+    "x-order": [
+     "source",
+     "sources",
+     "all"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/facts",
+   "required": true,
+   "schema": {
+    "properties": {
+     "scope_type": {
+      "default": "person",
+      "title": "Scope Type",
+      "type": "string"
+     },
+     "scope_id": {
+      "minLength": 1,
+      "title": "Scope Id",
+      "type": "string"
+     },
+     "fact_key": {
+      "minLength": 1,
+      "title": "Fact Key",
+      "type": "string"
+     },
+     "value_text": {
+      "minLength": 1,
+      "title": "Value Text",
+      "type": "string"
+     },
+     "polarity": {
+      "default": "positive",
+      "title": "Polarity",
+      "type": "string"
+     },
+     "cardinality": {
+      "default": "set",
+      "title": "Cardinality",
+      "type": "string"
+     },
+     "stability": {
+      "default": "stable",
+      "title": "Stability",
+      "type": "string"
+     },
+     "profile_section": {
+      "default": "stable_facts",
+      "title": "Profile Section",
+      "type": "string"
+     },
+     "authority": {
+      "default": "manual",
+      "title": "Authority",
+      "type": "string"
+     },
+     "confidence": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+     },
+     "valid_from": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Valid From"
+     },
+     "valid_to": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Valid To"
+     },
+     "reason": {
+      "default": "webui_fact_create",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "scope_id",
+     "fact_key",
+     "value_text"
+    ],
+    "title": "FactCreateRequest",
+    "type": "object",
+    "x-order": [
+     "scope_type",
+     "scope_id",
+     "fact_key",
+     "value_text",
+     "polarity",
+     "cardinality",
+     "stability",
+     "profile_section",
+     "authority",
+     "confidence",
+     "valid_from",
+     "valid_to",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/memory/facts/{claim_id}",
+   "required": true,
+   "schema": {
+    "properties": {
+     "fact_key": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Fact Key"
+     },
+     "value_text": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Value Text"
+     },
+     "polarity": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Polarity"
+     },
+     "cardinality": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Cardinality"
+     },
+     "stability": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Stability"
+     },
+     "profile_section": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Profile Section"
+     },
+     "authority": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Authority"
+     },
+     "confidence": {
+      "anyOf": [
+       {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Confidence"
+     },
+     "valid_from": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Valid From"
+     },
+     "valid_to": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Valid To"
+     },
+     "reason": {
+      "default": "webui_fact_update",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "title": "FactUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "fact_key",
+     "value_text",
+     "polarity",
+     "cardinality",
+     "stability",
+     "profile_section",
+     "authority",
+     "confidence",
+     "valid_from",
+     "valid_to",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/facts/{claim_id}/restore",
+   "required": true,
+   "schema": {
+    "properties": {
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     }
+    },
+    "title": "FactStatusRequest",
+    "type": "object",
+    "x-order": [
+     "reason",
+     "requested_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/facts/{claim_id}/retract",
+   "required": true,
+   "schema": {
+    "properties": {
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     }
+    },
+    "title": "FactStatusRequest",
+    "type": "object",
+    "x-order": [
+     "reason",
+     "requested_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/feedback-corrections/{task_id}/rollback",
+   "required": true,
+   "schema": {
+    "properties": {
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "title": "FeedbackRollbackRequest",
+    "type": "object",
+    "x-order": [
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/fuzzy-modify/execute",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plan_id": {
+      "minLength": 1,
+      "title": "Plan Id",
+      "type": "string"
+     },
+     "confirmed": {
+      "default": true,
+      "title": "Confirmed",
+      "type": "boolean"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "plan_id"
+    ],
+    "title": "MemoryCorrectionExecuteRequest",
+    "type": "object",
+    "x-order": [
+     "plan_id",
+     "confirmed",
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/fuzzy-modify/plans/{plan_id}/rollback",
+   "required": true,
+   "schema": {
+    "properties": {
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "title": "MemoryCorrectionRollbackRequest",
+    "type": "object",
+    "x-order": [
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/fuzzy-modify/preview",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "MemoryCorrectionTarget": {
+      "properties": {
+       "type": {
+        "enum": [
+         "paragraph",
+         "relation"
+        ],
+        "title": "Type",
+        "type": "string"
+       },
+       "id": {
+        "minLength": 1,
+        "title": "Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "type",
+       "id"
+      ],
+      "title": "MemoryCorrectionTarget",
+      "type": "object",
+      "x-order": [
+       "type",
+       "id"
+      ]
+     }
+    },
+    "properties": {
+     "request_text": {
+      "minLength": 1,
+      "title": "Request Text",
+      "type": "string"
+     },
+     "targets": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/$defs/MemoryCorrectionTarget"
+        },
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Targets"
+     },
+     "scope": {
+      "default": "person_profile",
+      "title": "Scope",
+      "type": "string"
+     },
+     "person_id": {
+      "default": "",
+      "title": "Person Id",
+      "type": "string"
+     },
+     "person_keyword": {
+      "default": "",
+      "title": "Person Keyword",
+      "type": "string"
+     },
+     "chat_id": {
+      "default": "",
+      "title": "Chat Id",
+      "type": "string"
+     },
+     "limit": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Limit"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "request_text"
+    ],
+    "title": "MemoryCorrectionPreviewRequest",
+    "type": "object",
+    "x-order": [
+     "request_text",
+     "targets",
+     "scope",
+     "person_id",
+     "person_keyword",
+     "chat_id",
+     "limit",
+     "requested_by",
+     "reason"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/memory/graph/edge",
+   "required": true,
+   "schema": {
+    "properties": {
+     "hash": {
+      "default": "",
+      "title": "Hash",
+      "type": "string"
+     },
+     "subject": {
+      "default": "",
+      "title": "Subject",
+      "type": "string"
+     },
+     "object": {
+      "default": "",
+      "title": "Object",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "title": "EdgeDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "hash",
+     "subject",
+     "object",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/graph/edge",
+   "required": true,
+   "schema": {
+    "properties": {
+     "subject": {
+      "minLength": 1,
+      "title": "Subject",
+      "type": "string"
+     },
+     "predicate": {
+      "minLength": 1,
+      "title": "Predicate",
+      "type": "string"
+     },
+     "object": {
+      "minLength": 1,
+      "title": "Object",
+      "type": "string"
+     },
+     "confidence": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "subject",
+     "predicate",
+     "object"
+    ],
+    "title": "EdgeCreateRequest",
+    "type": "object",
+    "x-order": [
+     "subject",
+     "predicate",
+     "object",
+     "confidence",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/graph/edge/weight",
+   "required": true,
+   "schema": {
+    "properties": {
+     "hash": {
+      "default": "",
+      "title": "Hash",
+      "type": "string"
+     },
+     "subject": {
+      "default": "",
+      "title": "Subject",
+      "type": "string"
+     },
+     "object": {
+      "default": "",
+      "title": "Object",
+      "type": "string"
+     },
+     "weight": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Weight",
+      "type": "number"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "weight"
+    ],
+    "title": "EdgeWeightRequest",
+    "type": "object",
+    "x-order": [
+     "hash",
+     "subject",
+     "object",
+     "weight",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/memory/graph/node",
+   "required": true,
+   "schema": {
+    "properties": {
+     "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "NodeRequest",
+    "type": "object",
+    "x-order": [
+     "name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/graph/node",
+   "required": true,
+   "schema": {
+    "properties": {
+     "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "NodeRequest",
+    "type": "object",
+    "x-order": [
+     "name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/graph/node/rename",
+   "required": true,
+   "schema": {
+    "properties": {
+     "old_name": {
+      "minLength": 1,
+      "title": "Old Name",
+      "type": "string"
+     },
+     "new_name": {
+      "minLength": 1,
+      "title": "New Name",
+      "type": "string"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "old_name",
+     "new_name"
+    ],
+    "title": "NodeRenameRequest",
+    "type": "object",
+    "x-order": [
+     "old_name",
+     "new_name",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/images/observations",
+   "required": true,
+   "schema": {
+    "properties": {
+     "occurrence_id": {
+      "minLength": 1,
+      "title": "Occurrence Id",
+      "type": "string"
+     },
+     "text": {
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+     },
+     "confirm_status": {
+      "default": "confirmed",
+      "title": "Confirm Status",
+      "type": "string"
+     },
+     "supersedes_id": {
+      "default": "",
+      "title": "Supersedes Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "occurrence_id",
+     "text"
+    ],
+    "title": "ImageObservationRequest",
+    "type": "object",
+    "x-order": [
+     "occurrence_id",
+     "text",
+     "confirm_status",
+     "supersedes_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/lpmm-convert",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/lpmm-openie",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/maibot-migration",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/paste",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/raw-scan",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/resolve-path",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/tasks/{task_id}/retry",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/import/temporal-backfill",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/maintenance/freeze",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/maintenance/protect",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/maintenance/reinforce",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/maintenance/restore",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hours"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "MaintainRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "hours"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/profiles/override",
+   "required": true,
+   "schema": {
+    "properties": {
+     "person_id": {
+      "minLength": 1,
+      "title": "Person Id",
+      "type": "string"
+     },
+     "override_text": {
+      "default": "",
+      "title": "Override Text",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "",
+      "title": "Updated By",
+      "type": "string"
+     },
+     "source": {
+      "default": "webui",
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "person_id"
+    ],
+    "title": "ProfileOverrideRequest",
+    "type": "object",
+    "x-order": [
+     "person_id",
+     "override_text",
+     "updated_by",
+     "source"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/memory/profiles/{person_id}/aliases",
+   "required": true,
+   "schema": {
+    "properties": {
+     "aliases": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Aliases",
+      "type": "array"
+     },
+     "updated_by": {
+      "default": "",
+      "title": "Updated By",
+      "type": "string"
+     },
+     "source": {
+      "default": "webui",
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "aliases"
+    ],
+    "title": "ProfileAliasesRequest",
+    "type": "object",
+    "x-order": [
+     "aliases",
+     "updated_by",
+     "source"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/profiles/{person_id}/evidence/correct",
+   "required": true,
+   "schema": {
+    "properties": {
+     "evidence_type": {
+      "minLength": 1,
+      "title": "Evidence Type",
+      "type": "string"
+     },
+     "hash": {
+      "minLength": 1,
+      "title": "Hash",
+      "type": "string"
+     },
+     "requested_by": {
+      "default": "webui",
+      "title": "Requested By",
+      "type": "string"
+     },
+     "reason": {
+      "default": "profile_evidence_correction",
+      "title": "Reason",
+      "type": "string"
+     },
+     "refresh": {
+      "default": true,
+      "title": "Refresh",
+      "type": "boolean"
+     },
+     "limit": {
+      "default": 12,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "evidence_type",
+     "hash"
+    ],
+    "title": "ProfileEvidenceCorrectRequest",
+    "type": "object",
+    "x-order": [
+     "evidence_type",
+     "hash",
+     "requested_by",
+     "reason",
+     "refresh",
+     "limit"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/retrieval_tuning/profile/apply",
+   "required": true,
+   "schema": {
+    "properties": {
+     "profile": {
+      "additionalProperties": true,
+      "title": "Profile",
+      "type": "object"
+     },
+     "reason": {
+      "default": "manual",
+      "title": "Reason",
+      "type": "string"
+     },
+     "validate": {
+      "default": true,
+      "title": "Validate",
+      "type": "boolean"
+     }
+    },
+    "title": "TuningApplyProfileRequest",
+    "type": "object",
+    "x-order": [
+     "profile",
+     "reason",
+     "validate"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/retrieval_tuning/tasks",
+   "required": false,
+   "schema": {
+    "type": "object",
+    "additionalProperties": true
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/retrieval_tuning/tasks/{task_id}/apply-best",
+   "required": false,
+   "schema": {
+    "properties": {
+     "persist": {
+      "default": false,
+      "title": "Persist",
+      "type": "boolean"
+     },
+     "validate": {
+      "default": true,
+      "title": "Validate",
+      "type": "boolean"
+     }
+    },
+    "title": "TuningApplyBestRequest",
+    "type": "object",
+    "x-order": [
+     "persist",
+     "validate"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/runtime/auto-save",
+   "required": true,
+   "schema": {
+    "properties": {
+     "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "enabled"
+    ],
+    "title": "AutoSaveRequest",
+    "type": "object",
+    "x-order": [
+     "enabled"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/runtime/vectors/rebuild",
+   "required": true,
+   "schema": {
+    "properties": {
+     "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
+     },
+     "batch_size": {
+      "default": 32,
+      "maximum": 512,
+      "minimum": 1,
+      "title": "Batch Size",
+      "type": "integer"
+     },
+     "include_relations": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Include Relations"
+     }
+    },
+    "title": "VectorRebuildRequest",
+    "type": "object",
+    "x-order": [
+     "dry_run",
+     "batch_size",
+     "include_relations"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/sources/batch-delete",
+   "required": true,
+   "schema": {
+    "properties": {
+     "sources": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Sources",
+      "type": "array"
+     }
+    },
+    "title": "SourceBatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "sources"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/sources/delete",
+   "required": true,
+   "schema": {
+    "properties": {
+     "source": {
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+     }
+    },
+    "required": [
+     "source"
+    ],
+    "title": "SourceDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "source"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/v5/forget",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "strength": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Strength"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "V5ActionRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "strength",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/v5/reinforce",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "strength": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Strength"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "V5ActionRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "strength",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/v5/remember-forever",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "strength": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Strength"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "V5ActionRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "strength",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/v5/restore",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "strength": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Strength"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "V5ActionRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "strength",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/memory/v5/weaken",
+   "required": true,
+   "schema": {
+    "properties": {
+     "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+     },
+     "strength": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Strength"
+     },
+     "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+     },
+     "updated_by": {
+      "default": "webui",
+      "title": "Updated By",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "V5ActionRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "strength",
+     "reason",
+     "updated_by"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/models/test-model",
+   "required": true,
+   "schema": {
+    "description": "单个模型测试请求。",
+    "properties": {
+     "model_name": {
+      "description": "model_config.toml 中定义的模型名称",
+      "minLength": 1,
+      "title": "Model Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "model_name"
+    ],
+    "title": "ModelTestRequest",
+    "type": "object",
+    "x-order": [
+     "model_name"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/person/batch/delete",
+   "required": true,
+   "schema": {
+    "description": "批量删除请求",
+    "properties": {
+     "person_ids": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Person Ids",
+      "type": "array"
+     }
+    },
+    "required": [
+     "person_ids"
+    ],
+    "title": "BatchDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "person_ids"
+    ]
+   }
+  },
+  {
+   "method": "PATCH",
+   "path": "/api/webui/person/{person_id}",
+   "required": true,
+   "schema": {
+    "description": "人物信息更新请求",
+    "properties": {
+     "person_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Person Name"
+     },
+     "name_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Name Reason"
+     },
+     "nickname": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Nickname"
+     },
+     "memory_points": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Memory Points"
+     },
+     "is_known": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Is Known"
+     }
+    },
+    "title": "PersonUpdateRequest",
+    "type": "object",
+    "x-order": [
+     "person_name",
+     "name_reason",
+     "nickname",
+     "memory_points",
+     "is_known"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/clone",
+   "required": true,
+   "schema": {
+    "properties": {
+     "owner": {
+      "description": "仓库所有者",
+      "examples": [
+       "MaiM-with-u"
+      ],
+      "title": "Owner",
+      "type": "string"
+     },
+     "repo": {
+      "description": "仓库名称",
+      "examples": [
+       "plugin-repo"
+      ],
+      "title": "Repo",
+      "type": "string"
+     },
+     "target_path": {
+      "description": "目标路径（相对于插件目录）",
+      "title": "Target Path",
+      "type": "string"
+     },
+     "branch": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "分支名称",
+      "examples": [
+       "main"
+      ],
+      "title": "Branch"
+     },
+     "mirror_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "指定镜像源 ID",
+      "title": "Mirror Id"
+     },
+     "custom_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "自定义克隆 URL",
+      "title": "Custom Url"
+     },
+     "depth": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "克隆深度（浅克隆）",
+      "title": "Depth"
+     }
+    },
+    "required": [
+     "owner",
+     "repo",
+     "target_path"
+    ],
+    "title": "CloneRepositoryRequest",
+    "type": "object",
+    "x-order": [
+     "owner",
+     "repo",
+     "target_path",
+     "branch",
+     "mirror_id",
+     "custom_url",
+     "depth"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/plugins/config/{plugin_id}",
+   "required": true,
+   "schema": {
+    "properties": {
+     "enabled": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Enabled"
+     },
+     "config": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Config"
+     }
+    },
+    "title": "UpdatePluginConfigRequest",
+    "type": "object",
+    "x-order": [
+     "enabled",
+     "config"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/plugins/config/{plugin_id}/raw",
+   "required": true,
+   "schema": {
+    "properties": {
+     "config": {
+      "description": "原始 TOML 配置内容",
+      "title": "Config",
+      "type": "string"
+     }
+    },
+    "required": [
+     "config"
+    ],
+    "title": "UpdatePluginRawConfigRequest",
+    "type": "object",
+    "x-order": [
+     "config"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/install",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "description": "插件 ID",
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "repository_url": {
+      "default": "",
+      "description": "分支安装的仓库 URL；发布版本由索引解析",
+      "title": "Repository Url",
+      "type": "string"
+     },
+     "branch": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "main",
+      "description": "分支名称",
+      "title": "Branch"
+     },
+     "mirror_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "指定镜像源 ID",
+      "title": "Mirror Id"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "发布版本；latest 表示最新兼容稳定版本",
+      "title": "Version"
+     }
+    },
+    "required": [
+     "plugin_id"
+    ],
+    "title": "InstallPluginRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "repository_url",
+     "branch",
+     "mirror_id",
+     "version"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/marketplace/dislike",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "user_id": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "User Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "plugin_id",
+     "user_id"
+    ],
+    "title": "VoteRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "user_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/marketplace/download",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "user_id": {
+      "anyOf": [
+       {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "User Id"
+     },
+     "fingerprint": {
+      "anyOf": [
+       {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Fingerprint"
+     }
+    },
+    "required": [
+     "plugin_id"
+    ],
+    "title": "DownloadRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "user_id",
+     "fingerprint"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/marketplace/like",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "user_id": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "User Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "plugin_id",
+     "user_id"
+    ],
+    "title": "VoteRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "user_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/marketplace/rate",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "user_id": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "User Id",
+      "type": "string"
+     },
+     "rating": {
+      "anyOf": [
+       {
+        "maximum": 5,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Rating"
+     },
+     "comment": {
+      "anyOf": [
+       {
+        "maxLength": 500,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Comment"
+     },
+     "username": {
+      "anyOf": [
+       {
+        "maxLength": 100,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Username"
+     },
+     "anonymous": {
+      "default": false,
+      "title": "Anonymous",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "plugin_id",
+     "user_id"
+    ],
+    "title": "RatingRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "user_id",
+     "rating",
+     "comment",
+     "username",
+     "anonymous"
+    ]
+   }
+  },
+  {
+   "method": "PUT",
+   "path": "/api/webui/plugins/marketplace/source",
+   "required": true,
+   "schema": {
+    "properties": {
+     "information_source": {
+      "default": "official",
+      "enum": [
+       "official",
+       "cnb",
+       "github"
+      ],
+      "title": "Information Source",
+      "type": "string"
+     },
+     "download_source": {
+      "default": "cnb",
+      "enum": [
+       "cnb",
+       "github",
+       "custom"
+      ],
+      "title": "Download Source",
+      "type": "string"
+     },
+     "custom_download_prefix": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Custom Download Prefix"
+     }
+    },
+    "title": "PluginSourceSettings",
+    "type": "object",
+    "x-order": [
+     "information_source",
+     "download_source",
+     "custom_download_prefix"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/runtime/webui/{plugin_id}/{page_id}/{kind}/{name}",
+   "required": true,
+   "schema": {
+    "additionalProperties": false,
+    "properties": {
+     "args": {
+      "additionalProperties": true,
+      "maxProperties": 30,
+      "title": "Args",
+      "type": "object"
+     },
+     "confirmed": {
+      "default": false,
+      "title": "Confirmed",
+      "type": "boolean"
+     }
+    },
+    "title": "Invocation",
+    "type": "object",
+    "x-order": [
+     "args",
+     "confirmed"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/uninstall",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "description": "插件 ID",
+      "title": "Plugin Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "plugin_id"
+    ],
+    "title": "UninstallPluginRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/plugins/update",
+   "required": true,
+   "schema": {
+    "properties": {
+     "plugin_id": {
+      "description": "插件 ID",
+      "title": "Plugin Id",
+      "type": "string"
+     },
+     "repository_url": {
+      "default": "",
+      "description": "分支安装的仓库 URL；发布版本由索引解析",
+      "title": "Repository Url",
+      "type": "string"
+     },
+     "branch": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "main",
+      "description": "分支名称",
+      "title": "Branch"
+     },
+     "mirror_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "指定镜像源 ID",
+      "title": "Mirror Id"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "发布版本；latest 表示最新兼容稳定版本",
+      "title": "Version"
+     }
+    },
+    "required": [
+     "plugin_id"
+    ],
+    "title": "UpdatePluginRequest",
+    "type": "object",
+    "x-order": [
+     "plugin_id",
+     "repository_url",
+     "branch",
+     "mirror_id",
+     "version"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/reasoning-process/replay",
+   "required": true,
+   "schema": {
+    "description": "推理过程重放请求。",
+    "properties": {
+     "source_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "原始 prompt JSON 相对路径",
+      "title": "Source Path"
+     },
+     "stage": {
+      "default": "",
+      "description": "原始推理阶段",
+      "title": "Stage",
+      "type": "string"
+     },
+     "model_name": {
+      "description": "要用于重放的模型名称",
+      "minLength": 1,
+      "title": "Model Name",
+      "type": "string"
+     },
+     "item_schema_version": {
+      "default": 1,
+      "title": "Item Schema Version",
+      "type": "integer"
+     },
+     "request_items": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Request Items",
+      "type": "array"
+     },
+     "tool_definitions": {
+      "anyOf": [
+       {
+        "items": {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Tool Definitions"
+     },
+     "temperature": {
+      "anyOf": [
+       {
+        "maximum": 2,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Temperature"
+     },
+     "max_tokens": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Max Tokens"
+     }
+    },
+    "required": [
+     "model_name"
+    ],
+    "title": "ReasoningReplayRequest",
+    "type": "object",
+    "x-order": [
+     "source_path",
+     "stage",
+     "model_name",
+     "item_schema_version",
+     "request_items",
+     "tool_definitions",
+     "temperature",
+     "max_tokens"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/search/ai/stream",
+   "required": true,
+   "schema": {
+    "$defs": {
+     "AISearchCandidate": {
+      "description": "由 WebUI 真实搜索索引提供的候选项。",
+      "properties": {
+       "id": {
+        "maxLength": 180,
+        "minLength": 1,
+        "title": "Id",
+        "type": "string"
+       },
+       "title": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+       },
+       "description": {
+        "default": "",
+        "maxLength": 240,
+        "title": "Description",
+        "type": "string"
+       },
+       "category": {
+        "default": "",
+        "maxLength": 80,
+        "title": "Category",
+        "type": "string"
+       },
+       "document": {
+        "default": "",
+        "maxLength": 2000,
+        "title": "Document",
+        "type": "string"
+       }
+      },
+      "required": [
+       "id",
+       "title"
+      ],
+      "title": "AISearchCandidate",
+      "type": "object",
+      "x-order": [
+       "id",
+       "title",
+       "description",
+       "category",
+       "document"
+      ]
+     }
+    },
+    "description": "AI 搜索请求。",
+    "properties": {
+     "query": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+     },
+     "language": {
+      "default": "zh-CN",
+      "maxLength": 16,
+      "title": "Language",
+      "type": "string"
+     },
+     "candidates": {
+      "items": {
+       "$ref": "#/$defs/AISearchCandidate"
+      },
+      "maxItems": 2000,
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+     }
+    },
+    "required": [
+     "query",
+     "candidates"
+    ],
+    "title": "AISearchRequest",
+    "type": "object",
+    "x-order": [
+     "query",
+     "language",
+     "candidates"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/setup/reset",
+   "required": false,
+   "schema": {
+    "description": "重置配置请求；默认保留现有登录密码。",
+    "properties": {
+     "reset_password": {
+      "default": false,
+      "description": "同时重置为临时密码",
+      "title": "Reset Password",
+      "type": "boolean"
+     }
+    },
+    "title": "ResetSetupRequest",
+    "type": "object",
+    "x-order": [
+     "reset_password"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/system/local-cache/cleanup",
+   "required": true,
+   "schema": {
+    "description": "本地缓存清理请求。",
+    "properties": {
+     "target": {
+      "enum": [
+       "images",
+       "emoji",
+       "log_files",
+       "database_logs"
+      ],
+      "title": "Target",
+      "type": "string"
+     },
+     "tables": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Tables",
+      "type": "array"
+     },
+     "database_mode": {
+      "default": "all",
+      "enum": [
+       "all",
+       "older_than_days"
+      ],
+      "title": "Database Mode",
+      "type": "string"
+     },
+     "older_than_days": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Older Than Days"
+     },
+     "vacuum_after_cleanup": {
+      "default": true,
+      "title": "Vacuum After Cleanup",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "target"
+    ],
+    "title": "LocalCacheCleanupRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "tables",
+     "database_mode",
+     "older_than_days",
+     "vacuum_after_cleanup"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/system/local-cache/data-entries",
+   "required": true,
+   "schema": {
+    "description": "data 目录条目删除请求。",
+    "properties": {
+     "relative_path": {
+      "title": "Relative Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "relative_path"
+    ],
+    "title": "LocalCacheDataEntryDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "relative_path"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/system/local-cache/images",
+   "required": true,
+   "schema": {
+    "description": "本地缓存单张图片删除请求。",
+    "properties": {
+     "target": {
+      "enum": [
+       "images",
+       "emoji"
+      ],
+      "title": "Target",
+      "type": "string"
+     },
+     "relative_path": {
+      "title": "Relative Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target",
+     "relative_path"
+    ],
+    "title": "LocalCacheImageDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "relative_path"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/system/local-cache/images/bulk",
+   "required": true,
+   "schema": {
+    "description": "本地缓存图片批量删除请求。",
+    "properties": {
+     "target": {
+      "enum": [
+       "images",
+       "emoji"
+      ],
+      "title": "Target",
+      "type": "string"
+     },
+     "mode": {
+      "enum": [
+       "date_range",
+       "older_than_recent_days"
+      ],
+      "title": "Mode",
+      "type": "string"
+     },
+     "start_date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Start Date"
+     },
+     "end_date": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "End Date"
+     },
+     "keep_recent_days": {
+      "anyOf": [
+       {
+        "enum": [
+         1,
+         7,
+         30
+        ],
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Keep Recent Days"
+     }
+    },
+    "required": [
+     "target",
+     "mode"
+    ],
+    "title": "LocalCacheImageBulkDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "target",
+     "mode",
+     "start_date",
+     "end_date",
+     "keep_recent_days"
+    ]
+   }
+  },
+  {
+   "method": "DELETE",
+   "path": "/api/webui/system/local-cache/log-directories",
+   "required": true,
+   "schema": {
+    "description": "本地日志目录清理请求。",
+    "properties": {
+     "relative_path": {
+      "title": "Relative Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "relative_path"
+    ],
+    "title": "LocalCacheLogDirectoryDeleteRequest",
+    "type": "object",
+    "x-order": [
+     "relative_path"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/system/self-update/apply",
+   "required": true,
+   "schema": {
+    "description": "执行更新请求。",
+    "properties": {
+     "source_id": {
+      "enum": [
+       "cnb",
+       "github",
+       "custom",
+       "pypi",
+       "tuna",
+       "aliyun"
+      ],
+      "title": "Source Id",
+      "type": "string"
+     },
+     "custom_prefix": {
+      "default": "",
+      "maxLength": 2048,
+      "title": "Custom Prefix",
+      "type": "string"
+     },
+     "expected_commit": {
+      "description": "界面确认的更新目标：源码版为提交 SHA，包安装版为正式版本号",
+      "title": "Expected Commit",
+      "type": "string"
+     }
+    },
+    "required": [
+     "source_id",
+     "expected_commit"
+    ],
+    "title": "SelfUpdateApplyRequest",
+    "type": "object",
+    "x-order": [
+     "source_id",
+     "custom_prefix",
+     "expected_commit"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/system/self-update/check",
+   "required": true,
+   "schema": {
+    "description": "手动检查默认强制刷新，自动检查显式传 false。",
+    "properties": {
+     "source_id": {
+      "enum": [
+       "cnb",
+       "github",
+       "custom",
+       "pypi",
+       "tuna",
+       "aliyun"
+      ],
+      "title": "Source Id",
+      "type": "string"
+     },
+     "custom_prefix": {
+      "default": "",
+      "maxLength": 2048,
+      "title": "Custom Prefix",
+      "type": "string"
+     },
+     "force": {
+      "default": true,
+      "title": "Force",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "source_id"
+    ],
+    "title": "SelfUpdateCheckRequest",
+    "type": "object",
+    "x-order": [
+     "source_id",
+     "custom_prefix",
+     "force"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/system/self-update/check-stream",
+   "required": true,
+   "schema": {
+    "description": "手动检查默认强制刷新，自动检查显式传 false。",
+    "properties": {
+     "source_id": {
+      "enum": [
+       "cnb",
+       "github",
+       "custom",
+       "pypi",
+       "tuna",
+       "aliyun"
+      ],
+      "title": "Source Id",
+      "type": "string"
+     },
+     "custom_prefix": {
+      "default": "",
+      "maxLength": 2048,
+      "title": "Custom Prefix",
+      "type": "string"
+     },
+     "force": {
+      "default": true,
+      "title": "Force",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "source_id"
+    ],
+    "title": "SelfUpdateCheckRequest",
+    "type": "object",
+    "x-order": [
+     "source_id",
+     "custom_prefix",
+     "force"
+    ]
+   }
+  }
+ ]
+}

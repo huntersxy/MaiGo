@@ -1,0 +1,21 @@
+package memory
+
+import (
+	"strings"
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+func (m *Manager) RecordMemberName(userID, groupID int64, value string, updatedAt time.Time) error {
+	value = strings.TrimSpace(value)
+	if userID == 0 || groupID == 0 || value == "" {
+		return nil
+	}
+	name := MemberName{UserID: userID, GroupID: groupID, Value: value, UpdatedAt: updatedAt}
+	return m.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "group_id"}, {Name: "value"}},
+		DoUpdates: clause.Assignments(map[string]any{"updated_at": gorm.Expr("max(member_names.updated_at, excluded.updated_at)")}),
+	}).Create(&name).Error
+}

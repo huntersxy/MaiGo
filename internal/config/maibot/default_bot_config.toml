@@ -1,0 +1,564 @@
+[agent]
+enabled = false
+planner_enabled = false
+planner_sessions = []
+connection = "dsh"
+desktop_manifest = ""
+acp_command = "dsh"
+acp_args = []
+acp_cwd = ""
+acp_remote_cwd = ""
+mcp_port = 0
+acp_model = ""
+acp_timeout = 60
+
+[agent.acp_env]
+[computer]
+enabled = false
+networking = true
+memory_mb = 4096
+startup_timeout = 120
+request_timeout = 60
+screenshot_max_edge = 1600
+
+[desktop_pet]
+enabled = false
+chat_tools_enabled = false
+skin_id = "builtin"
+
+[http]
+host = ["127.0.0.1", "::1"]
+port = 8001
+
+[files]
+max_file_mib = 50
+max_storage_gib = 10
+max_text_mib = 8
+cache_days = 30
+max_concurrent_transfers = 4
+transfer_timeout = 120
+transfer_base_url = ""
+trusted_download_origins = []
+
+[bot]
+platform = ""
+qq_account = ""
+platforms = []
+nickname = "麦麦"
+alias_names = []
+
+[personality]
+profiles = []
+selected_profile = ""
+personality = "是女大学生，现在正在上网聊天。一般不包容且善良，但有时候有点一反常态，表现出锐利攻击性。善于用人类的角度思考问题，聊天比较日常。"
+behavior_style = "是女大学生，现在正在上网聊天。一般不包容且善良，但有时候有点一反常态，表现出锐利攻击性。善于用人类的角度思考问题，聊天比较日常。不会没话题硬找话题，具有足够的自主性，会自行搜集信息理解内容。"
+reply_style = "你的风格平淡简短，可以参考贴吧的回复风格。不滥用比喻或者生硬句子。视情况省略主语或者进行倒装，风格较为随意。"
+multiple_reply_style = ["你的风格平淡但不失讽刺，很简短,很白话。可以参考贴吧，微博的回复风格。", "用1-2个字进行回复", "用1-2个符号进行回复", "言辭凝練古雅，穿插《論語》經句卻不晦澀，以文言短句為基，輔以淺白語意，持長者溫和風範，全用繁體字表達，具先秦儒者談吐韻致。", "带点翻译腔，但不要太长"]
+multiple_probability = 0
+
+[chat]
+enable_reply_at = true
+max_context_size = 50
+max_private_context_size = 75
+context_compaction_summary_max_chars = 6000
+
+[chat.reply_timing]
+message_debounce_mode = "natural"
+private_message_debounce_mode = "natural"
+planner_message_steering = false
+talk_value = 1
+private_reply_paused = false
+private_reply_pause_rules = []
+mentioned_bot_reply = true
+inevitable_at_reply = true
+no_action_backoff_base_seconds = 15
+no_action_backoff_cap_seconds = 300
+no_action_backoff_start_count = 2
+no_action_backoff_bypass_pending_count = 6
+enable_talk_value_rules = false
+
+[[chat.reply_timing.talk_value_rules]]
+platform = ""
+item_id = ""
+rule_type = "group"
+time = "00:00-08:59"
+value = 0.8
+
+
+[[chat.reply_timing.talk_value_rules]]
+platform = ""
+item_id = ""
+rule_type = "group"
+time = "09:00-18:59"
+value = 1.0
+
+
+[chat.reply_style]
+group_quote_frequency = "occasionally"
+private_quote_frequency = "occasionally"
+group_chat_prompt = "下面是聊天中的的内容，聊天中包含文字，图片和表情包等消息。\n回复尽量简短一些。最好一次对一个话题进行回复，但必须考虑不同群友发言之间的交互，免得啰嗦或者回复内容太乱。\n根据聊天内容自由发挥，但是要日常不浮夸，不要刻意找话题。\n不用刻意回复其他人发送的表情包。你可以适当发送表情包表达情绪。如果有人不喜欢你或者不理你，就不要强行回复，回复前读空气。不要每个人的消息都回复，适当回复其他话题。可以适当回过头回复之前用户的消息。\n"
+private_chat_prompts = "你正在聊天，下面是正在聊的内容，其中包含聊天记录和聊天中的图片。\n回复尽量简短一些。请注意把握聊天内容。\n请考虑对方的发言频率，想法，思考自己何时回复以及回复内容。\n"
+chat_prompts = []
+
+[capabilities]
+files = false
+tool_result_condense = false
+tool_result_condense_threshold = 3000
+planner_subagent = false
+advanced_sub_agent = false
+
+[experimental]
+passive_replyer = false
+focus_mode = false
+focus_on_private = false
+focus_chat_whitelist = []
+focus_groups = []
+
+[experimental.group_attention_drift]
+[experimental.private_attention_drift]
+[visual]
+image_quality = "normal"
+max_image_num = 64
+wait_image_recognize_max_time = 32
+handle_oversized_images = true
+max_image_size_mb = 16.0
+oversized_image_handle_method = "compress"
+
+[visual.image_cache_cleanup]
+enabled = true
+check_interval_hours = 6.0
+image_file_retention_days = 14
+no_file_result_retention_days = 30
+
+[expression]
+expression_checked_only = false
+expression_self_reflect = true
+use_vector_expression = false
+expression_vector_index_path = "data/expression_selection/expression_vector_index.json"
+expression_vector_candidate_pool_size = 50
+max_expression_learner = 3
+expression_groups = []
+learning_blacklist = []
+
+[[expression.learning_list]]
+platform = ""
+item_id = ""
+type = "group"
+use = true
+learn = true
+
+
+[jargon]
+jargon_groups = []
+learning_blacklist = []
+
+[[jargon.learning_list]]
+platform = ""
+item_id = ""
+type = "group"
+use = true
+learn = true
+
+
+[a_memorix]
+global_memory_sharing_enabled = false
+shared_memory_groups = []
+
+[a_memorix.plugin]
+enabled = false
+
+[a_memorix.integration]
+enable_memory_query_tool = true
+memory_query_default_limit = 5
+enable_person_profile_query_tool = true
+enable_person_profile_injection = true
+person_profile_injection_max_profiles = 3
+heuristic_memory_recall_enabled = false
+heuristic_memory_cross_chat_enabled = false
+heuristic_memory_recall_window_size = 20
+heuristic_memory_recall_limit = 3
+heuristic_memory_recall_max_chars = 900
+heuristic_memory_recall_min_interval_seconds = 180
+heuristic_memory_recall_min_new_messages = 60
+heuristic_memory_recall_cache_ttl_seconds = 300
+heuristic_memory_group_to_private_enabled = false
+heuristic_memory_private_to_group_enabled = false
+person_fact_writeback_enabled = true
+chat_summary_writeback_enabled = true
+chat_summary_writeback_message_threshold = 36
+chat_summary_writeback_context_length = 36
+fuzzy_modify_enabled = true
+fuzzy_modify_auto_execute_enabled = false
+fuzzy_modify_confirm_threshold = 0.85
+fuzzy_modify_candidate_limit = 20
+fuzzy_modify_max_targets = 5
+fuzzy_modify_allow_global_scope = false
+feedback_correction_enabled = false
+feedback_correction_window_hours = 12.0
+feedback_correction_check_interval_minutes = 30
+feedback_correction_batch_size = 20
+feedback_correction_auto_apply_threshold = 0.85
+feedback_correction_max_feedback_messages = 30
+feedback_correction_prefilter_enabled = true
+feedback_correction_paragraph_mark_enabled = true
+feedback_correction_paragraph_hard_filter_enabled = true
+feedback_correction_profile_refresh_enabled = true
+feedback_correction_profile_force_refresh_on_read = true
+feedback_correction_episode_rebuild_enabled = true
+feedback_correction_episode_query_block_enabled = true
+feedback_correction_reconcile_interval_minutes = 5
+feedback_correction_reconcile_batch_size = 20
+
+[a_memorix.storage]
+data_dir = "data/a-memorix"
+
+[a_memorix.image_memory]
+enabled = true
+task_name = "image_embedding"
+preprocess_version = "identity_v1"
+probe_retry_seconds = 60.0
+max_bytes = 10485760
+max_pixels = 40000000
+candidate_limit = 8
+similarity_threshold = 0.72
+job_poll_interval_seconds = 2.0
+job_batch_size = 4
+job_enqueue_batch_size = 200
+job_lease_seconds = 120.0
+job_max_retries = 5
+min_train_threshold = 40
+
+[a_memorix.embedding]
+model_name = "auto"
+dimension = 1024
+dimension_request_mode = "explicit"
+batch_size = 32
+max_concurrent = 5
+enable_cache = false
+runtime_train_threshold = 256
+quantization_type = "int8"
+
+[a_memorix.embedding.fallback]
+enabled = true
+probe_interval_seconds = 180
+allow_metadata_only_write = true
+
+[a_memorix.embedding.paragraph_vector_backfill]
+enabled = true
+interval_seconds = 60
+batch_size = 64
+max_retry = 5
+
+[a_memorix.retrieval]
+top_k_paragraphs = 20
+top_k_relations = 10
+top_k_final = 10
+alpha = 0.5
+enable_ppr = true
+ppr_alpha = 0.85
+ppr_timeout_seconds = 1.5
+ppr_concurrency_limit = 4
+enable_parallel = true
+
+[a_memorix.retrieval.search]
+[a_memorix.retrieval.search.smart_fallback]
+enabled = true
+
+[a_memorix.retrieval.fusion]
+method = "weighted_rrf"
+rrf_k = 60
+vector_weight = 0.7
+bm25_weight = 0.3
+
+[a_memorix.retrieval.relation_vectorization]
+enabled = false
+backfill_enabled = false
+write_on_import = true
+
+[a_memorix.retrieval.vector_pools]
+mode = "dual"
+paragraph_top_k = 20
+graph_top_k = 40
+graph_expand_paragraph_k = 80
+relation_expand_per_hit = 5
+entity_expand_per_hit = 8
+relation_evidence_weight = 1.0
+entity_evidence_weight = 0.55
+semantic_weight = 0.65
+sparse_weight = 0.2
+graph_weight = 0.15
+
+[a_memorix.retrieval.vector_pools.relation_intent]
+graph_top_k = 80
+semantic_weight = 0.45
+sparse_weight = 0.15
+graph_weight = 0.4
+return_relation_items = false
+
+[a_memorix.retrieval.sparse]
+enabled = true
+backend = "fts5"
+mode = "auto"
+tokenizer_mode = "jieba"
+candidate_k = 80
+relation_candidate_k = 60
+
+[a_memorix.threshold]
+min_threshold = 0.29
+max_threshold = 0.95
+percentile = 75
+min_results = 4
+
+[a_memorix.filter]
+enabled = true
+mode = "blacklist"
+chats = []
+
+[a_memorix.filter.retrieval]
+[a_memorix.filter.retrieval.chat_stream]
+enabled = false
+mode = "blacklist"
+chats = []
+
+[a_memorix.filter.retrieval.chat_summary]
+enabled = false
+mode = "blacklist"
+chats = []
+
+[a_memorix.filter.retrieval.episode]
+enabled = false
+mode = "blacklist"
+chats = []
+
+[a_memorix.episode]
+enabled = true
+generation_enabled = true
+source_poll_interval_seconds = 1.0
+source_batch_size = 20
+source_max_retry = 3
+source_lease_seconds = 1800.0
+source_max_wait_seconds = 60.0
+max_paragraphs_per_call = 20
+max_chars_per_call = 6000
+source_time_window_hours = 24.0
+segmentation_model = "auto"
+disabled_source_types = ["person_fact"]
+
+[a_memorix.person_profile]
+enabled = true
+refresh_interval_minutes = 30
+active_window_hours = 72.0
+max_refresh_per_cycle = 50
+refresh_debounce_seconds = 120
+refresh_queue_interval_seconds = 60
+refresh_queue_batch_size = 10
+refresh_retry_backoff_seconds = 300
+max_retry = 3
+top_k_evidence = 12
+evidence_classification_max_tokens = 1200
+
+[a_memorix.memory]
+enabled = true
+half_life_hours = 24.0
+prune_threshold = 0.1
+freeze_duration_hours = 24.0
+revive_threshold = 0.15
+access_reinforcement_alpha = 0.05
+access_reinforcement_cooldown_minutes = 60.0
+explicit_reinforcement_alpha = 0.5
+weaken_alpha = 0.5
+lifecycle_batch_size = 1000
+
+[a_memorix.advanced]
+enable_auto_save = true
+auto_save_interval_minutes = 5
+debug = false
+
+[a_memorix.web]
+[a_memorix.web.import_config]
+enabled = true
+max_queue_size = 20
+max_files_per_task = 200
+max_file_size_mb = 20
+max_paste_chars = 200000
+default_file_concurrency = 2
+default_chunk_concurrency = 4
+default_narrative_window_size = 1600
+default_narrative_overlap = 400
+default_factual_target_size = 1200
+max_chunk_chars = 3200
+
+[a_memorix.web.import_config.timeout]
+llm_call_seconds = 240.0
+process_poll_seconds = 1.0
+process_terminate_seconds = 5.0
+process_kill_seconds = 3.0
+convert_preflight_seconds = 20.0
+
+[a_memorix.web.tuning]
+enabled = true
+max_queue_size = 8
+poll_interval_ms = 1200
+default_intensity = "standard"
+default_objective = "precision_priority"
+default_top_k_eval = 20
+default_sample_size = 24
+
+[message_receive]
+ban_words = []
+ban_msgs_regex = []
+
+[voice]
+enable_asr = false
+
+[emoji]
+use_new_send_logic = false
+emoji_send_num = 25
+max_reg_num = 64
+do_replace = true
+check_interval = 10
+steal_emoji = true
+max_emoji_size_mb = 5.0
+content_filtration = false
+
+[emoji.cache_cleanup]
+enabled = true
+check_interval_hours = 6.0
+emoji_file_retention_days = 30
+no_file_record_retention_days = 30
+
+[keyword_reaction]
+keyword_rules = []
+regex_rules = []
+
+[response_post_process]
+enable_response_post_process = true
+typing_speed = 1.0
+
+[chinese_typo]
+enable = true
+enable_correction_quote = true
+correction_quote_probability = 1.0
+error_rate = 0.01
+min_freq = 9
+tone_error_rate = 0.1
+word_replace_rate = 0.006
+
+[response_splitter]
+mode = "rule"
+enable = true
+max_length = 512
+max_sentence_num = 8
+max_split_num = 3
+enable_kaomoji_protection = false
+enable_overflow_return_all = false
+
+[telemetry]
+enable = true
+
+[log]
+date_style = "m-d H:i:s"
+log_level_style = "lite"
+color_text = "full"
+log_level = "INFO"
+console_log_level = "INFO"
+file_log_level = "DEBUG"
+log_file_max_bytes = 5242880
+max_log_files = 30
+log_cleanup_days = 30
+llm_request_snapshot_limit = 128
+maisaka_prompt_preview_limit = 256
+memory_diagnostics_enabled = true
+memory_diagnostics_deep_enabled = false
+memory_diagnostics_interval_seconds = 60.0
+event_loop_watchdog_enabled = false
+event_loop_watchdog_warn_seconds = 0.5
+suppress_libraries = ["faiss", "httpx", "httpx2", "urllib3", "asyncio", "websockets", "httpcore", "httpcore2", "requests", "sqlalchemy", "openai", "uvicorn", "jieba"]
+
+[log.library_log_levels]
+aiohttp = "WARNING"
+PIL = "WARNING"
+
+[debug]
+replyer_retro_prompt = false
+enable_console_input = true
+show_maisaka_thinking = false
+save_maisaka_reasoning = true
+keep_prompt_preview_json_base64 = false
+record_tool_structured_content = false
+enable_llm_cache_stats = false
+force_plugin_compatibility = false
+
+[maim_message]
+enabled = true
+ws_server_host = "127.0.0.1"
+ws_server_port = 8000
+auth_token = []
+enable_api_server = false
+api_server_host = "0.0.0.0"
+api_server_port = 8090
+api_server_use_wss = false
+api_server_cert_file = ""
+api_server_key_file = ""
+api_server_allowed_api_keys = []
+
+[webui]
+enabled = true
+mode = "production"
+webui_style = 2
+anti_crawler_mode = "basic"
+allowed_ips = "127.0.0.1"
+trusted_proxies = ""
+trust_xff = false
+secure_cookie = false
+enforce_public_outbound_url = true
+
+[mcp]
+enable = true
+servers = []
+
+[mcp.client]
+client_name = "MaiBot"
+client_version = "1.0.0"
+
+[mcp.client.roots]
+enable = false
+items = []
+
+[mcp.client.sampling]
+enable = false
+task_name = "planner"
+tool_support = false
+
+[mcp.client.elicitation]
+enable = false
+allow_form = true
+allow_url = false
+
+[plugin]
+permission = []
+silent_permission_denied = false
+disabled_commands = []
+
+[plugin.command_permissions]
+[plugin_runtime]
+enabled = true
+health_check_interval_sec = 30.0
+max_restart_attempts = 3
+runner_spawn_timeout_sec = 30.0
+hook_blocking_timeout_sec = 60
+ipc_socket_path = ""
+
+[plugin_runtime.render]
+enabled = true
+browser_ws_endpoint = ""
+executable_path = ""
+browser_install_root = "data/playwright-browsers"
+headless = true
+launch_args = ["--disable-gpu", "--disable-dev-shm-usage", "--disable-setuid-sandbox", "--no-sandbox", "--no-zygote"]
+concurrency_limit = 2
+startup_timeout_sec = 20.0
+render_timeout_sec = 15.0
+auto_download_chromium = true
+download_connection_timeout_sec = 120.0
+restart_after_render_count = 200

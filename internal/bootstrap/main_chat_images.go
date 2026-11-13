@@ -1,0 +1,154 @@
+package bootstrap
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"go.uber.org/zap"
+
+	"maibot-go/internal/chat/image_system"
+	"maibot-go/internal/common/utils"
+	"maibot-go/internal/platform_io/drivers/onebot"
+)
+
+// chatImagePreprocessor 在 Agent 消费消息前完成图片缓存、描述与过大图片处理
+// Agent 仍会按原始消息再次下载图片，但这里提前写入 images 表并补全 Desc
+type chatImagePreprocessor struct {
+	manager  *imagesystem.Manager
+	settings func() imagesystem.ImageSettings
+}
+
+func newChatImagePreprocessor(manager *imagesystem.Manager) *chatImagePreprocessor {
+	return &chatImagePreprocessor{
+		manager: manager,
+		settings: func() imagesystem.ImageSettings {
+			if manager == nil {
+				return imagesystem.DefaultImageSettings("")
+			}
+			return imagesystem.LoadImageSettingsFromRoot(manager.Root())
+		},
+	}
+}
+
+// Process 预处理消息中的图片，失败时保留原图交给 Agent 的既有媒体链路
+func (p *chatImagePreprocessor) Process(ctx context.Context, msg *onebot.ConversationMessage) {
+	if p == nil || p.manager == nil || msg == nil || len(msg.Images) == 0 {
+		return
+	}
+	settings := p.settings()
+	kept := make([]onebot.ImageInfo, 0, len(msg.Images))
+	remap := make([]int, len(msg.Images))
+	for index := range remap {
+		remap[index] = -1
+	}
+	for index, image := range msg.Images {
+		ref := strings.TrimSpace(image.URL)
+		if ref == "" {
+			ref = strings.TrimSpace(image.File)
+		}
+		if !preprocessableImageRef(ref) {
+			kept = append(kept, image)
+			remap[index] = len(kept) - 1
+			continue
+		}
+		updated, keep, err := p.processOne(ctx, ref, image, settings)
+		if err != nil {
+			zap.L().Warn("图片预处理失败，保留原图交给 Agent",
+				zap.Int("image_index", index), zap.String("url", ref), zap.Error(err))
+			kept = append(kept, image)
+			remap[index] = len(kept) - 1
+			continue
+		}
+		if !keep {
+			continue
+		}
+		kept = append(kept, updated)
+		remap[index] = len(kept) - 1
+	}
+	msg.Images = kept
+	if len(msg.MessageParts) == 0 {
+		return
+	}
+	parts := make([]onebot.MessagePart, 0, len(msg.MessageParts))
+	for _, part := range msg.MessageParts {
+		if part.Kind == "image" {
+			if part.Index < 0 || part.Index >= len(remap) || remap[part.Index] < 0 {
+				continue
+			}
+			part.Index = remap[part.Index]
+		}
+		parts = append(parts, part)
+	}
+	msg.MessageParts = parts
+}
+
+func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, image onebot.ImageInfo, settings imagesystem.ImageSettings) (onebot.ImageInfo, bool, error) {
+	dir, err := os.MkdirTemp(p.manager.Dir(), "inbound-image-")
+	if err != nil {
+		return image, true, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	downloadCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	downloaded, err := utils.DownloadImage(downloadCtx, ref, dir, 0)
+	if err != nil {
+		return image, true, err
+	}
+	data, err := os.ReadFile(downloaded.FilePath)
+	if err != nil {
+		return image, true, err
+	}
+	if len(data) == 0 {
+		return image, true, fmt.Errorf("图片内容为空")
+	}
+	kind := imagesystem.ReceiveKindImage
+	if image.SubType == 1 {
+		kind = imagesystem.ReceiveKindEmoji
+	}
+	sum := sha256.Sum256(data)
+	components := []imagesystem.ReceiveComponent{{
+		Kind: kind,
+		Image: &imagesystem.ReceiveImage{
+			Data:  data,
+			Hash:  hex.EncodeToString(sum[:]),
+			Emoji: image.SubType == 1,
+		},
+	}}
+	retained, report, err := imagesystem.ProcessReceivedImages(components, imagesystem.OversizedImageOptions{
+		HandleOversizedImages: settings.HandleOversizedImages,
+		MaxImageSizeBytes:     settings.MaxImageSizeBytes(),
+		HandleMethod:          imagesystem.OversizedImageHandleMethod(settings.OversizedImageHandleMethod),
+	})
+	if err != nil {
+		return image, true, err
+	}
+	if len(retained) == 0 {
+		zap.L().Info("入站图片按配置丢弃",
+			zap.String("url", ref), zap.Int64("discarded_bytes", report.DiscardedBytes))
+		return image, false, nil
+	}
+	if report.CompressedCount > 0 && retained[0].Image != nil {
+		data = retained[0].Image.Data
+		image.URL = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+		image.File = ""
+	}
+	description, descErr := p.manager.GetImageDescription(ctx, "", data, true)
+	if descErr != nil {
+		zap.L().Warn("图片描述生成失败，保留空描述", zap.String("url", ref), zap.Error(descErr))
+	} else if strings.TrimSpace(description) != "" {
+		image.Desc = description
+	}
+	return image, true, nil
+}
+
+func preprocessableImageRef(ref string) bool {
+	lower := strings.ToLower(strings.TrimSpace(ref))
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "data:image/")
+}

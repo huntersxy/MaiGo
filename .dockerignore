@@ -1,0 +1,9 @@
+*
+!.dockerignore
+!Dockerfile
+!docker-entrypoint.sh
+!go.mod
+!go.sum
+!main.go
+!internal/
+!internal/**

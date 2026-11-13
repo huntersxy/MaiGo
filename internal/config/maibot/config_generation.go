@@ -1,0 +1,51 @@
+package maibot
+
+import (
+	_ "embed"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+//go:embed default_model_config.toml
+var defaultModelConfigTOML []byte
+
+// ensureInstanceConfigFiles 对齐 Python generate_new_config_file：
+// 配置文件缺失时按官方默认值生成，而不是直接启动失败
+func ensureInstanceConfigFiles(root string) error {
+	cfgDir := filepath.Join(root, configSubdir)
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		return fmt.Errorf("创建配置目录: %w", err)
+	}
+	botPath := filepath.Join(cfgDir, botConfigFileName)
+	if err := writeGeneratedConfigIfMissing(botPath, BotConfigTargetVersion, defaultBotConfigTOML); err != nil {
+		return err
+	}
+	modelPath := filepath.Join(cfgDir, modelConfigFileName)
+	if err := writeGeneratedConfigIfMissing(modelPath, ModelConfigTargetVersion, defaultModelConfigTOML); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeGeneratedConfigIfMissing(path, version string, body []byte) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("检查配置文件 %s: %w", path, err)
+	}
+	var builder strings.Builder
+	builder.WriteString("# 本文件由 maibot-go 按 MaiBot 1.3.19 默认配置生成\n")
+	builder.WriteString("[inner]\nversion = ")
+	builder.WriteString(fmt.Sprintf("%q", version))
+	builder.WriteString("\n\n")
+	builder.Write(body)
+	if !strings.HasSuffix(builder.String(), "\n") {
+		builder.WriteString("\n")
+	}
+	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
+		return fmt.Errorf("生成配置文件 %s: %w", path, err)
+	}
+	return nil
+}
