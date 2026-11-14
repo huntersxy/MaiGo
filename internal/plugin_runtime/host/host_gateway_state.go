@@ -71,6 +71,14 @@ func (h *Host) RouteMessage(ctx context.Context, pluginID string, payload protoc
 	if message == nil {
 		message = map[string]any{}
 	}
+	// 对齐 Python _build_inbound_route_key：消息只能选择所属网关已声明的归属，
+	// 不允许通过入站消息创建新账号或改写平台/账号/作用域
+	if err := validateGatewayInboundOwnership(message, state); err != nil {
+		return false, nil, &GatewayRPCError{
+			Code:    string(protocol.ErrorCodeBadPayload),
+			Message: err.Error(),
+		}
+	}
 	if state.Platform != "" {
 		message["platform"] = state.Platform
 	}
@@ -160,4 +168,65 @@ func messageGatewaySupportsReceive(entry *ComponentEntry) bool {
 	default:
 		return false
 	}
+}
+
+// validateGatewayInboundOwnership 校验入站消息归属与网关声明一致
+//
+// 对齐 Python _build_inbound_route_key：消息可以省略归属字段（由网关补齐），
+// 但一旦声明就必须与网关的 platform/account_id/scope 完全相同。
+func validateGatewayInboundOwnership(message map[string]any, state MessageGatewayRuntimeState) error {
+	if message == nil {
+		return nil
+	}
+	declared := func(value string) string { return strings.TrimSpace(value) }
+	platform := declared(asText(message["platform"]))
+	accountID := declared(asText(message["account_id"]))
+	scope := declared(asText(message["scope"]))
+	if info, ok := message["message_info"].(map[string]any); ok {
+		if platform == "" {
+			platform = declared(asText(info["platform"]))
+		}
+	}
+	if config, ok := message["message_info"].(map[string]any); ok {
+		if additional, ok := config["additional_config"].(map[string]any); ok {
+			if accountID == "" {
+				accountID = declared(firstGatewayText(additional, "platform_io_account_id", "account_id", "self_id", "bot_account"))
+			}
+			if scope == "" {
+				scope = declared(firstGatewayText(additional, "platform_io_scope", "route_scope", "adapter_scope", "connection_id"))
+			}
+		}
+	}
+	if platform != "" && declared(state.Platform) != "" && !strings.EqualFold(platform, declared(state.Platform)) {
+		return fmt.Errorf("消息归属未由网关声明: platform=%s declared=%s", platform, state.Platform)
+	}
+	if accountID != "" && declared(state.AccountID) != "" && accountID != declared(state.AccountID) {
+		return fmt.Errorf("消息归属未由网关声明: account_id=%s declared=%s", accountID, state.AccountID)
+	}
+	if scope != "" && declared(state.Scope) != "" && scope != declared(state.Scope) {
+		return fmt.Errorf("消息归属未由网关声明: scope=%s declared=%s", scope, state.Scope)
+	}
+	return nil
+}
+
+// asText 把任意值转成去空白的字符串
+func asText(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+// firstGatewayText 按优先级取第一个非空文本值
+func firstGatewayText(mapping map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if text := strings.TrimSpace(asText(mapping[key])); text != "" {
+			return text
+		}
+	}
+	return ""
 }

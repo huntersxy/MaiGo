@@ -28,6 +28,38 @@ type APIMessageBase struct {
 	MessageDim     MessageDim         `json:"message_dim"`
 }
 
+// UnmarshalJSON 与旧版一致地接受数字型 message_id 与 time
+func (i *APIBaseMessageInfo) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Platform         string          `json:"platform"`
+		MessageID        json.RawMessage `json:"message_id"`
+		Time             json.RawMessage `json:"time"`
+		FormatInfo       *FormatInfo     `json:"format_info"`
+		TemplateInfo     *TemplateInfo   `json:"template_info"`
+		AdditionalConfig map[string]any  `json:"additional_config"`
+		SenderInfo       *SenderInfo     `json:"sender_info"`
+		ReceiverInfo     *ReceiverInfo   `json:"receiver_info"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	i.Platform = raw.Platform
+	i.MessageID = flexText(raw.MessageID)
+	i.FormatInfo = raw.FormatInfo
+	i.TemplateInfo = raw.TemplateInfo
+	i.AdditionalConfig = raw.AdditionalConfig
+	i.SenderInfo = raw.SenderInfo
+	i.ReceiverInfo = raw.ReceiverInfo
+	i.Time = 0
+	if len(raw.Time) > 0 {
+		var value flexFloat
+		if err := json.Unmarshal(raw.Time, &value); err == nil {
+			i.Time = float64(value)
+		}
+	}
+	return nil
+}
+
 // GetAPIKey 返回消息所属 API Key
 func (m APIMessageBase) GetAPIKey() string { return m.MessageDim.APIKey }
 

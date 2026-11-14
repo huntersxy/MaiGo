@@ -51,7 +51,14 @@ func BuildRawContent(msg *onebot.ConversationMessage, mediaRefs []media.Ref, for
 				seq.Components = append(seq.Components, messagecomponent.ImageComponent{ByteComponent: byteComp})
 			}
 		case "record":
-			seq.Components = append(seq.Components, messagecomponent.VoiceComponent{})
+			voice := messagecomponent.VoiceComponent{}
+			if part.Index >= 0 && part.Index < len(msg.Voices) {
+				voice.Source = msg.Voices[part.Index].VoiceSource()
+			}
+			if strings.TrimSpace(voice.Source) == "" {
+				voice.Source = strings.TrimSpace(part.Text)
+			}
+			seq.Components = append(seq.Components, voice)
 		case "file":
 			component := messagecomponent.FileComponent{}
 			if part.Index >= 0 && part.Index < len(msg.Files) {
@@ -74,6 +81,18 @@ func BuildRawContent(msg *onebot.ConversationMessage, mediaRefs []media.Ref, for
 			}
 			seq.Components = append(seq.Components, messagecomponent.DictComponent{
 				Data: map[string]any{"type": part.Kind},
+			})
+		case "dict":
+			var payload any = map[string]any{"type": "dict"}
+			if part.Index >= 0 && part.Index < len(msg.Dicts) && msg.Dicts[part.Index] != nil {
+				payload = msg.Dicts[part.Index]
+			}
+			if mapping, ok := payload.(map[string]any); ok {
+				seq.Components = append(seq.Components, messagecomponent.DictComponent{Data: mapping})
+				continue
+			}
+			seq.Components = append(seq.Components, messagecomponent.DictComponent{
+				Data: map[string]any{"type": "dict", "data": payload},
 			})
 		case "face", "video", "card":
 			// 平台段在 MaiBot 组件模型里没有对应类型，用 dict 段保留类型标记

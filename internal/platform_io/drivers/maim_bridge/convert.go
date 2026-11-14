@@ -202,11 +202,21 @@ func chatMessageFromBase(msg maimmsg.MessageBase, platform string) (platformio.C
 	info := msg.MessageInfo
 	chatType, targetID, userID, groupID := resolveTarget(info)
 	segments, plain := segmentsFromMaimSeg(msg.MessageSegment)
+	// 归属优先级对齐 Python RouteKeyFactory.from_message_dict：
+	// 顶层 account_id/scope 优先，其次 additional_config 的兼容键
+	accountID := strings.TrimSpace(msg.AccountID)
+	if accountID == "" {
+		accountID = additionalRouteString(info.AdditionalConfig, "platform_io_account_id", "account_id", "self_id", "bot_account")
+	}
+	scope := strings.TrimSpace(msg.Scope)
+	if scope == "" {
+		scope = additionalRouteString(info.AdditionalConfig, "platform_io_scope", "route_scope", "adapter_scope", "connection_id")
+	}
 	return platformio.ChatMessage{
 		Platform:   platform,
 		ChatType:   chatType,
-		AccountID:  additionalRouteString(info.AdditionalConfig, "platform_io_account_id", "account_id", "self_id", "bot_account"),
-		Scope:      additionalRouteString(info.AdditionalConfig, "platform_io_scope", "route_scope", "adapter_scope", "connection_id"),
+		AccountID:  accountID,
+		Scope:      scope,
 		UserID:     userID,
 		GroupID:    groupID,
 		TargetID:   targetID,
@@ -294,29 +304,81 @@ func segmentsFromMaimSeg(root maimmsg.Seg) ([]platformio.Segment, string) {
 		}
 		return segments, strings.Join(parts, "")
 	case "at":
+		// Python AtComponent.to_seg 发送字符串；旧适配器可能发 {user_id,...} 字典
+		if uid := segScalarString(root.Data); uid != "" {
+			return []platformio.Segment{{Kind: platformio.SegmentAt, AtUserID: uid}}, ""
+		}
 		payload := decodeSegPayload(root.Data)
-		uid := payloadString(payload, "user_id", "qq", "id")
+		uid := payloadString(payload, "target_user_id", "user_id", "qq", "id")
 		if uid == "" {
 			return []platformio.Segment{{Kind: platformio.SegmentAt}}, ""
 		}
 		seg := platformio.Segment{Kind: platformio.SegmentAt, AtUserID: uid}
-		if name := payloadString(payload, "name", "nickname", "card"); name != "" {
-			seg.Extra = map[string]string{"name": name}
+		extra := map[string]string{}
+		if name := payloadString(payload, "target_user_nickname", "name", "nickname"); name != "" {
+			extra["name"] = name
+		}
+		if card := payloadString(payload, "target_user_cardname", "card"); card != "" {
+			extra["cardname"] = card
+		}
+		if len(extra) > 0 {
+			seg.Extra = extra
 		}
 		return []platformio.Segment{seg}, ""
+	case "reply":
+		// Python ReplyComponent.to_seg 发送字符串；旧适配器可能发 {target_message_id,...}
+		if id := segScalarString(root.Data); id != "" {
+			return []platformio.Segment{{Kind: platformio.SegmentReply, Text: id, Extra: map[string]string{"id": id}}}, ""
+		}
+		payload := decodeSegPayload(root.Data)
+		id := payloadString(payload, "target_message_id", "message_id", "id")
+		if id == "" {
+			return []platformio.Segment{{Kind: platformio.SegmentReply}}, ""
+		}
+		extra := map[string]string{"id": id}
+		if content := payloadString(payload, "target_message_content", "content"); content != "" {
+			extra["target_message_content"] = content
+		}
+		if sender := payloadString(payload, "target_message_sender_id", "sender_id"); sender != "" {
+			extra["sender_id"] = sender
+		}
+		if nickname := payloadString(payload, "target_message_sender_nickname", "nickname"); nickname != "" {
+			extra["sender_nickname"] = nickname
+		}
+		if card := payloadString(payload, "target_message_sender_cardname", "cardname"); card != "" {
+			extra["sender_cardname"] = card
+		}
+		return []platformio.Segment{{Kind: platformio.SegmentReply, Text: id, Extra: extra}}, ""
 	case "forward":
 		nodes, err := forwardNodesFromMaimData(root.Data)
 		if err != nil {
 			return nil, ""
 		}
 		return []platformio.Segment{{Kind: platformio.SegmentForward, ForwardNodes: nodes}}, ""
-	case "image", "emoji", "voice", "video", "record", "file", "face", "reply", "json", "music":
+	case "image", "emoji", "voice", "video", "record", "file", "face", "json", "music":
 		seg := mediaSegmentFromMaimSeg(platformio.SegmentKind(root.Type), root.Data)
 		return []platformio.Segment{seg}, seg.Text
 	default:
 		seg := mediaSegmentFromMaimSeg(platformio.SegmentKind(root.Type), root.Data)
 		return []platformio.Segment{seg}, seg.Text
 	}
+}
+
+// segScalarString 读取段的标量字符串数据；字典/数组/空值返回空串
+func segScalarString(data json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		return strings.TrimSpace(text)
+	}
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err == nil {
+		return strings.TrimSpace(number.String())
+	}
+	return ""
 }
 
 func parseAtUserIDFromSeg(root maimmsg.Seg) string {

@@ -32,34 +32,35 @@ type ConversationMessage struct {
 	UserID           int64  `json:"user_id"`
 	// External* 保留非 QQ 平台的原始字符串身份；MessageID/TargetID/UserID
 	// 在无法解析为数值时使用 SyntheticIdentityID 生成稳定代理键。
-	ExternalMessageID string                `json:"external_message_id,omitempty"`
-	ExternalTargetID  string                `json:"external_target_id,omitempty"`
-	ExternalUserID    string                `json:"external_user_id,omitempty"`
-	Nickname          string                `json:"nickname"`                    // QQ 原始昵称
-	GroupCard         string                `json:"group_card,omitempty"`        // 当前群名片
-	Content           string                `json:"content"`                     // 纯文本内容
-	MessageParts      []MessagePart         `json:"-"`                           // 所有消息段的展示顺序
-	IsMentioned       bool                  `json:"is_mentioned"`                // 是否@机器人
-	IsNotify          bool                  `json:"is_notify,omitempty"`         // 平台通知事件（戳一戳、撤回、禁言等），不是用户发言
-	Time              time.Time             `json:"time"`                        // 消息时间
-	ReceivedAt        time.Time             `json:"-"`                           // 当前进程从 OneBot 收到事件的时间
-	ArrivalSeq        uint64                `json:"-"`                           // 该会话运行时顺序序号，Agent 按此提交
-	ParseFailed       bool                  `json:"-"`                           // 消息段解析失败占位，仅用于消费序号
-	Images            []ImageInfo           `json:"images,omitempty"`            // 图片列表
-	Voices            []VoiceInfo           `json:"voices,omitempty"`            // 语音列表
-	Videos            []VideoInfo           `json:"videos,omitempty"`            // 视频列表
-	Faces             []FaceInfo            `json:"faces,omitempty"`             // 表情列表
-	AtList            []int64               `json:"at_list,omitempty"`           // 消息指向的用户；普通消息为 @ 目标，互动消息为互动目标
-	ExternalAtList    []string              `json:"external_at_list,omitempty"`  // 非 QQ 平台 @ 的原始字符串 ID，与 AtList 同序
-	AtNames           map[int64]string      `json:"at_names,omitempty"`          // @ 目标在事件中的显示名
-	Reply             *ReplyInfo            `json:"reply,omitempty"`             // 回复信息
-	FileNames         []string              `json:"file_names,omitempty"`        // 文件消息名称
-	Files             []FileInfo            `json:"files,omitempty"`             // WebUI 文件附件资产
-	Cards             []CardMessage         `json:"cards,omitempty"`             // 卡片消息
-	FinalContent      string                `json:"final_content,omitempty"`     // 处理后的最终内容
-	AdditionalConfig  map[string]any        `json:"additional_config,omitempty"` // 入站附加配置
-	GroupKey          string                `json:"-"`                           // WebUI 虚拟群原始 group_id
-	GroupName         string                `json:"-"`                           // WebUI 虚拟群名称
+	ExternalMessageID string           `json:"external_message_id,omitempty"`
+	ExternalTargetID  string           `json:"external_target_id,omitempty"`
+	ExternalUserID    string           `json:"external_user_id,omitempty"`
+	Nickname          string           `json:"nickname"`                    // QQ 原始昵称
+	GroupCard         string           `json:"group_card,omitempty"`        // 当前群名片
+	Content           string           `json:"content"`                     // 纯文本内容
+	MessageParts      []MessagePart    `json:"-"`                           // 所有消息段的展示顺序
+	IsMentioned       bool             `json:"is_mentioned"`                // 是否@机器人
+	IsNotify          bool             `json:"is_notify,omitempty"`         // 平台通知事件（戳一戳、撤回、禁言等），不是用户发言
+	Time              time.Time        `json:"time"`                        // 消息时间
+	ReceivedAt        time.Time        `json:"-"`                           // 当前进程从 OneBot 收到事件的时间
+	ArrivalSeq        uint64           `json:"-"`                           // 该会话运行时顺序序号，Agent 按此提交
+	ParseFailed       bool             `json:"-"`                           // 消息段解析失败占位，仅用于消费序号
+	Images            []ImageInfo      `json:"images,omitempty"`            // 图片列表
+	Voices            []VoiceInfo      `json:"voices,omitempty"`            // 语音列表
+	Videos            []VideoInfo      `json:"videos,omitempty"`            // 视频列表
+	Faces             []FaceInfo       `json:"faces,omitempty"`             // 表情列表
+	AtList            []int64          `json:"at_list,omitempty"`           // 消息指向的用户；普通消息为 @ 目标，互动消息为互动目标
+	ExternalAtList    []string         `json:"external_at_list,omitempty"`  // 非 QQ 平台 @ 的原始字符串 ID，与 AtList 同序
+	AtNames           map[int64]string `json:"at_names,omitempty"`          // @ 目标在事件中的显示名
+	Reply             *ReplyInfo       `json:"reply,omitempty"`             // 回复信息
+	FileNames         []string         `json:"file_names,omitempty"`        // 文件消息名称
+	Files             []FileInfo       `json:"files,omitempty"`             // WebUI 文件附件资产
+	Cards             []CardMessage    `json:"cards,omitempty"`             // 卡片消息
+	Dicts             []any            `json:"-"`                           // dict/json 段原始负载，保留给 DictComponent
+	FinalContent      string           `json:"final_content,omitempty"`     // 处理后的最终内容
+	AdditionalConfig  map[string]any   `json:"additional_config,omitempty"` // 入站附加配置
+	GroupKey          string           `json:"-"`                           // WebUI 虚拟群原始 group_id
+	GroupName         string           `json:"-"`                           // WebUI 虚拟群名称
 }
 
 // FileInfo WebUI 文件附件，携带 filesvc 资产引用

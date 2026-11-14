@@ -2,6 +2,7 @@ package maimbridge
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -33,12 +34,15 @@ func decodeSegPayload(data json.RawMessage) map[string]any {
 	if trimmed == "" || trimmed == "null" {
 		return payload
 	}
-	// data 既可能是对象，也可能是被字符串化的 JSON
+	// data 既可能是对象，也可能是被字符串化的 JSON；纯文本/数字/base64 段不是负载
+	if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "\"{") {
+		return payload
+	}
 	if err := json.Unmarshal(data, &payload); err == nil {
 		return payload
 	}
 	var encoded string
-	if err := json.Unmarshal(data, &encoded); err == nil && strings.TrimSpace(encoded) != "" {
+	if err := json.Unmarshal(data, &encoded); err == nil && strings.HasPrefix(strings.TrimSpace(encoded), "{") {
 		if unmarshalErr := json.Unmarshal([]byte(encoded), &payload); unmarshalErr != nil {
 			zap.L().Warn("maim_message 媒体段 JSON 解析失败，payload 置空", zap.Error(unmarshalErr))
 		}
@@ -79,15 +83,40 @@ func mediaSegmentFromMaimSeg(kind platformio.SegmentKind, data json.RawMessage) 
 	}
 	if base64 := maimMediaBase64(kind, data, payload); base64 != "" {
 		seg.Extra["base64"] = base64
+		if seg.URL == "" && kind != platformio.SegmentFile {
+			// 适配器普遍只发 base64；转成 data URL 才能进入图片/语音处理链
+			seg.URL = mediaDataURL(kind, base64)
+		}
+	}
+	if kind == platformio.SegmentFile {
+		// FileComponent.from_payload 的别名键位
+		for _, key := range []string{"size", "file_size", "mime_type", "mimeType", "file_ref", "busid"} {
+			if value := payloadString(payload, key); value != "" {
+				seg.Extra[key] = value
+			}
+		}
+		if seg.Extra["file_id"] == "" {
+			if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
+				seg.Extra["file_id"] = id
+			}
+		}
+		if seg.Extra["name"] == "" {
+			if name := payloadString(payload, "filename"); name != "" {
+				seg.Extra["name"] = name
+			}
+		}
 	}
 	if kind == platformio.SegmentReply {
 		if sender := payloadString(payload, "sender_id", "user_id", "sender"); sender != "" {
 			seg.Extra["sender_id"] = sender
 		}
 	}
-	if kind == platformio.SegmentJSON {
-		if raw := strings.TrimSpace(string(data)); raw != "" && raw != "null" {
-			seg.Extra["data"] = raw
+	if kind == platformio.SegmentDict || kind == platformio.SegmentJSON {
+		// 保留原始负载，供上层 process_dict_component 生成可读摘要
+		if len(payload) > 0 {
+			seg.Data = payload
+		} else if raw := strings.TrimSpace(string(data)); raw != "" && raw != "null" {
+			seg.Data = raw
 		}
 	}
 	if len(seg.Extra) == 0 {
@@ -96,10 +125,64 @@ func mediaSegmentFromMaimSeg(kind platformio.SegmentKind, data json.RawMessage) 
 	return seg
 }
 
+// mediaDataURL 把媒体 base64 包装成 data URL，MIME 由魔数推断
+func mediaDataURL(kind platformio.SegmentKind, encoded string) string {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" || strings.HasPrefix(encoded, "data:") {
+		return encoded
+	}
+	mimeType := "image/jpeg"
+	if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
+		mimeType = sniffMediaMime(decoded)
+	}
+	switch kind {
+	case platformio.SegmentVoice, platformio.SegmentRecord:
+		if strings.HasPrefix(mimeType, "image/") {
+			mimeType = "audio/silk"
+		}
+	case platformio.SegmentVideo:
+		if strings.HasPrefix(mimeType, "image/") {
+			mimeType = "video/mp4"
+		}
+	}
+	return "data:" + mimeType + ";base64," + encoded
+}
+
+// sniffMediaMime 按魔数判断媒体类型，无法识别时按 JPEG 处理
+func sniffMediaMime(data []byte) string {
+	switch {
+	case len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n":
+		return "image/png"
+	case len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "image/jpeg"
+	case len(data) >= 6 && (string(data[:6]) == "GIF87a" || string(data[:6]) == "GIF89a"):
+		return "image/gif"
+	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	case len(data) >= 2 && string(data[:2]) == "BM":
+		return "image/bmp"
+	case len(data) >= 4 && (string(data[:4]) == "OggS" || string(data[:4]) == "fLaC"):
+		return "audio/ogg"
+	case len(data) >= 3 && string(data[:3]) == "ID3":
+		return "audio/mpeg"
+	case len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0:
+		return "audio/mpeg"
+	case len(data) >= 4 && string(data[:4]) == "RIFF" && len(data) >= 12 && string(data[8:12]) == "WAVE":
+		return "audio/wav"
+	case len(data) >= 8 && string(data[4:8]) == "ftyp":
+		return "video/mp4"
+	case len(data) >= 2 && string(data[:2]) == "\x02#":
+		return "audio/silk"
+	default:
+		return "image/jpeg"
+	}
+}
+
 // segmentToMaimSeg 将规范化出站段转换为 maim_message 段
 //
-// 段数据形状对齐 Python 组件 to_seg：
-// at/reply 是字符串，image/emoji/voice 是 base64 字符串，file 是负载字典
+// 段类型必须落在 Python 组件模型的取值域内（text/image/emoji/voice/file/at/reply/dict），
+// 否则适配器侧 _parse_maim_message_segment_to_component 会抛 NotImplementedError。
+// 段数据形状对齐 Python 组件 to_seg：at/reply 是字符串，image/emoji/voice 是 base64 字符串。
 func segmentToMaimSeg(ctx context.Context, seg platformio.Segment) (maimmsg.Seg, error) {
 	switch seg.Kind {
 	case platformio.SegmentText:
@@ -112,25 +195,18 @@ func segmentToMaimSeg(ctx context.Context, seg platformio.Segment) (maimmsg.Seg,
 			return maimmsg.Seg{}, err
 		}
 		return maimmsg.Seg{Type: "forward", Data: mustJSON(nodes)}, nil
-	case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice:
+	case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice, platformio.SegmentRecord:
+		// record 是 OneBot 侧的叫法，Python 组件只有 voice
 		encoded, err := platformio.SegmentMediaBase64(ctx, seg)
 		if err != nil {
 			return maimmsg.Seg{}, err
 		}
-		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(encoded)}, nil
-	case platformio.SegmentVideo, platformio.SegmentRecord, platformio.SegmentFile:
-		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(mediaPayload(seg))}, nil
-	case platformio.SegmentFace:
-		payload := map[string]any{}
-		if seg.Extra != nil {
-			if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
-				payload["id"] = id
-			}
-		}
-		if seg.Text != "" {
-			payload["text"] = seg.Text
-		}
-		return maimmsg.Seg{Type: "face", Data: mustJSON(payload)}, nil
+		return maimmsg.Seg{Type: "voice", Data: mustJSON(encoded)}, nil
+	case platformio.SegmentFile:
+		return maimmsg.Seg{Type: "file", Data: mustJSON(mediaPayload(seg))}, nil
+	case platformio.SegmentVideo, platformio.SegmentFace:
+		// Python 组件模型没有 video/face，落到 dict 段保留原类型与负载
+		return maimmsg.Seg{Type: "dict", Data: mustJSON(dictPayloadFor(seg))}, nil
 	case platformio.SegmentReply:
 		replyID := strings.TrimSpace(seg.Text)
 		if seg.Extra != nil {
@@ -159,10 +235,33 @@ func segmentToMaimSeg(ctx context.Context, seg platformio.Segment) (maimmsg.Seg,
 				payload["data"] = text
 			}
 		}
-		return maimmsg.Seg{Type: "json", Data: mustJSON(payload)}, nil
+		return maimmsg.Seg{Type: "dict", Data: mustJSON(map[string]any{"type": "json", "data": payload})}, nil
 	default:
-		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(map[string]any{"text": seg.Text})}, nil
+		// 未建模的段类型一律降级为 dict，避免适配器收到未知 type
+		return maimmsg.Seg{Type: "dict", Data: mustJSON(dictPayloadFor(seg))}, nil
 	}
+}
+
+// dictPayloadFor 把 Python 组件模型不支持的段包装成 dict 负载
+// 对齐 Python process_dict_component：type 决定可读摘要，data 保留原始字段
+func dictPayloadFor(seg platformio.Segment) map[string]any {
+	payload := map[string]any{"type": string(seg.Kind)}
+	inner := map[string]any{}
+	if seg.URL != "" {
+		inner["url"] = seg.URL
+	}
+	if seg.Text != "" {
+		inner["text"] = seg.Text
+	}
+	for key, value := range seg.Extra {
+		if strings.TrimSpace(value) != "" {
+			inner[key] = value
+		}
+	}
+	if len(inner) > 0 {
+		payload["data"] = inner
+	}
+	return payload
 }
 
 // mediaPayload 媒体段负载，键名对齐 Python FileComponent.to_payload

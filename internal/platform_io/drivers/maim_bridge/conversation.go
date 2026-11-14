@@ -1,6 +1,7 @@
 package maimbridge
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -223,6 +224,8 @@ func conversationFromChat(chat platformio.ChatMessage, base maimmsg.MessageBase,
 		Content:           content,
 		MessageParts:      parsed.Parts,
 		Images:            parsed.Images,
+		Files:             parsed.Files,
+		Dicts:             parsed.Dicts,
 		Faces:             parsed.Faces,
 		Voices:            parsed.Voices,
 		FileNames:         parsed.FileNames,
@@ -266,6 +269,8 @@ type inboundMessageParts struct {
 	Images         []onebot.ImageInfo
 	Faces          []onebot.FaceInfo
 	Voices         []onebot.VoiceInfo
+	Files          []onebot.FileInfo
+	Dicts          []any
 	FileNames      []string
 	AtList         []int64
 	ExternalAtList []string
@@ -381,25 +386,47 @@ func messagePartsFromSegments(segments []platformio.Segment) inboundMessageParts
 			part.Text = strings.TrimSpace(seg.URL)
 		case platformio.SegmentFile:
 			part.Kind = "file"
-			name := ""
+			file := onebot.FileInfo{}
 			if seg.Extra != nil {
-				name = firstTextValue(seg.Extra["name"], seg.Extra["file_name"], seg.Text)
+				file.Name = firstTextValue(seg.Extra["name"], seg.Extra["file_name"], seg.Extra["filename"], seg.Text)
+				file.MimeType = firstTextValue(seg.Extra["mime_type"], seg.Extra["mimeType"])
+				file.FileRef = firstTextValue(seg.Extra["file_ref"])
+				file.Size = parseFileSize(firstTextValue(seg.Extra["size"], seg.Extra["file_size"]))
 			}
-			if name == "" {
-				name = strings.TrimSpace(seg.Text)
+			if file.Name == "" {
+				file.Name = strings.TrimSpace(seg.Text)
 			}
-			part.Index = len(out.FileNames)
-			out.FileNames = append(out.FileNames, name)
-			part.Text = name
+			if seg.URL != "" && file.FileRef == "" {
+				file.FileRef = seg.URL
+			}
+			part.Index = len(out.Files)
+			out.Files = append(out.Files, file)
+			part.Text = file.Name
 		case platformio.SegmentForward:
 			part.Kind = "forward"
 		case platformio.SegmentDict, platformio.SegmentJSON:
-			part.Kind = "text"
-			if text := strings.TrimSpace(seg.Text); text != "" {
-				part.Text = text
-			} else {
-				part.Text = "[卡片消息]"
+			// 对齐 Python process_dict_component：保留原负载供上层生成可读摘要
+			payload := seg.Data
+			if payload == nil && seg.Extra != nil {
+				if raw := strings.TrimSpace(seg.Extra["data"]); raw != "" {
+					var decoded any
+					if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+						payload = decoded
+					} else {
+						payload = raw
+					}
+				}
 			}
+			if payload == nil && seg.Text != "" {
+				payload = seg.Text
+			}
+			if payload == nil {
+				continue
+			}
+			part.Kind = "dict"
+			part.Index = len(out.Dicts)
+			out.Dicts = append(out.Dicts, payload)
+			part.Text = seg.Text
 		default:
 			part.Kind = string(seg.Kind)
 			part.Text = seg.Text
@@ -448,4 +475,17 @@ func groupCardFromBase(info maimmsg.BaseMessageInfo) string {
 		return strings.TrimSpace(info.UserInfo.UserCardname)
 	}
 	return ""
+}
+
+// parseFileSize 解析文件大小字符串；非法值按 0 处理
+func parseFileSize(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
 }
