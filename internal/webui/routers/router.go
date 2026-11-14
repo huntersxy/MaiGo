@@ -186,6 +186,11 @@ func Mount(r chi.Router, d Deps) {
 
 		api.Get("/html-render/status", d.handleHTMLRenderStatus)
 
+		api.Route("/go", func(gr chi.Router) {
+			gr.Use(d.requireAuthMiddleware)
+			mountGoSettingsRoutes(gr, d)
+		})
+
 		api.NotFound(d.handleWebUINotFound)
 	})
 

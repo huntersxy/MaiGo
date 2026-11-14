@@ -1213,6 +1213,11 @@ func BuildToolResultSummary(call ToolCall, result ToolExecutionResult, condensed
 		content = condensed
 	}
 	content = strings.TrimSpace(content)
+	// 对齐 Python _build_tool_result_summary：content 为空时回落到错误原因，
+	// 否则失败工具只会显示「执行失败」，丢掉可诊断的真实原因
+	if content == "" {
+		content = strings.TrimSpace(result.Message)
+	}
 	runes := []rune(content)
 	if len(runes) > 180 {
 		content = string(runes[:180]) + "…"
