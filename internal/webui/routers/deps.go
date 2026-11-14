@@ -63,6 +63,10 @@ type Deps struct {
 	Avatar       *platformio.AvatarService
 	InstanceDir  string
 	BuildVersion string
+	// SessionSchedulerStats 返回原生会话调度器快照；nil 表示未启用。
+	SessionSchedulerStats func() any
+	// SessionTaskSubmitter 返回提交函数；返回 nil 表示原生会话调度器未启用。
+	SessionTaskSubmitter func() func(ctx context.Context, sessionKey string, task func(context.Context) error) error
 	// DatabaseDSN 可选 SQLite DSN/路径覆盖；为空时用实例 data/MaiBot.db
 	DatabaseDSN string
 	// EnforcePublicOutbound 返回当前 webui.enforce_public_outbound_url，每次请求读取

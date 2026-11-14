@@ -20,15 +20,16 @@ import (
 // websocketDeps 把父包 Deps 投影成 websocket 子包的依赖
 func (d Deps) websocketDeps() webuiws.Deps {
 	return webuiws.Deps{
-		Memory:            d.Memory,
-		AdminAuth:         d.AdminAuth,
-		PluginHost:        d.PluginHost,
-		PluginMarket:      d.PluginMarket,
-		Agent:             d.Agent,
-		ChatHub:           d.ChatHub,
-		InstanceDir:       d.InstanceDir,
-		Files:             d.Files,
-		SessionTokenValid: d.sessionTokenValid,
+		Memory:               d.Memory,
+		AdminAuth:            d.AdminAuth,
+		PluginHost:           d.PluginHost,
+		PluginMarket:         d.PluginMarket,
+		Agent:                d.Agent,
+		ChatHub:              d.ChatHub,
+		InstanceDir:          d.InstanceDir,
+		Files:                d.Files,
+		SessionTokenValid:    d.sessionTokenValid,
+		SessionTaskSubmitter: d.SessionTaskSubmitter,
 	}
 }
 

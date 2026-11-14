@@ -14,6 +14,22 @@ const (
 	ModeNative        Mode = "native"
 )
 
+// NativeModeImplemented 表示原生模式是否已经接入实际调度层。
+//
+// 阶段 2 的会话并发调度已接入；单个引擎是否生效仍由 [features] 与 mode 共同决定。
+const NativeModeImplemented = true
+
+// NativeModeActive 判断当前配置下原生模式是否有实际生效的引擎。
+//
+// native 是总开关，[features] 是细粒度开关；目前只有会话并发调度已接入，
+// 后续每接入一个引擎都应在实现处参与这里的 OR 判定。
+func NativeModeActive(profile Profile, toggles FeatureToggles) bool {
+	if profile.Mode != ModeNative {
+		return false
+	}
+	return IsFeatureImplemented("native_session_scheduler") && toggles.NativeSessionScheduler
+}
+
 // validModes 用于校验用户输入
 var validModes = map[Mode]struct{}{
 	ModeCompatibility: {},

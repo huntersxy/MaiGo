@@ -9,4 +9,5 @@ func mountGoSettingsRoutes(r chi.Router, d Deps) {
 	r.Post("/toggle/{feature_key}", d.handleGoSettingsToggle)
 	r.Post("/reset", d.handleGoSettingsReset)
 	r.Post("/mode", d.handleGoSettingsMode)
+	r.Post("/restart", d.handleGoSettingsRestart)
 }

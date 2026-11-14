@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -260,8 +261,6 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 		ChannelKey:   channelKey,
 		VirtualMode:  virtual != nil && virtual.Enabled,
 	})
-	hub.BroadcastTypingTo(channelKey, true)
-	defer hub.BroadcastTypingTo(channelKey, false)
 	if s.deps.Agent == nil {
 		return
 	}
@@ -274,12 +273,12 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 		UserID:           internalchat.OwnerNumericID,
 		// chat_sessions.user_id 对齐 Python INTERNAL_CHAT_USER_ID="owner"；
 		// 数值身份只用于 mai_messages 的 BIGINT 列
-		ExternalUserID: internalchat.OwnerUserID,
+		ExternalUserID:   internalchat.OwnerUserID,
 		ExternalTargetID: internalchat.OwnerUserID,
-		Nickname:       senderName,
-		Content:        content,
-		Time:           time.Now(),
-		ReceivedAt:     time.Now(),
+		Nickname:         senderName,
+		Content:          content,
+		Time:             time.Now(),
+		ReceivedAt:       time.Now(),
 	}
 	if virtual != nil && virtual.Enabled {
 		msg.Platform = virtual.PlatformName()
@@ -297,8 +296,28 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 	appendInternalChatImages(msg, attachments.images, 0)
 	appendInternalChatImages(msg, attachments.emojis, 1)
 	appendInternalChatFiles(msg, attachments.files)
-	s.deps.Agent.HandleInternalChatMessage(msg)
-	zap.L().Debug("内部聊天消息已投递", zap.String("session", state.clientSessionID))
+
+	hub.BroadcastTypingTo(channelKey, true)
+	run := func(context.Context) error {
+		defer hub.BroadcastTypingTo(channelKey, false)
+		s.deps.Agent.HandleInternalChatMessage(msg)
+		zap.L().Debug("内部聊天消息已投递", zap.String("session", state.clientSessionID))
+		return nil
+	}
+	var submitter func(context.Context, string, func(context.Context) error) error
+	if provider := s.deps.SessionTaskSubmitter; provider != nil {
+		submitter = provider()
+	}
+	if submitter != nil {
+		if err := submitter(context.Background(), channelKey, run); err != nil {
+			hub.BroadcastTypingTo(channelKey, false)
+			zap.L().Warn("WebUI 聊天消息被原生会话调度拒绝",
+				zap.String("channel", channelKey),
+				zap.Error(err))
+		}
+		return
+	}
+	_ = run(context.Background())
 }
 
 // appendInternalChatImages 把 WebUI 内联 base64 转成 Agent 可缓存的 data URL 图片段

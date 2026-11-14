@@ -4,6 +4,8 @@
 package websocket
 
 import (
+	"context"
+
 	memory "maibot-go/internal/common/database"
 	"maibot-go/internal/core/internal_chat"
 	filesvc "maibot-go/internal/files"
@@ -45,6 +47,8 @@ type Deps struct {
 	// 必须与 /auth/check、/ws-token 用同一口径，否则会出现
 	// 「页面认为已登录、WebSocket 认为未登录」的登录死循环。
 	SessionTokenValid func(token string) bool
+	// SessionTaskSubmitter 返回提交函数；返回 nil 表示原生会话调度器未启用。
+	SessionTaskSubmitter func() func(ctx context.Context, sessionKey string, task func(context.Context) error) error
 }
 
 // sessionTokenValid 用注入的统一判定校验令牌；未注入时退回 authutil 的内置判定

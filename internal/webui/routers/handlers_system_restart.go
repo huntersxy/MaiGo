@@ -64,6 +64,11 @@ func (d Deps) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	d.respondWorkerRestart(w, "麦麦正在重启中...")
+}
+
+// respondWorkerRestart 调度 Worker 优雅重启并写出统一响应；调用方负责鉴权。
+func (d Deps) respondWorkerRestart(w http.ResponseWriter, successMessage string) {
 	if err := runtime.ScheduleWorkerRestart(""); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, runtime.ErrRestartRequiresWorker) {
@@ -77,6 +82,6 @@ func (d Deps) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
-		"message": "麦麦正在重启中...",
+		"message": successMessage,
 	})
 }

@@ -61,6 +61,7 @@ import (
 	"maibot-go/internal/maisaka/builtin_tool"
 	"maibot-go/internal/manager/asynctask"
 	"maibot-go/internal/runtime"
+	"maibot-go/internal/runtime/execution"
 	botservices "maibot-go/internal/services"
 	"maibot-go/internal/services/statistics"
 	"maibot-go/internal/web_search"
@@ -1142,6 +1143,29 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		zap.L().Error("消息接收配置校验失败", zap.Error(filterErr))
 		return 1
 	}
+	// 与 WebUI 设置页使用同一实例根目录，避免页面和启动读取不同的 runtime.toml。
+	executionDir := config.InstanceRoot()
+	executionProfile, executionErr := execution.LoadProfile(executionDir)
+	if executionErr != nil {
+		if errors.Is(executionErr, execution.ErrInvalidMode) {
+			zap.L().Error("执行模式配置无效，拒绝启动", zap.Error(executionErr))
+			return 1
+		}
+		// 配置文件损坏时回退兼容模式，让管理页仍能启动并修复。
+		zap.L().Warn("读取执行配置失败，回退兼容模式", zap.Error(executionErr))
+		executionProfile = execution.DefaultProfile()
+	}
+	featureToggles, featureErr := execution.LoadFeatureToggles(executionDir)
+	if featureErr != nil {
+		zap.L().Warn("读取功能开关失败，全部按关闭处理", zap.Error(featureErr))
+		featureToggles = execution.DefaultFeatureToggles()
+	}
+	nativeSessionScheduler := execution.NativeModeActive(executionProfile, featureToggles)
+	zap.L().Info("执行配置已加载",
+		zap.String("execution_mode", string(executionProfile.Mode)),
+		zap.Bool("native_session_scheduler", nativeSessionScheduler),
+		zap.Int("worker_pool_size", executionProfile.WorkerPoolSize),
+	)
 	chatPipeline := newChatRuntimePipelineWithOptions(context.Background(), chatPipelineOptions{
 		Agent:        maiAgent,
 		Images:       newChatImagePreprocessor(imageManager),
@@ -1198,6 +1222,9 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		LLMRouter:                maiAgent.LLMRouter(),
 		VoiceResolver:            newChatVoiceResolver(),
 		EnableVoiceTranscription: chatVoiceASREnabled(instHolder),
+
+		NativeSessionScheduler:  nativeSessionScheduler,
+		SessionSchedulerWorkers: executionProfile.WorkerPoolSize,
 	})
 
 	// 对齐 Python integration.py:1349-1352：适配器下线后清理失去发送链路的聊天流
@@ -1235,7 +1262,25 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		})
 		wireACPAgentReload(instHolder, acpService, maiAgent)
 	}
-	chatRelay.SetDeliver(maiAgent.HandleInternalChatMessage)
+	chatRelay.SetDeliver(func(msg *onebot.ConversationMessage) {
+		if msg == nil {
+			return
+		}
+		submit := chatPipeline.SessionTaskSubmitter()
+		if submit == nil {
+			maiAgent.HandleInternalChatMessage(msg)
+			return
+		}
+		channelKey := internalchat.ConversationChannelKey(msg)
+		if err := submit(context.Background(), channelKey, func(context.Context) error {
+			maiAgent.HandleInternalChatMessage(msg)
+			return nil
+		}); err != nil {
+			zap.L().Warn("插件聊天消息被原生会话调度拒绝",
+				zap.String("channel", channelKey),
+				zap.Error(err))
+		}
+	})
 	if botName := maiAgent.BotName(); botName != "" {
 		chatHub.SetBotIdentity(botName)
 	}
@@ -1585,6 +1630,8 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		acpAgentService = acpService
 	}
 	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
+	app.SetSessionSchedulerStats(chatPipeline.SessionSchedulerStats)
+	app.SetSessionTaskSubmitter(chatPipeline.SessionTaskSubmitter())
 	app.SetEnforcePublicOutboundProvider(func() bool {
 		if instHolder == nil || instHolder.Config() == nil {
 			return true

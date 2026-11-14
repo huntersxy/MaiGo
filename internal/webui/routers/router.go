@@ -203,6 +203,10 @@ func Mount(r chi.Router, d Deps) {
 		cr.MethodFunc(http.MethodPost, "/*", d.handleConfigCompatNotFound)
 		cr.MethodFunc(http.MethodGet, "/*", d.handleConfigCompatNotFound)
 	})
+
+	// Go 平台专属开发者设置页；配置 API 统一走 /api/webui/go（受 requireAuthMiddleware 保护）。
+	r.Get("/go", d.handleGoDeveloperPage)
+	r.Get("/go/", d.handleGoDeveloperPage)
 }
 
 func (d Deps) handleWebUINotFound(w http.ResponseWriter, r *http.Request) {

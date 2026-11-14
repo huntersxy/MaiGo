@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>开发者设置 · MaiBot</title>
+  <script>
+    (function () {
+      var mode = "system";
+      try { mode = localStorage.getItem("maibot-theme-mode") || "system"; } catch (error) { }
+      var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.toggle("dark", dark);
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --color-primary: 28.9 94.8% 45.1%;
+      --color-primary-foreground: 210 40% 98%;
+      --color-secondary: 188.5 35% 96%;
+      --color-secondary-foreground: 222.2 47.4% 11.2%;
+      --color-muted: 188.5 12% 96%;
+      --color-muted-foreground: 188.5 20% 46.9%;
+      --color-accent: 112.7 40.2% 47.8%;
+      --color-accent-foreground: 210 40% 98%;
+      --color-destructive: 0 84.2% 45%;
+      --color-destructive-foreground: 210 40% 98%;
+      --color-background: 0 0% 100%;
+      --color-foreground: 222.2 84% 4.9%;
+      --color-card: 188.5 14% 98.6%;
+      --color-card-foreground: 222.2 84% 4.9%;
+      --color-popover: 188.5 16% 99.3%;
+      --color-border: 188.5 20% 91.4%;
+      --color-input: 188.5 20% 91.4%;
+      --color-ring: 28.9 94.8% 45.1%;
+      --success-text: 112.7 40.2% 32%;
+      --warning-text: 28.9 80% 36%;
+      --danger-text: 0 72% 45%;
+      --radius-sm: 0.25rem;
+      --radius-md: 0.375rem;
+      --radius-lg: 0.5rem;
+      --radius-xl: 0.75rem;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: "JetBrains Mono", Monaco, "Courier New", monospace;
+    }
+
+    html.dark {
+      color-scheme: dark;
+      --color-primary: 28.9 94.8% 45.1%;
+      --color-primary-foreground: 210 40% 98%;
+      --color-secondary: 188.5 35% 17.5%;
+      --color-secondary-foreground: 210 40% 98%;
+      --color-muted: 188.5 12% 17.5%;
+      --color-muted-foreground: 188.5 20% 65.1%;
+      --color-accent: 112.7 40.2% 34%;
+      --color-accent-foreground: 210 40% 98%;
+      --color-destructive: 0 62.8% 30.6%;
+      --color-destructive-foreground: 210 40% 98%;
+      --color-background: 222.2 84% 4.9%;
+      --color-foreground: 210 40% 98%;
+      --color-card: 188.5 18% 8.8%;
+      --color-card-foreground: 210 40% 98%;
+      --color-popover: 188.5 21% 10.5%;
+      --color-border: 188.5 20% 17.5%;
+      --color-input: 188.5 20% 17.5%;
+      --color-ring: 28.9 94.8% 45.1%;
+      --success-text: 112.7 45% 60%;
+      --warning-text: 28.9 90% 60%;
+      --danger-text: 0 80% 65%;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: hsl(var(--color-background));
+      color: hsl(var(--color-foreground));
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    code,
+    .mono {
+      font-family: var(--font-mono);
+    }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid hsl(var(--color-border));
+      background: hsl(var(--color-background) / 0.92);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-inner {
+      width: 100%;
+      max-width: 1120px;
+      height: 56px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-lg);
+      display: grid;
+      place-items: center;
+      background: hsl(var(--color-primary));
+      color: hsl(var(--color-primary-foreground));
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+    }
+
+    .brand-text strong {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .brand-text span {
+      font-size: 12px;
+      color: hsl(var(--color-muted-foreground));
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 24px 40px;
+      flex: 1;
+    }
+
+    .page-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .page-heading h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      line-height: 1.25;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .page-heading p {
+      margin: 0;
+      max-width: 720px;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 13px;
+    }
+
+    .heading-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding-top: 4px;
+    }
+
+    .card {
+      border: 1px solid hsl(var(--color-border));
+      border-radius: var(--radius-lg);
+      background: hsl(var(--color-card));
+      color: hsl(var(--color-card-foreground));
+      box-shadow: var(--shadow-sm);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .status-card {
+      padding: 14px 16px;
+      min-width: 0;
+    }
+
+    .status-label {
+      display: block;
+      margin-bottom: 4px;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12px;
+    }
+
+    .status-value {
+      font-size: 14px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-value.mono {
+      font-size: 12px;
+      font-weight: 400;
+      color: hsl(var(--color-muted-foreground));
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section.card {
+      padding: 20px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .section-head h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12.5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .badge-muted {
+      background: hsl(var(--color-muted));
+      color: hsl(var(--color-muted-foreground));
+    }
+
+    .badge-success {
+      border-color: hsl(var(--success-text) / 0.3);
+      background: hsl(var(--success-text) / 0.1);
+      color: hsl(var(--success-text));
+    }
+
+    .badge-warning {
+      border-color: hsl(var(--warning-text) / 0.3);
+      background: hsl(var(--warning-text) / 0.1);
+      color: hsl(var(--warning-text));
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: hsl(var(--color-primary));
+      color: hsl(var(--color-primary-foreground));
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .btn-outline {
+      border-color: hsl(var(--color-input));
+      background: hsl(var(--color-background));
+      color: hsl(var(--color-foreground));
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      background: hsl(var(--color-accent) / 0.12);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: hsl(var(--color-muted-foreground));
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      background: hsl(var(--color-muted));
+      color: hsl(var(--color-foreground));
+    }
+
+    .btn-danger-outline {
+      border-color: hsl(var(--danger-text) / 0.4);
+      background: transparent;
+      color: hsl(var(--danger-text));
+    }
+
+    .btn-danger-outline:hover:not(:disabled) {
+      background: hsl(var(--danger-text) / 0.08);
+    }
+
+    .btn-icon {
+      width: 36px;
+      padding: 0;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
+
+    html.dark .theme-icon-sun,
+    html:not(.dark) .theme-icon-moon {
+      display: none;
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .mode-option {
+      position: relative;
+      display: flex;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid hsl(var(--color-border));
+      border-radius: var(--radius-lg);
+      background: hsl(var(--color-background));
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+
+    .mode-option:hover {
+      border-color: hsl(var(--color-primary) / 0.45);
+    }
+
+    .mode-option.selected {
+      border-color: hsl(var(--color-primary));
+      background: hsl(var(--color-primary) / 0.04);
+      box-shadow: 0 0 0 1px hsl(var(--color-primary) / 0.3);
+    }
+
+    .mode-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .mode-radio {
+      width: 16px;
+      height: 16px;
+      margin-top: 3px;
+      flex: none;
+      border: 2px solid hsl(var(--color-input));
+      border-radius: 50%;
+    }
+
+    .mode-option.selected .mode-radio {
+      border-color: hsl(var(--color-primary));
+      background: radial-gradient(circle, hsl(var(--color-primary)) 0 4px, transparent 4.5px);
+    }
+
+    .mode-option-body {
+      min-width: 0;
+    }
+
+    .mode-option-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .mode-option p {
+      margin: 0;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12.5px;
+    }
+
+    .notice {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px solid hsl(var(--warning-text) / 0.3);
+      border-radius: var(--radius-md);
+      background: hsl(var(--warning-text) / 0.08);
+      color: hsl(var(--warning-text));
+      font-size: 12.5px;
+    }
+
+    .notice.success {
+      border-color: hsl(var(--success-text) / 0.3);
+      background: hsl(var(--success-text) / 0.08);
+      color: hsl(var(--success-text));
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid hsl(var(--color-border));
+    }
+
+    .field-row label {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .input {
+      width: 120px;
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid hsl(var(--color-input));
+      border-radius: var(--radius-md);
+      background: hsl(var(--color-background));
+      color: inherit;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: hsl(var(--color-ring));
+      box-shadow: 0 0 0 2px hsl(var(--color-ring) / 0.2);
+    }
+
+    .input:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .field-hint {
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+
+    .feature-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .feature-card.enabled {
+      border-color: hsl(var(--color-accent) / 0.45);
+    }
+
+    .feature-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .feature-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .feature-desc {
+      flex: 1;
+      margin: 0;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12.5px;
+    }
+
+    .compare {
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      background: hsl(var(--color-muted));
+      font-size: 12px;
+    }
+
+    .compare-row {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 8px;
+    }
+
+    .compare-label {
+      color: hsl(var(--color-muted-foreground));
+      font-weight: 600;
+    }
+
+    .compare-row.native .compare-label {
+      color: hsl(var(--success-text));
+    }
+
+    .feature-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 12px;
+      border-top: 1px solid hsl(var(--color-border));
+    }
+
+    .feature-state {
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-flex;
+      width: 40px;
+      height: 22px;
+      flex: none;
+    }
+
+    .switch input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .switch .track {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: hsl(var(--color-input));
+      transition: background-color 0.15s ease;
+    }
+
+    .switch .track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: hsl(var(--color-background));
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.15s ease;
+    }
+
+    .switch input:checked + .track {
+      background: hsl(var(--color-primary));
+    }
+
+    .switch input:checked + .track::after {
+      transform: translateX(18px);
+    }
+
+    .switch input:focus-visible + .track {
+      box-shadow: 0 0 0 2px hsl(var(--color-ring) / 0.35);
+    }
+
+    .switch input:disabled {
+      cursor: not-allowed;
+    }
+
+    .switch input:disabled + .track {
+      opacity: 0.45;
+    }
+
+    .action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 16px 18px;
+    }
+
+    .action-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12.5px;
+    }
+
+    .action-info strong {
+      color: hsl(var(--color-foreground));
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .auth-wrap {
+      display: flex;
+      justify-content: center;
+      padding-top: 48px;
+    }
+
+    .auth-card {
+      width: min(440px, 100%);
+      padding: 28px;
+    }
+
+    .auth-card h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .auth-card > p {
+      margin: 0;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 13px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .auth-form label {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .auth-form .input {
+      width: 100%;
+    }
+
+    .auth-hint {
+      margin: 16px 0 0;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12px;
+    }
+
+    .app-footer {
+      border-top: 1px solid hsl(var(--color-border));
+      padding: 16px 24px;
+      color: hsl(var(--color-muted-foreground));
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 50;
+      max-width: 380px;
+      padding: 12px 14px;
+      border: 1px solid hsl(var(--color-border));
+      border-radius: var(--radius-md);
+      background: hsl(var(--color-card));
+      color: hsl(var(--color-card-foreground));
+      box-shadow: var(--shadow-lg);
+      font-size: 13px;
+    }
+
+    .toast.success {
+      border-color: hsl(var(--success-text) / 0.45);
+    }
+
+    .toast.error {
+      border-color: hsl(var(--danger-text) / 0.45);
+    }
+
+    @media (max-width: 640px) {
+      .header-inner,
+      .page {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .page-heading h1 {
+        font-size: 20px;
+      }
+
+      .action-bar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .action-buttons {
+        justify-content: flex-end;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark">M</span>
+        <span class="brand-text">
+          <strong>MaiBot</strong>
+          <span>开发者设置</span>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button id="theme-toggle" class="btn btn-ghost btn-icon" type="button" title="切换明暗主题" aria-label="切换明暗主题">
+          <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
+          </svg>
+          <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+        <a class="btn btn-outline" href="/">返回主面板</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section id="auth-view" class="auth-wrap" hidden>
+      <div class="card auth-card">
+        <h1>登录开发者设置</h1>
+        <p>此页面使用 WebUI 访问令牌鉴权，令牌与主面板登录相同。</p>
+        <form id="auth-form" class="auth-form">
+          <label for="auth-token">访问令牌</label>
+          <input id="auth-token" class="input" type="password" autocomplete="current-password" placeholder="输入 access_token">
+          <button id="auth-submit" class="btn btn-primary" type="submit">验证并继续</button>
+        </form>
+        <p class="auth-hint">令牌保存在 <code>data/webui.json</code> 的 <code>access_token</code> 字段。</p>
+      </div>
+    </section>
+
+    <div id="settings-view" hidden>
+      <div class="page-heading">
+        <div>
+          <h1>开发者设置</h1>
+          <p>Go 平台执行模式与优化引擎。配置写入 <code>config/runtime.toml</code>，与 Python 共用的 <code>bot_config.toml</code> 完全隔离。</p>
+        </div>
+        <div class="heading-badges">
+          <span id="heading-mode-badge" class="badge badge-muted">compatibility</span>
+          <span id="heading-dirty-badge" class="badge badge-warning" hidden>有未保存修改</span>
+        </div>
+      </div>
+
+      <div class="status-grid">
+        <div class="card status-card">
+          <span class="status-label">执行模式</span>
+          <div class="status-value" id="status-mode">—</div>
+        </div>
+        <div class="card status-card">
+          <span class="status-label">已开启引擎开关</span>
+          <div class="status-value" id="status-features">—</div>
+        </div>
+        <div class="card status-card">
+          <span class="status-label">本进程会话调度器</span>
+          <div class="status-value" id="status-scheduler" style="font-size: 12.5px; font-weight: 500;">—</div>
+        </div>
+        <div class="card status-card">
+          <span class="status-label">启动时间</span>
+          <div class="status-value mono" id="status-start">—</div>
+        </div>
+        <div class="card status-card">
+          <span class="status-label">配置文件</span>
+          <div class="status-value mono" id="status-config" title="">—</div>
+        </div>
+        <div class="card status-card">
+          <span class="status-label">数据库</span>
+          <div class="status-value mono" id="status-db" title="">—</div>
+        </div>
+      </div>
+
+      <section class="card section">
+        <div class="section-head">
+          <div>
+            <h2>执行模式</h2>
+            <p>兼容模式始终是行为验收基准；原生模式在后续阶段接入实际调度层。</p>
+          </div>
+          <span id="mode-state-badge" class="badge badge-muted">—</span>
+        </div>
+
+        <div class="mode-grid">
+          <label class="mode-option" data-mode="compatibility">
+            <input type="radio" name="execution-mode" value="compatibility">
+            <span class="mode-radio" aria-hidden="true"></span>
+            <span class="mode-option-body">
+              <span class="mode-option-title">兼容模式 <span class="badge badge-muted">默认</span></span>
+              <p>逐项对齐 Python 的事件排队与串行节奏，作为回归与一致性验收基准。</p>
+            </span>
+          </label>
+          <label class="mode-option" data-mode="native">
+            <input type="radio" name="execution-mode" value="native">
+            <span class="mode-radio" aria-hidden="true"></span>
+            <span class="mode-option-body">
+              <span class="mode-option-title">原生模式 <span id="native-badge" class="badge badge-warning">规划中</span></span>
+              <p>启用 Go 并发调度，允许跨会话并行；同一会话内仍保持 FIFO 顺序。</p>
+            </span>
+          </label>
+        </div>
+
+        <div id="native-notice" class="notice" hidden>当前版本的原生模式仅保存配置，尚未接入调度层，实际行为与兼容模式一致。</div>
+        <div id="env-mode-notice" class="notice" hidden></div>
+
+        <div class="field-row">
+          <label for="pool-size">工作池大小</label>
+          <input id="pool-size" class="input" type="number" min="0" max="1024" step="1" value="0">
+          <span class="field-hint">0 表示按 CPU 核心数自动取值，仅原生模式生效。</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>优化引擎</h2>
+            <p>所有引擎默认关闭。标记为“规划中”的开关尚未接入运行时，暂不能开启。</p>
+          </div>
+          <span id="feature-count" class="badge badge-muted">0 / 0</span>
+        </div>
+        <div id="feature-grid" class="feature-grid"></div>
+      </section>
+
+      <div class="card action-bar">
+        <div class="action-info">
+          <strong id="save-state">尚未修改</strong>
+          <span>保存后需要重启服务才会生效。</span>
+        </div>
+        <div class="action-buttons">
+          <button id="reset-btn" class="btn btn-outline" type="button">重置为默认</button>
+          <button id="restart-btn" class="btn btn-danger-outline" type="button">重启服务</button>
+          <button id="save-btn" class="btn btn-primary" type="button">保存配置</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    MaiBot Go 平台 · 配置存储在 <code>config/runtime.toml</code> · 与 Python 配置互不影响
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var state = null;
+      var dirty = false;
+      var authenticated = false;
+      var toastTimer = null;
+      var restartTimer = null;
+
+      var elements = {
+        authView: document.getElementById("auth-view"),
+        authForm: document.getElementById("auth-form"),
+        authToken: document.getElementById("auth-token"),
+        authSubmit: document.getElementById("auth-submit"),
+        settingsView: document.getElementById("settings-view"),
+        headingModeBadge: document.getElementById("heading-mode-badge"),
+        headingDirtyBadge: document.getElementById("heading-dirty-badge"),
+        statusMode: document.getElementById("status-mode"),
+        statusFeatures: document.getElementById("status-features"),
+        statusScheduler: document.getElementById("status-scheduler"),
+        statusStart: document.getElementById("status-start"),
+        statusConfig: document.getElementById("status-config"),
+        statusDb: document.getElementById("status-db"),
+        modeStateBadge: document.getElementById("mode-state-badge"),
+        nativeBadge: document.getElementById("native-badge"),
+        nativeNotice: document.getElementById("native-notice"),
+        envModeNotice: document.getElementById("env-mode-notice"),
+        poolSize: document.getElementById("pool-size"),
+        featureCount: document.getElementById("feature-count"),
+        featureGrid: document.getElementById("feature-grid"),
+        saveState: document.getElementById("save-state"),
+        saveBtn: document.getElementById("save-btn"),
+        resetBtn: document.getElementById("reset-btn"),
+        restartBtn: document.getElementById("restart-btn"),
+        toast: document.getElementById("toast")
+      };
+
+      function currentTheme() {
+        try {
+          return localStorage.getItem("maibot-theme-mode") || "system";
+        } catch (error) {
+          return "system";
+        }
+      }
+
+      function applyTheme(mode) {
+        var dark = mode === "dark" ||
+          (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      }
+
+      function escapeHtml(value) {
+        if (value === null || value === undefined) {
+          return "";
+        }
+        return String(value).replace(/[&<>"']/g, function (character) {
+          return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+          }[character];
+        });
+      }
+
+      function request(path, options) {
+        var init = Object.assign({ credentials: "same-origin" }, options || {});
+        return fetch(path, init).then(function (response) {
+          return response.text().then(function (text) {
+            var data = null;
+            if (text) {
+              try {
+                data = JSON.parse(text);
+              } catch (error) {
+                data = null;
+              }
+            }
+            if (response.status === 401) {
+              var unauthorized = new Error("需要登录");
+              unauthorized.unauthorized = true;
+              throw unauthorized;
+            }
+            if (!response.ok || (data && data.success === false)) {
+              var message = (data && (data.detail || data.message)) || ("请求失败（HTTP " + response.status + "）");
+              var failure = new Error(message);
+              failure.data = data;
+              failure.status = response.status;
+              throw failure;
+            }
+            return data;
+          });
+        });
+      }
+
+      function showToast(message, type) {
+        if (toastTimer) {
+          window.clearTimeout(toastTimer);
+        }
+        elements.toast.textContent = message;
+        elements.toast.className = "toast" + (type ? " " + type : "");
+        elements.toast.hidden = false;
+        toastTimer = window.setTimeout(function () {
+          elements.toast.hidden = true;
+        }, 4000);
+      }
+
+      function showAuth() {
+        authenticated = false;
+        elements.settingsView.hidden = true;
+        elements.authView.hidden = false;
+        elements.authToken.focus();
+      }
+
+      function showSettings() {
+        authenticated = true;
+        elements.authView.hidden = true;
+        elements.settingsView.hidden = false;
+      }
+
+      function setBusy(busy) {
+        elements.saveBtn.disabled = busy;
+        elements.resetBtn.disabled = busy;
+        elements.restartBtn.disabled = busy;
+      }
+
+      function markDirty() {
+        dirty = true;
+        elements.headingDirtyBadge.hidden = false;
+        elements.saveState.textContent = "有未保存的修改";
+      }
+
+      function clearDirty() {
+        dirty = false;
+        elements.headingDirtyBadge.hidden = true;
+        elements.saveState.textContent = "所有更改已保存";
+      }
+
+      function modeLabel(mode) {
+        return mode === "native" ? "native（原生）" : "compatibility（兼容）";
+      }
+
+      function render() {
+        if (!state) {
+          return;
+        }
+
+        var native = state.execution_mode === "native";
+        var modeBadgeClass = native ? "badge badge-warning" : "badge badge-muted";
+        elements.headingModeBadge.className = modeBadgeClass;
+        elements.headingModeBadge.textContent = modeLabel(state.execution_mode);
+        elements.statusMode.textContent = modeLabel(state.execution_mode);
+
+        var enabled = 0;
+        var implemented = 0;
+        (state.features || []).forEach(function (feature) {
+          if (feature.enabled) {
+            enabled += 1;
+          }
+          if (feature.implemented) {
+            implemented += 1;
+          }
+        });
+        elements.statusFeatures.textContent = enabled + " / " + (state.features || []).length + " 已开启";
+        elements.featureCount.textContent = enabled + " / " + (state.features || []).length;
+        elements.statusScheduler.textContent = schedulerSummary();
+        elements.statusStart.textContent = state.start_time || "—";
+        setPath(elements.statusConfig, state.runtime_toml_path || "—");
+        setPath(elements.statusDb, state.sqlite_path || "—");
+
+        elements.modeStateBadge.className = modeBadgeClass;
+        elements.modeStateBadge.textContent = native ? "原生模式" : "兼容模式";
+        var activeNative = nativeModeActive();
+        elements.nativeBadge.className = "badge " + (activeNative ? "badge-success" : (state.native_mode_implemented ? "badge-muted" : "badge-warning"));
+        elements.nativeBadge.textContent = activeNative
+          ? "已启用"
+          : (state.native_mode_implemented ? (native ? "未启用" : "已接入") : "规划中");
+        elements.nativeNotice.className = "notice";
+        if (!state.native_mode_implemented) {
+          elements.nativeNotice.hidden = false;
+          elements.nativeNotice.textContent = "当前版本的原生模式仅保存配置，尚未接入调度层，实际行为与兼容模式一致。";
+        } else if (native && !activeNative) {
+          elements.nativeNotice.hidden = false;
+          elements.nativeNotice.textContent = "原生模式已选中，但还没有开启任何已接入的原生引擎；目前需要开启「会话并发调度」才会生效。";
+        } else if (native && activeNative) {
+          elements.nativeNotice.hidden = false;
+          elements.nativeNotice.className = "notice success";
+          elements.nativeNotice.textContent = "原生模式与会话并发调度已启用，重启服务后生效。";
+        } else {
+          elements.nativeNotice.hidden = true;
+          elements.nativeNotice.textContent = "";
+        }
+        if (state.env_execution_mode) {
+          elements.envModeNotice.hidden = false;
+          elements.envModeNotice.textContent = "环境变量 MAIBOT_EXECUTION_MODE=" + state.env_execution_mode +
+            " 优先于 runtime.toml；在移除该环境变量前，页面对模式的修改不会生效。";
+        } else {
+          elements.envModeNotice.hidden = true;
+          elements.envModeNotice.textContent = "";
+        }
+
+        document.querySelectorAll(".mode-option").forEach(function (option) {
+          option.classList.toggle("selected", option.getAttribute("data-mode") === state.execution_mode);
+        });
+        document.querySelectorAll('input[name="execution-mode"]').forEach(function (input) {
+          input.checked = input.value === state.execution_mode;
+        });
+        elements.poolSize.value = String(state.worker_pool_size || 0);
+        elements.poolSize.disabled = !native;
+
+        elements.featureGrid.innerHTML = (state.features || []).map(renderFeatureCard).join("");
+        elements.featureGrid.querySelectorAll("input[data-feature-key]").forEach(function (input) {
+          input.addEventListener("change", function () {
+            updateFeature(input.getAttribute("data-feature-key"), input.checked);
+          });
+        });
+
+        if (!dirty) {
+          elements.saveState.textContent = "尚未修改";
+        }
+        elements.saveBtn.disabled = !authenticated;
+        elements.resetBtn.disabled = !authenticated;
+        elements.restartBtn.disabled = !authenticated;
+      }
+
+      function setPath(element, value) {
+        element.textContent = value;
+        element.title = value;
+      }
+
+      function schedulerSummary() {
+        var stats = state && state.session_scheduler;
+        if (!stats) {
+          return "未启用";
+        }
+        var summary = "工作池 " + (stats.workers || 0) +
+          " · 运行 " + (stats.running_tasks || 0) +
+          " · 排队 " + (stats.queued_tasks || 0);
+        if (stats.rejected) {
+          summary += " · 拒绝 " + stats.rejected;
+        }
+        return summary;
+      }
+
+      function nativeModeActive() {
+        if (!state || state.execution_mode !== "native") {
+          return false;
+        }
+        for (var index = 0; index < state.features.length; index += 1) {
+          if (state.features[index].implemented && state.features[index].enabled) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function renderFeatureCard(feature) {
+        var implemented = !!feature.implemented;
+        var enabled = !!feature.enabled;
+        var phase = feature.phase ? " · 阶段 " + feature.phase : "";
+        var statusBadge = implemented
+          ? '<span class="badge badge-success">已接入</span>'
+          : '<span class="badge badge-warning">规划中' + escapeHtml(phase) + "</span>";
+        var stateText;
+        if (!implemented) {
+          stateText = enabled ? "配置已开启，但运行时尚未接入" : "尚未接入运行时，暂不可启用";
+        } else if (enabled && feature.key.indexOf("native_") === 0 && state.execution_mode !== "native") {
+          stateText = "已配置，兼容模式下不生效";
+        } else {
+          stateText = enabled ? "已启用" : "已关闭";
+        }
+        var switchDisabled = implemented ? "" : " disabled";
+        return '' +
+          '<article class="card feature-card' + (implemented && enabled ? " enabled" : "") + '">' +
+            '<div class="feature-head">' +
+              '<h3 class="feature-title">' + escapeHtml(feature.name) + "</h3>" +
+              '<div class="badges">' +
+                '<span class="badge badge-muted">' + escapeHtml(feature.category || "其他") + "</span>" +
+                statusBadge +
+              "</div>" +
+            "</div>" +
+            '<p class="feature-desc">' + escapeHtml(feature.description) + "</p>" +
+            '<div class="compare">' +
+              '<div class="compare-row">' +
+                '<span class="compare-label">兼容</span>' +
+                "<span>" + escapeHtml(feature.python_state) + "</span>" +
+              "</div>" +
+              '<div class="compare-row native">' +
+                '<span class="compare-label">原生</span>' +
+                "<span>" + escapeHtml(feature.go_state) + "</span>" +
+              "</div>" +
+            "</div>" +
+            '<div class="feature-foot">' +
+              '<span class="feature-state">' + escapeHtml(stateText) + "</span>" +
+              '<label class="switch" title="' + escapeHtml(implemented ? "切换开关" : "尚未接入运行时") + '">' +
+                '<input type="checkbox" data-feature-key="' + escapeHtml(feature.key) + '"' +
+                  (enabled ? " checked" : "") + switchDisabled + ">" +
+                '<span class="track" aria-hidden="true"></span>' +
+              "</label>" +
+            "</div>" +
+          "</article>";
+      }
+
+      function updateFeature(key, checked) {
+        if (!state || !state.features) {
+          return;
+        }
+        for (var index = 0; index < state.features.length; index += 1) {
+          if (state.features[index].key === key) {
+            state.features[index].enabled = checked;
+            break;
+          }
+        }
+        markDirty();
+        render();
+      }
+
+      function setMode(mode) {
+        if (!state) {
+          return;
+        }
+        state.execution_mode = mode;
+        if (mode === "native" && !nativeModeActive()) {
+          for (var index = 0; index < state.features.length; index += 1) {
+            var feature = state.features[index];
+            if (feature.key === "native_session_scheduler" && feature.implemented) {
+              feature.enabled = true;
+              showToast("已同时开启会话并发调度，保存并重启后生效", "info");
+              break;
+            }
+          }
+        }
+        markDirty();
+        render();
+      }
+
+      function updatePoolSize(value) {
+        if (!state) {
+          return;
+        }
+        var parsed = Number(value);
+        state.worker_pool_size = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+        markDirty();
+      }
+
+      function applyServerState(data) {
+        if (!data) {
+          return;
+        }
+        if (data.execution_mode) {
+          state.execution_mode = data.execution_mode;
+        }
+        if (typeof data.worker_pool_size === "number") {
+          state.worker_pool_size = data.worker_pool_size;
+        }
+        if (typeof data.native_mode_implemented === "boolean") {
+          state.native_mode_implemented = data.native_mode_implemented;
+        }
+        if (Array.isArray(data.features)) {
+          state.features = data.features;
+        }
+      }
+
+      function loadSettings() {
+        return request("/api/webui/go/settings").then(function (data) {
+          state = data;
+          state.features = state.features || [];
+          clearDirty();
+          showSettings();
+          render();
+        }).catch(function (error) {
+          if (error.unauthorized) {
+            showAuth();
+            return;
+          }
+          showToast(error.message, "error");
+        });
+      }
+
+      function checkAuth() {
+        request("/api/webui/auth/check").then(function (data) {
+          if (data && data.authenticated) {
+            loadSettings();
+          } else {
+            showAuth();
+          }
+        }).catch(function () {
+          showAuth();
+        });
+      }
+
+      function login(event) {
+        event.preventDefault();
+        var token = elements.authToken.value.trim();
+        if (!token) {
+          showToast("请输入访问令牌", "error");
+          return;
+        }
+        elements.authSubmit.disabled = true;
+        request("/api/webui/auth/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token })
+        }).then(function (data) {
+          if (!data || !data.valid) {
+            showToast((data && data.message) || "令牌无效", "error");
+            return;
+          }
+          elements.authToken.value = "";
+          showToast("验证成功", "success");
+          loadSettings();
+        }).catch(function (error) {
+          showToast(error.message, "error");
+        }).finally(function () {
+          elements.authSubmit.disabled = false;
+        });
+      }
+
+      function saveSettings() {
+        if (!state) {
+          return;
+        }
+        var features = {};
+        state.features.forEach(function (feature) {
+          features[feature.key] = !!feature.enabled;
+        });
+        var payload = {
+          features: features,
+          execution_mode: state.execution_mode,
+          worker_pool_size: Number(elements.poolSize.value || 0)
+        };
+        setBusy(true);
+        request("/api/webui/go/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }).then(function (data) {
+          applyServerState(data);
+          clearDirty();
+          render();
+          showToast(data.message || "设置已保存，重启后生效", "success");
+        }).catch(function (error) {
+          if (error.unauthorized) {
+            showAuth();
+          }
+          showToast(error.message, "error");
+        }).finally(function () {
+          setBusy(false);
+          render();
+        });
+      }
+
+      function resetSettings() {
+        if (!window.confirm("将所有设置重置为默认值（兼容模式，全部引擎关闭）？")) {
+          return;
+        }
+        setBusy(true);
+        request("/api/webui/go/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }).then(function (data) {
+          applyServerState(data);
+          clearDirty();
+          render();
+          showToast(data.message || "已重置为默认设置", "success");
+        }).catch(function (error) {
+          if (error.unauthorized) {
+            showAuth();
+          }
+          showToast(error.message, "error");
+        }).finally(function () {
+          setBusy(false);
+          render();
+        });
+      }
+
+      function restartService() {
+        if (!window.confirm("重启 MaiBot 服务？未保存的修改不会生效。")) {
+          return;
+        }
+        setBusy(true);
+        request("/api/webui/go/restart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }).then(function (data) {
+          showToast(data.message || "正在重启服务", "success");
+          waitForRestart();
+        }).catch(function (error) {
+          if (error.unauthorized) {
+            showAuth();
+          }
+          showToast(error.message, "error");
+          setBusy(false);
+        });
+      }
+
+      function waitForRestart() {
+        var attempts = 0;
+        if (restartTimer) {
+          window.clearInterval(restartTimer);
+        }
+        restartTimer = window.setInterval(function () {
+          attempts += 1;
+          fetch("/health", { cache: "no-store" }).then(function (response) {
+            if (response.ok) {
+              window.clearInterval(restartTimer);
+              restartTimer = null;
+              window.location.reload();
+            }
+          }).catch(function () {
+            // 服务重启期间连接失败是预期行为。
+          });
+          if (attempts >= 30) {
+            window.clearInterval(restartTimer);
+            restartTimer = null;
+            setBusy(false);
+            showToast("等待重启超时，请手动刷新页面", "error");
+          }
+        }, 2000);
+      }
+
+      elements.authForm.addEventListener("submit", login);
+      elements.saveBtn.addEventListener("click", saveSettings);
+      elements.resetBtn.addEventListener("click", resetSettings);
+      elements.restartBtn.addEventListener("click", restartService);
+      elements.poolSize.addEventListener("input", function () {
+        updatePoolSize(elements.poolSize.value);
+      });
+      document.querySelectorAll('input[name="execution-mode"]').forEach(function (input) {
+        input.addEventListener("change", function () {
+          setMode(input.value);
+        });
+      });
+      document.getElementById("theme-toggle").addEventListener("click", function () {
+        var next = document.documentElement.classList.contains("dark") ? "light" : "dark";
+        try {
+          localStorage.setItem("maibot-theme-mode", next);
+        } catch (error) {
+          // localStorage 不可用时只切换当前页面。
+        }
+        applyTheme(next);
+      });
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
+        if (currentTheme() === "system") {
+          applyTheme("system");
+        }
+      });
+      window.addEventListener("storage", function (event) {
+        if (event.key === "maibot-theme-mode") {
+          applyTheme(currentTheme());
+        }
+      });
+      window.addEventListener("beforeunload", function (event) {
+        if (dirty) {
+          event.preventDefault();
+          event.returnValue = "";
+        }
+      });
+
+      checkAuth();
+    })();
+  </script>
+</body>
+</html>
