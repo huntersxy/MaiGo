@@ -139,14 +139,16 @@ func (d Deps) handleWSUnified(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	connectionID := time.Now().Format("20060102150405.000")
 	session := &unifiedWSSession{
-		deps:          d,
-		conn:          conn,
-		ctx:           ctx,
-		sessionToken:  sessionToken,
-		subs:          make(map[string]struct{}),
-		writeMu:       sync.Mutex{},
-		plannerDelta:  monitor.NewPlannerDeltaEncoder(),
+		deps:         d,
+		conn:         conn,
+		ctx:          ctx,
+		sessionToken: sessionToken,
+		subs:         make(map[string]struct{}),
+		writeMu:      sync.Mutex{},
+		chatIngress:  make(chan func(), 256),
+		plannerDelta: monitor.NewPlannerDeltaEncoder(),
 	}
+	go session.chatIngressLoop()
 
 	defer session.stopAllStreams()
 
@@ -213,6 +215,10 @@ type unifiedWSSession struct {
 	pluginProgressCh   <-chan pluginmarket.ProgressUpdate
 	pluginProgressOff  func()
 	chatSessions       map[string]*chatSessionState
+	chatIngress        chan func()
+	typingMu           sync.Mutex
+	typingCounts       map[string]int
+	typingTimers       map[string]*time.Timer
 	// plannerDelta 连接级 Planner 快照增量编码，对齐 Python 每条连接独立基准
 	plannerDelta *monitor.PlannerDeltaEncoder
 }

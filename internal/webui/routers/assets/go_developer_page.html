@@ -835,6 +835,8 @@
         </div>
       </div>
 
+      <div id="load-error" class="notice" hidden></div>
+
       <div class="status-grid">
         <div class="card status-card">
           <span class="status-label">执行模式</span>
@@ -866,7 +868,7 @@
         <div class="section-head">
           <div>
             <h2>执行模式</h2>
-            <p>兼容模式始终是行为验收基准；原生模式在后续阶段接入实际调度层。</p>
+            <p>兼容模式始终是行为验收基准；原生模式由下方已接入的引擎开关共同决定。</p>
           </div>
           <span id="mode-state-badge" class="badge badge-muted">—</span>
         </div>
@@ -890,7 +892,7 @@
           </label>
         </div>
 
-        <div id="native-notice" class="notice" hidden>当前版本的原生模式仅保存配置，尚未接入调度层，实际行为与兼容模式一致。</div>
+        <div id="native-notice" class="notice" hidden></div>
         <div id="env-mode-notice" class="notice" hidden></div>
 
         <div class="field-row">
@@ -938,6 +940,7 @@
       var state = null;
       var dirty = false;
       var authenticated = false;
+      var busy = false;
       var toastTimer = null;
       var restartTimer = null;
 
@@ -949,6 +952,7 @@
         settingsView: document.getElementById("settings-view"),
         headingModeBadge: document.getElementById("heading-mode-badge"),
         headingDirtyBadge: document.getElementById("heading-dirty-badge"),
+        loadError: document.getElementById("load-error"),
         statusMode: document.getElementById("status-mode"),
         statusFeatures: document.getElementById("status-features"),
         statusScheduler: document.getElementById("status-scheduler"),
@@ -1052,10 +1056,38 @@
         elements.settingsView.hidden = false;
       }
 
-      function setBusy(busy) {
-        elements.saveBtn.disabled = busy;
-        elements.resetBtn.disabled = busy;
-        elements.restartBtn.disabled = busy;
+      // showSettingsError 在配置损坏时仍展示设置页，让“重置为默认”恢复入口可用。
+      function showSettingsError(message) {
+        if (!state) {
+          state = {
+            execution_mode: "compatibility",
+            worker_pool_size: 0,
+            native_mode_implemented: true,
+            native_mode_active: false,
+            env_execution_mode: "",
+            features: [],
+            requires_restart: true,
+            start_time: "",
+            sqlite_path: "",
+            runtime_toml_path: "config/runtime.toml"
+          };
+        }
+        showSettings();
+        render();
+        elements.loadError.hidden = false;
+        elements.loadError.textContent = "读取 runtime.toml 失败：" + (message || "未知错误") + "。可点击“重置为默认”恢复。";
+        showToast(message || "读取配置失败，可尝试重置为默认设置", "error");
+      }
+
+      function setBusy(value) {
+        busy = value;
+        if (state) {
+          render();
+          return;
+        }
+        elements.saveBtn.disabled = busy || !authenticated;
+        elements.resetBtn.disabled = busy || !authenticated;
+        elements.restartBtn.disabled = busy || !authenticated;
       }
 
       function markDirty() {
@@ -1138,9 +1170,10 @@
         });
         document.querySelectorAll('input[name="execution-mode"]').forEach(function (input) {
           input.checked = input.value === state.execution_mode;
+          input.disabled = busy;
         });
         elements.poolSize.value = String(state.worker_pool_size || 0);
-        elements.poolSize.disabled = !native;
+        elements.poolSize.disabled = !native || busy;
 
         elements.featureGrid.innerHTML = (state.features || []).map(renderFeatureCard).join("");
         elements.featureGrid.querySelectorAll("input[data-feature-key]").forEach(function (input) {
@@ -1152,9 +1185,9 @@
         if (!dirty) {
           elements.saveState.textContent = "尚未修改";
         }
-        elements.saveBtn.disabled = !authenticated;
-        elements.resetBtn.disabled = !authenticated;
-        elements.restartBtn.disabled = !authenticated;
+        elements.saveBtn.disabled = busy || !authenticated;
+        elements.resetBtn.disabled = busy || !authenticated;
+        elements.restartBtn.disabled = busy || !authenticated;
       }
 
       function setPath(element, value) {
@@ -1203,7 +1236,9 @@
         } else {
           stateText = enabled ? "已启用" : "已关闭";
         }
-        var switchDisabled = implemented ? "" : " disabled";
+        // 已接入功能可自由切换；未接入但已开启的开关允许关闭；其余未接入项禁用。
+        var canToggle = implemented || enabled;
+        var switchDisabled = (!canToggle || busy) ? " disabled" : "";
         return '' +
           '<article class="card feature-card' + (implemented && enabled ? " enabled" : "") + '">' +
             '<div class="feature-head">' +
@@ -1236,7 +1271,7 @@
       }
 
       function updateFeature(key, checked) {
-        if (!state || !state.features) {
+        if (!state || !state.features || busy) {
           return;
         }
         for (var index = 0; index < state.features.length; index += 1) {
@@ -1250,7 +1285,7 @@
       }
 
       function setMode(mode) {
-        if (!state) {
+        if (!state || busy) {
           return;
         }
         state.execution_mode = mode;
@@ -1269,7 +1304,7 @@
       }
 
       function updatePoolSize(value) {
-        if (!state) {
+        if (!state || busy) {
           return;
         }
         var parsed = Number(value);
@@ -1299,6 +1334,8 @@
         return request("/api/webui/go/settings").then(function (data) {
           state = data;
           state.features = state.features || [];
+          elements.loadError.hidden = true;
+          elements.loadError.textContent = "";
           clearDirty();
           showSettings();
           render();
@@ -1307,7 +1344,7 @@
             showAuth();
             return;
           }
-          showToast(error.message, "error");
+          showSettingsError(error.message);
         });
       }
 
@@ -1351,7 +1388,7 @@
       }
 
       function saveSettings() {
-        if (!state) {
+        if (!state || busy) {
           return;
         }
         var features = {};
@@ -1385,6 +1422,9 @@
       }
 
       function resetSettings() {
+        if (busy) {
+          return;
+        }
         if (!window.confirm("将所有设置重置为默认值（兼容模式，全部引擎关闭）？")) {
           return;
         }
@@ -1396,6 +1436,8 @@
         }).then(function (data) {
           applyServerState(data);
           clearDirty();
+          elements.loadError.hidden = true;
+          elements.loadError.textContent = "";
           render();
           showToast(data.message || "已重置为默认设置", "success");
         }).catch(function (error) {
@@ -1410,6 +1452,9 @@
       }
 
       function restartService() {
+        if (busy) {
+          return;
+        }
         if (!window.confirm("重启 MaiBot 服务？未保存的修改不会生效。")) {
           return;
         }

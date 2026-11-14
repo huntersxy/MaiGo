@@ -1151,9 +1151,14 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			zap.L().Error("执行模式配置无效，拒绝启动", zap.Error(executionErr))
 			return 1
 		}
-		// 配置文件损坏时回退兼容模式，让管理页仍能启动并修复。
-		zap.L().Warn("读取执行配置失败，回退兼容模式", zap.Error(executionErr))
-		executionProfile = execution.DefaultProfile()
+		// 文件损坏时仍要尊重 MAIBOT_EXECUTION_MODE，否则运维显式指定的模式会被静默丢弃。
+		zap.L().Warn("读取执行配置失败，按默认配置与环境变量继续启动", zap.Error(executionErr))
+		fallbackProfile, envErr := execution.ApplyEnvMode(execution.DefaultProfile())
+		if envErr != nil {
+			zap.L().Error("执行模式环境变量无效，拒绝启动", zap.Error(envErr))
+			return 1
+		}
+		executionProfile = fallbackProfile
 	}
 	featureToggles, featureErr := execution.LoadFeatureToggles(executionDir)
 	if featureErr != nil {
@@ -1262,24 +1267,28 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		})
 		wireACPAgentReload(instHolder, acpService, maiAgent)
 	}
-	chatRelay.SetDeliver(func(msg *onebot.ConversationMessage) {
+	chatRelay.SetDeliver(func(msg *onebot.ConversationMessage) error {
 		if msg == nil {
-			return
+			return nil
 		}
 		submit := chatPipeline.SessionTaskSubmitter()
 		if submit == nil {
 			maiAgent.HandleInternalChatMessage(msg)
-			return
+			return nil
 		}
 		channelKey := internalchat.ConversationChannelKey(msg)
-		if err := submit(context.Background(), channelKey, func(context.Context) error {
+		submitCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := submit(submitCtx, channelKey, func(context.Context) error {
 			maiAgent.HandleInternalChatMessage(msg)
 			return nil
 		}); err != nil {
 			zap.L().Warn("插件聊天消息被原生会话调度拒绝",
 				zap.String("channel", channelKey),
 				zap.Error(err))
+			return err
 		}
+		return nil
 	})
 	if botName := maiAgent.BotName(); botName != "" {
 		chatHub.SetBotIdentity(botName)

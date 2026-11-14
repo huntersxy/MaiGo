@@ -20,7 +20,7 @@ type Relay struct {
 	instanceDir string
 
 	mu      sync.RWMutex
-	deliver func(*onebot.ConversationMessage)
+	deliver func(*onebot.ConversationMessage) error
 }
 
 // NewRelay 创建插件中继，deliver 由 Agent 在启动后注入
@@ -28,8 +28,8 @@ func NewRelay(hub *Hub, instanceDir string) *Relay {
 	return &Relay{hub: hub, instanceDir: instanceDir}
 }
 
-// SetDeliver 注入 Agent 入站投递函数
-func (r *Relay) SetDeliver(deliver func(*onebot.ConversationMessage)) {
+// SetDeliver 注入 Agent 入站投递函数；投递失败会回传给插件调用方。
+func (r *Relay) SetDeliver(deliver func(*onebot.ConversationMessage) error) {
 	if r == nil {
 		return
 	}
@@ -105,7 +105,9 @@ func (r *Relay) RelayPluginChatMessage(_ context.Context, pluginID, content stri
 		chatMessage.Images = append(chatMessage.Images, image)
 		chatMessage.MessageParts = append(chatMessage.MessageParts, onebot.MessagePart{Kind: "image", Index: index})
 	}
-	deliver(chatMessage)
+	if err := deliver(chatMessage); err != nil {
+		return "", fmt.Errorf("投递聊天消息失败: %w", err)
+	}
 	payloadID, _ := payload["message_id"].(string)
 	if payloadID == "" {
 		payloadID = strconv.FormatInt(messageID, 10)

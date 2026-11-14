@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // ErrClosed 调度器已停止接收新任务。
@@ -30,6 +31,9 @@ const MaxWorkers = 4096
 
 // DefaultQueueSize 是单个会话默认的待处理任务上限。
 const DefaultQueueSize = 256
+
+// shutdownGrace 是超时关闭时等待工作协程响应取消的宽限时间。
+const shutdownGrace = time.Second
 
 // Task 是调度器执行的任务；runCtx 由调度器持有，Shutdown 超时时会取消。
 type Task func(runCtx context.Context) error
@@ -81,9 +85,11 @@ type Scheduler struct {
 	sessions map[string]*sessionQueue
 	ready    []string
 	closing  bool
+	timedOut bool
 	queued   int
 	running  int
 	drained  chan struct{}
+	done     chan struct{}
 
 	drainedOnce sync.Once
 	wg          sync.WaitGroup
@@ -125,6 +131,7 @@ func New(parent context.Context, opts Options) *Scheduler {
 		notify:    make(chan struct{}, 1),
 		sessions:  make(map[string]*sessionQueue),
 		drained:   make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 
 	s.wg.Add(1)
@@ -133,6 +140,21 @@ func New(parent context.Context, opts Options) *Scheduler {
 		s.wg.Add(1)
 		go s.workerLoop()
 	}
+	go func() {
+		s.wg.Wait()
+		close(s.done)
+	}()
+	// parent 取消时也要停止接收并丢弃未开始任务，避免调用方继续把任务堆在无人消费的邮箱里。
+	go func() {
+		<-s.ctx.Done()
+		s.mu.Lock()
+		s.closing = true
+		s.timedOut = true
+		s.signalLocked()
+		s.dropPendingLocked()
+		s.drainedOnce.Do(func() { close(s.drained) })
+		s.mu.Unlock()
+	}()
 	return s
 }
 
@@ -212,7 +234,10 @@ func (s *Scheduler) Submit(ctx context.Context, sessionKey string, task Task) er
 	return nil
 }
 
-// Shutdown 停止接收新任务，等待已提交任务排空；ctx 到期时取消任务并返回错误。
+// Shutdown 停止接收新任务，等待已提交任务排空。
+//
+// ctx 到期时取消任务、丢弃尚未开始的排队任务，并短暂等待工作协程退出；
+// 之后再次调用 Shutdown 会立即返回，避免重复关闭时再等满一个超时预算。
 func (s *Scheduler) Shutdown(ctx context.Context) error {
 	if s == nil {
 		return nil
@@ -222,10 +247,15 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
+	if s.timedOut {
+		s.mu.Unlock()
+		return nil
+	}
 	s.closing = true
 	s.signalLocked()
 	s.maybeDrainedLocked()
 	drained := s.drained
+	done := s.done
 	s.mu.Unlock()
 
 	select {
@@ -234,8 +264,27 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 		s.wg.Wait()
 		return nil
 	case <-ctx.Done():
+		s.mu.Lock()
+		s.timedOut = true
+		s.dropPendingLocked()
+		s.drainedOnce.Do(func() { close(s.drained) })
+		s.mu.Unlock()
 		s.cancel()
+		select {
+		case <-done:
+		case <-time.After(shutdownGrace):
+		}
 		return ctx.Err()
+	}
+}
+
+// dropPendingLocked 丢弃尚未开始的任务；正在运行的任务由取消 context 结束。
+func (s *Scheduler) dropPendingLocked() {
+	s.ready = nil
+	s.queued = 0
+	for _, queue := range s.sessions {
+		queue.pending = nil
+		queue.scheduled = false
 	}
 }
 
@@ -245,15 +294,9 @@ func (s *Scheduler) Stats() Stats {
 		return Stats{}
 	}
 	s.mu.Lock()
-	active := 0
-	for _, queue := range s.sessions {
-		if queue.scheduled || len(queue.pending) > 0 {
-			active++
-		}
-	}
 	stats := Stats{
 		Workers:        s.workers,
-		ActiveSessions: active,
+		ActiveSessions: len(s.sessions),
 		QueuedTasks:    s.queued,
 		RunningTasks:   s.running,
 		ReadySessions:  len(s.ready),

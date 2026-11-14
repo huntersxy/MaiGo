@@ -1,16 +1,5 @@
 package execution
 
-import (
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
-
-	webuiutils "maibot-go/internal/webui/utils"
-
-	"github.com/pelletier/go-toml/v2"
-)
-
 // FeatureToggles Go 平台特有功能开关；所有字段默认 false（对齐 Python 行为）
 type FeatureToggles struct {
 	NativeSessionScheduler bool `json:"native_session_scheduler" toml:"native_session_scheduler"`
@@ -201,40 +190,23 @@ func (t *FeatureToggles) MergeFromMap(m map[string]bool) {
 	}
 }
 
+// Enabled 返回指定功能键当前是否开启。
+func (t FeatureToggles) Enabled(key string) bool {
+	return t.toMap()[key]
+}
+
 // LoadFeatureToggles 从 config/runtime.toml 的 [features] 读取功能开关。
 // 文件不存在时返回默认值；文件损坏时返回错误，避免页面把坏配置静默当成全关。
 func LoadFeatureToggles(instanceDir string) (FeatureToggles, error) {
-	toggles := DefaultFeatureToggles()
-	path := RuntimeTomlPath(instanceDir)
-
-	raw, err := os.ReadFile(filepath.Clean(path))
-	if errors.Is(err, os.ErrNotExist) {
-		return toggles, nil
-	}
-	if err != nil {
-		return toggles, fmt.Errorf("%w: 读取 %s 失败: %v", ErrConfigRead, path, err)
-	}
-
-	var doc struct {
-		Features FeatureToggles `toml:"features"`
-	}
-	if err := toml.Unmarshal(raw, &doc); err != nil {
-		return toggles, fmt.Errorf("%w: 解析 %s 失败: %v", ErrConfigParse, path, err)
-	}
-	return doc.Features, nil
+	_, toggles, err := LoadRuntimeFile(instanceDir)
+	return toggles, err
 }
 
-// SaveFeatureToggles 将功能开关写入 config/runtime.toml 的 [features] 节，保留其他节
+// SaveFeatureToggles 将功能开关写入 config/runtime.toml 的 [features] 节，保留其他内容。
 func SaveFeatureToggles(instanceDir string, toggles FeatureToggles) error {
-	runtimeSaveMu.Lock()
-	defer runtimeSaveMu.Unlock()
-
-	path := RuntimeTomlPath(instanceDir)
-	doc, err := readRuntimeDocument(path)
-	if err != nil {
-		return err
-	}
-
-	doc["features"] = toggles.toMap()
-	return webuiutils.WriteTOMLDocument(path, doc)
+	_, _, err := UpdateRuntime(instanceDir, func(_ *Profile, current *FeatureToggles) error {
+		*current = toggles
+		return nil
+	})
+	return err
 }

@@ -209,8 +209,42 @@ func (s *unifiedWSSession) sendChatMessage(requestID any, message map[string]any
 		return err
 	}
 	display := buildChatProcessedPlainText(content, attachments)
-	go s.processChatMessage(state, content, display, attachments)
+	// 通过连接级 ingress 串行处理，保证提交顺序与 WebSocket 读取顺序一致且不阻塞读循环。
+	s.enqueueChatMessage(func() {
+		s.processChatMessage(state, content, display, attachments)
+	})
 	return nil
+}
+
+// chatIngressLoop 按连接顺序执行聊天任务；连接关闭后丢弃未处理任务。
+func (s *unifiedWSSession) chatIngressLoop() {
+	if s == nil {
+		return
+	}
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case task := <-s.chatIngress:
+			if task != nil {
+				task()
+			}
+		}
+	}
+}
+
+func (s *unifiedWSSession) enqueueChatMessage(task func()) {
+	if s == nil || task == nil {
+		return
+	}
+	if s.chatIngress == nil {
+		task()
+		return
+	}
+	select {
+	case s.chatIngress <- task:
+	case <-s.ctx.Done():
+	}
 }
 
 // chatAttachments 一次聊天消息携带的附件，字段对齐 WebUI handle_chat_message
@@ -297,9 +331,9 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 	appendInternalChatImages(msg, attachments.emojis, 1)
 	appendInternalChatFiles(msg, attachments.files)
 
-	hub.BroadcastTypingTo(channelKey, true)
+	s.beginTyping(channelKey)
 	run := func(context.Context) error {
-		defer hub.BroadcastTypingTo(channelKey, false)
+		defer s.endTyping(channelKey)
 		s.deps.Agent.HandleInternalChatMessage(msg)
 		zap.L().Debug("内部聊天消息已投递", zap.String("session", state.clientSessionID))
 		return nil
@@ -309,8 +343,15 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 		submitter = provider()
 	}
 	if submitter != nil {
-		if err := submitter(context.Background(), channelKey, run); err != nil {
-			hub.BroadcastTypingTo(channelKey, false)
+		submitCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := submitter(submitCtx, channelKey, run); err != nil {
+			s.endTyping(channelKey)
+			_ = s.sendChatEvent("system", state.clientSessionID, map[string]any{
+				"type":      "system",
+				"content":   "消息未被调度器接收，请稍后重试",
+				"timestamp": chatTimestamp(),
+			})
 			zap.L().Warn("WebUI 聊天消息被原生会话调度拒绝",
 				zap.String("channel", channelKey),
 				zap.Error(err))
@@ -318,6 +359,62 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 		return
 	}
 	_ = run(context.Background())
+}
+
+// beginTyping 按频道计数输入状态，多个排队任务只广播一次 true。
+func (s *unifiedWSSession) beginTyping(channelKey string) {
+	if s == nil || s.deps.ChatHub == nil {
+		return
+	}
+	s.typingMu.Lock()
+	defer s.typingMu.Unlock()
+	if s.typingCounts == nil {
+		s.typingCounts = make(map[string]int)
+		s.typingTimers = make(map[string]*time.Timer)
+	}
+	s.typingCounts[channelKey]++
+	if s.typingCounts[channelKey] == 1 {
+		s.deps.ChatHub.BroadcastTypingTo(channelKey, true)
+		if timer := s.typingTimers[channelKey]; timer != nil {
+			timer.Stop()
+		}
+		s.typingTimers[channelKey] = time.AfterFunc(2*time.Minute, func() {
+			s.forceEndTyping(channelKey)
+		})
+	}
+}
+
+// endTyping 在最后一个任务结束时广播 false；排队任务中途完成不会提前熄灭。
+func (s *unifiedWSSession) endTyping(channelKey string) {
+	if s == nil || s.deps.ChatHub == nil {
+		return
+	}
+	s.typingMu.Lock()
+	defer s.typingMu.Unlock()
+	if s.typingCounts[channelKey] > 0 {
+		s.typingCounts[channelKey]--
+	}
+	if s.typingCounts[channelKey] > 0 {
+		return
+	}
+	delete(s.typingCounts, channelKey)
+	if timer := s.typingTimers[channelKey]; timer != nil {
+		timer.Stop()
+		delete(s.typingTimers, channelKey)
+	}
+	s.deps.ChatHub.BroadcastTypingTo(channelKey, false)
+}
+
+// forceEndTyping 为异常中断兜底，避免调度器丢弃任务后输入状态永久残留。
+func (s *unifiedWSSession) forceEndTyping(channelKey string) {
+	if s == nil || s.deps.ChatHub == nil {
+		return
+	}
+	s.typingMu.Lock()
+	delete(s.typingCounts, channelKey)
+	delete(s.typingTimers, channelKey)
+	s.typingMu.Unlock()
+	s.deps.ChatHub.BroadcastTypingTo(channelKey, false)
 }
 
 // appendInternalChatImages 把 WebUI 内联 base64 转成 Agent 可缓存的 data URL 图片段

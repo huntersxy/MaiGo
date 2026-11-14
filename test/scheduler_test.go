@@ -253,6 +253,45 @@ func TestSchedulerTaskErrorAndPanic(t *testing.T) {
 	}
 }
 
+func TestSchedulerShutdownTimeoutDoesNotBlockSecondClose(t *testing.T) {
+	engine := scheduler.New(context.Background(), scheduler.Options{
+		Workers:   1,
+		QueueSize: 4,
+	})
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	if err := engine.Submit(context.Background(), "session", func(context.Context) error {
+		close(started)
+		<-release
+		close(finished)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer firstCancel()
+	if err := engine.Shutdown(firstCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected first shutdown timeout, got %v", err)
+	}
+
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer secondCancel()
+	start := time.Now()
+	if err := engine.Shutdown(secondCtx); err != nil {
+		t.Fatalf("second shutdown failed: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("second shutdown blocked for %s", elapsed)
+	}
+
+	close(release)
+	<-finished
+}
+
 func TestSchedulerStatsSnapshot(t *testing.T) {
 	engine := scheduler.New(context.Background(), scheduler.Options{
 		Workers:   2,

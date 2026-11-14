@@ -335,3 +335,106 @@ func TestFeatureKeyValidation(t *testing.T) {
 		t.Fatalf("unexpected unimplemented keys: %v", keys)
 	}
 }
+
+func TestApplyEnvMode(t *testing.T) {
+	t.Setenv(execution.EnvExecutionMode, "NATIVE")
+	profile, err := execution.ApplyEnvMode(execution.DefaultProfile())
+	if err != nil {
+		t.Fatalf("ApplyEnvMode failed: %v", err)
+	}
+	if profile.Mode != execution.ModeNative {
+		t.Fatalf("expected native mode, got %s", profile.Mode)
+	}
+
+	t.Setenv(execution.EnvExecutionMode, "turbo")
+	if _, err := execution.ApplyEnvMode(execution.DefaultProfile()); !errors.Is(err, execution.ErrInvalidMode) {
+		t.Fatalf("expected ErrInvalidMode, got %v", err)
+	}
+}
+
+func TestLoadRuntimeFileIgnoresEnvOverride(t *testing.T) {
+	t.Setenv(execution.EnvExecutionMode, "native")
+	dir := t.TempDir()
+	writeRuntimeToml(t, dir, "[execution]\nmode = \"compatibility\"\n")
+
+	fileProfile, _, err := execution.LoadRuntimeFile(dir)
+	if err != nil {
+		t.Fatalf("LoadRuntimeFile failed: %v", err)
+	}
+	if fileProfile.Mode != execution.ModeCompatibility {
+		t.Fatalf("expected file mode compatibility, got %s", fileProfile.Mode)
+	}
+
+	effective, _, err := execution.LoadRuntime(dir)
+	if err != nil {
+		t.Fatalf("LoadRuntime failed: %v", err)
+	}
+	if effective.Mode != execution.ModeNative {
+		t.Fatalf("expected env mode native, got %s", effective.Mode)
+	}
+}
+
+func TestSaveAllPreservesUnknownFeatureKeys(t *testing.T) {
+	t.Setenv(execution.EnvExecutionMode, "")
+	dir := t.TempDir()
+	writeRuntimeToml(t, dir, `[features]
+native_session_scheduler = false
+future_flag = true
+`)
+
+	toggles := execution.DefaultFeatureToggles()
+	toggles.SQLiteReadPool = true
+	if err := execution.SaveAll(dir, execution.DefaultProfile(), toggles); err != nil {
+		t.Fatalf("SaveAll failed: %v", err)
+	}
+
+	raw, err := os.ReadFile(execution.RuntimeTomlPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "future_flag = true") {
+		t.Fatalf("unknown feature key was lost:\n%s", string(raw))
+	}
+
+	loaded, err := execution.LoadFeatureToggles(dir)
+	if err != nil {
+		t.Fatalf("LoadFeatureToggles failed: %v", err)
+	}
+	if !loaded.SQLiteReadPool {
+		t.Fatal("expected sqlite_read_pool to be saved")
+	}
+}
+
+func TestUpdateRuntimeSerializesConcurrentChanges(t *testing.T) {
+	t.Setenv(execution.EnvExecutionMode, "")
+	dir := t.TempDir()
+
+	var wg sync.WaitGroup
+	for index := 0; index < 20; index++ {
+		index := index
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := execution.UpdateRuntime(dir, func(_ *execution.Profile, toggles *execution.FeatureToggles) error {
+				if index%2 == 0 {
+					toggles.NativeSessionScheduler = true
+				} else {
+					toggles.SQLiteReadPool = true
+				}
+				return nil
+			})
+			if err != nil {
+				t.Errorf("UpdateRuntime failed: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	toggles, err := execution.LoadFeatureToggles(dir)
+	if err != nil {
+		t.Fatalf("LoadFeatureToggles failed: %v", err)
+	}
+	if !toggles.NativeSessionScheduler || !toggles.SQLiteReadPool {
+		t.Fatalf("concurrent updates were lost: %+v", toggles)
+	}
+}

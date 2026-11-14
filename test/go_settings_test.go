@@ -336,6 +336,112 @@ func TestGoSettingsMalformedConfigCanBeReset(t *testing.T) {
 	}
 }
 
+func TestGoSettingsFeatureSaveDoesNotPersistEnvMode(t *testing.T) {
+	instanceDir := t.TempDir()
+	writeRuntimeToml(t, instanceDir, "[execution]\nmode = \"compatibility\"\n")
+	t.Setenv(execution.EnvExecutionMode, "native")
+	router := setupTestRouter(newTestDeps(instanceDir))
+
+	body := `{"features":{"native_session_scheduler":true},"execution_mode":"native","worker_pool_size":0}`
+	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", body))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	payload := decodeGoSettings(t, response)
+	if payload.ExecutionMode != string(execution.ModeNative) {
+		t.Fatalf("expected effective env mode native, got %s", payload.ExecutionMode)
+	}
+
+	fileProfile, fileToggles, err := execution.LoadRuntimeFile(instanceDir)
+	if err != nil {
+		t.Fatalf("LoadRuntimeFile failed: %v", err)
+	}
+	if fileProfile.Mode != execution.ModeCompatibility {
+		t.Fatalf("env-derived mode was persisted to file: %s", fileProfile.Mode)
+	}
+	if !fileToggles.NativeSessionScheduler {
+		t.Fatal("expected feature change to be persisted")
+	}
+
+	t.Setenv(execution.EnvExecutionMode, "")
+	after := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")))
+	if after.ExecutionMode != string(execution.ModeCompatibility) {
+		t.Fatalf("expected file mode compatibility after env removal, got %s", after.ExecutionMode)
+	}
+}
+
+func TestGoSettingsAllowsDisablingPersistedUnimplementedFeature(t *testing.T) {
+	instanceDir := t.TempDir()
+	writeRuntimeToml(t, instanceDir, `[execution]
+mode = "compatibility"
+
+[features]
+native_event_dispatcher = true
+`)
+	router := setupTestRouter(newTestDeps(instanceDir))
+
+	body := `{"features":{"native_session_scheduler":true,"native_event_dispatcher":true,"native_write_coordinator":false,"async_memory_writeback":false,"parallel_llm_calls":false,"batch_db_writes":false,"sqlite_read_pool":false},"execution_mode":"compatibility","worker_pool_size":0}`
+	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", body))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected full-map save to succeed, got %d: %s", response.Code, response.Body.String())
+	}
+
+	disable := serve(router, authenticatedRequest(
+		http.MethodPost,
+		"/api/webui/go/toggle/native_event_dispatcher",
+		`{"enabled":false}`,
+	))
+	if disable.Code != http.StatusOK {
+		t.Fatalf("expected disabling unimplemented feature to succeed, got %d: %s", disable.Code, disable.Body.String())
+	}
+
+	toggles, err := execution.LoadFeatureToggles(instanceDir)
+	if err != nil {
+		t.Fatalf("LoadFeatureToggles failed: %v", err)
+	}
+	if toggles.NativeEventDispatcher {
+		t.Fatal("expected native_event_dispatcher to be disabled")
+	}
+}
+
+func TestGoSettingsRejectsEmptyUpdate(t *testing.T) {
+	instanceDir := t.TempDir()
+	router := setupTestRouter(newTestDeps(instanceDir))
+
+	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", `{}`))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty update, got %d: %s", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(execution.RuntimeTomlPath(instanceDir)); !os.IsNotExist(err) {
+		t.Fatalf("expected no runtime.toml write, stat err=%v", err)
+	}
+}
+
+func TestGoSettingsPreservesUnknownFeatureKeys(t *testing.T) {
+	instanceDir := t.TempDir()
+	writeRuntimeToml(t, instanceDir, `[features]
+future_flag = true
+`)
+	router := setupTestRouter(newTestDeps(instanceDir))
+
+	response := serve(router, authenticatedRequest(
+		http.MethodPost,
+		"/api/webui/go/settings",
+		`{"features":{"native_session_scheduler":true}}`,
+	))
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	raw, err := os.ReadFile(execution.RuntimeTomlPath(instanceDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "future_flag = true") {
+		t.Fatalf("unknown feature key was lost:\n%s", string(raw))
+	}
+}
+
 func TestGoSettingsRestartRequiresWorker(t *testing.T) {
 	t.Setenv(maisaruntime.EnvWorkerProcess, "")
 	router := setupTestRouter(newTestDeps(t.TempDir()))
