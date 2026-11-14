@@ -134,7 +134,14 @@ func currentDefaultSendMessageHook() ServiceSentMessageHook {
 	return defaultSentHook
 }
 
-// SendService 对齐 MaiBot send_service 的构建、Platform IO 投递与成功落库
+// internalChatPlatform 内聊平台标识，对齐 Python INTERNAL_CHAT_PLATFORM
+const internalChatPlatform = "internal"
+
+// WebChatBroadcast 把发往内聊平台的出站消息广播到 WebUI 聊天室
+// 对齐 Python uni_message_sender._send_message 的 WebUI 特殊链路；未接线时按普通平台发送
+var WebChatBroadcast func(plainText string)
+
+// SendService 发送服务，对齐 MaiBot send_service
 type SendService struct {
 	Manager  *platformio.Manager
 	DB       *gorm.DB
@@ -319,12 +326,17 @@ func (s *SendService) Send(ctx context.Context, request SendRequest, options Sen
 	if options.SetReply && strings.TrimSpace(options.ReplyMessageID) == "" {
 		return SendResult{}, errors.New("set_reply=True 时必须提供 reply_message_id")
 	}
-	if err := s.Manager.EnsureSendPipelineReady(ctx); err != nil {
-		return SendResult{}, fmt.Errorf("准备 Platform IO 发送管线失败: %w", err)
-	}
 	routeKey, err := (platformio.RouteKey{Platform: request.Platform, AccountID: request.AccountID, Scope: request.Scope}).Normalize()
 	if err != nil {
 		return SendResult{}, err
+	}
+	// 内聊平台没有 Platform IO 驱动，直接广播到 WebUI 聊天室
+	if strings.EqualFold(routeKey.Platform, internalChatPlatform) && WebChatBroadcast != nil {
+		WebChatBroadcast(plainTextFromSegments(request.Segments))
+		return SendResult{MessageID: request.MessageID}, nil
+	}
+	if err := s.Manager.EnsureSendPipelineReady(ctx); err != nil {
+		return SendResult{}, fmt.Errorf("准备 Platform IO 发送管线失败: %w", err)
 	}
 	chatType := request.ChatType
 	if chatType == "" {
@@ -738,4 +750,9 @@ func (s *SendService) TextToStream(ctx context.Context, text, sessionID, platfor
 		Segments: []platformio.Segment{{Kind: platformio.SegmentText, Text: text}}, PlainText: text,
 	}
 	return s.Send(ctx, request, options)
+}
+
+// SetWebChatBroadcast 注入内聊广播器；传入 nil 表示关闭内聊直发
+func SetWebChatBroadcast(fn func(plainText string)) {
+	WebChatBroadcast = fn
 }

@@ -520,6 +520,8 @@ func (s *ChatLoopService) buildRequestMessages(
 	if normalizedFinal := strings.TrimSpace(finalUserMessage); normalizedFinal != "" {
 		items = append(items, ContextItem{Role: RoleUser, Text: normalizedFinal})
 	}
+	// 上下文截断可能把工具调用与其锚点一起切断，先剔除缺锚点的前缀再校验
+	historyItems = trimUngroundedLeadingToolCalls(historyItems)
 	if err := ValidateFunctionCallContextAnchors(historyItems); err != nil {
 		// 与 Python 一致：构造阶段直接暴露协议错误，不能静默发送坏请求
 		panic(err)
@@ -1070,4 +1072,27 @@ func sortUniqueInts(values []int) {
 		unique = append(unique, value)
 	}
 	copy(values, unique)
+}
+
+// trimUngroundedLeadingToolCalls 移除开头缺少 user/tool 锚点的工具调用消息
+//
+// 上下文裁剪按条数截断时，可能只留下 assistant 的 tool_calls 而丢掉触发它的 user 消息；
+// 这类前缀在协议上非法，直接丢弃，避免整轮请求 panic。
+func trimUngroundedLeadingToolCalls(items []ContextItem) []ContextItem {
+	index := 0
+	for index < len(items) {
+		item := items[index]
+		if item.Role == RoleUser || item.Role == RoleTool {
+			break
+		}
+		if item.Role == RoleAssistant && len(item.ToolCalls) > 0 {
+			index++
+			continue
+		}
+		break
+	}
+	if index == 0 {
+		return items
+	}
+	return items[index:]
 }

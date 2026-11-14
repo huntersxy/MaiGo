@@ -792,6 +792,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			Cardname: log.UserCardname,
 		}, true
 	})
+	// 内聊平台没有 Platform IO 驱动，插件/服务经 send.text 发到 internal 流时直接广播到 WebUI
+	botservices.SetWebChatBroadcast(func(plainText string) {
+		chatHub.SendBotSegments(plainText, nil)
+	})
 	chatRelay := internalchat.NewRelay(chatHub, os.Getenv("MAIBOT_INSTANCE_DIR"))
 	// 文件服务在 Host 能力注册前创建，files.* 才能拿到同一实例
 	fileCfg := filesvc.DefaultConfig(boot.MediaDir)
