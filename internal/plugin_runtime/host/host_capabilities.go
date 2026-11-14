@@ -13,6 +13,8 @@ import (
 	maibotcfg "maibot-go/internal/config/maibot"
 
 	capnames "maibot-go/internal/plugin_runtime/capabilities"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // BotConfigSource 提供只读 bot_config 切片（通常为 *maibotcfg.InstanceHolder）
@@ -33,11 +35,30 @@ func (i InstanceBotConfig) BotConfigSlice() map[string]any {
 	if cfg == nil {
 		return nil
 	}
+	// 按 TOML 标签序列化：结构体只有 toml 标签，走 json 会得到 Plugin/Permission 这类大写键，
+	// Python 插件按 snake_case 读取配置会全部落空
+	if m, err := tomlKeyedMap(cfg.Bot); err == nil {
+		ensurePluginConfigSection(m)
+		return m
+	}
 	m, err := valueAsStringKeyedMap(cfg.Bot)
 	if err != nil {
 		return nil
 	}
 	return m
+}
+
+// tomlKeyedMap 用 toml 标签把配置结构体转成 snake_case 键的 map
+func tomlKeyedMap(source any) (map[string]any, error) {
+	encoded, err := toml.Marshal(source)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	if err := toml.Unmarshal(encoded, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // RegisterHostCapabilities 注册全部主程序能力，对齐 MaiBot capabilities/registry.py
@@ -334,5 +355,32 @@ func uintFromAny(v any) (uint, error) {
 		return uint(u), err
 	default:
 		return 0, fmt.Errorf("unsupported")
+	}
+}
+
+// ensurePluginConfigSection 保证 plugin 段与其必备键存在
+//
+// 结构体字段带 omitempty，零值会被整段省略；Python 插件把 permission 当作必备字段，
+// 缺失时会判定「读到的不是预期配置」并放弃权限校验。
+func ensurePluginConfigSection(root map[string]any) {
+	if root == nil {
+		return
+	}
+	section, ok := root["plugin"].(map[string]any)
+	if !ok {
+		section = map[string]any{}
+		root["plugin"] = section
+	}
+	if _, exists := section["permission"]; !exists {
+		section["permission"] = []string{}
+	}
+	if _, exists := section["silent_permission_denied"]; !exists {
+		section["silent_permission_denied"] = false
+	}
+	if _, exists := section["command_permissions"]; !exists {
+		section["command_permissions"] = map[string]any{}
+	}
+	if _, exists := section["disabled_commands"]; !exists {
+		section["disabled_commands"] = []string{}
 	}
 }
