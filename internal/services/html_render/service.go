@@ -2,14 +2,13 @@ package htmlrender
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Status 对齐 HTMLRenderService 运行态摘要
+// Status HTMLRenderService 运行态摘要
 type Status struct {
 	Implemented       bool   `json:"implemented"`
 	Mode              string `json:"mode,omitempty"`
@@ -20,21 +19,14 @@ type Status struct {
 	LastError         string `json:"error,omitempty"`
 }
 
-// Service 对齐 HTMLRenderService 门面
+// Service HTML 渲染门面：只调用 Python 原版 Playwright 侧车。
 type Service struct {
 	cfg Config
 
 	mu      sync.RWMutex
 	lastErr string
 
-	browserMu sync.Mutex
-	browser   *browserInstance
-	sem       chan struct{}
-
-	renderMu      sync.Mutex
-	renderCount   int
-	activeRenders int
-	closed        bool
+	sem chan struct{}
 }
 
 // NewService 创建 HTML 渲染服务
@@ -51,47 +43,32 @@ func (s *Service) Status() Status {
 	s.mu.RLock()
 	lastErr := s.lastErr
 	s.mu.RUnlock()
-	s.browserMu.Lock()
-	browser := s.browser
-	s.browserMu.Unlock()
 
-	st := Status{
-		Implemented: true,
-		Mode:        "chromium_cdp",
-		LastError:   lastErr,
+	status := Status{
+		Implemented:       true,
+		Mode:              "sidecar_http",
+		SidecarURL:        s.cfg.SidecarURL,
+		PlaywrightVersion: "python-sidecar",
+		LastError:         lastErr,
 	}
 	if s.cfg.Disabled {
-		st.Implemented = false
-		st.Mode = "disabled"
-		return st
+		status.Implemented = false
+		status.Mode = "disabled"
+		return status
 	}
-	mode := strings.ToLower(strings.TrimSpace(s.cfg.Mode))
-	if mode == "sidecar" {
-		st.Mode = "sidecar_http"
-		st.SidecarURL = s.cfg.SidecarURL
-		if s.cfg.SidecarURL == "" && st.LastError == "" {
-			st.LastError = "未配置 MAIBOT_HTMLRENDER_URL 渲染侧车"
-		}
-		return st
+	if strings.EqualFold(strings.TrimSpace(s.cfg.Mode), "browser") {
+		status.Mode = "unsupported_browser"
+		status.LastError = "Go CDP 浏览器后端已移除，请配置 Python 渲染侧车"
+		return status
 	}
-	if s.cfg.SidecarURL != "" && mode != "browser" {
-		st.Mode = "sidecar_http"
-		st.SidecarURL = s.cfg.SidecarURL
+	if strings.TrimSpace(s.cfg.SidecarURL) == "" {
+		status.Mode = "unconfigured"
+		status.LastError = "未配置 MAIBOT_HTMLRENDER_URL Python 渲染侧车"
 	}
-	if browser != nil && browser.alive() {
-		st.BrowserConnected = true
-		st.BrowsersPath = browser.execPath
-		st.PlaywrightVersion = browser.version
-	} else if path, err := findBrowserExecutable(s.cfg); err == nil {
-		st.BrowsersPath = path
-	}
-	if st.Mode == "chromium_cdp" && st.BrowsersPath == "" && st.LastError == "" {
-		st.LastError = "未找到可用的 Chrome/Chromium/Edge 浏览器"
-	}
-	return st
+	return status
 }
 
-// RenderHTMLToPNG 对齐 render_html_to_png
+// RenderHTMLToPNG 对齐 render_html_to_png，统一委托 Python Playwright 侧车。
 func (s *Service) RenderHTMLToPNG(ctx context.Context, req Request) (*Result, error) {
 	if s.cfg.Disabled {
 		err := fmt.Errorf("插件运行时浏览器渲染能力已禁用")
@@ -103,31 +80,35 @@ func (s *Service) RenderHTMLToPNG(ctx context.Context, req Request) (*Result, er
 		s.setLastErr(err.Error())
 		return nil, err
 	}
-	normalized := s.normalizeRequest(req)
-	mode := strings.ToLower(strings.TrimSpace(s.cfg.Mode))
-	if s.cfg.SidecarURL != "" && mode != "browser" {
-		res, err := s.renderViaSidecar(ctx, normalized)
-		if err != nil {
-			s.setLastErr(err.Error())
-			return nil, err
-		}
-		s.setLastErr("")
-		return res, nil
-	}
-	if mode == "sidecar" {
-		err := fmt.Errorf("未配置 MAIBOT_HTMLRENDER_URL 渲染侧车")
+	if strings.EqualFold(strings.TrimSpace(s.cfg.Mode), "browser") {
+		err := fmt.Errorf("Go CDP 浏览器后端已移除，请配置 Python 渲染侧车")
 		s.setLastErr(err.Error())
 		return nil, err
 	}
-	res, err := s.renderViaBrowser(ctx, normalized)
+	if strings.TrimSpace(s.cfg.SidecarURL) == "" {
+		s.setLastErr(ErrNotConfigured.Error())
+		return nil, ErrNotConfigured
+	}
+
+	normalized := s.normalizeRequest(req)
+	if err := s.acquire(ctx); err != nil {
+		s.setLastErr(err.Error())
+		return nil, err
+	}
+	defer s.release()
+
+	result, err := s.renderViaSidecar(ctx, normalized)
 	if err != nil {
 		s.setLastErr(err.Error())
-		// 对齐 Python：浏览器渲染失败后关闭缓存实例，下一次重新启动
-		_ = s.ResetBrowser(ctx, false)
 		return nil, err
 	}
 	s.setLastErr("")
-	return res, nil
+	return result, nil
+}
+
+// Close 释放 Go 侧资源；浏览器由 Python 侧车自己管理。
+func (s *Service) Close() error {
+	return nil
 }
 
 func (s *Service) normalizeRequest(req Request) Request {
@@ -170,28 +151,6 @@ func normalizeWaitUntil(waitUntil string) string {
 	}
 }
 
-// ResetBrowser 对齐 reset_browser；重启后下一次渲染会重新启动浏览器
-func (s *Service) ResetBrowser(ctx context.Context, restartPlaywright bool) error {
-	_ = ctx
-	_ = restartPlaywright
-	s.browserMu.Lock()
-	browser := s.browser
-	s.browser = nil
-	s.browserMu.Unlock()
-	if browser != nil {
-		browser.close()
-	}
-	return nil
-}
-
-// Close 关闭浏览器进程并释放资源
-func (s *Service) Close() error {
-	s.renderMu.Lock()
-	s.closed = true
-	s.renderMu.Unlock()
-	return s.ResetBrowser(context.Background(), false)
-}
-
 func (s *Service) setLastErr(msg string) {
 	s.mu.Lock()
 	s.lastErr = msg
@@ -201,14 +160,6 @@ func (s *Service) setLastErr(msg string) {
 func (s *Service) acquire(ctx context.Context) error {
 	select {
 	case s.sem <- struct{}{}:
-		s.renderMu.Lock()
-		if s.closed {
-			s.renderMu.Unlock()
-			<-s.sem
-			return errors.New("htmlrender: 服务已关闭")
-		}
-		s.activeRenders++
-		s.renderMu.Unlock()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -216,30 +167,5 @@ func (s *Service) acquire(ctx context.Context) error {
 }
 
 func (s *Service) release() {
-	s.renderMu.Lock()
-	s.activeRenders--
-	restart := s.closed || s.cfg.RestartAfterCount > 0 && s.renderCount > 0 && s.renderCount%s.cfg.RestartAfterCount == 0 && s.activeRenders == 0
-	s.renderMu.Unlock()
 	<-s.sem
-	if restart && s.browserSupportsRestart() {
-		_ = s.ResetBrowser(context.Background(), false)
-	}
-}
-
-// browserSupportsRestart 只按次数重建本服务拉起的浏览器，外部 CDP 端点保持连接
-func (s *Service) browserSupportsRestart() bool {
-	s.browserMu.Lock()
-	defer s.browserMu.Unlock()
-	return s.browser != nil && s.browser.launched
-}
-
-// playwrightVersion 返回浏览器来源版本；CDP 直连模式没有 Playwright 运行时
-func (s *Service) playwrightVersion() string {
-	return "unknown"
-}
-
-func (s *Service) afterRender() {
-	s.renderMu.Lock()
-	s.renderCount++
-	s.renderMu.Unlock()
 }

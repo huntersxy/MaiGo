@@ -51,6 +51,10 @@ docker compose logs | grep "WebUI 登录 Token"
 
 WebUI 在 `http://<host>:7468`，容器内置原版 Dashboard。
 
+HTML→PNG 渲染由 `html-render` 侧车提供：它复用同级 `../MaiBot` 仓库里的 Python 原版 Playwright
+`src/services/html_render_service`，Go 侧只保留 HTTP 客户端，不再维护 CDP 实现。首次构建会额外
+构建该侧车镜像，首次渲染会把 Chromium 下载到 `maibot-render-data` 卷；不需要渲染时可停止该服务。
+
 登录令牌是 `data/webui.json` 的 `access_token`：未自定义时每次启动重新生成，启动日志里打印。
 `.env` 必须设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 

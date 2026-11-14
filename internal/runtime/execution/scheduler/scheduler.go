@@ -32,6 +32,12 @@ const MaxWorkers = 4096
 // DefaultQueueSize 是单个会话默认的待处理任务上限。
 const DefaultQueueSize = 256
 
+// DefaultBatchSize 是单个 worker 一次连续处理的同会话任务上限。
+const DefaultBatchSize = 4
+
+// MaxBatchSize 是批处理上限；过大时会拖慢其他会话。
+const MaxBatchSize = 64
+
 // shutdownGrace 是超时关闭时等待工作协程响应取消的宽限时间。
 const shutdownGrace = time.Second
 
@@ -44,6 +50,8 @@ type Options struct {
 	Workers int
 	// QueueSize 单会话待处理任务上限；<=0 时使用 DefaultQueueSize。
 	QueueSize int
+	// BatchSize 单个 worker 连续处理同会话任务的上限；<=0 时使用 DefaultBatchSize。
+	BatchSize int
 	// OnError 任务返回错误或 panic 时回调；回调在任务协程内执行。
 	OnError func(sessionKey string, err error)
 }
@@ -54,7 +62,6 @@ type Stats struct {
 	ActiveSessions int    `json:"active_sessions"`
 	QueuedTasks    int    `json:"queued_tasks"`
 	RunningTasks   int    `json:"running_tasks"`
-	ReadySessions  int    `json:"ready_sessions"`
 	Submitted      uint64 `json:"submitted"`
 	Completed      uint64 `json:"completed"`
 	Failed         uint64 `json:"failed"`
@@ -64,7 +71,7 @@ type Stats struct {
 type sessionQueue struct {
 	key       string
 	pending   []Task
-	sem       chan struct{}
+	space     chan struct{}
 	writers   int
 	scheduled bool
 }
@@ -76,6 +83,7 @@ type Scheduler struct {
 
 	workers   int
 	queueSize int
+	batchSize int
 	onError   func(string, error)
 
 	jobs   chan string
@@ -119,6 +127,13 @@ func New(parent context.Context, opts Options) *Scheduler {
 	if queueSize <= 0 {
 		queueSize = DefaultQueueSize
 	}
+	batchSize := opts.BatchSize
+	if batchSize <= 0 {
+		batchSize = DefaultBatchSize
+	}
+	if batchSize > MaxBatchSize {
+		batchSize = MaxBatchSize
+	}
 
 	ctx, cancel := context.WithCancel(parent)
 	s := &Scheduler{
@@ -126,6 +141,7 @@ func New(parent context.Context, opts Options) *Scheduler {
 		cancel:    cancel,
 		workers:   workers,
 		queueSize: queueSize,
+		batchSize: batchSize,
 		onError:   opts.OnError,
 		jobs:      make(chan string),
 		notify:    make(chan struct{}, 1),
@@ -168,7 +184,7 @@ func (s *Scheduler) Workers() int {
 
 // Submit 把任务放入会话邮箱；同一会话严格按提交顺序执行。
 //
-// 邮箱满时会阻塞，直到有空位、ctx 取消或调度器关闭。
+// 快路径只取一次锁；只有邮箱满时才在 space 上等待，由 worker 弹出一个任务后唤醒。
 func (s *Scheduler) Submit(ctx context.Context, sessionKey string, task Task) error {
 	if s == nil {
 		return ErrClosed
@@ -185,7 +201,7 @@ func (s *Scheduler) Submit(ctx context.Context, sessionKey string, task Task) er
 	}
 
 	s.mu.Lock()
-	if s.closing {
+	if s.closing || s.ctx.Err() != nil {
 		s.mu.Unlock()
 		s.rejected.Add(1)
 		return ErrClosed
@@ -193,34 +209,40 @@ func (s *Scheduler) Submit(ctx context.Context, sessionKey string, task Task) er
 	queue := s.sessions[sessionKey]
 	if queue == nil {
 		queue = &sessionQueue{
-			key: sessionKey,
-			sem: make(chan struct{}, s.queueSize),
+			key:   sessionKey,
+			space: make(chan struct{}, 1),
 		}
 		s.sessions[sessionKey] = queue
 	}
-	queue.writers++
-	s.mu.Unlock()
-
-	select {
-	case queue.sem <- struct{}{}:
-	case <-ctx.Done():
-		s.releaseWriter(queue)
-		s.rejected.Add(1)
-		return ctx.Err()
-	case <-s.ctx.Done():
-		s.releaseWriter(queue)
-		s.rejected.Add(1)
-		return ErrClosed
-	}
-
-	s.mu.Lock()
-	if s.closing || s.ctx.Err() != nil {
+	waiting := false
+	for len(queue.pending) >= s.queueSize {
+		if !waiting {
+			queue.writers++
+			waiting = true
+		}
 		s.mu.Unlock()
-		<-queue.sem
-		s.releaseWriter(queue)
-		s.rejected.Add(1)
-		return ErrClosed
+		select {
+		case <-queue.space:
+		case <-ctx.Done():
+			s.releaseWriter(queue)
+			s.rejected.Add(1)
+			return ctx.Err()
+		case <-s.ctx.Done():
+			s.releaseWriter(queue)
+			s.rejected.Add(1)
+			return ErrClosed
+		}
+		s.mu.Lock()
+		if s.closing || s.ctx.Err() != nil {
+			s.mu.Unlock()
+			if waiting {
+				s.releaseWriter(queue)
+			}
+			s.rejected.Add(1)
+			return ErrClosed
+		}
 	}
+
 	queue.pending = append(queue.pending, task)
 	s.queued++
 	if !queue.scheduled {
@@ -228,7 +250,13 @@ func (s *Scheduler) Submit(ctx context.Context, sessionKey string, task Task) er
 		s.ready = append(s.ready, sessionKey)
 		s.signalLocked()
 	}
-	queue.writers--
+	if waiting {
+		queue.writers--
+	}
+	// 还有等待者时把剩余空位继续传递，避免信号在容量为 1 的 space 上丢失。
+	if queue.writers > 0 {
+		s.signalSpaceLocked(queue)
+	}
 	s.submitted.Add(1)
 	s.mu.Unlock()
 	return nil
@@ -285,6 +313,8 @@ func (s *Scheduler) dropPendingLocked() {
 	for _, queue := range s.sessions {
 		queue.pending = nil
 		queue.scheduled = false
+		// 唤醒因邮箱满而阻塞的 Submit，让它们看到 closing/ctx 取消。
+		s.signalSpaceLocked(queue)
 	}
 }
 
@@ -299,7 +329,6 @@ func (s *Scheduler) Stats() Stats {
 		ActiveSessions: len(s.sessions),
 		QueuedTasks:    s.queued,
 		RunningTasks:   s.running,
-		ReadySessions:  len(s.ready),
 		Submitted:      s.submitted.Load(),
 		Completed:      s.completed.Load(),
 		Failed:         s.failed.Load(),
@@ -352,45 +381,58 @@ func (s *Scheduler) workerLoop() {
 }
 
 func (s *Scheduler) runSessionTask(sessionKey string) {
-	s.mu.Lock()
-	queue := s.sessions[sessionKey]
-	if queue == nil || len(queue.pending) == 0 {
-		if queue != nil {
+	batch := 0
+	for {
+		s.mu.Lock()
+		queue := s.sessions[sessionKey]
+		if queue == nil || len(queue.pending) == 0 {
+			if queue != nil {
+				queue.scheduled = false
+				s.cleanupLocked(queue)
+			}
+			s.mu.Unlock()
+			return
+		}
+		task := queue.pending[0]
+		queue.pending = queue.pending[1:]
+		s.queued--
+		s.running++
+		// 弹出一个任务即释放一个邮箱槽位，唤醒一个等待中的提交方。
+		s.signalSpaceLocked(queue)
+		s.mu.Unlock()
+
+		err := invokeTask(s.ctx, task)
+
+		s.mu.Lock()
+		s.running--
+		if err != nil {
+			s.failed.Add(1)
+		} else {
+			s.completed.Add(1)
+		}
+		batch++
+		// 同会话连续处理少量任务，减少 ready 队列和调度通道的往返。
+		if len(queue.pending) > 0 && batch < s.batchSize && !s.closing {
+			s.maybeDrainedLocked()
+			s.mu.Unlock()
+			if err != nil && s.onError != nil {
+				reportTaskError(s.onError, sessionKey, err)
+			}
+			continue
+		}
+		if len(queue.pending) > 0 {
+			s.ready = append(s.ready, sessionKey)
+			s.signalLocked()
+		} else {
 			queue.scheduled = false
 			s.cleanupLocked(queue)
 		}
+		s.maybeDrainedLocked()
 		s.mu.Unlock()
+		if err != nil && s.onError != nil {
+			reportTaskError(s.onError, sessionKey, err)
+		}
 		return
-	}
-	task := queue.pending[0]
-	queue.pending = queue.pending[1:]
-	s.queued--
-	s.running++
-	s.mu.Unlock()
-
-	// 任务开始后释放邮箱容量，允许后续消息继续排队。
-	<-queue.sem
-	err := invokeTask(s.ctx, task)
-
-	s.mu.Lock()
-	s.running--
-	if err != nil {
-		s.failed.Add(1)
-	} else {
-		s.completed.Add(1)
-	}
-	if len(queue.pending) > 0 {
-		s.ready = append(s.ready, sessionKey)
-		s.signalLocked()
-	} else {
-		queue.scheduled = false
-		s.cleanupLocked(queue)
-	}
-	s.maybeDrainedLocked()
-	s.mu.Unlock()
-
-	if err != nil && s.onError != nil {
-		reportTaskError(s.onError, sessionKey, err)
 	}
 }
 
@@ -415,6 +457,10 @@ func (s *Scheduler) releaseWriter(queue *sessionQueue) {
 	s.mu.Lock()
 	if queue.writers > 0 {
 		queue.writers--
+	}
+	// 等待者取消/关闭时，空位可能仍在；把唤醒传递给下一个等待者。
+	if queue.writers > 0 {
+		s.signalSpaceLocked(queue)
 	}
 	s.cleanupLocked(queue)
 	s.maybeDrainedLocked()
@@ -449,6 +495,16 @@ func (s *Scheduler) maybeDrainedLocked() {
 func (s *Scheduler) signalLocked() {
 	select {
 	case s.notify <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Scheduler) signalSpaceLocked(queue *sessionQueue) {
+	if queue == nil {
+		return
+	}
+	select {
+	case queue.space <- struct{}{}:
 	default:
 	}
 }
