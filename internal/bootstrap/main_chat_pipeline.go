@@ -23,8 +23,7 @@ import (
 	"maibot-go/internal/platform_io"
 	"maibot-go/internal/platform_io/drivers/maim_bridge"
 	"maibot-go/internal/platform_io/drivers/onebot"
-	"maibot-go/internal/runtime/execution"
-	"maibot-go/internal/runtime/execution/scheduler"
+	"maibot-go/internal/runtime/execution/policy"
 	"maibot-go/internal/services"
 )
 
@@ -38,7 +37,7 @@ type chatRuntimePipeline struct {
 	manager   *heartflow.Manager
 	sessions  *chatSessionRegistry
 	runtimes  *chatRuntimeProvider
-	scheduler *scheduler.Scheduler
+	policies  *policy.Registry
 	cancel    context.CancelFunc
 	inflight  sync.Map
 	delivered sync.Map
@@ -76,12 +75,8 @@ type chatPipelineOptions struct {
 	BotNickname      string
 	Now              func() time.Time
 
-	// NativeSessionScheduler 启用按会话 FIFO 的邮箱与有界工作池。
-	NativeSessionScheduler bool
-	// SessionSchedulerWorkers <=0 时按 CPU 核心数取值。
-	SessionSchedulerWorkers int
-	// SessionSchedulerQueueSize <=0 时使用 scheduler.DefaultQueueSize。
-	SessionSchedulerQueueSize int
+	// Policies 已装配的局部执行策略；nil 时使用全 compatibility 的默认注册表。
+	Policies *policy.Registry
 
 	LLMRouter                *llm.Router
 	VoiceTranscriber         llm.AudioTranscriber
@@ -113,25 +108,17 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 		agent:     options.Agent,
 		attaching: map[string]struct{}{},
 	}
+	policies := options.Policies
+	if policies == nil {
+		policies = policy.NewRegistry()
+	}
 	pipeline := &chatRuntimePipeline{
 		agent:    options.Agent,
 		images:   options.Images,
 		sessions: sessions,
 		runtimes: provider,
+		policies: policies,
 		cancel:   cancel,
-	}
-	if options.NativeSessionScheduler {
-		pipeline.scheduler = scheduler.New(ctx, scheduler.Options{
-			Workers:   options.SessionSchedulerWorkers,
-			QueueSize: options.SessionSchedulerQueueSize,
-			OnError: func(sessionKey string, err error) {
-				zap.L().Error("原生会话任务失败", zap.String("session_id", sessionKey), zap.Error(err))
-			},
-		})
-		zap.L().Info("原生会话调度器已启动",
-			zap.String("execution_mode", string(execution.ModeNative)),
-			zap.Int("workers", pipeline.scheduler.Workers()),
-		)
 	}
 	if options.Agent != nil {
 		pipeline.handler = options.Agent.MessageHandler()
@@ -216,7 +203,8 @@ func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.Conversati
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if p.scheduler == nil || p.chat == nil || p.chat.ChatBot == nil {
+	sessionScheduler, ok := p.sessionScheduler()
+	if !ok || p.chat == nil || p.chat.ChatBot == nil {
 		p.handleMessage(ctx, msg)
 		return
 	}
@@ -225,15 +213,23 @@ func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.Conversati
 		p.handleMessage(ctx, msg)
 		return
 	}
-	if err := p.scheduler.Submit(ctx, session.SessionID, func(runCtx context.Context) error {
+	if err := sessionScheduler.Submit(ctx, session.SessionID, policy.SessionTask(func(runCtx context.Context) error {
 		p.handleSessionMessage(runCtx, msg, session)
 		return nil
-	}); err != nil {
-		zap.L().Warn("原生会话调度拒绝入站消息",
+	})); err != nil {
+		zap.L().Warn("会话调度拒绝入站消息",
 			zap.String("session_id", session.SessionID),
 			zap.String("message_id", msg.ExternalMessageID),
 			zap.Error(err))
 	}
+}
+
+// sessionScheduler 从策略注册表读取当前会话调度实现。
+func (p *chatRuntimePipeline) sessionScheduler() (policy.SessionScheduler, bool) {
+	if p == nil || p.policies == nil || p.policies.SessionScheduler == nil {
+		return nil, false
+	}
+	return p.policies.SessionScheduler.Get()
 }
 
 // handleMessage 是未启用调度器时的完整入站链路，也用于无法解析会话的降级。
@@ -327,38 +323,42 @@ func (p *chatRuntimePipeline) HandleMessage(msg *onebot.ConversationMessage) {
 	p.Handle(context.Background(), msg)
 }
 
-// SessionSchedulerStats 返回原生会话调度器快照；未启用时返回 nil。
+// SessionSchedulerStats 返回当前会话调度器快照；compatibility 实现返回 nil。
 func (p *chatRuntimePipeline) SessionSchedulerStats() any {
-	if p == nil || p.scheduler == nil {
+	if p == nil || p.policies == nil {
 		return nil
 	}
-	return p.scheduler.Stats()
+	return p.policies.SessionSchedulerStats()
 }
 
-// SessionTaskSubmitter 返回按会话提交任务的入口；调度器未启用时返回 nil。
-//
-// WebUI 聊天等非 Platform IO 入口用它把消息并入同一个原生调度器。
+// SessionTaskSubmitter 返回按会话提交任务的入口；注册表使用 compatibility 实现时也会内联执行。
 func (p *chatRuntimePipeline) SessionTaskSubmitter() func(context.Context, string, func(context.Context) error) error {
-	if p == nil || p.scheduler == nil {
+	if p == nil || p.policies == nil {
 		return nil
 	}
 	return func(ctx context.Context, sessionKey string, task func(context.Context) error) error {
+		sessionScheduler, ok := p.sessionScheduler()
+		if !ok {
+			if task != nil {
+				return task(ctx)
+			}
+			return nil
+		}
 		if task == nil {
 			return nil
 		}
-		return p.scheduler.Submit(ctx, sessionKey, scheduler.Task(task))
+		return sessionScheduler.Submit(ctx, sessionKey, policy.SessionTask(task))
 	}
 }
 
-// Close 先排空原生会话调度器，再停止心流管理与延迟挂接；不触碰 Agent 的运行时生命周期。
+// Close 先关闭策略注册表（排空 native 调度器），再停止心流管理与延迟挂接。
 func (p *chatRuntimePipeline) Close(ctx context.Context) error {
 	if p == nil {
 		return nil
 	}
 	var schedulerErr error
-	if p.scheduler != nil {
-		// 先排空已接收的消息，再取消会话上下文并关闭心流。
-		schedulerErr = p.scheduler.Shutdown(ctx)
+	if p.policies != nil {
+		schedulerErr = p.policies.Close(ctx)
 	}
 	if p.cancel != nil {
 		p.cancel()

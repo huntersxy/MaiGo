@@ -62,6 +62,8 @@ import (
 	"maibot-go/internal/manager/asynctask"
 	"maibot-go/internal/runtime"
 	"maibot-go/internal/runtime/execution"
+	"maibot-go/internal/runtime/execution/policy"
+	chatscheduler "maibot-go/internal/runtime/execution/scheduler"
 	botservices "maibot-go/internal/services"
 	"maibot-go/internal/services/statistics"
 	"maibot-go/internal/web_search"
@@ -1171,6 +1173,20 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		zap.Bool("native_session_scheduler", nativeSessionScheduler),
 		zap.Int("worker_pool_size", executionProfile.WorkerPoolSize),
 	)
+	executionPolicies := policy.NewRegistry()
+	if nativeSessionScheduler {
+		nativeScheduler := chatscheduler.New(context.Background(), chatscheduler.Options{
+			Workers: executionProfile.WorkerPoolSize,
+			OnError: func(sessionKey string, err error) {
+				zap.L().Error("原生会话任务失败", zap.String("session_id", sessionKey), zap.Error(err))
+			},
+		})
+		executionPolicies.SessionScheduler.Set(nativeSessionSchedulerAdapter{engine: nativeScheduler})
+		zap.L().Info("原生会话调度器已启动",
+			zap.String("execution_mode", string(execution.ModeNative)),
+			zap.Int("workers", nativeScheduler.Workers()),
+		)
+	}
 	chatPipeline := newChatRuntimePipelineWithOptions(context.Background(), chatPipelineOptions{
 		Agent:        maiAgent,
 		Images:       newChatImagePreprocessor(imageManager),
@@ -1227,9 +1243,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		LLMRouter:                maiAgent.LLMRouter(),
 		VoiceResolver:            newChatVoiceResolver(),
 		EnableVoiceTranscription: chatVoiceASREnabled(instHolder),
-
-		NativeSessionScheduler:  nativeSessionScheduler,
-		SessionSchedulerWorkers: executionProfile.WorkerPoolSize,
+		Policies:                 executionPolicies,
 	})
 
 	// 对齐 Python integration.py:1349-1352：适配器下线后清理失去发送链路的聊天流
