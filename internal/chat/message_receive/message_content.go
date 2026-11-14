@@ -3,11 +3,11 @@ package messagereceive
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"maibot-go/internal/common/media"
 	"maibot-go/internal/platform_io/drivers/onebot"
-
 )
 
 // PendingMedia 待下载缓存的媒体
@@ -67,6 +67,12 @@ func ParseMessageContent(ctx context.Context, msg *onebot.ConversationMessage, r
 		switch part.Kind {
 		case "text":
 			pieces = append(pieces, ContentPiece{Text: part.Text, MediaIdx: -1})
+		case "reply":
+			// 对齐 Python process_reply_component：引用段必须产出可读文本，
+			// 否则 Agent 重算 FinalContent 时会把已解析的引用原文丢掉
+			if text := renderReplyPart(msg, part); text != "" {
+				pieces = append(pieces, ContentPiece{Text: text, MediaIdx: -1})
+			}
 		case "at":
 			if part.AtUserID == onebot.AtAllUserID {
 				pieces = append(pieces, ContentPiece{Text: "@全体成员", MediaIdx: -1})
@@ -131,3 +137,36 @@ func ParseMessageContent(ctx context.Context, msg *onebot.ConversationMessage, r
 	return pieces, pending, forwards
 }
 
+// renderReplyPart 构造引用段的展示文本
+// 对齐 Python process_reply_component 的四个分支：已有原文+作者 / 已解析原文 / 作者未核验 / 无法访问
+func renderReplyPart(msg *onebot.ConversationMessage, part onebot.MessagePart) string {
+	if msg == nil {
+		return ""
+	}
+	reply := msg.Reply
+	if reply == nil {
+		// 只有段文本（适配器直接给出目标 ID）时无法还原原文
+		if id := strings.TrimSpace(part.Text); id != "" {
+			return "[回复了一条消息，但原消息已无法访问]"
+		}
+		return ""
+	}
+	content := strings.TrimSpace(reply.Content)
+	if content == "" {
+		return "[回复了一条消息，但原消息已无法访问]"
+	}
+	name := strings.TrimSpace(reply.GroupCard)
+	if name == "" {
+		name = strings.TrimSpace(reply.Nickname)
+	}
+	if name == "" {
+		name = strings.TrimSpace(reply.ExternalSenderID)
+	}
+	if name == "" && reply.SenderID > 0 {
+		name = strconv.FormatInt(reply.SenderID, 10)
+	}
+	if name == "" {
+		return "[回复了一条作者未核验的消息: " + content + "]"
+	}
+	return "[回复了" + name + "的消息: " + content + "]"
+}

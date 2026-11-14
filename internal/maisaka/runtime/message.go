@@ -146,25 +146,39 @@ func (a *Agent) afterMessagePersisted(ctx context.Context, msg *onebot.Conversat
 }
 
 func (a *Agent) resolveReplyInfo(ctx context.Context, msg *onebot.ConversationMessage) error {
-	if msg == nil || msg.Reply == nil || msg.Reply.MessageID == 0 {
+	if msg == nil || msg.Reply == nil {
 		return nil
 	}
-	key := replyCacheKey(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID)
 	if msg.Reply.Content != "" && msg.Reply.SenderID != 0 {
 		return nil
 	}
-
+	if msg.Reply.MessageID == 0 && strings.TrimSpace(msg.Reply.ExternalMessageID) == "" {
+		return nil
+	}
+	key := replyCacheKey(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID)
 	if cached := a.replyCache.Get(key); cached != nil {
 		clone := cached.Value()
 		msg.Reply = &clone
 		return nil
 	}
 
-	log, err := a.memory.WithContext(ctx).GetMessageLogByScope(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID)
-	if err == nil {
-		if reply := replyInfoFromMessageLog(log); reply != nil {
-			msg.Reply = reply
-			return nil
+	// 优先按平台外部消息编号查询：非 QQ 平台的内部 message_id 是合成数字键，
+	// 只有 external_message_id 与适配器给的原值一致
+	if externalID := strings.TrimSpace(msg.Reply.ExternalMessageID); externalID != "" {
+		if log, err := a.memory.WithContext(ctx).GetMessageLogByScopeExternalID(msg.ConversationKind, msg.TargetID, externalID); err == nil {
+			if reply := replyInfoFromMessageLog(log); reply != nil {
+				msg.Reply = reply
+				return nil
+			}
+		}
+	}
+	if msg.Reply.MessageID != 0 {
+		log, err := a.memory.WithContext(ctx).GetMessageLogByScope(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID)
+		if err == nil {
+			if reply := replyInfoFromMessageLog(log); reply != nil {
+				msg.Reply = reply
+				return nil
+			}
 		}
 	}
 	// 本地查不到时保留原始引用 ID，由 Platform IO 引用段或前端按 ID 展示
@@ -223,6 +237,7 @@ func replyInfoFromMessageLog(log *memory.MessageLog) *onebot.ReplyInfo {
 		SenderID:          log.UserID,
 		ExternalSenderID:  log.ExternalUserID,
 		Nickname:          log.UserNickname,
+		GroupCard:         log.UserCardname,
 	}
 }
 

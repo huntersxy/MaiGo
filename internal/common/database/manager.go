@@ -238,6 +238,30 @@ func (m *Manager) GetMessageLogByScope(kind string, targetID, messageID int64) (
 	return &item, nil
 }
 
+// GetMessageLogByScopeExternalID 按会话作用域与平台外部消息编号单查
+//
+// 非 QQ 平台的 message_id 在内部是合成数字键，适配器给的是原始字符串 ID；
+// 引用还原必须能按外部 ID 命中，否则会把已入库的消息误判为无法访问。
+func (m *Manager) GetMessageLogByScopeExternalID(kind string, targetID int64, externalMessageID string) (*MessageLog, error) {
+	externalMessageID = strings.TrimSpace(externalMessageID)
+	if externalMessageID == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if kind == "" {
+		kind = ConversationKindGroup
+	}
+	var item MessageLog
+	query := m.db.Where("external_message_id=?", externalMessageID).
+		Where(NoticeExternalMessageIDPredicate("external_message_id"))
+	if targetID > 0 {
+		query = query.Where("conversation_kind=? AND target_id=?", kind, targetID)
+	}
+	if err := query.First(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 // GetMessageLogBySessionAndMessageID 按 session_id 与平台消息编号单查，供 WebUI 回填 reply 段
 // sessionID 为空时退化为全局按消息编号查询
 func (m *Manager) GetMessageLogBySessionAndMessageID(ctx context.Context, sessionID string, messageID int64) (*MessageLog, error) {
