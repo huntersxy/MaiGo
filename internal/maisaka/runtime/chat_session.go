@@ -37,7 +37,9 @@ func (a *Agent) ensureChatSession(ctx context.Context, msg *onebot.ConversationM
 	}
 	accountID := strings.TrimSpace(msg.AccountID)
 	if accountID == "" && (msg.Platform == "" || msg.Platform == "qq") {
-		accountID = strconv.FormatInt(a.SelfID(), 10)
+		if selfID := a.SelfID(); selfID > 0 {
+			accountID = strconv.FormatInt(selfID, 10)
+		}
 	}
 	rec, err := a.chatSessions.EnsureFromInbound(ctx, chatsession.InboundParams{
 		Platform:         messagePlatform(msg),
@@ -105,7 +107,9 @@ func (a *Agent) noteConversationPlatform(msg *onebot.ConversationMessage) {
 		route.TargetID = externalTarget
 	}
 	if route.Platform == "qq" && route.AccountID == "" {
-		route.AccountID = strconv.FormatInt(a.SelfID(), 10)
+		if selfID := a.SelfID(); selfID > 0 {
+			route.AccountID = strconv.FormatInt(selfID, 10)
+		}
 	}
 	index.setRoute(msg.ConversationKind, msg.TargetID, route)
 }

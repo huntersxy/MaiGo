@@ -1,6 +1,7 @@
 package maimbridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,29 +11,27 @@ import (
 )
 
 // forwardNodesToMaimData 将平台转发节点编码为 maim_message 的 data 数组
-// 每个元素对齐 ForwardNodeComponent.to_seg 的 MessageBase dict：
-// {"message_info":{"user_info":{...}},"message_segment":{...}}
-func forwardNodesToMaimData(nodes []platformio.ForwardNode) []map[string]any {
+// 每个元素对齐 ForwardComponent.to_seg 的 MessageBase dict：单个消息段 + 发送者 user_info
+func forwardNodesToMaimData(ctx context.Context, nodes []platformio.ForwardNode) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(nodes))
 	for _, node := range nodes {
-		info := map[string]any{
-			"user_info": maimmsg.UserInfo{
-				UserID:       strings.TrimSpace(node.UserID),
-				UserNickname: strings.TrimSpace(node.Nickname),
-				UserCardname: strings.TrimSpace(node.Cardname),
-			},
+		userInfo := maimmsg.UserInfo{
+			UserID:       strings.TrimSpace(node.UserID),
+			UserNickname: strings.TrimSpace(node.Nickname),
+			UserCardname: strings.TrimSpace(node.Cardname),
 		}
-		if node.Time > 0 {
-			seconds := float64(node.Time)
-			info["time"] = seconds
+		for _, segment := range node.Segments {
+			maimSeg, err := segmentToMaimSeg(ctx, segment)
+			if err != nil {
+				return nil, fmt.Errorf("maimbridge: 合并转发节点消息段无效: %w", err)
+			}
+			out = append(out, map[string]any{
+				"message_info":    map[string]any{"user_info": userInfo},
+				"message_segment": maimSeg,
+			})
 		}
-		segment := messageSegmentFromOutbound(platformio.OutboundMessageEnvelope{Segments: node.Segments})
-		out = append(out, map[string]any{
-			"message_info":    info,
-			"message_segment": segment,
-		})
 	}
-	return out
+	return out, nil
 }
 
 // forwardNodesFromMaimData 解析 maim_message 合并转发 data 数组

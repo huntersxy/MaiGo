@@ -44,18 +44,19 @@ func (h *Host) UpdateMessageGatewayState(pluginID string, payload protocol.Messa
 }
 
 // RouteMessage 把消息网关入站消息注入 Host，对齐 _handle_route_message
-func (h *Host) RouteMessage(ctx context.Context, pluginID string, payload protocol.RouteMessagePayload) (map[string]any, error) {
+// 返回 accepted 与本次使用的路由键；适配器名单拒绝或重复消息时 accepted 为 false
+func (h *Host) RouteMessage(ctx context.Context, pluginID string, payload protocol.RouteMessagePayload) (bool, map[string]any, error) {
 	pluginID = strings.TrimSpace(pluginID)
 	entry := h.resolveMessageGateway(pluginID, payload.GatewayName)
 	if entry == nil || !messageGatewaySupportsReceive(entry) {
-		return nil, &GatewayRPCError{
+		return false, nil, &GatewayRPCError{
 			Code:    string(protocol.ErrorCodeMethodNotAllowed),
 			Message: fmt.Sprintf("插件 %s 未声明可接收的消息网关 %s", pluginID, payload.GatewayName),
 		}
 	}
 	state, ok := h.MessageGatewayState(pluginID, entry.Name)
 	if !ok || !state.Ready {
-		return nil, &GatewayRPCError{
+		return false, nil, &GatewayRPCError{
 			Code:    string(protocol.ErrorCodeMethodNotAllowed),
 			Message: fmt.Sprintf("消息网关 %s 尚未就绪，不能注入外部消息", entry.FullName),
 		}
@@ -89,14 +90,28 @@ func (h *Host) RouteMessage(ctx context.Context, pluginID string, payload protoc
 			message["dedupe_key"] = payload.DedupeKey
 		}
 	}
-	if err := h.ReceiveExternalMessage(ctx, message); err != nil {
-		return nil, err
-	}
-	return map[string]any{
+	routeKey := map[string]any{
 		"platform":   state.Platform,
 		"account_id": state.AccountID,
 		"scope":      state.Scope,
-	}, nil
+	}
+	if port, ok := h.MessageGatewayPort().(PluginGatewayInboundPort); ok && port != nil {
+		return port.ReceiveGatewayMessage(ctx, PluginGatewayInboundRequest{
+			PluginID:          pluginID,
+			GatewayName:       entry.Name,
+			DriverID:          pluginGatewayAdapterID(pluginID, entry.Name),
+			Platform:          state.Platform,
+			AccountID:         state.AccountID,
+			Scope:             state.Scope,
+			ExternalMessageID: payload.ExternalMessageID,
+			DedupeKey:         payload.DedupeKey,
+			RouteMetadata:     payload.RouteMetadata,
+		}, message)
+	}
+	if err := h.ReceiveExternalMessage(ctx, message); err != nil {
+		return false, nil, err
+	}
+	return true, routeKey, nil
 }
 
 func (h *Host) resolveMessageGateway(pluginID, gatewayName string) *ComponentEntry {

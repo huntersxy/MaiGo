@@ -72,7 +72,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 // fallbackArrivalSeq 为入站消息提供单调递增的运行时序号
 var fallbackArrivalSeq atomic.Uint64
 
@@ -628,7 +627,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		})
 	}
 
-		// 平台接入统一走适配器：OneBot 等协议端由插件适配器通过 maim_message 接入
+	// 平台接入统一走适配器：OneBot 等协议端由插件适配器通过 maim_message 接入
 	platformIOMgr, err := platformio.NewManager()
 	if err != nil {
 		zap.L().Error("Platform IO 管理器创建失败", zap.Error(err))
@@ -1204,6 +1203,13 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	// 对齐 Python integration.py:1349-1352：适配器下线后清理失去发送链路的聊天流
 	if chatPipeline != nil && chatPipeline.manager != nil {
 		pluginruntime.SetAdapterPolicyBlockedCloser(chatPipeline.manager.ClosePolicyBlockedChats)
+	}
+
+	// 对齐 Python main.py:85：旧版适配器回送真实消息 ID 时回填本地消息
+	if maimMsgServer != nil && chatPipeline != nil && chatPipeline.chat != nil && chatPipeline.chat.ChatBot != nil {
+		maimMsgServer.RegisterCustomHandler("message_id_echo", func(ctx context.Context, payload map[string]any, _ map[string]any) error {
+			return chatPipeline.chat.ChatBot.EchoMessageProcess(ctx, payload)
+		})
 	}
 
 	// 外部 ACP Agent 默认关闭；启用失败只记录真实错误，不影响主链路

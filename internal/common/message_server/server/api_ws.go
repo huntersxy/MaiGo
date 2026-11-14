@@ -70,12 +70,7 @@ func (s *Server) handleAPIWS(w http.ResponseWriter, r *http.Request) {
 	if apiKey == "" {
 		apiKey = trimSpace(r.Header.Get(apiHeaderAPIKey))
 	}
-	if cfg.APIKeyRequired() && !s.validAPIKey(apiKey) {
-		s.apiStats.incAuthResult(false)
-		http.Error(w, apiCloseReasonAuthFailed, http.StatusUnauthorized)
-		return
-	}
-	s.apiStats.incAuthResult(true)
+	authorized := !cfg.APIKeyRequired() || s.validAPIKey(apiKey)
 	uuid := trimSpace(r.Header.Get(apiHeaderUUID))
 	if uuid == "" {
 		uuid = randomHex(16)
@@ -89,6 +84,13 @@ func (s *Server) handleAPIWS(w http.ResponseWriter, r *http.Request) {
 		zap.L().Warn("maim_message API WS 握手失败", zap.Error(err))
 		return
 	}
+	if !authorized {
+		// 对齐 Python 新 API Server：握手后断开连接，而不是在 HTTP 层拒绝
+		s.apiStats.incAuthResult(false)
+		_ = ws.Close(websocket.StatusPolicyViolation, apiCloseReasonAuthFailed)
+		return
+	}
+	s.apiStats.incAuthResult(true)
 	if limit := cfg.APIMaxMessageSize; limit > 0 {
 		ws.SetReadLimit(limit)
 	}
@@ -247,6 +249,8 @@ func (s *Server) dispatchAPIInbound(ctx context.Context, conn *apiConn, apiMsg m
 		apiKey = conn.apiKey
 	}
 	s.apiHub.rememberKey(platform, apiKey)
+	// 消息自带平台可能与连接头不同，按实际平台补齐收发路由
+	s.ensurePlatformRoutes(platform, conn.accountID, conn.scope)
 	legacy := maimmsg.MessageConverter{}.FromAPIReceive(apiMsg)
 	if trimSpace(legacy.MessageInfo.Platform) == "" {
 		legacy.MessageInfo.Platform = platform

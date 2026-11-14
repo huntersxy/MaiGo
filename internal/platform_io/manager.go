@@ -480,6 +480,11 @@ func (m *Manager) IsTargetAllowed(routeKey RouteKey, chatType, targetID string) 
 
 // SendMessage 向命中的全部发送适配器广播出站消息
 func (m *Manager) SendMessage(ctx context.Context, outbound OutboundMessageEnvelope, routeKey RouteKey) DeliveryBatch {
+	// 对齐 Python send_service 的 send_api_<ms>：出站消息必须有内部编号，
+	// 适配器回执、消息跟踪与插件网关 message_id 都依赖它
+	if strings.TrimSpace(outbound.InternalMessageID) == "" {
+		outbound.InternalMessageID = fmt.Sprintf("send_api_%d", time.Now().UnixMilli())
+	}
 	adapters := m.ResolveSendAdapters(routeKey)
 	batch := DeliveryBatch{
 		InternalMessageID: outbound.InternalMessageID,

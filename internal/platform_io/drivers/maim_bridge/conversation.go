@@ -163,9 +163,9 @@ func conversationFromChat(chat platformio.ChatMessage, base maimmsg.MessageBase,
 	}
 
 	content := strings.TrimSpace(chat.PlainText)
-	parts, atList, externalAtList, atNames, reply := messagePartsFromSegments(chat.Segments)
+	parsed := messagePartsFromSegments(chat.Segments)
 	if content == "" {
-		content = plainTextFromParts(parts)
+		content = plainTextFromParts(parsed.Parts)
 	}
 
 	info := base.MessageInfo
@@ -194,7 +194,7 @@ func conversationFromChat(chat platformio.ChatMessage, base maimmsg.MessageBase,
 		}
 	}
 	if !isMentioned && strings.TrimSpace(chat.AccountID) != "" {
-		for _, external := range externalAtList {
+		for _, external := range parsed.ExternalAtList {
 			if external == strings.TrimSpace(chat.AccountID) {
 				isMentioned = true
 				break
@@ -221,14 +221,18 @@ func conversationFromChat(chat platformio.ChatMessage, base maimmsg.MessageBase,
 		GroupCard:         groupCard,
 		GroupName:         groupName,
 		Content:           content,
-		MessageParts:      parts,
+		MessageParts:      parsed.Parts,
+		Images:            parsed.Images,
+		Faces:             parsed.Faces,
+		Voices:            parsed.Voices,
+		FileNames:         parsed.FileNames,
 		IsMentioned:       isMentioned,
 		Time:              msgTime,
 		ReceivedAt:        receivedAt,
-		AtList:            atList,
-		ExternalAtList:    externalAtList,
-		AtNames:           atNames,
-		Reply:             reply,
+		AtList:            parsed.AtList,
+		ExternalAtList:    parsed.ExternalAtList,
+		AtNames:           parsed.AtNames,
+		Reply:             parsed.Reply,
 		AdditionalConfig:  externalIdentity,
 		GroupKey:          groupKey,
 	}
@@ -257,15 +261,21 @@ func parseNumericID(raw string) (int64, bool) {
 	return v, true
 }
 
-func messagePartsFromSegments(segments []platformio.Segment) ([]onebot.MessagePart, []int64, []string, map[int64]string, *onebot.ReplyInfo) {
-	if len(segments) == 0 {
-		return nil, nil, nil, nil, nil
-	}
-	parts := make([]onebot.MessagePart, 0, len(segments))
-	var atList []int64
-	var externalAtList []string
-	atNames := map[int64]string{}
-	var reply *onebot.ReplyInfo
+type inboundMessageParts struct {
+	Parts          []onebot.MessagePart
+	Images         []onebot.ImageInfo
+	Faces          []onebot.FaceInfo
+	Voices         []onebot.VoiceInfo
+	FileNames      []string
+	AtList         []int64
+	ExternalAtList []string
+	AtNames        map[int64]string
+	Reply          *onebot.ReplyInfo
+}
+
+// messagePartsFromSegments 还原入站消息段并收集图片/表情/语音/文件等媒体
+func messagePartsFromSegments(segments []platformio.Segment) inboundMessageParts {
+	out := inboundMessageParts{AtNames: map[int64]string{}}
 	for i, seg := range segments {
 		part := onebot.MessagePart{Index: i}
 		switch seg.Kind {
@@ -275,20 +285,20 @@ func messagePartsFromSegments(segments []platformio.Segment) ([]onebot.MessagePa
 		case platformio.SegmentAt:
 			part.Kind = "at"
 			external := strings.TrimSpace(seg.AtUserID)
+			part.ExternalAtUserID = external
 			if uid, ok := parseNumericID(external); ok {
 				part.AtUserID = uid
 			} else if external != "" {
 				part.AtUserID = onebot.SyntheticIdentityID("at", external)
 			}
-			part.ExternalAtUserID = external
 			if part.AtUserID != 0 {
-				atList = append(atList, part.AtUserID)
-				externalAtList = append(externalAtList, external)
+				out.AtList = append(out.AtList, part.AtUserID)
+				out.ExternalAtList = append(out.ExternalAtList, external)
 				name := external
 				if seg.Extra != nil && strings.TrimSpace(seg.Extra["name"]) != "" {
 					name = strings.TrimSpace(seg.Extra["name"])
 				}
-				atNames[part.AtUserID] = name
+				out.AtNames[part.AtUserID] = name
 			}
 		case platformio.SegmentReply:
 			part.Kind = "reply"
@@ -299,12 +309,15 @@ func messagePartsFromSegments(segments []platformio.Segment) ([]onebot.MessagePa
 				}
 			}
 			part.Text = externalID
-			if externalID != "" && reply == nil {
-				reply = &onebot.ReplyInfo{
+			if externalID != "" && out.Reply == nil {
+				reply := &onebot.ReplyInfo{
 					MessageID:         onebot.SyntheticIdentityID("reply", externalID),
 					ExternalMessageID: externalID,
 				}
 				if seg.Extra != nil {
+					reply.Content = strings.TrimSpace(seg.Extra["target_message_content"])
+					reply.Nickname = strings.TrimSpace(seg.Extra["target_message_sender_nickname"])
+					reply.GroupCard = strings.TrimSpace(seg.Extra["target_message_sender_cardname"])
 					if sender := strings.TrimSpace(seg.Extra["sender_id"]); sender != "" {
 						reply.ExternalSenderID = sender
 						if uid, ok := parseNumericID(sender); ok {
@@ -314,14 +327,95 @@ func messagePartsFromSegments(segments []platformio.Segment) ([]onebot.MessagePa
 						}
 					}
 				}
+				out.Reply = reply
+			}
+		case platformio.SegmentImage, platformio.SegmentEmoji:
+			part.Kind = "image"
+			image := onebot.ImageInfo{}
+			if seg.Kind == platformio.SegmentEmoji {
+				image.SubType = 1
+			}
+			if seg.Extra != nil {
+				if encoded := strings.TrimSpace(seg.Extra["base64"]); encoded != "" {
+					image.URL = onebot.ImageDataURL(encoded)
+				}
+				image.File = strings.TrimSpace(seg.Extra["file"])
+			}
+			if image.URL == "" && seg.URL != "" {
+				image.URL = seg.URL
+			}
+			if image.URL == "" && image.File == "" {
+				continue
+			}
+			part.Index = len(out.Images)
+			out.Images = append(out.Images, image)
+		case platformio.SegmentFace:
+			part.Kind = "face"
+			face := onebot.FaceInfo{Name: strings.TrimSpace(seg.Text)}
+			if seg.Extra != nil {
+				if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
+					if numeric, err := strconv.Atoi(id); err == nil {
+						face.ID = numeric
+					}
+				}
+				if name := strings.TrimSpace(seg.Extra["name"]); name != "" {
+					face.Name = name
+				}
+			}
+			part.Index = len(out.Faces)
+			out.Faces = append(out.Faces, face)
+		case platformio.SegmentVoice, platformio.SegmentRecord:
+			part.Kind = "record"
+			source := strings.TrimSpace(seg.URL)
+			if source == "" {
+				source = strings.TrimSpace(seg.Text)
+			}
+			if source == "" && seg.Extra != nil {
+				source = strings.TrimSpace(seg.Extra["file"])
+			}
+			part.Text = source
+			part.Index = len(out.Voices)
+			out.Voices = append(out.Voices, onebot.VoiceInfo{URL: seg.URL, File: strings.TrimSpace(seg.Text)})
+		case platformio.SegmentVideo:
+			part.Kind = "video"
+			part.Text = strings.TrimSpace(seg.URL)
+		case platformio.SegmentFile:
+			part.Kind = "file"
+			name := ""
+			if seg.Extra != nil {
+				name = firstTextValue(seg.Extra["name"], seg.Extra["file_name"], seg.Text)
+			}
+			if name == "" {
+				name = strings.TrimSpace(seg.Text)
+			}
+			part.Index = len(out.FileNames)
+			out.FileNames = append(out.FileNames, name)
+			part.Text = name
+		case platformio.SegmentForward:
+			part.Kind = "forward"
+		case platformio.SegmentDict, platformio.SegmentJSON:
+			part.Kind = "text"
+			if text := strings.TrimSpace(seg.Text); text != "" {
+				part.Text = text
+			} else {
+				part.Text = "[卡片消息]"
 			}
 		default:
 			part.Kind = string(seg.Kind)
 			part.Text = seg.Text
 		}
-		parts = append(parts, part)
+		out.Parts = append(out.Parts, part)
 	}
-	return parts, atList, externalAtList, atNames, reply
+	return out
+}
+
+func firstTextValue(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func plainTextFromParts(parts []onebot.MessagePart) string {

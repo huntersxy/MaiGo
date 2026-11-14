@@ -37,12 +37,12 @@ func (s *RPCServer) handleRouteMessage(ctx context.Context, env protocol.Envelop
 	if pluginID == "" {
 		return env.MakeErrorResponse(string(protocol.ErrorCodeBadPayload), "plugin_id 不能为空", nil)
 	}
-	routeKey, err := s.host.RouteMessage(ctx, pluginID, payload)
+	accepted, routeKey, err := s.host.RouteMessage(ctx, pluginID, payload)
 	if err != nil {
 		return gatewayErrorResponse(env, err)
 	}
 	return env.MakeResponse(map[string]any{
-		"accepted":  true,
+		"accepted":  accepted,
 		"route_key": routeKey,
 	}, nil)
 }

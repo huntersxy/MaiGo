@@ -150,6 +150,8 @@ type (
 	PluginMessageGatewayPort = host.PluginMessageGatewayPort
 	// PluginGatewayDriverSpec 插件网关驱动注册参数
 	PluginGatewayDriverSpec = host.PluginGatewayDriverSpec
+	// PluginGatewayInboundRequest 插件网关入站归属
+	PluginGatewayInboundRequest = host.PluginGatewayInboundRequest
 	// PluginSendRequest 消息发送请求
 	PluginSendRequest = host.PluginSendRequest
 	// PluginSendResult 消息发送结果

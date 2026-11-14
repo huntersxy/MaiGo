@@ -1,6 +1,7 @@
 package maimbridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -36,10 +37,8 @@ func InboundFromMessageBase(msg maimmsg.MessageBase, connPlatform string) (platf
 	}
 
 	extID := strings.TrimSpace(info.MessageID)
+	// received_at 是本机接收入站消息的时刻，不使用适配器提供的 message_info.time
 	receivedAt := time.Now()
-	if info.Time != nil && *info.Time > 0 {
-		receivedAt = time.UnixMilli(int64(*info.Time * 1000))
-	}
 
 	payload := map[string]any{}
 	if raw, err := msg.ToJSON(); err == nil {
@@ -85,34 +84,118 @@ func MessageBaseFromInbound(envelope platformio.InboundMessageEnvelope) (maimmsg
 	return msg, ok
 }
 
-// OutboundToMessageBase 出站封装转为 MessageBase，支持文本与媒体段
-func OutboundToMessageBase(outbound platformio.OutboundMessageEnvelope, routeKey platformio.RouteKey) maimmsg.MessageBase {
+// OutboundToMessageBase 出站封装转为 MessageBase
+//
+// 对齐 Python SessionMessage.to_maim_message：
+//   - user_info / sender_info 是机器人自身，group_info 是接收群
+//   - 私聊目标只出现在 receiver_info 与 additional_config
+//   - message_segment 恒为 seglist
+func OutboundToMessageBase(ctx context.Context, outbound platformio.OutboundMessageEnvelope, routeKey platformio.RouteKey) (maimmsg.MessageBase, error) {
 	platform := strings.TrimSpace(routeKey.Platform)
 	if platform == "" {
 		platform = strings.TrimSpace(outbound.RouteKey.Platform)
 	}
-	now := float64(time.Now().UnixMilli()) / 1000.0
+	timestamp := outbound.Timestamp
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+	now := float64(timestamp.UnixMilli()) / 1000.0
+
+	botUser := outboundBotUserInfo(outbound, routeKey, platform)
+	groupInfo := outboundGroupInfo(outbound, platform)
+	additionalConfig := outboundAdditionalConfig(outbound)
+
 	info := maimmsg.BaseMessageInfo{
 		Platform:         platform,
 		MessageID:        strings.TrimSpace(outbound.InternalMessageID),
 		Time:             &now,
-		AdditionalConfig: outbound.Metadata,
+		GroupInfo:        groupInfo,
+		UserInfo:         &botUser,
+		AdditionalConfig: additionalConfig,
 	}
-	if outbound.ChatType == platformio.ChatTypeGroup {
-		info.GroupInfo = &maimmsg.GroupInfo{
-			Platform: platform,
-			GroupID:  outbound.TargetID,
-		}
-	} else {
-		info.UserInfo = &maimmsg.UserInfo{
-			Platform: platform,
-			UserID:   outbound.TargetID,
-		}
+	info.SenderInfo = &maimmsg.SenderInfo{InfoBase: maimmsg.InfoBase{GroupInfo: groupInfo, UserInfo: &botUser}}
+	info.ReceiverInfo = outboundReceiverInfo(outbound, platform, groupInfo)
+
+	segment, err := outboundTopSegment(ctx, outbound)
+	if err != nil {
+		return maimmsg.MessageBase{}, err
 	}
 	return maimmsg.MessageBase{
 		MessageInfo:    info,
-		MessageSegment: messageSegmentFromOutbound(outbound),
+		MessageSegment: segment,
+	}, nil
+}
+
+// outboundBotUserInfo 出站 user_info 是机器人自身，对齐 Python send_service 的 bot 身份
+func outboundBotUserInfo(outbound platformio.OutboundMessageEnvelope, routeKey platformio.RouteKey, platform string) maimmsg.UserInfo {
+	info := outbound.MessageInfo.UserInfo
+	userID := strings.TrimSpace(info.UserID)
+	if userID == "" {
+		userID = strings.TrimSpace(routeKey.AccountID)
 	}
+	return maimmsg.UserInfo{
+		Platform:     platform,
+		UserID:       userID,
+		UserNickname: strings.TrimSpace(info.UserNickname),
+		UserCardname: strings.TrimSpace(info.UserCardname),
+	}
+}
+
+// outboundGroupInfo 群聊时 group_info 表示接收群；私聊保持空
+func outboundGroupInfo(outbound platformio.OutboundMessageEnvelope, platform string) *maimmsg.GroupInfo {
+	if outbound.ChatType != platformio.ChatTypeGroup {
+		return nil
+	}
+	groupID := ""
+	groupName := ""
+	if outbound.MessageInfo.GroupInfo != nil {
+		groupID = strings.TrimSpace(outbound.MessageInfo.GroupInfo.GroupID)
+		groupName = strings.TrimSpace(outbound.MessageInfo.GroupInfo.GroupName)
+	}
+	if groupID == "" {
+		groupID = strings.TrimSpace(outbound.TargetID)
+	}
+	if groupID == "" {
+		return nil
+	}
+	return &maimmsg.GroupInfo{Platform: platform, GroupID: groupID, GroupName: groupName}
+}
+
+// outboundReceiverInfo 对齐 Python to_maim_message 的 receiver_info 构造
+func outboundReceiverInfo(outbound platformio.OutboundMessageEnvelope, platform string, groupInfo *maimmsg.GroupInfo) *maimmsg.ReceiverInfo {
+	receiver := &maimmsg.ReceiverInfo{InfoBase: maimmsg.InfoBase{GroupInfo: groupInfo}}
+	if groupInfo == nil {
+		if target := strings.TrimSpace(outbound.TargetID); target != "" {
+			receiver.UserInfo = &maimmsg.UserInfo{Platform: platform, UserID: target}
+		}
+	}
+	if receiver.GroupInfo == nil && receiver.UserInfo == nil {
+		return nil
+	}
+	return receiver
+}
+
+// outboundAdditionalConfig 透传出站路由元数据，并保证私聊/群聊目标 ID 可被适配器读到
+func outboundAdditionalConfig(outbound platformio.OutboundMessageEnvelope) map[string]any {
+	source := outbound.MessageInfo.AdditionalConfig
+	config := make(map[string]any, len(source)+2)
+	for key, value := range source {
+		config[key] = value
+	}
+	target := strings.TrimSpace(outbound.TargetID)
+	if target != "" {
+		if outbound.ChatType == platformio.ChatTypeGroup {
+			if _, exists := config["platform_io_target_group_id"]; !exists {
+				config["platform_io_target_group_id"] = target
+			}
+		} else if _, exists := config["platform_io_target_user_id"]; !exists {
+			config["platform_io_target_user_id"] = target
+		}
+	}
+	if len(config) == 0 {
+		return nil
+	}
+	return config
 }
 
 func chatMessageFromBase(msg maimmsg.MessageBase, platform string) (platformio.ChatMessage, error) {

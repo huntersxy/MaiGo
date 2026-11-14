@@ -85,16 +85,27 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		return receipt, fmt.Errorf("maimbridge: %s", receipt.Error)
 	}
 	if hasRouteHub && hasIdentity && !routeSupported {
-		receipt.Status = platformio.DeliveryStatusFailed
-		receipt.Error = fmt.Sprintf("该平台账号/作用域无已连接的 maim_message 适配器: platform=%s account=%s scope=%s", route.Platform, route.AccountID, route.Scope)
-		return receipt, fmt.Errorf("maimbridge: %s", receipt.Error)
+		// 旧版 maim_message 连接按平台建立；账号/作用域只是可选的精确路由。
+		// 精确连接不存在时退回平台级投递，对齐 Python send_message 的平台语义。
+		if !a.hub.HasPlatform(platform) {
+			receipt.Status = platformio.DeliveryStatusFailed
+			receipt.Error = fmt.Sprintf("该平台账号/作用域无已连接的 maim_message 适配器: platform=%s account=%s scope=%s", route.Platform, route.AccountID, route.Scope)
+			return receipt, fmt.Errorf("maimbridge: %s", receipt.Error)
+		}
+		route = platformio.RouteKey{Platform: route.Platform}
+		routeSupported = routeHub.HasRoute(route)
 	}
 	if !routeSupported && !a.hub.HasPlatform(platform) {
 		receipt.Status = platformio.DeliveryStatusFailed
 		receipt.Error = "该平台无已连接的 maim_message 适配器"
 		return receipt, fmt.Errorf("maimbridge: %s", receipt.Error)
 	}
-	msg := OutboundToMessageBase(outbound, route)
+	msg, err := OutboundToMessageBase(ctx, outbound, route)
+	if err != nil {
+		receipt.Status = platformio.DeliveryStatusFailed
+		receipt.Error = err.Error()
+		return receipt, err
+	}
 	raw, err := msg.ToJSON()
 	if err != nil {
 		receipt.Status = platformio.DeliveryStatusFailed

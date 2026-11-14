@@ -338,11 +338,30 @@ func (f *APIServerFallback) SendMessage(ctx context.Context, message *messagerec
 		TargetID:          targetID,
 		Segments:          segments,
 		PlainText:         message.PlainText(),
+		Timestamp:         message.Timestamp,
+		MessageInfo: platformio.OutboundMessageInfo{
+			UserInfo: platformio.OutboundUserInfo{
+				UserID:       message.MessageInfo.UserInfo.UserID,
+				UserNickname: message.MessageInfo.UserInfo.UserNickname,
+				UserCardname: pointerText(message.MessageInfo.UserInfo.UserCardname),
+			},
+			AdditionalConfig: message.MessageInfo.AdditionalConfig,
+		},
 	}
 	if message.IsGroup() {
 		envelope.ChatType = platformio.ChatTypeGroup
+		if message.MessageInfo.GroupInfo != nil {
+			envelope.MessageInfo.GroupInfo = &platformio.OutboundGroupInfo{
+				GroupID:   message.MessageInfo.GroupInfo.GroupID,
+				GroupName: message.MessageInfo.GroupInfo.GroupName,
+			}
+		}
 	}
-	payload, err := json.Marshal(maimbridge.OutboundToMessageBase(envelope, route))
+	baseMessage, err := maimbridge.OutboundToMessageBase(ctx, envelope, route)
+	if err != nil {
+		return map[string]bool{}, fmt.Errorf("序列化 API Server 消息失败: %w", err)
+	}
+	payload, err := json.Marshal(baseMessage)
 	if err != nil {
 		return map[string]bool{}, fmt.Errorf("序列化 API Server 消息失败: %w", err)
 	}

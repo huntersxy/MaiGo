@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"maibot-go/internal/platform_io"
 	"maibot-go/internal/plugin_runtime"
@@ -46,6 +47,112 @@ func (g *Gateway) SetInboundHandler(handler func(ctx context.Context, message ma
 	g.mu.Unlock()
 }
 
+// ReceiveGatewayMessage 插件消息网关口入站注入
+// 先执行适配器名单策略与去重，再交给入站处理器，对齐 Python _handle_route_message
+func (g *Gateway) ReceiveGatewayMessage(ctx context.Context, request pluginruntime.PluginGatewayInboundRequest, message map[string]any) (bool, map[string]any, error) {
+	routeKey := map[string]any{
+		"platform":   request.Platform,
+		"account_id": request.AccountID,
+		"scope":      request.Scope,
+	}
+	if g == nil {
+		return false, routeKey, fmt.Errorf("消息网关未接线")
+	}
+	chatType, targetID := policyTarget(message)
+	if policyManager, err := platformio.GetAdapterPolicyManager(); err == nil && policyManager != nil {
+		result, evalErr := policyManager.Evaluate(platformio.AdapterIdentity{
+			AdapterID:   request.DriverID,
+			PluginID:    request.PluginID,
+			GatewayName: request.GatewayName,
+			Platform:    request.Platform,
+			AccountID:   request.AccountID,
+			Scope:       request.Scope,
+		}, chatType, targetID)
+		if evalErr != nil {
+			return false, routeKey, fmt.Errorf("适配器策略检查失败: %w", evalErr)
+		}
+		if result.Configured && !result.Allowed {
+			routeKey["policy"] = result.ToMap()
+			return false, routeKey, nil
+		}
+	}
+	if g.manager != nil && g.manager.Dedupe() != nil {
+		rawKey := firstNonEmpty(request.DedupeKey, request.ExternalMessageID, asString(message["message_id"]))
+		if rawKey != "" && !g.manager.Dedupe().MarkSeen(request.DriverID+":"+rawKey) {
+			return false, routeKey, nil
+		}
+	}
+	mergeRouteMetadata(message, request.RouteMetadata)
+	if err := g.ReceiveExternalMessage(ctx, message); err != nil {
+		return false, routeKey, err
+	}
+	return true, routeKey, nil
+}
+
+// policyTarget 返回适配器名单判定使用的会话类型与目标 ID
+func policyTarget(message map[string]any) (string, string) {
+	if message == nil {
+		return "private", ""
+	}
+	groupID := strings.TrimSpace(asString(message["group_id"]))
+	if groupID == "" {
+		if info, ok := message["message_info"].(map[string]any); ok {
+			if group, ok := info["group_info"].(map[string]any); ok {
+				groupID = strings.TrimSpace(asString(group["group_id"]))
+			}
+		}
+	}
+	if groupID != "" {
+		return "group", groupID
+	}
+	userID := strings.TrimSpace(asString(message["user_id"]))
+	if userID == "" {
+		userInfo, _ := message["user_info"].(map[string]any)
+		if userInfo == nil {
+			if info, ok := message["message_info"].(map[string]any); ok {
+				userInfo, _ = info["user_info"].(map[string]any)
+			}
+		}
+		if userInfo != nil {
+			userID = strings.TrimSpace(asString(userInfo["user_id"]))
+		}
+	}
+	return "private", userID
+}
+
+// mergeRouteMetadata 把插件补充的路由元数据并入 additional_config
+// 路由归属字段由 Host 统一写入正式字段，不再重复透传
+func mergeRouteMetadata(message map[string]any, metadata map[string]any) {
+	if len(metadata) == 0 {
+		return
+	}
+	info, ok := message["message_info"].(map[string]any)
+	if !ok {
+		info = map[string]any{}
+		message["message_info"] = info
+	}
+	config, ok := info["additional_config"].(map[string]any)
+	if !ok {
+		config = map[string]any{}
+		info["additional_config"] = config
+	}
+	for key, value := range metadata {
+		switch key {
+		case "platform", "account_id", "scope", "self_id", "bot_account",
+			"platform_io_account_id", "route_scope", "adapter_scope", "connection_id",
+			"platform_io_scope":
+			continue
+		}
+		if value == nil {
+			continue
+		}
+		if strings.TrimSpace(asString(value)) == "" {
+			continue
+		}
+		config[key] = value
+	}
+}
+
 // ReceiveExternalMessage 把外部平台消息交给 Agent 会话调度
 func (g *Gateway) ReceiveExternalMessage(ctx context.Context, message map[string]any) error {
 	if g == nil {
@@ -84,13 +191,72 @@ func (g *Gateway) SendMessageToExternal(ctx context.Context, message map[string]
 	if err != nil {
 		return false, err
 	}
-	batch := g.manager.SendMessage(ctx, platformio.OutboundMessageEnvelope{
-		RouteKey: route,
-		ChatType: kind,
-		TargetID: targetID,
-		Segments: segments,
-	}, route)
+	envelope := platformio.OutboundMessageEnvelope{
+		InternalMessageID: firstNonEmpty(asString(message["message_id"]), asString(message["internal_message_id"])),
+		RouteKey:          route,
+		ChatType:          kind,
+		TargetID:          targetID,
+		Segments:          segments,
+		PlainText:         firstNonEmpty(asString(message["content"]), asString(message["processed_plain_text"])),
+		SessionID:         asString(message["session_id"]),
+		MessageInfo:       pluginOutboundMessageInfo(message),
+	}
+	if timestamp := pluginTimestamp(message["timestamp"]); !timestamp.IsZero() {
+		envelope.Timestamp = timestamp
+	}
+	if replyTo := asString(message["reply_to"]); replyTo != "" {
+		envelope.ReplyToMessageID = replyTo
+	}
+	batch := g.manager.SendMessage(ctx, envelope, route)
 	return batch.HasSuccess(), nil
+}
+
+// pluginOutboundMessageInfo 从插件消息字典透传出站 message_info
+func pluginOutboundMessageInfo(message map[string]any) platformio.OutboundMessageInfo {
+	info, _ := message["message_info"].(map[string]any)
+	if info == nil {
+		return platformio.OutboundMessageInfo{}
+	}
+	out := platformio.OutboundMessageInfo{AdditionalConfig: mapValue(info["additional_config"])}
+	if user, ok := info["user_info"].(map[string]any); ok {
+		out.UserInfo = platformio.OutboundUserInfo{
+			UserID:       asString(user["user_id"]),
+			UserNickname: asString(user["user_nickname"]),
+			UserCardname: asString(user["user_cardname"]),
+		}
+	}
+	if group, ok := info["group_info"].(map[string]any); ok {
+		out.GroupInfo = &platformio.OutboundGroupInfo{
+			GroupID:   asString(group["group_id"]),
+			GroupName: asString(group["group_name"]),
+		}
+	}
+	return out
+}
+
+func mapValue(value any) map[string]any {
+	if mapped, ok := value.(map[string]any); ok {
+		return mapped
+	}
+	return nil
+}
+
+// pluginTimestamp 解析插件消息字典的秒级时间戳
+func pluginTimestamp(value any) time.Time {
+	switch typed := value.(type) {
+	case float64:
+		return time.UnixMilli(int64(typed * 1000))
+	case int64:
+		return time.UnixMilli(typed * 1000)
+	case int:
+		return time.UnixMilli(int64(typed) * 1000)
+	case string:
+		var seconds float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(typed), "%f", &seconds); err == nil && seconds > 0 {
+			return time.UnixMilli(int64(seconds * 1000))
+		}
+	}
+	return time.Time{}
 }
 
 // RegisterPluginGatewayDriver 注册插件消息网关驱动并绑定 Platform IO 路由
@@ -138,8 +304,11 @@ func (g *Gateway) UnregisterPluginGatewayDriver(ctx context.Context, pluginID, g
 }
 
 func (g *Gateway) segments(message map[string]any) ([]platformio.Segment, error) {
-	raw, ok := message["segments"]
-	if !ok || raw == nil {
+	raw := message["segments"]
+	if raw == nil {
+		raw = message["raw_message"]
+	}
+	if raw == nil {
 		raw = message["message"]
 	}
 	if text, ok := raw.(string); ok {

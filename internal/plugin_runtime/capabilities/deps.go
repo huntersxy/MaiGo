@@ -271,6 +271,25 @@ type PluginGatewayDriverPort interface {
 	UnregisterPluginGatewayDriver(ctx context.Context, pluginID, gatewayName string) error
 }
 
+// PluginGatewayInboundRequest 插件消息网关注入入站消息时的路由归属
+type PluginGatewayInboundRequest struct {
+	PluginID          string
+	GatewayName       string
+	DriverID          string
+	Platform          string
+	AccountID         string
+	Scope             string
+	ExternalMessageID string
+	DedupeKey         string
+	RouteMetadata     map[string]any
+}
+
+// PluginGatewayInboundPort 消息网关入站注入端口
+// 由 Platform IO 实现：先做适配器名单策略与去重，再交给主消息链
+type PluginGatewayInboundPort interface {
+	ReceiveGatewayMessage(ctx context.Context, request PluginGatewayInboundRequest, message map[string]any) (bool, map[string]any, error)
+}
+
 // PluginMessageGatewayPort 由 Platform IO 实现外部消息互通与插件网关注册
 type PluginMessageGatewayPort interface {
 	PluginGatewayDriverPort

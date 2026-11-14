@@ -187,7 +187,7 @@ func (a *Agent) sendFileViaPlatformIO(
 		ChatType:    chatType,
 		TargetID:    resolved.Target,
 		Timestamp:   time.Now(),
-		MessageInfo: outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
 		Segments: []platformio.Segment{{
 			Kind:  platformio.SegmentFile,
 			URL:   fileURL,
@@ -246,7 +246,7 @@ func (a *Agent) sendViaPlatformIO(
 		TargetID:    resolved.Target,
 		PlainText:   text,
 		Timestamp:   time.Now(),
-		MessageInfo: outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
 		Segments:    a.outboundSegmentsForText(conversationKind, targetID, text, mentions),
 	}
 	if replyTo != 0 {
@@ -290,7 +290,7 @@ func (a *Agent) sendImageViaPlatformIO(
 		ChatType:    chatType,
 		TargetID:    resolved.Target,
 		Timestamp:   time.Now(),
-		MessageInfo: outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
 		Segments:    []platformio.Segment{seg},
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
@@ -340,9 +340,9 @@ func chatTypeForKind(kind string) (platformio.ChatType, error) {
 	}
 }
 
-func outboundMessageInfoForRoute(route platformio.RouteKey, conversationKind, target string) platformio.OutboundMessageInfo {
+func (a *Agent) outboundMessageInfoForRoute(route platformio.RouteKey, conversationKind, target string) platformio.OutboundMessageInfo {
 	info := platformio.OutboundMessageInfo{
-		UserInfo: platformio.OutboundUserInfo{UserID: route.AccountID},
+		UserInfo: platformio.OutboundUserInfo{UserID: route.AccountID, UserNickname: a.botName()},
 	}
 	if conversationKind == memory.ConversationKindGroup {
 		info.GroupInfo = &platformio.OutboundGroupInfo{GroupID: target}

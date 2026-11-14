@@ -1,6 +1,7 @@
 package maimbridge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -96,57 +97,29 @@ func mediaSegmentFromMaimSeg(kind platformio.SegmentKind, data json.RawMessage) 
 }
 
 // segmentToMaimSeg 将规范化出站段转换为 maim_message 段
-func segmentToMaimSeg(seg platformio.Segment) maimmsg.Seg {
+//
+// 段数据形状对齐 Python 组件 to_seg：
+// at/reply 是字符串，image/emoji/voice 是 base64 字符串，file 是负载字典
+func segmentToMaimSeg(ctx context.Context, seg platformio.Segment) (maimmsg.Seg, error) {
 	switch seg.Kind {
 	case platformio.SegmentText:
-		return maimmsg.SegText(seg.Text)
+		return maimmsg.SegText(seg.Text), nil
 	case platformio.SegmentAt:
-		payload := map[string]any{}
-		if seg.AtUserID != "" {
-			payload["user_id"] = seg.AtUserID
-		}
-		if seg.Extra != nil {
-			if name := strings.TrimSpace(seg.Extra["name"]); name != "" {
-				payload["name"] = name
-			}
-		}
-		return maimmsg.Seg{Type: "at", Data: mustJSON(payload)}
+		return maimmsg.Seg{Type: "at", Data: mustJSON(strings.TrimSpace(seg.AtUserID))}, nil
 	case platformio.SegmentForward:
-		return maimmsg.Seg{Type: "forward", Data: mustJSON(forwardNodesToMaimData(seg.ForwardNodes))}
-	case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice,
-		platformio.SegmentVideo, platformio.SegmentRecord, platformio.SegmentFile:
-		base64Value := ""
-		if seg.Extra != nil {
-			base64Value = strings.TrimSpace(seg.Extra["base64"])
+		nodes, err := forwardNodesToMaimData(ctx, seg.ForwardNodes)
+		if err != nil {
+			return maimmsg.Seg{}, err
 		}
-		if base64Value != "" && seg.URL == "" && (seg.Extra == nil || strings.TrimSpace(seg.Extra["file"]) == "") {
-			return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(base64Value)}
+		return maimmsg.Seg{Type: "forward", Data: mustJSON(nodes)}, nil
+	case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice:
+		encoded, err := platformio.SegmentMediaBase64(ctx, seg)
+		if err != nil {
+			return maimmsg.Seg{}, err
 		}
-		payload := map[string]any{}
-		if seg.URL != "" {
-			payload["url"] = seg.URL
-		}
-		if seg.Extra != nil {
-			if file := strings.TrimSpace(seg.Extra["file"]); file != "" {
-				payload["file"] = file
-			}
-			if name := strings.TrimSpace(seg.Extra["name"]); name != "" {
-				payload["name"] = name
-			}
-			if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
-				payload["id"] = id
-			}
-		}
-		if base64Value != "" {
-			payload["base64"] = base64Value
-		}
-		if seg.Text != "" {
-			payload["text"] = seg.Text
-		}
-		if len(payload) == 0 {
-			payload["text"] = ""
-		}
-		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(payload)}
+		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(encoded)}, nil
+	case platformio.SegmentVideo, platformio.SegmentRecord, platformio.SegmentFile:
+		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(mediaPayload(seg))}, nil
 	case platformio.SegmentFace:
 		payload := map[string]any{}
 		if seg.Extra != nil {
@@ -157,20 +130,17 @@ func segmentToMaimSeg(seg platformio.Segment) maimmsg.Seg {
 		if seg.Text != "" {
 			payload["text"] = seg.Text
 		}
-		return maimmsg.Seg{Type: "face", Data: mustJSON(payload)}
+		return maimmsg.Seg{Type: "face", Data: mustJSON(payload)}, nil
 	case platformio.SegmentReply:
-		payload := map[string]any{}
-		if seg.Text != "" {
-			payload["id"] = seg.Text
-		}
+		replyID := strings.TrimSpace(seg.Text)
 		if seg.Extra != nil {
 			if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
-				payload["id"] = id
+				replyID = id
 			}
 		}
-		return maimmsg.Seg{Type: "reply", Data: mustJSON(payload)}
+		return maimmsg.Seg{Type: "reply", Data: mustJSON(replyID)}, nil
 	case platformio.SegmentDict:
-		return maimmsg.Seg{Type: "dict", Data: mustJSON(seg.Data)}
+		return maimmsg.Seg{Type: "dict", Data: mustJSON(seg.Data)}, nil
 	case platformio.SegmentJSON:
 		payload := map[string]any{}
 		if seg.Extra != nil {
@@ -189,35 +159,87 @@ func segmentToMaimSeg(seg platformio.Segment) maimmsg.Seg {
 				payload["data"] = text
 			}
 		}
-		return maimmsg.Seg{Type: "json", Data: mustJSON(payload)}
+		return maimmsg.Seg{Type: "json", Data: mustJSON(payload)}, nil
 	default:
-		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(map[string]any{"text": seg.Text})}
+		return maimmsg.Seg{Type: string(seg.Kind), Data: mustJSON(map[string]any{"text": seg.Text})}, nil
 	}
 }
 
-// messageSegmentFromOutbound 组装出站消息段，多段时使用 seglist
-func messageSegmentFromOutbound(outbound platformio.OutboundMessageEnvelope) maimmsg.Seg {
+// mediaPayload 媒体段负载，键名对齐 Python FileComponent.to_payload
+func mediaPayload(seg platformio.Segment) map[string]any {
+	payload := map[string]any{}
+	if seg.URL != "" {
+		payload["url"] = seg.URL
+	}
+	if seg.Extra != nil {
+		if file := strings.TrimSpace(seg.Extra["file"]); file != "" {
+			payload["file"] = file
+		}
+		if name := strings.TrimSpace(seg.Extra["name"]); name != "" {
+			payload["name"] = name
+		}
+		if size := strings.TrimSpace(seg.Extra["size"]); size != "" {
+			payload["size"] = size
+		}
+		if id := strings.TrimSpace(seg.Extra["id"]); id != "" {
+			payload["file_id"] = id
+		}
+		if mimeType := strings.TrimSpace(seg.Extra["mime_type"]); mimeType != "" {
+			payload["mime_type"] = mimeType
+		}
+		if fileRef := strings.TrimSpace(seg.Extra["file_ref"]); fileRef != "" {
+			payload["file_ref"] = fileRef
+		}
+		if busid := strings.TrimSpace(seg.Extra["busid"]); busid != "" {
+			payload["busid"] = busid
+		}
+		if base64Value := strings.TrimSpace(seg.Extra["base64"]); base64Value != "" {
+			payload["base64"] = base64Value
+		}
+	}
+	if seg.Text != "" {
+		payload["text"] = seg.Text
+	}
+	if len(payload) == 0 {
+		payload["text"] = ""
+	}
+	return payload
+}
+
+// outboundSegments 组装本次出站的全部消息段，ExternalReplyToMessageID 转成首段引用
+func outboundSegments(outbound platformio.OutboundMessageEnvelope) []platformio.Segment {
 	segments := outbound.Segments
 	replyID := strings.TrimSpace(outbound.ExternalReplyToMessageID)
-	if replyID != "" {
-		segments = append([]platformio.Segment{{Kind: platformio.SegmentReply, Extra: map[string]string{"id": replyID}}}, segments...)
+	if replyID == "" {
+		return segments
 	}
+	// 组件序列里已有 reply 段时不再重复插入，对齐 Python 以组件序列为准
+	for _, segment := range segments {
+		if segment.Kind == platformio.SegmentReply {
+			return segments
+		}
+	}
+	return append([]platformio.Segment{{Kind: platformio.SegmentReply, Text: replyID}}, segments...)
+}
+
+// outboundTopSegment 组装 message_segment，恒为 seglist（对齐 Python to_maim_message）
+func outboundTopSegment(ctx context.Context, outbound platformio.OutboundMessageEnvelope) (maimmsg.Seg, error) {
+	segments := outboundSegments(outbound)
 	if len(segments) == 0 {
-		return maimmsg.SegText(outbound.PlainText)
-	}
-	if len(segments) == 1 {
-		return segmentToMaimSeg(segments[0])
+		if text := strings.TrimSpace(outbound.PlainText); text != "" {
+			return maimmsg.Seg{Type: "seglist", Data: mustJSON([]map[string]any{{"type": "text", "data": text}})}, nil
+		}
+		return maimmsg.Seg{Type: "seglist", Data: mustJSON([]map[string]any{})}, nil
 	}
 	items := make([]map[string]any, 0, len(segments))
 	for _, segment := range segments {
-		maimSeg := segmentToMaimSeg(segment)
-		var payload any
-		if err := json.Unmarshal(maimSeg.Data, &payload); err != nil {
-			payload = map[string]any{}
+		maimSeg, err := segmentToMaimSeg(ctx, segment)
+		if err != nil {
+			return maimmsg.Seg{}, err
 		}
-		items = append(items, map[string]any{"type": maimSeg.Type, "data": payload})
+		items = append(items, map[string]any{"type": maimSeg.Type, "data": maimSeg.Data})
 	}
-	return maimmsg.Seg{Type: "seglist", Data: mustJSON(items)}
+	return maimmsg.Seg{Type: "seglist", Data: mustJSON(items)}, nil
 }
 
 // maimMediaBase64 读取 maim_message 媒体段中的 base64；图片等段允许 data 直接是 base64 字符串

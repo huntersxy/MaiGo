@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -31,15 +32,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		platform = "unknown"
 	}
 
+	authorized := true
 	if cfg.TokenRequired() {
 		token := strings.TrimSpace(r.Header.Get(headerAuthorization))
 		if token == "" {
 			token = strings.TrimSpace(r.Header.Get(strings.ToLower(headerAuthorization)))
 		}
-		if !s.validToken(token) {
-			http.Error(w, closeReasonInvalidToken, http.StatusUnauthorized)
-			return
-		}
+		authorized = s.validToken(token)
 	}
 
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -48,6 +47,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		zap.L().Warn("maim_message WS 握手失败", zap.Error(err))
+		return
+	}
+	if !authorized {
+		// 对齐 Python 适配器可见行为：握手成功后以 1008 关闭并带上原因
+		_ = ws.Close(websocket.StatusPolicyViolation, closeReasonInvalidToken)
 		return
 	}
 
@@ -83,12 +87,21 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) onFrame(ctx context.Context, connPlatform string, data []byte) {
+	// 旧版自定义消息（如 message_id_echo）不进入 MessageBase 解析
+	if s.dispatchLegacyCustom(ctx, connPlatform, data) {
+		return
+	}
 	msg, err := parseMessageFrame(data)
 	if err != nil {
 		zap.L().Warn("maim_message 入站帧解析失败",
 			zap.String("platform", connPlatform),
 			zap.Error(err))
 		return
+	}
+	// 适配器可能未发送 platform 头，或头与 message_info.platform 不一致；
+	// 入站路由按消息自带的平台补齐，对齐 Python 不依赖连接头的处理方式
+	if platform := strings.TrimSpace(msg.MessageInfo.Platform); platform != "" && platform != connPlatform {
+		s.ensurePlatformRoutes(platform)
 	}
 	if err := s.inbound(ctx, connPlatform, msg); err != nil {
 		zap.L().Warn("maim_message 入站投递失败",
@@ -144,4 +157,54 @@ func (s *Server) validToken(token string) bool {
 		}
 	}
 	return false
+}
+
+// dispatchLegacyCustom 分发旧版自定义消息帧
+//
+// 对齐 maim_message MessageServer.process_message：带 message_type_name 或
+// is_custom_message 的帧交给注册的处理器，不进入普通消息链
+func (s *Server) dispatchLegacyCustom(ctx context.Context, connPlatform string, data []byte) bool {
+	var frame map[string]any
+	if err := json.Unmarshal(data, &frame); err != nil {
+		return false
+	}
+	name := frameString(frame["message_type_name"])
+	if name == "" {
+		if content, ok := frame["content"].(map[string]any); ok && frameString(content["type"]) == "echo" {
+			name = "message_id_echo"
+		}
+	}
+	if name == "" {
+		return false
+	}
+	if custom, _ := frame["is_custom_message"].(bool); !custom && frame["message_type_name"] == nil {
+		return false
+	}
+	s.stateMu.Lock()
+	handler := s.customHandlers[name]
+	if handler == nil {
+		handler = s.customHandlers["custom_"+name]
+	}
+	s.stateMu.Unlock()
+	if handler == nil {
+		zap.L().Debug("maim_message 未注册的旧版自定义消息",
+			zap.String("type", name),
+			zap.String("platform", connPlatform))
+		return true
+	}
+	metadata := map[string]any{
+		"platform":  connPlatform,
+		"timestamp": nowUnixFloat(),
+	}
+	if err := handler(ctx, frame, metadata); err != nil {
+		zap.L().Warn("maim_message 旧版自定义消息处理失败",
+			zap.String("type", name),
+			zap.Error(err))
+	}
+	return true
+}
+
+func frameString(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }

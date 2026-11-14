@@ -306,10 +306,17 @@ func (d *PluginPlatformDriver) Send(ctx context.Context, outbound OutboundMessag
 	}
 
 	metadata := cloneStringAnyMap(outbound.Metadata)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
 	// raw_message 对齐 Python plugin_runtime 的 [{type,data}]；segments 旧字段保留一个版本
-	rawSegments := segmentsToMaps(outbound.Segments)
+	rawSegments := segmentsToMaps(ctx, outbound.Segments)
 	// 对齐 Python plugin_driver.py:113-126：出站前把 file 段的 file_ref 解析为可下载 URL
-	d.resolveFileSegments(ctx, rawSegments, outbound.InternalMessageID)
+	sessionID := strings.TrimSpace(outbound.SessionID)
+	if sessionID == "" {
+		sessionID = outbound.InternalMessageID
+	}
+	d.resolveFileSegments(ctx, rawSegments, sessionID)
 	args := map[string]any{
 		"message": outboundPluginMessage(outbound, routeKey, rawSegments),
 		"route": map[string]any{
@@ -491,18 +498,18 @@ func firstNonEmptyString(values ...string) string {
 
 // segmentsToMaps 生成插件运行时 raw_message 段 [{type,data}]
 // text/at_user_id/url/extra 作为旧扁平字段保留一个版本，方便未升级插件继续读取
-func segmentsToMaps(segments []Segment) []map[string]any {
+func segmentsToMaps(ctx context.Context, segments []Segment) []map[string]any {
 	out := make([]map[string]any, 0, len(segments))
 	for _, seg := range segments {
-		out = append(out, segmentToMap(seg))
+		out = append(out, segmentToMap(ctx, seg))
 	}
 	return out
 }
 
-func segmentToMap(seg Segment) map[string]any {
+func segmentToMap(ctx context.Context, seg Segment) map[string]any {
 	item := map[string]any{
 		"type": string(seg.Kind),
-		"data": segmentRawData(seg),
+		"data": segmentRawData(ctx, seg),
 	}
 	if seg.Text != "" {
 		item["text"] = seg.Text
@@ -518,7 +525,13 @@ func segmentToMap(seg Segment) map[string]any {
 		if hash := extraValue(seg.Extra, "hash", "binary_hash"); hash != "" {
 			item["hash"] = hash
 		}
-		if binary := extraValue(seg.Extra, "binary_data_base64", "base64"); binary != "" {
+		binary := extraValue(seg.Extra, "binary_data_base64", "base64")
+		if binary == "" {
+			if encoded, err := SegmentMediaBase64(ctx, seg); err == nil {
+				binary = encoded
+			}
+		}
+		if binary != "" {
 			item["binary_data_base64"] = binary
 		}
 	}
@@ -533,7 +546,7 @@ func segmentToMap(seg Segment) map[string]any {
 }
 
 // segmentRawData 输出 Python PluginMessageUtils._component_to_dict 期望的 data 形状
-func segmentRawData(seg Segment) any {
+func segmentRawData(ctx context.Context, seg Segment) any {
 	switch seg.Kind {
 	case SegmentText:
 		return seg.Text
@@ -553,7 +566,7 @@ func segmentRawData(seg Segment) any {
 	case SegmentFace:
 		return faceSegmentData(seg)
 	case SegmentForward:
-		return forwardSegmentData(seg.ForwardNodes)
+		return forwardSegmentData(ctx, seg.ForwardNodes)
 	default:
 		if seg.Data != nil {
 			return seg.Data
@@ -623,13 +636,13 @@ func faceSegmentData(seg Segment) map[string]any {
 	return payload
 }
 
-func forwardSegmentData(nodes []ForwardNode) []any {
+func forwardSegmentData(ctx context.Context, nodes []ForwardNode) []any {
 	out := make([]any, 0, len(nodes))
 	for _, node := range nodes {
 		item := map[string]any{
 			"user_nickname": node.Nickname,
 			"message_id":    node.MessageID,
-			"content":       segmentsToMaps(node.Segments),
+			"content":       segmentsToMaps(ctx, node.Segments),
 		}
 		setPayloadString(item, "user_id", node.UserID)
 		setPayloadString(item, "user_cardname", node.Cardname)
