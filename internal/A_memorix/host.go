@@ -12,7 +12,7 @@ import "context"
 //   - AdminList     → 多 component（如 memory_source_admin action=list）
 //   - Health        → memory_runtime_admin（status/self_check）+ _startup_status_payload
 //
-// Go 后端仅 native（AMemorixHostService）与 Remote（MAIBOT_MEMORIX_REMOTE_URL）；Bridge/PG 已移除。
+// Go 后端仅 native（AMemorixHostService）；Remote/Bridge/PG 均已移除。
 type Host interface {
 	IngestMessage(ctx context.Context, req IngestMessageRequest) (IngestResult, error)
 	Search(ctx context.Context, req SearchRequest) (SearchResult, error)

@@ -2070,7 +2070,6 @@ func telemetryConfigEnabled(holder *maibotcfg.InstanceHolder) bool {
 const (
 	memorixBackendAuto   = "auto"
 	memorixBackendNative = "native"
-	memorixBackendRemote = "remote"
 )
 
 // acpConfigFromBot 把实例 [agent] 配置转换为 agent.Config；空值走 Python 默认
@@ -2211,16 +2210,13 @@ func profileForACPReload(maiAgent *maisaruntime.Agent) string {
 }
 
 // resolveMemorixBackend 解析后端选择，默认 auto 以原生内核优先
-// 保留 MAIBOT_MEMORIX_NATIVE=1 强制原生的旧写法；返回值 explicit 表示显式指定后端
+// 返回值 explicit 表示显式指定后端
 func resolveMemorixBackend() (string, bool) {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("MAIBOT_MEMORIX_BACKEND")))
 	switch raw {
-	case memorixBackendAuto, memorixBackendNative, memorixBackendRemote:
+	case memorixBackendAuto, memorixBackendNative:
 		return raw, true
 	case "":
-		if strings.TrimSpace(os.Getenv("MAIBOT_MEMORIX_NATIVE")) == "1" {
-			return memorixBackendNative, true
-		}
 		return memorixBackendAuto, false
 	default:
 		zap.L().Warn("MAIBOT_MEMORIX_BACKEND 取值无效，按 auto 处理",
@@ -2323,7 +2319,7 @@ func registerDormantAMemorixHost(plan nativeAMemorixStartupPlan, holder *maibotc
 }
 
 // wireMemorixHostAfterNativeStart 在原生内核未就绪时注册 Host
-// 未启用→DisabledHost，启用但启动失败→FailedHost；Remote 仅在 MAIBOT_MEMORIX_REMOTE_URL 显式配置时保留
+// 未启用→DisabledHost，启用但启动失败→FailedHost
 func wireMemorixHostAfterNativeStart(plan nativeAMemorixStartupPlan, start nativeAMemorixStart) {
 	backend, explicit := start.Backend, start.Explicit
 	if start.Err != nil {
@@ -2332,55 +2328,16 @@ func wireMemorixHostAfterNativeStart(plan nativeAMemorixStartupPlan, start nativ
 			zap.L().Error("A_Memorix 原生内核启动失败，已按显式配置保持未启用", zap.Error(start.Err))
 			return
 		}
-		// auto 模式下显式配置的远程侧车优先于 FailedHost：这是 Go 侧扩展，保留显式配置能力
-		if !explicit && memorix.RemoteConfigured() {
-			selected, remoteURL := memorix.ConfigureDefaultHost()
-			if selected == memorix.HostBackendRemote {
-				zap.L().Info("A_Memorix 原生内核启动失败，Host 已接入显式配置的远程侧车",
-					zap.String("remote_url", remoteURL), zap.Error(start.Err))
-				return
-			}
-			zap.L().Warn("A_Memorix 原生内核启动失败且远程侧车不可用，Host 保持初始化失败状态", zap.Error(start.Err))
-		}
 		// 启用但内核失败：保留初始化失败状态
 		memorix.DefaultRegistry().SetHost(memorix.NewFailedHost(start.Err.Error(), nil))
 		zap.L().Error("A_Memorix 原生内核启动失败，Host 保持初始化失败状态",
 			zap.String("backend", backend), zap.Error(start.Err))
 		return
 	}
+	// 未进入 ready 且没有错误：保持未启用
+	memorix.DefaultRegistry().SetHost(memorix.DisabledHost{})
 	if explicit && backend != memorixBackendAuto {
-		switch backend {
-		case memorixBackendRemote:
-			if !memorix.RemoteConfigured() {
-				memorix.DefaultRegistry().SetHost(memorix.DisabledHost{})
-				zap.L().Warn("显式选择 remote 后端但 MAIBOT_MEMORIX_REMOTE_URL 未配置，保持未启用")
-				return
-			}
-			selected, remoteURL := memorix.ConfigureDefaultHost()
-			if selected == memorix.HostBackendRemote {
-				zap.L().Info("Memorix Host 已接入远程 A_Memorix HTTP 侧车",
-					zap.String("remote_url", remoteURL))
-				return
-			}
-			zap.L().Info("Memorix Host 未配置（DisabledHost）")
-			return
-		default:
-			// 显式 native 但未进入 ready 且没有错误：保持未启用，不落桥接
-			memorix.DefaultRegistry().SetHost(memorix.DisabledHost{})
-			zap.L().Warn("显式 native 后端未进入 ready，保持未启用")
-			return
-		}
-	}
-	// auto 且 native 未尝试或未启用：只有显式远程配置才保留远程，其余保持未启用
-	if !memorix.RemoteConfigured() {
-		memorix.DefaultRegistry().SetHost(memorix.DisabledHost{})
-		zap.L().Info("Memorix Host 未配置（DisabledHost）")
-		return
-	}
-	selected, remoteURL := memorix.ConfigureDefaultHost()
-	if selected == memorix.HostBackendRemote {
-		zap.L().Info("Memorix Host 已接入远程 A_Memorix HTTP 侧车",
-			zap.String("remote_url", remoteURL))
+		zap.L().Warn("显式 native 后端未进入 ready，保持未启用")
 		return
 	}
 	zap.L().Info("Memorix Host 未配置（DisabledHost）")

@@ -95,8 +95,6 @@ func BackendName(host Host) string {
 		return "disabled"
 	case *AMemorixHostService:
 		return "native"
-	case *RemoteHost:
-		return "remote"
 	default:
 		_ = typed
 		return "custom"

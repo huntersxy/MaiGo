@@ -52,7 +52,7 @@ func resolveNativeAMemorixStartupPlan() nativeAMemorixStartupPlan {
 		}),
 	}
 	if !plan.Decision.Attempt {
-		// 非 native 尝试仍保留原有实例配置加载，避免影响 bridge/remote 与 auto 降级
+		// 非 native 尝试仍保留原有实例配置加载，避免影响 auto 降级
 		if envDir != "" {
 			plan.LoadInstanceDir = envDir
 		}
@@ -114,7 +114,7 @@ type nativeAMemorixStart struct {
 
 // startNativeAMemorixBackend 按启动计划尝试原生内核
 // 未尝试时返回空 Host 与空 Err，调用方继续原有 fallback
-// 尝试失败时 Host 为空，Err 保留真实原因；显式 native 由调用方保持未启用，不静默退回 bridge
+// 尝试失败时 Host 为空，Err 保留真实原因；显式 native 由调用方保持未启用，不静默降级
 func startNativeAMemorixBackend(plan nativeAMemorixStartupPlan, holder *maibotcfg.InstanceHolder, db *gorm.DB, modelStore modelprofiles.Source, botAccounts ...*botservices.BotAccountService) nativeAMemorixStart {
 	start := nativeAMemorixStart{Backend: plan.Backend, Explicit: plan.Explicit, Holder: holder}
 	var botAccountService *botservices.BotAccountService

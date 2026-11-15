@@ -2,8 +2,8 @@ package memorix
 
 import "sync"
 
-// Registry 进程内 Memorix Host 入口；默认 DisabledHost
-// MAIBOT_MEMORIX_REMOTE_URL 时 ConfigureDefaultHost() 接入 RemoteHost，否则保持 DisabledHost
+// Registry 进程内 Memorix Host 入口；默认 DisabledHost，
+// 由启动装配在原生内核就绪后注入 AMemorixHostService。
 type Registry struct {
 	mu   sync.RWMutex
 	host Host

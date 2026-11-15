@@ -18,15 +18,11 @@ const (
 	NativeBackendAuto = "auto"
 	// NativeBackendNative 显式使用原生内核
 	NativeBackendNative = "native"
-	// NativeBackendBridge 使用宿主数据库（SQLite）桥接
-	NativeBackendBridge = "bridge"
-	// NativeBackendRemote 使用远程 HTTP 侧车
-	NativeBackendRemote = "remote"
 )
 
 // NativeStartupOptions 启动门输入
 type NativeStartupOptions struct {
-	// Backend 取值 auto/native/bridge/remote，空值按 auto
+	// Backend 取值 auto/native，空值按 auto；历史 bridge/remote 后端已移除
 	Backend string
 	// Explicit 表示后端由用户显式指定
 	Explicit bool
@@ -75,9 +71,6 @@ func ResolveNativeStartup(opts NativeStartupOptions) NativeStartupDecision {
 	case NativeBackendNative:
 		decision.Attempt = true
 		decision.Reason = "显式选择 native 后端"
-		return decision
-	case NativeBackendBridge, NativeBackendRemote:
-		decision.Reason = fmt.Sprintf("后端选择为 %s，不启动 native", backend)
 		return decision
 	case NativeBackendAuto:
 	default:

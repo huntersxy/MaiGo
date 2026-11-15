@@ -502,3 +502,15 @@ func mergeStartupStatus(result map[string]any, status map[string]any) map[string
 	}
 	return merged
 }
+
+// cloneMap 浅拷贝 payload，避免调用方就地改写入参
+func cloneMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
