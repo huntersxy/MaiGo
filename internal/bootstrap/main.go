@@ -1,10 +1,10 @@
 package bootstrap
 
 import (
+	webuichat "MaiGo/internal/webui/routers/chat"
 	"context"
 	"errors"
 	"fmt"
-	webuichat "MaiGo/internal/webui/routers/chat"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1338,6 +1338,14 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		if err != nil {
 			pluginruntime.LogSpawnSkipped(pluginSpawnCfg, err)
 		} else {
+			// 缺 config_version 的插件配置会让 Runner 拒绝加载，启动后按默认配置重建并重载
+			if repaired := pluginHost.RepairVersionlessPluginConfigs(context.Background()); len(repaired) > 0 {
+				if _, err := pluginHost.ReloadPlugins(context.Background(), repaired, "config_repaired", nil); err != nil {
+					zap.L().Warn("重建插件配置后重载失败", zap.Strings("plugin_ids", repaired), zap.Error(err))
+				} else {
+					zap.L().Info("插件配置已按默认配置重建并重载", zap.Strings("plugin_ids", repaired))
+				}
+			}
 			zap.L().Info("插件运行时 Runner 已启动",
 				zap.Int("hook_specs", len(pluginHost.HookSpecs().ListHookSpecs())),
 				zap.Strings("host_capabilities", registeredCaps),

@@ -471,8 +471,14 @@ func (r *Runtime) reconcileRelationGraphProjectionJobs(resetLeases bool, batchSi
 	if err != nil {
 		return err
 	}
-	r.logger.Info(fmt.Sprintf("[native] 关系图投影作业对账完成: claimed=%d completed=%d saved_batches=%d",
-		result["claimed"], result["completed"], result["saved_batches"]))
+	message := fmt.Sprintf("[native] 关系图投影作业对账完成: claimed=%d completed=%d saved_batches=%d",
+		result["claimed"], result["completed"], result["saved_batches"])
+	// 周期性对账在无事可做时每轮都会走到这里，空转降为 Debug，避免日志刷屏
+	if result["claimed"] == 0 && result["completed"] == 0 && result["saved_batches"] == 0 {
+		r.logger.Debug(message)
+	} else {
+		r.logger.Info(message)
+	}
 	return nil
 }
 

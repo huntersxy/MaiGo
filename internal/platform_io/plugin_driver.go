@@ -332,7 +332,7 @@ func (d *PluginPlatformDriver) Send(ctx context.Context, outbound OutboundMessag
 		receipt.Error = err.Error()
 		return receipt, err
 	}
-	status, externalID, resultMetadata, errMessage := pluginGatewayReceipt(response)
+	status, externalID, resultMetadata, errMessage := ParsePluginGatewayReceipt(response)
 	if errMessage != "" {
 		receipt.Status = DeliveryStatusFailed
 		receipt.Error = errMessage
@@ -428,11 +428,17 @@ func optionalPluginString(value string) any {
 	return value
 }
 
-// pluginGatewayReceipt 解析插件网关返回值，对齐 Python _build_receipt 的主要分支
-func pluginGatewayReceipt(response map[string]any) (DeliveryStatus, string, map[string]any, string) {
+// ParsePluginGatewayReceipt 解析插件网关调用结果，对齐 Python plugin_driver._build_receipt。
+//
+// 入参是 RPC 信封的 payload：Runner 把插件处理器返回值包成
+// {"success": bool, "result": <插件返回值>}；插件再在 result 里给
+// {"success": bool, "error": ..., "external_message_id": ...}。
+// 少认外层这一层会把「已发送」误判成失败，进而触发重复发送。
+func ParsePluginGatewayReceipt(response map[string]any) (DeliveryStatus, string, map[string]any, string) {
 	if response == nil {
-		return DeliveryStatusSent, "", nil, ""
+		return DeliveryStatusFailed, "", nil, "消息网关发送失败"
 	}
+	// 调用级错误：invoker 用 {"error": ...} 表示
 	if errorPayload, ok := response["error"].(map[string]any); ok {
 		if message := stringValue(errorPayload["message"]); message != "" {
 			return DeliveryStatusFailed, "", nil, message
@@ -441,12 +447,10 @@ func pluginGatewayReceipt(response map[string]any) (DeliveryStatus, string, map[
 	if errText := stringValue(response["error"]); errText != "" {
 		return DeliveryStatusFailed, "", nil, errText
 	}
-	payload, _ := response["payload"].(map[string]any)
-	success, hasSuccess := payload["success"].(bool)
-	if !hasSuccess || !success {
-		return DeliveryStatusFailed, "", nil, firstNonEmptyString(stringValue(payload["result"]), "消息网关发送失败")
+	if success, _ := response["success"].(bool); !success {
+		return DeliveryStatusFailed, "", nil, firstNonEmptyString(stringValue(response["result"]), "消息网关发送失败")
 	}
-	switch result := payload["result"].(type) {
+	switch result := response["result"].(type) {
 	case map[string]any:
 		if value, ok := result["success"].(bool); ok && !value {
 			return DeliveryStatusFailed, "", nil, firstNonEmptyString(stringValue(result["error"]), stringValue(result["message"]), "消息网关发送失败")

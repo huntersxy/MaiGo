@@ -398,5 +398,19 @@ func (p *PluginDependencyPipeline) LoadPackageIndexSettings() (PackageIndexSetti
 	for _, constraint := range config.Tool.UV.ConstraintDependencies {
 		settings.Constraints = append(settings.Constraints, constraint)
 	}
+	// 环境变量优先：部署环境（如国内网络）可直接指定镜像源，无需提供 pyproject.toml
+	if raw := strings.TrimSpace(os.Getenv("MAIBOT_PLUGIN_DEP_INDEX_URLS")); raw != "" {
+		urls := make([]string, 0, 2)
+		for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
+			return r == ',' || r == ';' || r == ' ' || r == '\n'
+		}) {
+			if item = strings.TrimSpace(item); item != "" {
+				urls = append(urls, item)
+			}
+		}
+		if len(urls) > 0 {
+			settings.IndexURLs = urls
+		}
+	}
 	return settings, nil
 }

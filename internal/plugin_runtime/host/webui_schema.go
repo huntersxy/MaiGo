@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bytedance/sonic"
 )
@@ -66,7 +67,10 @@ func ValidateWebUIJSON(value any, maxBytes, maxDepth int) error {
 			for _, child := range typed {
 				pending = append(pending, item{child, last.depth + 1})
 			}
-		case nil, string, int, int64, float64, bool:
+		case nil, string, bool, time.Time:
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		case []byte:
+			// msgpack 会把 bytes 解成 []byte；按 base64 走 JSON 与 Python 侧一致
 		default:
 			return fmt.Errorf("仅接受 JSON 数据")
 		}

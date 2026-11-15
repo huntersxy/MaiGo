@@ -29,6 +29,8 @@ services:
       MAIBOT_COMPAT_URL: http://python-compat:8767
       MAIBOT_COMPAT_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
       MAIBOT_COMPAT_TIMEOUT: "60"
+      # 插件 Python 依赖安装走国内镜像，直连 PyPI 太慢会长时间阻塞启动
+      MAIBOT_PLUGIN_DEP_INDEX_URLS: ${MAIBOT_PLUGIN_DEP_INDEX_URLS:-https://mirrors.aliyun.com/pypi/simple}
       HTTP_HOST: 0.0.0.0
     depends_on:
       - python-compat

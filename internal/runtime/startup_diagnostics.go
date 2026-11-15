@@ -139,6 +139,8 @@ type StartupWatchdog struct {
 	mu            sync.Mutex
 	lastHeartbeat time.Time
 	lastReportAt  time.Time
+	// stallReported 本次卡顿是否已转储过现场，避免持续阻塞时反复刷全量栈
+	stallReported bool
 	stop          chan struct{}
 	done          chan struct{}
 	stopOnce      sync.Once
@@ -212,17 +214,28 @@ func (w *StartupWatchdog) loop() {
 			lag := now.Sub(lastHeartbeat)
 			if lag < w.warnAfter {
 				w.lastReportAt = time.Time{}
+				w.stallReported = false
 				w.mu.Unlock()
 				continue
 			}
-			if !lastReportAt.IsZero() && now.Sub(lastReportAt) < w.reportInterval {
+			// 首次转储完整现场；同一段卡顿后续只按更长的间隔报 lag，
+			// 否则持续阻塞时每条日志都是上百 KB 的 goroutine 栈
+			interval := w.reportInterval
+			stacks := ""
+			if !w.stallReported {
+				stacks = captureStartupStacks()
+				w.stallReported = true
+			} else {
+				interval = w.reportInterval * 6
+			}
+			if !lastReportAt.IsZero() && now.Sub(lastReportAt) < interval {
 				w.mu.Unlock()
 				continue
 			}
 			w.lastReportAt = now
 			w.mu.Unlock()
 			if w.onLag != nil {
-				w.onLag(StartupLagReport{Name: w.name, Lag: lag, Stacks: captureStartupStacks()})
+				w.onLag(StartupLagReport{Name: w.name, Lag: lag, Stacks: stacks})
 			}
 		}
 	}

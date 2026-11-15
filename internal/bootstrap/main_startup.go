@@ -174,6 +174,13 @@ func newStartupLifecycle(signal *runtime.ShutdownSignal) *startupLifecycle {
 		Interval:       runtime.DefaultStartupWatchInterval,
 		ReportInterval: runtime.DefaultStartupReportInterval,
 		OnLag: func(report runtime.StartupLagReport) {
+			if report.Stacks == "" {
+				// 同一段卡顿的后续报告：只报时长，现场已在首次转储里
+				zap.L().Warn("启动主循环仍在卡顿",
+					zap.String("loop", report.Name),
+					zap.Duration("lag", report.Lag))
+				return
+			}
 			zap.L().Warn("启动主循环失去心跳",
 				zap.String("loop", report.Name),
 				zap.Duration("lag", report.Lag),

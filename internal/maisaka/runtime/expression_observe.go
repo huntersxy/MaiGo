@@ -17,10 +17,12 @@ func (a *Agent) observeExpressionInbound(ctx context.Context, msg *onebot.Conver
 	}
 	sessionID := a.resolveMaiBotSessionID(ctx, msg.ConversationKind, msg.TargetID)
 	if sessionID == "" {
+		zap.L().Debug("表达学习跳过：未解析到会话", zap.Int64("message_id", msg.MessageID))
 		return
 	}
 	_, enableLearning := learners.DefaultRegistry().ChatConfig().GetExpressionConfig(sessionID)
 	if !enableLearning {
+		zap.L().Debug("表达学习跳过：学习开关关闭", zap.String("session_id", sessionID))
 		return
 	}
 	text := strings.TrimSpace(msg.FinalContent)
@@ -32,6 +34,7 @@ func (a *Agent) observeExpressionInbound(ctx context.Context, msg *onebot.Conver
 	}
 	learner := a.expressionLearnerFor(sessionID)
 	if learner == nil {
+		zap.L().Debug("表达学习跳过：学习器未创建", zap.String("session_id", sessionID))
 		return
 	}
 	platform := strings.TrimSpace(msg.Platform)
@@ -49,5 +52,9 @@ func (a *Agent) observeExpressionInbound(ctx context.Context, msg *onebot.Conver
 	zap.L().Debug("表达学习缓冲入站消息",
 		zap.String("session_id", sessionID),
 		zap.Int64("message_id", msg.MessageID))
+	zap.L().Debug("表达学习已入缓冲",
+		zap.String("session_id", sessionID),
+		zap.Int("pending", learner.PendingCount()),
+		zap.Int("threshold", learners.DefaultMinMessagesForExtraction))
 	learner.TryScheduleBatchAsync(ctx)
 }

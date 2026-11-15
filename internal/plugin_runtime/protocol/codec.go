@@ -186,7 +186,51 @@ func (MsgPackCodec) Decode(data []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("期望解码为 map，实际为空")
 	}
 	unwrapped, _ := unwrapMsgPackExtValues(raw).(map[string]any)
-	return unwrapped, nil
+	// msgpack 按最小宽度解码整数（int8/uint8/uint16…），Go host 各处的取值函数
+	// 只认 int/int64/float64；在协议边界统一，避免每个消费点各自兼容
+	normalized, _ := normalizeMsgPackNumbers(unwrapped).(map[string]any)
+	return normalized, nil
+}
+
+// normalizeMsgPackNumbers 把 msgpack 解出的数值统一成 int64/float64
+func normalizeMsgPackNumbers(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			typed[key] = normalizeMsgPackNumbers(item)
+		}
+		return typed
+	case []any:
+		for index, item := range typed {
+			typed[index] = normalizeMsgPackNumbers(item)
+		}
+		return typed
+	case int:
+		return int64(typed)
+	case int8:
+		return int64(typed)
+	case int16:
+		return int64(typed)
+	case int32:
+		return int64(typed)
+	case uint:
+		return int64(typed)
+	case uint8:
+		return int64(typed)
+	case uint16:
+		return int64(typed)
+	case uint32:
+		return int64(typed)
+	case uint64:
+		if typed <= uint64(1<<63-1) {
+			return int64(typed)
+		}
+		return typed
+	case float32:
+		return float64(typed)
+	default:
+		return value
+	}
 }
 
 func (c MsgPackCodec) EncodeEnvelope(envelope Envelope) ([]byte, error) {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // ApplyPluginConfig 串行应用插件配置到运行时，WebUI 与手工文件变更共用同一入口
@@ -24,6 +26,17 @@ func (h *Host) ApplyPluginConfig(ctx context.Context, pluginID string) (string, 
 	// 对齐 Python integration.py:261 的 _plugin_file_update_lock：配置应用与源码重载串行
 	h.pluginFileUpdateMu.Lock()
 	defer h.pluginFileUpdateMu.Unlock()
+	// 缺 plugin.config_version 的旧模板配置会让 Runner 拒绝加载，先按默认配置重建
+	if repaired, repairErr := h.RepairVersionlessPluginConfig(ctx, pluginID); repairErr != nil {
+		zap.L().Warn("插件配置自动修复失败", zap.String("plugin_id", pluginID), zap.Error(repairErr))
+	} else if repaired {
+		loaded := h.isPluginLoaded(pluginID)
+		if loaded {
+			if _, reloadErr := h.ReloadPlugins(ctx, []string{pluginID}, "config_repaired", nil); reloadErr != nil {
+				zap.L().Warn("重建插件配置后重载失败", zap.String("plugin_id", pluginID), zap.Error(reloadErr))
+			}
+		}
+	}
 	loaded := h.isPluginLoaded(pluginID)
 	if !loaded {
 		// 配置解析会冷导入插件，启用前必须先补齐依赖，避免在检查配置之前就因缺包失败

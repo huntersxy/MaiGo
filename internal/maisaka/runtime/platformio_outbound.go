@@ -342,10 +342,22 @@ func chatTypeForKind(kind string) (platformio.ChatType, error) {
 
 func (a *Agent) outboundMessageInfoForRoute(route platformio.RouteKey, conversationKind, target string) platformio.OutboundMessageInfo {
 	info := platformio.OutboundMessageInfo{
-		UserInfo: platformio.OutboundUserInfo{UserID: route.AccountID, UserNickname: a.botName()},
+		UserInfo:         platformio.OutboundUserInfo{UserID: route.AccountID, UserNickname: a.botName()},
+		AdditionalConfig: map[string]any{},
 	}
+	target = strings.TrimSpace(target)
 	if conversationKind == memory.ConversationKindGroup {
 		info.GroupInfo = &platformio.OutboundGroupInfo{GroupID: target}
+		if target != "" {
+			info.AdditionalConfig["platform_io_target_group_id"] = target
+		}
+		return info
+	}
+	// 私聊目标对齐 Python send_service._inherit_platform_io_route_metadata：
+	// 插件网关（如 QQ 官方适配器）从 additional_config 取目标 OpenID，
+	// 只给 group_info 会让私聊出站报「缺少目标 OpenID」。
+	if target != "" {
+		info.AdditionalConfig["platform_io_target_user_id"] = target
 	}
 	return info
 }

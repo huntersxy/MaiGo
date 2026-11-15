@@ -51,6 +51,8 @@ COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /app/config /app/data /app/logs /app/plugins /app/stickers /app/media /app/temp && chown -R maibot:maibot /app
 EXPOSE 7468
 ENV MAIBOT_DASHBOARD_DIR=/app/dashboard/dist
-ENV MAIBOT_PLUGIN_PYTHON=/app/plugin-runtime/bin/python \n    PIP_NO_CACHE_DIR=1 \n    PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV MAIBOT_PLUGIN_PYTHON=/app/plugin-runtime/bin/python
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/app/maigo"]
