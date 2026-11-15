@@ -4,5 +4,5 @@
 // （snapshot/catalog 合并、search/get_detail）、releases.py 与 catalog.py（发布索引校验）、
 // documents.py 与 engagement.py（README、统计互动）、routers/plugin/*_install.py（安装链路）。
 //
-// 差异见 agents/MODULE_ALIGNMENT.md。
+// 差异以 MaiBot 原版对应实现为准。
 package pluginmarket

@@ -8,7 +8,7 @@ import (
 )
 
 // 本文件对齐 CPython socket.inet_aton 的字面量识别语义
-// 权威来源：/home/huntersxy/MaiBot/src/common/network_security.py:41-47 _is_ip_literal
+// 权威来源：MaiBot 原版 src/common/network_security.py:41-47 _is_ip_literal
 //
 // Python 用 inet_aton 判断字面量，它同时接受十进制整数、十六进制、八进制与缩写
 // IPv4（127.1、2130706433、0x7f.0.0.1、0177.0.0.1），避免这些写法被当成域名放行

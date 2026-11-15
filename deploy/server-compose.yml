@@ -1,10 +1,4 @@
-# 服务器部署用 compose（不带 html-render 侧车）。
-#
-# 与仓库根 docker-compose.yml 的差异：
-#   - 不包含 html-render：它需要完整 MaiBot 运行镜像（约 2GB，含 faiss/playwright），
-#     本机未部署，统计报告渲染会降级为不可用，其余功能不受影响。
-#   - python-compat 使用精简镜像（python:3.13-slim + numpy/jieba/pypinyin），
-#     MaiBot 原版源码以只读方式挂载到 ./maibot-src。
+# 服务器部署用 compose。
 #
 # 用法：docker compose -f server-compose.yml up -d
 services:
@@ -64,26 +58,31 @@ services:
 
   # 错别字（pypinyin + jieba）与表达向量聚类（numpy）直接跑 MaiBot 原版实现
   python-compat:
-    image: maibot-python-compat:local
+    image: maigo:local
     pull_policy: never
     restart: unless-stopped
     init: true
+    read_only: true
+    entrypoint: ["/app/pycompat/bin/python", "/app/pycompat_sidecar.py"]
+    user: maibot
     dns:
       - 223.5.5.5
       - 119.29.29.29
     environment:
-      MAIBOT_INSTANCE_DIR: /MaiMBot
-      MAIBOT_SOURCE_ROOT: /MaiMBot
+      MAIBOT_INSTANCE_DIR: /app
+      MAIBOT_SOURCE_ROOT: /app/pycompat-src
       MAIBOT_COMPAT_SIDECAR_PORT: "8767"
       MAIBOT_COMPAT_SIDECAR_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
-      - ./maibot-src:/MaiMBot/src:ro
       # typo 生成器会在 depends-data 下缓存字频表
-      - maibot-compat-data:/MaiMBot/depends-data
+      - maibot-compat-data:/app/depends-data
+    tmpfs:
+      - /tmp
     expose:
       - "8767"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8767), 2); s.close()\""]
+      test: ["CMD-SHELL", "/app/pycompat/bin/python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8767), 2); s.close()\""]
       interval: 15s
       timeout: 5s
       retries: 10

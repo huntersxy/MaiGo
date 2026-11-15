@@ -166,7 +166,7 @@ func ValidateWebUIExtension(raw map[string]any) (map[string]any, error) {
 	if value, exists := raw["schema_version"]; exists {
 		number, ok := webUIInt(value)
 		if !ok || number != 2 {
-			return nil, fmt.Errorf("WebUI 协议已升级为 2；请按 docs/plugin-webui.md 迁移声明")
+			return nil, fmt.Errorf("WebUI 协议已升级为 2；请把插件 WebUI 声明的 schema_version 改为 2")
 		}
 		schemaVersion = number
 	}

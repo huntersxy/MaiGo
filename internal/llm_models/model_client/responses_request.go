@@ -9,7 +9,7 @@ package model_client
 // 合并冲突拒绝。body 字段经 eino 的 option.WithJSONSet 写入顶层 JSON。
 //
 // 已知边界（eino 不支持显式 null 覆盖、tool_choice 由 AgenticToolChoice 承载）
-// 见 agents/MODULE_ALIGNMENT.md。
+// 以 MaiBot 原版实现为准。
 
 import (
 	"context"

@@ -20,7 +20,7 @@ import (
 // handshakeTimeout 由 contract.HandshakeTimeout 提供，见 auth_bridge.go
 
 // 多任务路由见 Router；NewClient 按 ClientType 分流（Chat Completions / OpenAI Responses / Gemini REST / 插件 Provider）。
-// 平台必须性差异与未对等面见 agents/MODULE_ALIGNMENT.md 的 llm_models 节。
+// 平台必须性差异与未对等面以 MaiBot 原版 llm_models 实现为准。
 
 // NewClient 按 client_type 创建 AgenticModel；不做进程级缓存
 func NewClient(cfg ModelConfig) (model.AgenticModel, error) {

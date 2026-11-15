@@ -19,11 +19,9 @@ services:
       MAIBOT_LOG_LEVEL: ${MAIBOT_LOG_LEVEL:-info}
       MAIBOT_DEBUG: ${MAIBOT_DEBUG:-false}
       MAIBOT_STATISTICS_REPORT_PATH: /app/data/maibot_statistics.html
-      # HTML→PNG 统一委托 Python 原版 Playwright 侧车，Go 侧不再维护 CDP 实现
-      MAIBOT_HTMLRENDER_URL: http://html-render:8766/render
-      MAIBOT_HTMLRENDER_TOKEN: ${MAIBOT_HTMLRENDER_TOKEN:-}
-      # 首次渲染可能触发 Playwright 下载 Chromium，给足侧车等待时间
-      MAIBOT_HTMLRENDER_TIMEOUT: "240"
+      MAIBOT_HTMLRENDER_URL: "${MAIBOT_HTMLRENDER_URL:-}"
+      MAIBOT_HTMLRENDER_TOKEN: "${MAIBOT_HTMLRENDER_TOKEN:-}"
+      MAIBOT_HTMLRENDER_TIMEOUT: ${MAIBOT_HTMLRENDER_TIMEOUT:-30}
       # 错别字注入与表达向量聚类委托 Python 原版侧车（pypinyin / numpy）
       MAIBOT_COMPAT_URL: http://python-compat:8767
       MAIBOT_COMPAT_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
@@ -31,7 +29,6 @@ services:
       # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
       HTTP_HOST: 0.0.0.0
     depends_on:
-      - html-render
       - python-compat
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -57,63 +54,31 @@ services:
       retries: 5
       start_period: 20s
 
-  # 直接复用 Python 原版 MaiBot 镜像里的 Playwright 渲染服务，不维护 Go CDP 实现
-  html-render:
-    image: maibot-html-render:local
-    build:
-      context: ../MaiBot
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    init: true
-    entrypoint: ["/MaiMBot/.venv/bin/python", "/MaiMBot/html_render_sidecar.py"]
-    working_dir: /MaiMBot
-    environment:
-      MAIBOT_INSTANCE_DIR: /MaiMBot
-      MAIBOT_INITIALIZE_ONLY: "1"
-      MAIBOT_HTMLRENDER_SIDECAR_PORT: "8766"
-      MAIBOT_HTMLRENDER_SIDECAR_TOKEN: ${MAIBOT_HTMLRENDER_TOKEN:-}
-      MAIBOT_HTMLRENDER_SIDECAR_TIMEOUT: "240"
-      MAIBOT_HTMLRENDER_BROWSER_INSTALL_ROOT: /MaiMBot/data/playwright-browsers
-      MAIBOT_HTMLRENDER_BROWSER_PATH: ${MAIBOT_HTMLRENDER_BROWSER_PATH:-}
-      MAIBOT_HTMLRENDER_BROWSER_WS: ${MAIBOT_HTMLRENDER_BROWSER_WS:-}
-      MAIBOT_HTMLRENDER_AUTO_DOWNLOAD: "true"
-    volumes:
-      - ./scripts/html_render_sidecar.py:/MaiMBot/html_render_sidecar.py:ro
-      - maibot-render-data:/MaiMBot/data
-    expose:
-      - "8766"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8766), 2); s.close()\""]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-
   # Python 原版能力侧车：错别字生成（pypinyin + jieba）与表达向量聚类（numpy）
-  # 直接跑 MaiBot 的 typo_generator.py / expression_vector_index.py，
-  # 避免 Go 侧继续逐位复刻 numpy PCG64 与拼音表。
   python-compat:
-    image: maibot-python-compat:local
-    build:
-      context: .
-      dockerfile: scripts/Dockerfile.python-compat
+    image: maigo:local
+    build: .
+    pull_policy: never
     restart: unless-stopped
     init: true
+    read_only: true
+    entrypoint: ["/app/pycompat/bin/python", "/app/pycompat_sidecar.py"]
+    user: maibot
     environment:
-      MAIBOT_INSTANCE_DIR: /MaiMBot
-      MAIBOT_SOURCE_ROOT: /MaiMBot
+      MAIBOT_INSTANCE_DIR: /app
+      MAIBOT_SOURCE_ROOT: /app/pycompat-src
       MAIBOT_COMPAT_SIDECAR_PORT: "8767"
       MAIBOT_COMPAT_SIDECAR_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
-      # 只读挂载 MaiBot 原版源码；侧车按文件路径加载，不 import 整个包
-      - ${MAIBOT_SOURCE_DIR:-../MaiBot/src}:/MaiMBot/src:ro
       # MaiBot 的 typo 生成器会在 depends-data 下缓存字频表
-      - maibot-compat-data:/MaiMBot/depends-data
+      - maibot-compat-data:/app/depends-data
+    tmpfs:
+      - /tmp
     expose:
       - "8767"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8767), 2); s.close()\""]
+      test: ["CMD-SHELL", "/app/pycompat/bin/python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8767), 2); s.close()\""]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -124,7 +89,6 @@ volumes:
   maibot-data:
   maibot-logs:
   maibot-plugins:
-  maibot-render-data:
   maibot-compat-data:
   stickers:
   media:

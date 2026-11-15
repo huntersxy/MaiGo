@@ -13,8 +13,8 @@ import (
 // 需要先启动 scripts/python_compat_sidecar.py 并设置 MAIBOT_COMPAT_URL，
 // 例如：
 //
-//	MAIBOT_SOURCE_ROOT=D:/CODE/bot/MaiBot MAIBOT_COMPAT_SIDECAR_PORT=8799 \
-//	  MaiBot/.venv/Scripts/python.exe scripts/python_compat_sidecar.py
+//	MAIBOT_SOURCE_ROOT=data/pycompat MAIBOT_COMPAT_SIDECAR_PORT=8799 \
+//	  python scripts/python_compat_sidecar.py
 //	MAIBOT_COMPAT_URL=http://127.0.0.1:8799 go test ./test/ -run SidecarRoundTrip
 //
 // 未配置时跳过，避免 CI 依赖外部进程。

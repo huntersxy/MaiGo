@@ -8,7 +8,7 @@ package model_client
 // reasoning_content 与 <think> 解析、SSE 增量分流。
 //
 // 已知边界（工具参数修复未引入完整 json_repair、流内错误由上层整请求重放、
-// 多媒体块折叠为文本）见 agents/MODULE_ALIGNMENT.md。
+// 多媒体块折叠为文本）以 MaiBot 原版实现为准。
 
 import (
 	"bufio"

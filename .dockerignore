@@ -10,5 +10,8 @@
 # 内置插件清单是运行期真实读取的产品文件（host.readBuiltinPluginManifest）
 !plugins/
 !plugins/built_in/plugin_management/_manifest.json
-# Python 兼容侧车镜像（scripts/Dockerfile.python-compat）只拷这个脚本
 !scripts/python_compat_sidecar.py
+!data/
+data/*
+!data/pycompat/
+!data/pycompat/**

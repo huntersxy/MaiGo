@@ -34,7 +34,7 @@ func lookPathPython(bin string) (string, error) {
 func buildPetCommand(spawn SpawnEnv) (*exec.Cmd, io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	projectRoot := strings.TrimSpace(spawn.ProjectRoot)
 	if projectRoot == "" {
-		return nil, nil, nil, nil, fmt.Errorf("未找到 MaiBot 项目根（请设置 %s 或将 ../MaiBot 放在工作目录旁）", pluginruntime.EnvPluginProjectRoot)
+		return nil, nil, nil, nil, fmt.Errorf("未找到 MaiBot Python 项目根，请把 %s 指向含 src/plugin_runtime 的目录", pluginruntime.EnvPluginProjectRoot)
 	}
 	script := petScriptPath(projectRoot)
 	if st, err := os.Stat(script); err != nil || st.IsDir() {

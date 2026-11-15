@@ -6,5 +6,5 @@
 // （Runner 阶段状态机、重启上限、健康巡检、插件装载状态）。
 //
 // 已知差异（消息网关未复刻完整驱动状态机、WebUI schema 校验为结构化子集等）
-// 见 agents/MODULE_ALIGNMENT.md。
+// 以 MaiBot 原版实现为准。
 package pluginruntime

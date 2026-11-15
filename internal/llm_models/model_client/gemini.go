@@ -8,8 +8,8 @@ package model_client
 // safetySettings、thinkingConfig、functionDeclarations + googleSearch、toolConfig）、
 // SSE 流式与 usage 累计。语音转写见 gemini_audio.go。
 //
-// 已知边界（自定义 base_url 仅支持 …/v1beta 形式、URL 媒体显式报错）见
-// agents/MODULE_ALIGNMENT.md。
+// 已知边界（自定义 base_url 仅支持 …/v1beta 形式、URL 媒体显式报错）以
+// MaiBot 原版实现为准。
 
 import (
 	"bufio"

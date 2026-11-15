@@ -49,26 +49,13 @@ docker compose up -d
 docker compose logs | grep "WebUI 登录 Token"
 ```
 
-WebUI 在 `http://<host>:7468`，容器内置原版 Dashboard。
-
-HTML→PNG 渲染由 `html-render` 侧车提供：它复用同级 `../MaiBot` 仓库里的 Python 原版 Playwright
-`src/services/html_render_service`，Go 侧只保留 HTTP 客户端，不再维护 CDP 实现。首次构建会额外
-构建该侧车镜像，首次渲染会把 Chromium 下载到 `maibot-render-data` 卷；不需要渲染时可停止该服务。
-
-登录令牌是 `data/webui.json` 的 `access_token`：未自定义时每次启动重新生成，启动日志里打印。
-`.env` 必须设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
-
-首次启动自动生成 `config/bot_config.toml` 与 `config/model_config.toml`，模型 `api_key` 在 WebUI 填写。
-
-数据在 data 卷的 `MaiBot.db`（SQLite）。已有 Python 库 v17 及以上自动升级，更老的先用 WebUI 数据迁移导出导入。
-
-容器只读根文件系统，升级方式是重新 `docker compose build`。
-
-平台接入在 WebUI「适配器设置」安装适配器插件。Python Runner 默认拉起，设 `MAIBOT_PLUGIN_SPAWN=0` 可关闭。
+WebUI 在 `http://<host>:7468`。`.env` 必须设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
+首次启动自动生成配置，模型 `api_key` 在 WebUI 填写，平台适配器在 WebUI「适配器设置」安装。
 
 ### 非 Docker
 
-Linux 需 cgo + `libwebp`。源码部署要设 `MAIBOT_DASHBOARD_DIR` 指向含 `index.html` 的 Dashboard 构建目录。
+Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.9.13` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
+装好 `maibot==1.3.19` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 
 ## 贡献
 
@@ -81,7 +68,7 @@ Linux 需 cgo + `libwebp`。源码部署要设 `MAIBOT_DASHBOARD_DIR` 指向含 
 5. **提交 PR**：在 `main` 分支上发起 Pull Request，描述所做更改。
 6. **代码审查**：项目维护者将进行审查，可能会提出修改建议。
 
-请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详细贡献指南。
+提交 PR 前请确保 `go build ./...` 与 `go test ./...` 通过。
 
 ## 许可证
 

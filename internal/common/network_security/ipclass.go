@@ -4,7 +4,7 @@ import "net"
 
 // 本文件对齐 CPython 3.13 ipaddress 的地址分类表
 // 权威来源：/usr/lib/python3.13/ipaddress.py 的 _IPv4Constants / _IPv6Constants
-// 调用语义见 /home/huntersxy/MaiBot/src/common/network_security.py:50-64
+// 调用语义见 MaiBot 原版 src/common/network_security.py:50-64
 //
 // Python 的 IPv6Address 在 is_private/is_reserved/is_link_local/is_multicast/
 // is_unspecified/is_loopback 上先判断 ipv4_mapped（::ffff:0:0/96）并委托给 IPv4，

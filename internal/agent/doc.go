@@ -4,5 +4,5 @@
 // dsh Desktop TCP 桥）、acp_agent.py（会话与 turn）、mcp_server.py（MCP 工具服务）、
 // provider.py（agent_talk/status/chats/recent）、planner.py / planner_state.py。
 //
-// 依赖缺失时返回真实错误，不伪造成功。差异见 agents/MODULE_ALIGNMENT.md。
+// 依赖缺失时返回真实错误，不伪造成功。差异以 MaiBot 原版对应实现为准。
 package agent
