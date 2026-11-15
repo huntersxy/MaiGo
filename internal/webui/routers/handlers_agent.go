@@ -9,7 +9,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/agent"
+	"MaiGo/internal/agent"
 )
 
 // AgentControlService 外接 ACP Agent 的可注入控制面，便于 main 接线与测试替身

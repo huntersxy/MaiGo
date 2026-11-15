@@ -5,7 +5,7 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // storageVectorStore 是本包内对 storage.VectorStore 的短别名

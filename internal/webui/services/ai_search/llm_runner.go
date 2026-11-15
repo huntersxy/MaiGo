@@ -11,8 +11,8 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/builtin_tool"
 )
 
 const (

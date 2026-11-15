@@ -3,8 +3,8 @@ package runtime
 import (
 	"context"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

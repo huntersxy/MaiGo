@@ -10,8 +10,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/learners"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/learners"
 )
 
 // loadJargonGroupsForWebUI 只读取 bot_config 的黑话共享组，避免依赖完整配置校验

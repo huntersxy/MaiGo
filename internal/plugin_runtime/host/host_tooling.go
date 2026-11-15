@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/core/tooling"
+	"MaiGo/internal/core/tooling"
 )
 
 // pluginToolProvider 把插件 TOOL/ACTION 组件接入 core/tooling 统一注册表

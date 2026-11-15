@@ -1,4 +1,4 @@
-# MaiBot WebUI API 路由清单（maibot-go 兼容层）
+# MaiBot WebUI API 路由清单（MaiGo 兼容层）
 
 Python 来源：`MaiBot/src/webui/routes.py`、`routers/__init__.py` 及各 `routers/*.py`。
 

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"maibot-go/internal/runtime/execution"
+	"MaiGo/internal/runtime/execution"
 )
 
 func writeRuntimeToml(t *testing.T, instanceDir, content string) {

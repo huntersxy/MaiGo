@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // relationHasRemainingParagraphsCurrent 对齐 _relation_has_remaining_paragraphs

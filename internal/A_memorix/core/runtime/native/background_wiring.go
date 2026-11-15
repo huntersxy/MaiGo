@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/storage"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // dualMigrationService 懒构造双池迁移服务，状态保存在原生运行时中

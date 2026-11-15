@@ -5,8 +5,8 @@ package native
 import (
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // summaryStoreAdapter 包装元数据存储，补齐摘要导入所需的窄接口

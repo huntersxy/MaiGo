@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

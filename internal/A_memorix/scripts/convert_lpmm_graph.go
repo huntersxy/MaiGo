@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // lpmmGraph 转换期间的中间图

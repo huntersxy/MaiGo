@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // summaryIdentityStoreAdapter 把身份表适配为摘要身份存储

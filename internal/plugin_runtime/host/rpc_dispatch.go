@@ -9,8 +9,8 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/capabilities"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/capabilities"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 func decodePayload[T any](payload map[string]any) (T, error) {

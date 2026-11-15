@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // PosteriorGraphRetriever 后验图补位所需的上游检索器能力

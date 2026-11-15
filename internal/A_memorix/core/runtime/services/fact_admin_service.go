@@ -12,7 +12,7 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // FactAdminDeps 事实管理服务依赖的存储能力

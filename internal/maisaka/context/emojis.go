@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // EmojiCandidateSource 表情候选消息来源

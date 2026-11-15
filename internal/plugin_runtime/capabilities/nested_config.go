@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/config"
+	"MaiGo/internal/config"
 )
 
 // nestedConfigValue 从 map 或 JSON 可序列化对象按点分路径读取配置值

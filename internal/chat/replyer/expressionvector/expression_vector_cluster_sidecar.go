@@ -10,7 +10,7 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/services/pythoncompat"
+	"MaiGo/internal/services/pythoncompat"
 
 	"go.uber.org/zap"
 )

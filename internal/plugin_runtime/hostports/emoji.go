@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // EmojiAdmin 插件表情管理端口

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // BackgroundTaskDeps 后台任务依赖端口

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"

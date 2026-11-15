@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // bundleMissingOwnershipMessage 对齐 Python 卸载守卫文案

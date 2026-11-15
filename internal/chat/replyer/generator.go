@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/display"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/display"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"

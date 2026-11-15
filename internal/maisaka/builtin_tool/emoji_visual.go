@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/maisaka"
 )
 
 // 对齐 Python 内置工具的表情文案与常量

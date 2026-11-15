@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	messagereceive "maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/platform_io/drivers/onebot"
-	"maibot-go/internal/services/statistics"
+	messagereceive "MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services/statistics"
 
 	"go.uber.org/zap"
 )

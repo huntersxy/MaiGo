@@ -19,7 +19,7 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/google/uuid"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 const legacyExpressionUploadDir = "data/webui_legacy_expression_imports"

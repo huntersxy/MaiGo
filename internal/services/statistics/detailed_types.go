@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/webui/schemas"
+	"MaiGo/internal/webui/schemas"
 )
 
 // 以下响应模型定义在 internal/webui/schemas（对齐 Python src/webui/schemas/statistics.py），

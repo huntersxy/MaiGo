@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	webuiutils "maibot-go/internal/webui/utils"
+	webuiutils "MaiGo/internal/webui/utils"
 
 	"github.com/pelletier/go-toml/v2"
 )

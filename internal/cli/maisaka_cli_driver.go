@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/core/localoperator"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/core/localoperator"
+	"MaiGo/internal/platform_io"
 )
 
 // MaisakaCLIDriverID 对齐 Python Maisaka CLI 本地出站驱动编号

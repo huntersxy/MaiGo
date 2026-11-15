@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )

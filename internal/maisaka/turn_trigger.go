@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // TurnGateDecision 单个门控步骤的判定

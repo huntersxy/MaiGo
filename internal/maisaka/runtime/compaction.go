@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/config"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/config"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/builtin_tool"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"

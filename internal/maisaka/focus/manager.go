@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // SessionLookup 会话投影查询，用于把 session_id 解析为 Focus 判定所需的字段

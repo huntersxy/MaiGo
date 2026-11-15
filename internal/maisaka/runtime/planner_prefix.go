@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/session"
-	maisakactx "maibot-go/internal/maisaka/context"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/session"
+	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // plannerMessageID 返回 Planner 前缀使用的消息编号，通知事件不输出 msg_id

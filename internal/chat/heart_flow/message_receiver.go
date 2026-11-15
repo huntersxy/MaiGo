@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // UserInfo 入站消息发送者，对应 Python UserInfo

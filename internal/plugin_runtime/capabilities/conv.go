@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 func parseConversationKey(raw string) (targetID int64, kind string, ok bool) {

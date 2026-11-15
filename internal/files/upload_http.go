@@ -13,7 +13,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/webui/middleware"
+	"MaiGo/internal/webui/middleware"
 )
 
 // MountOpts 控制需管理员会话的上传路由

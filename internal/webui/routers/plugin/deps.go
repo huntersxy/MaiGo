@@ -5,19 +5,19 @@ package plugin
 
 import (
 	"context"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net"
 	"net/http"
 
-	appversion "maibot-go/internal/common/version"
+	appversion "MaiGo/internal/common/version"
 	"strings"
 
-	auth "maibot-go/internal/webui/middleware"
+	auth "MaiGo/internal/webui/middleware"
 
-	"maibot-go/internal/common/network_security"
+	"MaiGo/internal/common/network_security"
 
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // Deps 插件管理路由依赖

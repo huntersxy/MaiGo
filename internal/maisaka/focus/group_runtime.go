@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // MaxSeenMessages 已见消息键上限

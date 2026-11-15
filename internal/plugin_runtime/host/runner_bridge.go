@@ -9,7 +9,7 @@ package host
 import (
 	"context"
 
-	"maibot-go/internal/plugin_runtime/runner"
+	"MaiGo/internal/plugin_runtime/runner"
 )
 
 // RunnerGroup Runner 分组

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 // String 对齐 SessionMessage.__str__

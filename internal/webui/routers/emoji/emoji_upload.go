@@ -3,13 +3,13 @@ package emoji
 import (
 	"errors"
 	"fmt"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/emoji_system"
 )
 
 // emojiUploadMaxBytes 单次上传请求体上限，对齐 Dashboard 表情包文件量级

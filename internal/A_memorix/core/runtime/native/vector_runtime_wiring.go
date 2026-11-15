@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // recoverEmbeddingOnce 直接调用 embedding 状态服务，避免经内核回环递归

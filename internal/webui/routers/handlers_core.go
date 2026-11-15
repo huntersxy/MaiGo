@@ -1,18 +1,18 @@
 package webuiapi
 
 import (
-	"maibot-go/internal/webui/authutil"
+	"MaiGo/internal/webui/authutil"
 	"net/http"
 	"strings"
 
-	"maibot-go/internal/webui/middleware"
+	"MaiGo/internal/webui/middleware"
 )
 
 func (d Deps) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "healthy",
 		"service": "MaiBot WebUI",
-		"backend": "maibot-go",
+		"backend": "MaiGo",
 	})
 }
 

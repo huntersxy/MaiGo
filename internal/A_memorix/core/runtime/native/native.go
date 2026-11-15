@@ -13,13 +13,13 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/embedding"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // Options 原生装配参数
@@ -138,6 +138,9 @@ type Runtime struct {
 	migrationMu     sync.Mutex
 	migrationStatus map[string]any
 	dualMigration   *services.DualVectorMigrationService
+
+	episodeOnce sync.Once
+	episodeSvc  *utils.EpisodeService
 
 	mu       sync.RWMutex
 	services memruntime.KernelServices

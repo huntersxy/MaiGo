@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/chat/replyer/jiebacut"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/chat/replyer/jiebacut"
 )
 
 //go:embed data/jieba_dict.txt.gz

@@ -7,8 +7,8 @@ import (
 	"context"
 	"strings"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
 )
 
 type chatFilterAdapter struct {

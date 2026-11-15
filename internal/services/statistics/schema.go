@@ -3,7 +3,7 @@ package stats
 import (
 	"context"
 
-	statschema "maibot-go/internal/services/statistics/schema"
+	statschema "MaiGo/internal/services/statistics/schema"
 
 	"gorm.io/gorm"
 )

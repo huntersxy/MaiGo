@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // IngestTextParams 对齐 ingest_text 的关键字参数（本地镜像，供 services 层使用）

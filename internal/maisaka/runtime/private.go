@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	messagereceive "maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	messagereceive "MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )

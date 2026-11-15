@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // AssetLoader 对齐 Python asset_loader 回调

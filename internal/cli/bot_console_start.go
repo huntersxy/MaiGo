@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 // BotConsoleStartNoticeEnabled 对齐 Python main.py 启用终端输入时的日志文案

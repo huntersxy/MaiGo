@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/network_security"
-	"maibot-go/internal/llm_models/model_client"
+	"MaiGo/internal/common/network_security"
+	"MaiGo/internal/llm_models/model_client"
 )
 
 // noRedirect 对齐 Python httpx 默认 follow_redirects=False：3xx 原样返回给调用方

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	imagesystem "maibot-go/internal/chat/image_system"
-	"maibot-go/internal/common/database"
+	imagesystem "MaiGo/internal/chat/image_system"
+	"MaiGo/internal/common/database"
 
 	"go.uber.org/zap"
 )

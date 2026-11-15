@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"sync"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 
 	"github.com/pelletier/go-toml/v2"
 )

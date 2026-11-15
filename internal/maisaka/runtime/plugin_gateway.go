@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // fallbackGatewayArrivalSeq 为插件网关入站提供单调递增的运行时序号

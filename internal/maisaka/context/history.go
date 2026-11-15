@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/llm_models/payload_content"
-	maisaka "maibot-go/internal/maisaka"
+	"MaiGo/internal/llm_models/payload_content"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // ToolPairReport 工具配对清理统计

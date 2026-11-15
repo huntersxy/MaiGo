@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // EnsureEmbeddingSpace 对齐 Python ensure_embedding_space，探测并加载图片向量空间

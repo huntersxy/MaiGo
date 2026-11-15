@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // adapterAvatarProvider 对齐 avatar_provider.query_adapter_avatar：按 Platform IO 路由查插件适配器

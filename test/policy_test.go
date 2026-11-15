@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"maibot-go/internal/runtime/execution/policy"
+	"MaiGo/internal/runtime/execution/policy"
 )
 
 type fakePolicyScheduler struct {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // correctionApplier 使用修正服务自身的级联助手执行计划

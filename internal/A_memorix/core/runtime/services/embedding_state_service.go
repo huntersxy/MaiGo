@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // EmbeddingStateDeps Embedding 状态服务的依赖端口

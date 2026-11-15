@@ -3,7 +3,7 @@ package context
 import (
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 压缩相关常量，转发 root 实现

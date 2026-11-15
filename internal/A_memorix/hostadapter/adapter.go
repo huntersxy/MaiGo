@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // RuntimeKernel 把 core/runtime.Kernel 适配为 memorix.HostKernel

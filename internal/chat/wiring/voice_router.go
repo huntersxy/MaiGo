@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // RouterAudioTranscriber 把 llm.Router 的语音任务路由适配成 AudioTranscriber

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 func normalizeReplyContent(content string, limit int) string {

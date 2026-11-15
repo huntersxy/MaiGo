@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/web_search"
+	"MaiGo/internal/web_search"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

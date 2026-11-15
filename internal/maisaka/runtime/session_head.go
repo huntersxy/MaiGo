@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/config/persona"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/config/persona"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

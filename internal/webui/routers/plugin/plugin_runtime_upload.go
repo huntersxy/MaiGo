@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,8 +13,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/plugin_runtime"
-	"maibot-go/internal/plugin_runtime/capabilities"
+	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime/capabilities"
 )
 
 // handleRuntimeWebUIUpload 对齐 POST /api/webui/plugins/runtime/webui/{plugin_id}/{page_id}/uploads/{name}

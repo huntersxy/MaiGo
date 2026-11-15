@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_runtime"
 
 	"gorm.io/gorm"
 )

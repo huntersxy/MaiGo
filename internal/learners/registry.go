@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"maibot-go/internal/chat/replyer/expressionvector"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/chat/replyer/expressionvector"
+	"MaiGo/internal/llm_models"
 )
 
 // Registry 进程内 learners 依赖入口，agent/Maisaka 后续从此取 Store 与聊天级开关

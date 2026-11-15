@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	htmlrender "maibot-go/internal/services/html_render"
+	htmlrender "MaiGo/internal/services/html_render"
 )
 
 func TestHTMLRenderDelegatesToSidecar(t *testing.T) {

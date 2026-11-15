@@ -5,8 +5,8 @@ package hostports
 import (
 	"context"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/plugin_runtime/hooks"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/plugin_runtime/hooks"
 
 	"go.uber.org/zap"
 )

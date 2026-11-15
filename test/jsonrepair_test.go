@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"maibot-go/internal/common/jsonrepair"
+	"MaiGo/internal/common/jsonrepair"
 )
 
 func TestJSONRepairStrictJSONPassesThrough(t *testing.T) {

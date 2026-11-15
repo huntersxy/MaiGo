@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"maibot-go/internal/chat/wiring"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/chat/wiring"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // chatVoiceResolver 把语音媒体引用解析成语音字节

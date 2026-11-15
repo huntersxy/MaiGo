@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 
 	"go.uber.org/zap"
 )

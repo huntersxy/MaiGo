@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/self_update"
-	"maibot-go/internal/runtime"
+	"MaiGo/internal/common/self_update"
+	"MaiGo/internal/runtime"
 
 	"github.com/bytedance/sonic"
 )

@@ -8,10 +8,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/learners"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/person_info"
 )
 
 type LatestChatMessage struct {

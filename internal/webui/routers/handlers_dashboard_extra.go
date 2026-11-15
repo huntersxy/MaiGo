@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/computer"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/computer"
+	"MaiGo/internal/platform_io"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"

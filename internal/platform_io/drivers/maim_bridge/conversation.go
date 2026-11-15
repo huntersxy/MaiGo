@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 const inboundMetaConversationMessage = "maimbridge.conversation_message"

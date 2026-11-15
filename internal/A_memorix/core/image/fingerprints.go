@@ -1,7 +1,7 @@
 package imagememory
 
 import (
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // ImageEmbeddingFingerprintInput 对齐 Python build_image_embedding_fingerprint 的关键字参数

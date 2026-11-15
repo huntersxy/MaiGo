@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // DefaultSelfCheckSampleText 对齐 _refresh_runtime_self_check 的默认样例

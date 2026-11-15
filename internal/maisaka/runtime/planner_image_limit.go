@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	maisaka "maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/visual"
+	maisaka "MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/visual"
 )
 
 // limitPlannerImages 按 visual.max_image_num 限制 Planner 请求内的图片数量

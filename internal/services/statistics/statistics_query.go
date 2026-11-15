@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/webui/schemas"
+	"MaiGo/internal/webui/schemas"
 )
 
 // 统计响应类型定义在 internal/webui/schemas（对齐 Python src/webui/schemas/statistics.py），

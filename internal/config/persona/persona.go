@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/config"
+	"MaiGo/internal/config"
 )
 
 // 会话模式，决定装配时保留哪些段落

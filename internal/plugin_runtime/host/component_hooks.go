@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/hooks"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // MaiBot 组件类型，对齐 host/component_registry.py ComponentTypes

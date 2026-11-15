@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 // chatConfigDoc 读取实例 bot_config.toml；缺失时返回空文档，详情回落默认值

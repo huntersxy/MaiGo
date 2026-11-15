@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // EpisodeAdminDeps episode 管理服务依赖的存储与重建队列能力

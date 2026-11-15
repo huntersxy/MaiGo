@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/platform_io"
 )
 
 // decodeSeg 解出段的 type 与 data，便于断言适配器实际收到的形状

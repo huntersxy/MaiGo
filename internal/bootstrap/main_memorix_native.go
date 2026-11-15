@@ -15,13 +15,13 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/A_memorix/core/runtime/native"
-	"maibot-go/internal/A_memorix/hostadapter"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/person_info"
-	botservices "maibot-go/internal/services"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/A_memorix/core/runtime/native"
+	"MaiGo/internal/A_memorix/hostadapter"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/person_info"
+	botservices "MaiGo/internal/services"
 )
 
 // nativeAMemorixStartupPlan 是一次原生内核启动的预检结果

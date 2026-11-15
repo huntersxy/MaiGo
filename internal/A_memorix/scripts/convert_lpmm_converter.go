@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/embedding"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // LPMMParquetConverter 将 LPMM parquet 与图文件写入 A_memorix 双池

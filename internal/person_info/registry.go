@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/llm_models"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"maibot-go/internal/person_info/schema"
+	"MaiGo/internal/person_info/schema"
 )
 
 // PersonInfo 复用 schema 子包的模型定义

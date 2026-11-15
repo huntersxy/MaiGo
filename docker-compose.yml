@@ -1,7 +1,7 @@
 services:
   # 平台接入走插件适配器（WebUI「适配器设置」），本体不内置协议端连接
-  maibot-go:
-    image: maibot-go:local
+  maigo:
+    image: maigo:local
     build: .
     pull_policy: never
     restart: unless-stopped
@@ -44,6 +44,8 @@ services:
       - maibot-plugins:/app/plugins
       - stickers:/app/stickers
       - media:/app/media
+      # Runner venv 必须可写才能安装插件依赖
+      - plugin-runtime:/app/plugin-runtime
     tmpfs:
       - /tmp
       # Runner 的非持久运行时目录（Python build_plugin_paths 会写 temp/plugins）
@@ -92,21 +94,20 @@ services:
   # 直接跑 MaiBot 的 typo_generator.py / expression_vector_index.py，
   # 避免 Go 侧继续逐位复刻 numpy PCG64 与拼音表。
   python-compat:
-    image: maibot-html-render:local
+    image: maibot-python-compat:local
     build:
-      context: ../MaiBot
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: scripts/Dockerfile.python-compat
     restart: unless-stopped
     init: true
-    entrypoint: ["/MaiMBot/.venv/bin/python", "/MaiMBot/python_compat_sidecar.py"]
-    working_dir: /MaiMBot
     environment:
       MAIBOT_INSTANCE_DIR: /MaiMBot
       MAIBOT_SOURCE_ROOT: /MaiMBot
       MAIBOT_COMPAT_SIDECAR_PORT: "8767"
       MAIBOT_COMPAT_SIDECAR_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
     volumes:
-      - ./scripts/python_compat_sidecar.py:/MaiMBot/python_compat_sidecar.py:ro
+      # 只读挂载 MaiBot 原版源码；侧车按文件路径加载，不 import 整个包
+      - ${MAIBOT_SOURCE_DIR:-../MaiBot/src}:/MaiMBot/src:ro
       # MaiBot 的 typo 生成器会在 depends-data 下缓存字频表
       - maibot-compat-data:/MaiMBot/depends-data
     expose:
@@ -127,3 +128,4 @@ volumes:
   maibot-compat-data:
   stickers:
   media:
+  plugin-runtime:

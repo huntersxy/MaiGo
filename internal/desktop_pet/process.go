@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime"
 )
 
 func lookPathPython(bin string) (string, error) {

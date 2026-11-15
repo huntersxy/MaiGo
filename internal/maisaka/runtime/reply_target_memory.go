@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	chatsession "maibot-go/internal/chat/session"
-	"maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
+	chatsession "MaiGo/internal/chat/session"
+	"MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 )
 
 // replyTargetMemory 返回会话的回复目标记忆，按需初始化并挂上历史反查

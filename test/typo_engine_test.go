@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/services/pythoncompat"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/services/pythoncompat"
 )
 
 // stubTypoEngine 记录入参并返回固定结果，用于验证 applyTypoPostProcess 的接线

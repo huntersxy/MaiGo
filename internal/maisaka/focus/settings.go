@@ -3,7 +3,7 @@ package focus
 import (
 	"encoding/json"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 // Settings Focus 模式配置快照，对齐 experimental 段

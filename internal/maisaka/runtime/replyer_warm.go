@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"maibot-go/internal/chat/replyer"
+	"MaiGo/internal/chat/replyer"
 
 	"go.uber.org/zap"
 )

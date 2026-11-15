@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/debounce"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/config"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/debounce"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/config"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // instanceBotConfig 返回当前 MaiBot 实例 bot 配置；无 InstanceHolder 时为 nil

@@ -15,8 +15,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/capabilities"
-	"maibot-go/internal/plugin_runtime/host"
+	"MaiGo/internal/plugin_runtime/capabilities"
+	"MaiGo/internal/plugin_runtime/host"
 )
 
 // Host 插件运行时宿主，定义在 host 子包

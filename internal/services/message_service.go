@@ -12,8 +12,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/common/database"
-	commonutils "maibot-go/internal/common/utils"
+	"MaiGo/internal/common/database"
+	commonutils "MaiGo/internal/common/utils"
 )
 
 // MessageQuery 是消息查询条件，字段语义对齐 message_service.find_messages

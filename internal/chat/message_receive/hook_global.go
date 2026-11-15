@@ -3,7 +3,7 @@ package messagereceive
 import (
 	"context"
 
-	"maibot-go/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/hooks"
 )
 
 // GlobalHookInvoker 使用全局 Hook 触发器，供生产环境注入

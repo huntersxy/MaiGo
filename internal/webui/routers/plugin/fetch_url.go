@@ -3,7 +3,7 @@ package plugin
 import (
 	"strings"
 
-	"maibot-go/internal/common/network_security"
+	"MaiGo/internal/common/network_security"
 )
 
 // validateFetchURL 校验出站 URL 是否允许访问，返回规范化后的地址

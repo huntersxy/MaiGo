@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 func stickerFilePath(stickerDir, fileName string) string {

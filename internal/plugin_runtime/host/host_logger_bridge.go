@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 const runnerRuntimeLoggerName = "plugin_runtime.runtime"

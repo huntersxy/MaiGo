@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/A_memorix"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/database"
 )
 
 // ImageWritebackJournalFile 图片写回任务库文件名，对齐 Python image_writeback_journal.py 的 data/image_writeback.sqlite3

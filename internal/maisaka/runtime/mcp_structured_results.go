@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/mcp_module"
 
 	"github.com/cloudwego/eino/schema"
 )

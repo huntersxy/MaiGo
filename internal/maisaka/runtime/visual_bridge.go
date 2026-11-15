@@ -14,12 +14,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/visual"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/visual"
+	"MaiGo/internal/prompt"
 )
 
 // agentVisualBridge 把 Maisaka 视觉刷新端口接到 images 表与 VLM 描述管理器

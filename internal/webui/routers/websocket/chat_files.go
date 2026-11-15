@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/core/internal_chat"
-	"maibot-go/internal/files"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/files"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // storeChatFiles 把 WebUI 上传的文件写入 filesvc 资产库并返回公开字段

@@ -14,8 +14,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/pelletier/go-toml/v2"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/learners"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/learners"
 )
 
 // loadExpressionGroupsForWebUI 只读取 bot_config 的表达共享组，避免依赖完整配置校验

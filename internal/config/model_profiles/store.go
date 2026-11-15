@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/secrets"
+	"MaiGo/internal/common/secrets"
 
 	"gorm.io/gorm"
 )

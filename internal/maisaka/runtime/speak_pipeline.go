@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/maisaka/quote"
-	"maibot-go/internal/platform_io/drivers/onebot"
-	"maibot-go/internal/services/statistics"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/maisaka/quote"
+	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services/statistics"
 
 	"go.uber.org/zap"
 )

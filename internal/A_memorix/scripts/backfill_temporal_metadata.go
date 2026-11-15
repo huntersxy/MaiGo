@@ -5,7 +5,7 @@ package scripts
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // newBackfillTemporalMetadataParser 构造参数解析器，对齐 argparse 定义

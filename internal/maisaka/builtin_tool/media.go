@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/emoji_system"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/A_memorix/core/embedding"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/A_memorix/core/embedding"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // LifecycleOrchestratorLoggerName 对齐 get_logger("A_Memorix.LifecycleOrchestrator")

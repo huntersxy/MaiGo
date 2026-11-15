@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/person_info"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"
@@ -34,7 +34,7 @@ type maisakaStubOutput struct {
 func maisakaNotImplemented(capability string) (*maisakaStubOutput, error) {
 	return &maisakaStubOutput{
 		Success: false,
-		Message: fmt.Sprintf("%s 尚未在 maibot-go 实现；参见 internal/maisaka/builtin_catalog.go 中的 Go 对等工具", capability),
+		Message: fmt.Sprintf("%s 尚未在 MaiGo 实现；参见 internal/maisaka/builtin_catalog.go 中的 Go 对等工具", capability),
 	}, nil
 }
 

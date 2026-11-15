@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	maisaka "maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
+	maisaka "MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 )
 
 // measurePlannerSections 按 Python measure_request_sections 统计 Planner 请求的提示词分段用量

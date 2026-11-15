@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/i18n"
+	"MaiGo/internal/common/i18n"
 
 	"go.uber.org/zap"
 )

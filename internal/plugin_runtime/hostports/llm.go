@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/plugin_runtime"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/model"

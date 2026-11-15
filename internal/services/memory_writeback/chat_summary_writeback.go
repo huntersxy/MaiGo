@@ -15,8 +15,8 @@ import (
 
 	"go.uber.org/zap"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	maibotcfg "maibot-go/internal/config/maibot"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 const (

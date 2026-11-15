@@ -5,17 +5,17 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/maisaka/focus"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/maisaka/focus"
+	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 const kindFocusContext = "focus"

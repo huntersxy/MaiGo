@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
 )
 
 // doReplySend 发送可见回复并回传逐段真实结果，对齐 Python reply.execute_reply 的发送循环

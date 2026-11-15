@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"maibot-go/internal/runtime/execution/scheduler"
+	"MaiGo/internal/runtime/execution/scheduler"
 )
 
 func BenchmarkSchedulerSubmit(b *testing.B) {

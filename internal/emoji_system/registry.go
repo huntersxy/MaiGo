@@ -5,9 +5,9 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 
 	"go.uber.org/zap"
 )

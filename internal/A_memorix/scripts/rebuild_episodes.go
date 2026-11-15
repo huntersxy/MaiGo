@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // rebuildEpisodesLoggerName 脚本日志名称

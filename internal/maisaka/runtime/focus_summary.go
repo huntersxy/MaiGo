@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/focus"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/focus"
 )
 
 // buildFocusSummary 复用 Planner 请求快照，把共享组旧时间线压成 ConversationState

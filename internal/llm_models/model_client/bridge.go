@@ -7,8 +7,8 @@ package model_client
 // 依赖方向始终是 model_client -> contract / payload_content，不会成环。
 
 import (
-	contract "maibot-go/internal/llm_models/contract"
-	payloadcontent "maibot-go/internal/llm_models/payload_content"
+	contract "MaiGo/internal/llm_models/contract"
+	payloadcontent "MaiGo/internal/llm_models/payload_content"
 )
 
 type (

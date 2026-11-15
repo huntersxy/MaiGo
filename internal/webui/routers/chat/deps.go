@@ -6,11 +6,11 @@ package chat
 import (
 	"net/http"
 
-	auth "maibot-go/internal/webui/middleware"
+	auth "MaiGo/internal/webui/middleware"
 
-	memory "maibot-go/internal/common/database"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
-	"maibot-go/internal/platform_io"
+	memory "MaiGo/internal/common/database"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
+	"MaiGo/internal/platform_io"
 )
 
 // PlatformAdapterSource 提供平台适配器路由绑定与运行中驱动只读快照

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/prompt"
 )
 
 // contextSummaryInput 一次 ConversationState 压缩所需的完整资料

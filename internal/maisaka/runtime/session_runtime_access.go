@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/media"
+	"MaiGo/internal/common/media"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // SessionRuntime 按 MaiBot session_id 查找已创建的 Maisaka 运行时

@@ -5,7 +5,7 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // RelationStatusIsInactive 对齐搜索命中处理的同名方法

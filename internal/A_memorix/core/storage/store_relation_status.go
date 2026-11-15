@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // relationBackupColumns 回收站备份与恢复共用的关系列顺序

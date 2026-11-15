@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 
 	"go.uber.org/zap"
 )

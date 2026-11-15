@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // StopAfterExecutionPauseReason 工具要求执行后停止

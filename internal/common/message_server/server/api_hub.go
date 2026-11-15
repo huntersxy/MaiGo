@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sync"
 
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/maim_bridge"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/maim_bridge"
 
 	"github.com/coder/websocket"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/media"
+	"MaiGo/internal/common/media"
 
 	"github.com/cloudwego/eino/schema"
 )

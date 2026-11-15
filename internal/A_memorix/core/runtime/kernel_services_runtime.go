@@ -5,7 +5,7 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // RuntimeLifecycleService 对齐 MemoryRuntimeLifecycleService

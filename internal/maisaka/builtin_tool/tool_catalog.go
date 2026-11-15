@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/computer"
+	"MaiGo/internal/computer"
 
 	"github.com/cloudwego/eino/components/tool"
 )

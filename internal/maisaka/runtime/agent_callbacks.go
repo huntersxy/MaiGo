@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // AgentCallbacks 宿主注入的回调端口集合：内部聊天出站、思考通知、文件登记、

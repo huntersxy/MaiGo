@@ -4,8 +4,8 @@ package native
 // 与 Python feedback_policy.py 的 getattr 默认值保持一致
 
 import (
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/utils"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // feedbackIntegrationConfig 由内核配置构造反馈纠错集成配置

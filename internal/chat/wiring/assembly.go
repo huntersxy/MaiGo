@@ -6,17 +6,17 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/message_receive"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/files"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/maim_bridge"
-	"maibot-go/internal/services"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/message_receive"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/files"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/maim_bridge"
+	"MaiGo/internal/services"
 )
 
 // Options 宿主装配依赖；缺失能力在调用时返回真实错误，不用空实现伪造成功

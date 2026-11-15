@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maibot-go/internal/web_search/adapters"
+	"MaiGo/internal/web_search/adapters"
 	"strconv"
 	"strings"
 	"time"

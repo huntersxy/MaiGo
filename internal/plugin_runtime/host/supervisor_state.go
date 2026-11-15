@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // RunnerPhase Runner 生命周期阶段，对齐 supervisor 的启动/就绪/停止/重启状态

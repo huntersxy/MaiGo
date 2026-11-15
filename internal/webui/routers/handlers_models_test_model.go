@@ -20,8 +20,8 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/pelletier/go-toml/v2"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/llm_models"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/llm_models"
 )
 
 const (

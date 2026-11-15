@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // scoredToolSpec tool_search 打分结果

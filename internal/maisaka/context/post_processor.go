@@ -1,7 +1,7 @@
 package context
 
 import (
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 历史后处理常量

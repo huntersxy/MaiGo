@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/core/localoperator"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/core/localoperator"
+	"MaiGo/internal/maisaka"
 )
 
 const (

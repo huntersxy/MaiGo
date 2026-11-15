@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/files"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/files"
 )
 
 // HostCapabilityDeps Host 能力实现依赖

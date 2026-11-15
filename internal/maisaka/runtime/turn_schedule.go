@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/chat/debounce"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/chat/debounce"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
 
 	"go.uber.org/zap"
 )

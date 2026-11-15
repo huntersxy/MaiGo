@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // DeferredImageMarkerPrefix 延迟图片占位前缀

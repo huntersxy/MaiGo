@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 参考消息类型，对齐 Python ReferenceMessageType

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 // MaisakaCLIStartNoticeEnabled BufferCLI 挂载成功时的日志文案

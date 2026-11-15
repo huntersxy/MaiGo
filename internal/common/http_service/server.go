@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/utils"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/common/utils"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // BindHosts 解析并过滤可绑定的监听地址

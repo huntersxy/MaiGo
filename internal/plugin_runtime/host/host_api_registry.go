@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 
 	"go.uber.org/zap"
 )

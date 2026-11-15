@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"github.com/bytedance/sonic"
 	cb "github.com/cloudwego/eino/callbacks"

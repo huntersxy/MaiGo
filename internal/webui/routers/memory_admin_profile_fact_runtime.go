@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	personinfo "maibot-go/internal/person_info"
+	"MaiGo/internal/A_memorix"
+	personinfo "MaiGo/internal/person_info"
 )
 
 func (d Deps) handleMemoryProfileQuery(w http.ResponseWriter, r *http.Request) {

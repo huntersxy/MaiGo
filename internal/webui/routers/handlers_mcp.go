@@ -8,7 +8,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/mcp_module"
 )
 
 func (d Deps) handleMCPStatus(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"net"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // LLMServiceErrorKind 服务层错误分类

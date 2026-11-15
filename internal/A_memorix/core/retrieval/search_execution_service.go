@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // SearchExecutionRequest 对齐 SearchExecutionRequest 数据类

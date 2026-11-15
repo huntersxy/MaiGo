@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/core/eventbus"
-	"maibot-go/internal/plugin_runtime/circuitbreaker"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/core/eventbus"
+	"MaiGo/internal/plugin_runtime/circuitbreaker"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 const (

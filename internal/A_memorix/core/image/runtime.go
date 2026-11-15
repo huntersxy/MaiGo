@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // ImageMemoryRuntimeConfig 对齐 Python ImageMemoryRuntime.__init__ 的关键字参数

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"maibot-go/internal/services/pythoncompat"
+	"MaiGo/internal/services/pythoncompat"
 
 	"go.uber.org/zap"
 )

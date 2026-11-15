@@ -4,20 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/core/internal_chat"
-	"maibot-go/internal/learners"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/platform_io"
 )
 
 func writeChatFailure(w http.ResponseWriter, status int, detail string) {

@@ -1,7 +1,7 @@
 package replyer
 
 import (
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // KeywordRulesFromConfig 把实例配置 keyword_reaction.keyword_rules 投影为 replyer 规则

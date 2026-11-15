@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // UpdateMessageGatewayStateContext 带上下文应用消息网关运行时状态

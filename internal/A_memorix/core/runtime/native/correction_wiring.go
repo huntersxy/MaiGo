@@ -6,9 +6,9 @@ import (
 	"context"
 	"fmt"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/utils"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // correctionAdminOptions 构造修正管理服务依赖

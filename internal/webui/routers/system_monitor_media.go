@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/chat/image_system"
+	"MaiGo/internal/chat/image_system"
 )
 
 // monitorMediaStore 只读访问 images 元数据表；测试可注入替身

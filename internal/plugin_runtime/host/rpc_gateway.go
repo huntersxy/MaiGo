@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 func (s *RPCServer) handleUpdateMessageGatewayState(ctx context.Context, env protocol.Envelope) protocol.Envelope {

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 // LearningSessionChecker 判断会话是否已注册，供学习模块解析真实聊天流

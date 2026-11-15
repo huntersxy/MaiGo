@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/A_memorix/core/embedding"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/A_memorix/core/embedding"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // webImportStoreAdapter 把 storage.Store 适配为 WebImportStore

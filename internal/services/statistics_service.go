@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/services/statistics"
+	"MaiGo/internal/services/statistics"
 )
 
 // StatisticsService 是 MaiBot statistics_service 在 services 层的门面，

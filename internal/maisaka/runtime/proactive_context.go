@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	maisaka "maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	maisaka "MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 
 	"github.com/cloudwego/eino/schema"
 )

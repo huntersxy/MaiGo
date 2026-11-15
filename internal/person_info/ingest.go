@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // RegisterFromMessage 在消息持久化后调用，对齐 heartflow Person.register_person

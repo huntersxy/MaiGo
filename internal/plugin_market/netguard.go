@@ -1,6 +1,6 @@
 package pluginmarket
 
-import "maibot-go/internal/common/network_security"
+import "MaiGo/internal/common/network_security"
 
 // urlGuardOptions 保留插件市场内部名称，实际实现位于公共出站校验包
 type urlGuardOptions = networksecurity.Options

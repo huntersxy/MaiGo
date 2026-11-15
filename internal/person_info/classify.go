@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

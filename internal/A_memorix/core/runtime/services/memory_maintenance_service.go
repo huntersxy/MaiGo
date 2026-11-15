@@ -8,8 +8,8 @@ import (
 	"math"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // maxProjectionReconcileRounds 单轮关系图投影最多重试轮数

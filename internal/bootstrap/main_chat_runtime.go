@@ -10,13 +10,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // chatSessionRegistry 保存入站消息对应的聊天流，供心流 Manager 与运行时工厂查询

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/prompt"
 
 	"github.com/pelletier/go-toml/v2"
 )

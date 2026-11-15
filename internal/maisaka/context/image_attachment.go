@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // ImageReference 返回错误文案里的图片引用描述，对齐 Python image_attachment.py:30-31

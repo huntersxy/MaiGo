@@ -6,9 +6,9 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/write"
+	"MaiGo/internal/A_memorix/core/embedding"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/write"
 )
 
 // relationWriteAdapter 包装 write.RelationWriteService 并转换结果类型

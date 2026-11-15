@@ -6,9 +6,9 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/embedding"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // newVectorSearcher 把向量库包装成接口，nil 时返回 nil 接口

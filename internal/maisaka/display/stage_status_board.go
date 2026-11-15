@@ -1,6 +1,6 @@
 package display
 
-import "maibot-go/internal/maisaka/monitor"
+import "MaiGo/internal/maisaka/monitor"
 
 // StageStatus 单个会话的阶段状态，数据定义在 monitor 包避免 display→maisaka 循环
 type StageStatus = monitor.StageStatus

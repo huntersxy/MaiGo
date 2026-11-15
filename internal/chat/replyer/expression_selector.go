@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 // LearnersExpressionSelector 把 replyer 的选择端口接到 learners 的表达方式实现

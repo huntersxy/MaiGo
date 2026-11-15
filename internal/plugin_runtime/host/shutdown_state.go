@@ -1,7 +1,7 @@
 package host
 
 import (
-	runner "maibot-go/internal/plugin_runtime/runner"
+	runner "MaiGo/internal/plugin_runtime/runner"
 	"sync/atomic"
 	"time"
 )

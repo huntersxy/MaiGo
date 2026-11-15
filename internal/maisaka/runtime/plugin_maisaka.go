@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
+	"MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 
 	"go.uber.org/zap"
 )

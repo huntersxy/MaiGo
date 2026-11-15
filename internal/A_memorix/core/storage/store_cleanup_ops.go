@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // SweepDeletedItem 对齐 Python sweep_deleted_items 返回的 (hash, name) 元组

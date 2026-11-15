@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/A_memorix/core/utils"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/A_memorix/core/utils"
+	"MaiGo/internal/prompt"
 )
 
 // summaryPromptProvider 从 prompts/<locale> 读取 .prompt 模板

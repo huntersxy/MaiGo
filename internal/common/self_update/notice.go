@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 
 	"github.com/bytedance/sonic"
 )

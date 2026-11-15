@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	memory "maibot-go/internal/common/database"
+	memory "MaiGo/internal/common/database"
 )
 
 // MessageIDPort 把消息编号回填接到 memory 层

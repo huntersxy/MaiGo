@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 var hashPattern = regexp.MustCompile("^[0-9a-f]{64}$")

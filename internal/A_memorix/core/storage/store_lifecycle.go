@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // RelationLifecycleEvaluation 对齐 Python evaluate_due_relation_lifecycles 的返回字典

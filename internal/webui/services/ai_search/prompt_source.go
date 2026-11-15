@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/prompt"
 )
 
 var (

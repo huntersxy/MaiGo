@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/focus"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/focus"
 
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"

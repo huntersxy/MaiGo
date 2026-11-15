@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/mcp_module"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

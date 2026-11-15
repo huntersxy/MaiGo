@@ -11,8 +11,8 @@ package llm
 // 子包反向需要的快照/统计/图片处理能力，由 model_client_bridge_ports.go 注入。
 
 import (
-	"maibot-go/internal/llm_models/contract"
-	"maibot-go/internal/llm_models/model_client"
+	"MaiGo/internal/llm_models/contract"
+	"MaiGo/internal/llm_models/model_client"
 )
 
 type (

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 工具调用来源常量

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 // fastAPIValidationError 对齐 FastAPI/Pydantic 请求校验失败时的单条 detail

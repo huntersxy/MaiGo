@@ -5,7 +5,7 @@ package memruntime
 import (
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // zapLogger 把 Python get_logger(name) 映射到全局 zap logger

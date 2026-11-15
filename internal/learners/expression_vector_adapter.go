@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/chat/replyer/expressionvector"
+	"MaiGo/internal/chat/replyer/expressionvector"
 )
 
 // 索引类型的对外别名，保持 learners 既有 API 不变

@@ -11,7 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
-	memory "maibot-go/internal/common/database"
+	memory "MaiGo/internal/common/database"
 )
 
 // 对齐 MaiBot reasoning_process.py 的 message_avatars：从 prompt JSON 抽 msg_id，再回查 mai_messages。

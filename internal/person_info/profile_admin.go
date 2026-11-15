@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
+	"MaiGo/internal/A_memorix"
 )
 
 // ProfileQuery 人物画像查询参数

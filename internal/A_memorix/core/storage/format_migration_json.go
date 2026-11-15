@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // pythonJSONDumps 对齐 _json_dumps：紧凑输出、键排序、保留非 ASCII 字符

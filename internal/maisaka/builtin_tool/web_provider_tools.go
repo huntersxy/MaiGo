@@ -9,8 +9,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/web_search"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/web_search"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

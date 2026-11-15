@@ -7,7 +7,7 @@ package websearch
 // 共享的 SearchResult/SearchHit/PageResult 定义在 adapters/models.py。
 
 import (
-	"maibot-go/internal/web_search/adapters"
+	"MaiGo/internal/web_search/adapters"
 )
 
 // 结果与页面类型

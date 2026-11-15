@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/common/database"
 
 	"github.com/cloudwego/eino/schema"
 )

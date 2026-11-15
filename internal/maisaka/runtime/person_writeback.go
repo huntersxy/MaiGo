@@ -6,12 +6,12 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 // SetSentMessageHandler 注入发送成功后的记忆自动化通知端口

@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/services"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/services"
 )
 
 // ImagePort 接图片系统的描述缓存与 VLM 构建

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/mcp_module"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/model"

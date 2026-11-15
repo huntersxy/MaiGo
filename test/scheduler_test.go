@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"maibot-go/internal/runtime/execution/scheduler"
+	"MaiGo/internal/runtime/execution/scheduler"
 )
 
 func TestSchedulerPerSessionFIFOAndCrossSessionParallel(t *testing.T) {

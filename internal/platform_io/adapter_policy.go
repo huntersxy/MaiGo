@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/core/localoperator"
+	"MaiGo/internal/core/localoperator"
 )
 
 const (

@@ -3,7 +3,7 @@ package emoji
 import (
 	"errors"
 	"fmt"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"mime"
 	"net/http"
 	"os"
@@ -13,7 +13,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/emoji_system"
 )
 
 var emojiAllowedTypes = map[string]struct{}{

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	imagesystem "maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/image_system/schema"
-	"maibot-go/internal/common/database"
+	imagesystem "MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/image_system/schema"
+	"MaiGo/internal/common/database"
 )
 
 // schemaImageTypeEmoji 表情包记录类型，取值对齐 Python ImageType 枚举名

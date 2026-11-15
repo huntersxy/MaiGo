@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 var driftLevelRules = map[string]map[string]string{

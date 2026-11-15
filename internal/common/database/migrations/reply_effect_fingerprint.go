@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	memutils "maibot-go/internal/A_memorix/core/utils"
+	memutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 const (

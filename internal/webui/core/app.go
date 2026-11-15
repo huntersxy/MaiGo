@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	httpservice "maibot-go/internal/common/http_service"
+	httpservice "MaiGo/internal/common/http_service"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -11,23 +11,23 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/version"
-	"maibot-go/internal/config"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/core/internal_chat"
-	"maibot-go/internal/files"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
-	"maibot-go/internal/mcp_module"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/plugin_runtime"
-	botservices "maibot-go/internal/services"
-	"maibot-go/internal/services/html_render"
-	"maibot-go/internal/services/news"
-	"maibot-go/internal/webui/dashboardstatic"
-	"maibot-go/internal/webui/middleware"
-	"maibot-go/internal/webui/routers"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/version"
+	"MaiGo/internal/config"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/files"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
+	"MaiGo/internal/mcp_module"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime"
+	botservices "MaiGo/internal/services"
+	"MaiGo/internal/services/html_render"
+	"MaiGo/internal/services/news"
+	"MaiGo/internal/webui/dashboardstatic"
+	"MaiGo/internal/webui/middleware"
+	"MaiGo/internal/webui/routers"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
@@ -243,7 +243,7 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = sonic.ConfigDefault.NewEncoder(w).Encode(map[string]any{
 		"status": "ok",
-		"name":   "maibot-go",
+		"name":   "MaiGo",
 		"time":   time.Now().Format(time.RFC3339),
 	})
 }

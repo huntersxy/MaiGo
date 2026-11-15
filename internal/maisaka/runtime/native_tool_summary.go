@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

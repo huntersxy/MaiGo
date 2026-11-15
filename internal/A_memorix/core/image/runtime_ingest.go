@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // IngestRequest 对齐 Python ingest 的关键字参数

@@ -15,10 +15,10 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // SendOptions 对齐 send_service 常用发送选项

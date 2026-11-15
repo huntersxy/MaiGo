@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	memory "maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	memory "MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // OwnerChannelKey 普通内部聊天的私聊频道键

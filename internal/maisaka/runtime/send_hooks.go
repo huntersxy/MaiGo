@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/plugin_runtime/hooks"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/plugin_runtime/hooks"
 
 	"go.uber.org/zap"
 )

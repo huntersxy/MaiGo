@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"golang.org/x/image/webp"
 	"gorm.io/gorm"

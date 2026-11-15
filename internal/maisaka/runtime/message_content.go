@@ -3,9 +3,9 @@ package runtime
 import (
 	"context"
 
-	messagereceive "maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	messagereceive "MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )

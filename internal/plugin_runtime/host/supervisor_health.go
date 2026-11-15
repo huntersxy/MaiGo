@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // DefaultRunnerHealthInterval 健康检查间隔，对齐 PluginRuntimeConfig.health_check_interval_sec

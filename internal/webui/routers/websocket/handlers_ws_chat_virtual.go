@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/core/internal_chat"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/person_info"
 )
 
 // resolveVirtualIdentity 按 session.open 参数解析虚拟身份，失败时返回 nil

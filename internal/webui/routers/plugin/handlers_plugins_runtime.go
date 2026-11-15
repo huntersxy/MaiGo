@@ -2,14 +2,14 @@ package plugin
 
 import (
 	"fmt"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime"
 )
 
 const (

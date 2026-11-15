@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/learners"
-	"maibot-go/internal/maisaka"
-	mmemory "maibot-go/internal/maisaka/memory"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/maisaka"
+	mmemory "MaiGo/internal/maisaka/memory"
 
 	"go.uber.org/zap"
 )

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"maibot-go/internal/common/http_service"
+	"MaiGo/internal/common/http_service"
 )
 
 // BindHosts 返回当前应监听的地址列表

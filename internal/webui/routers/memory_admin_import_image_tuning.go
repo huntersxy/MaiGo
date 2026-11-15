@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maibot-go/internal/webui/routers/chat"
+	"MaiGo/internal/webui/routers/chat"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,9 +20,9 @@ import (
 	"github.com/bytedance/sonic"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/A_memorix"
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/A_memorix"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/chat/session"
 )
 
 func memoryRandomHex() string {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/manager/local_store"
+	"MaiGo/internal/manager/local_store"
 
 	"github.com/bytedance/sonic"
 )

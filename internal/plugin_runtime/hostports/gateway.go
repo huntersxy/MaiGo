@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // Gateway 消息网关端口，出站走 Platform IO

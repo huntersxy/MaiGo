@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 // MentionDetectInput 对齐 is_mentioned_bot_in_message 所需的最小输入面。

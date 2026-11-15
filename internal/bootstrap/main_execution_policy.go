@@ -3,8 +3,8 @@ package bootstrap
 import (
 	"context"
 
-	"maibot-go/internal/runtime/execution/policy"
-	"maibot-go/internal/runtime/execution/scheduler"
+	"MaiGo/internal/runtime/execution/policy"
+	"MaiGo/internal/runtime/execution/scheduler"
 )
 
 // nativeSessionSchedulerAdapter 把 Go 原生会话调度器适配成 policy.SessionScheduler。

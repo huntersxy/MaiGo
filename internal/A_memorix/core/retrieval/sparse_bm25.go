@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // SparseBM25Config 对齐 Python SparseBM25Config

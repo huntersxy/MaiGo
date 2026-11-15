@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // NewRuntimeCoordinator 用插件运行时 Host 构造安装链所需的运行时协调器

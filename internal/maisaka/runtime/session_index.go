@@ -3,7 +3,7 @@ package runtime
 import (
 	"sync"
 
-	chatsession "maibot-go/internal/chat/session"
+	chatsession "MaiGo/internal/chat/session"
 )
 
 // sessionIndex 按会话键缓存的运行期索引

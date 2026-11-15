@@ -6,7 +6,7 @@ package memruntime
 import (
 	"time"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // CoerceDatetime 对齐 _coerce_datetime

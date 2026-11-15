@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/maisaka/focus"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/maisaka/focus"
+	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

@@ -10,8 +10,8 @@ package llm
 import (
 	"strings"
 
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
 )
 
 // providerForProfile 为数据库档案寻找对应的 api_provider

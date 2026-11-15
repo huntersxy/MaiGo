@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // Run 共享 Planner 主循环

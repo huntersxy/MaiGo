@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
-	"maibot-go/internal/plugin_runtime/transport"
+	"MaiGo/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/transport"
 )
 
 // dispatchAsyncRequest 异步处理 Runner 请求并串行写回响应，对齐 rpc_server._handle_request

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"maibot-go/internal/core/internal_chat"
+	"MaiGo/internal/core/internal_chat"
 )
 
 // PluginChatRelay 插件界面代主人投递内部聊天消息

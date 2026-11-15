@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/plugin_runtime"
 
 	"github.com/pelletier/go-toml/v2"
 )

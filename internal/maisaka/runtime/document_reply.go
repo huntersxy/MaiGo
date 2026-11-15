@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/llm_models"
-	maisakafocus "maibot-go/internal/maisaka/focus"
-	"maibot-go/internal/plugin_runtime/hostports"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/llm_models"
+	maisakafocus "MaiGo/internal/maisaka/focus"
+	"MaiGo/internal/plugin_runtime/hostports"
+	"MaiGo/internal/prompt"
 )
 
 // documentReplyRequirements 对齐 document_generator：format_instruction 为空时保持空要求

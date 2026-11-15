@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // ToolArgString 读取 reply 工具参数中的字符串值

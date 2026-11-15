@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/emoji_system"
 )
 
 func pluginStickerEmojis(ctx context.Context, mem *memory.Manager) ([]memory.EmojiRecord, error) {

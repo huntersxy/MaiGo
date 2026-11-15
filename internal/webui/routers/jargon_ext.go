@@ -11,7 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 // 黑话列表排序与状态筛选的合法取值，对齐 Python Literal 校验

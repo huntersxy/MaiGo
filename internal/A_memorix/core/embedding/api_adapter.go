@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 
 	"go.uber.org/zap"
 )

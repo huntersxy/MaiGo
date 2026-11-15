@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_runtime"
-	"maibot-go/internal/services"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/services"
 )
 
 // pluginSendService 插件发送所依赖的真实发送服务；测试可注入内存实现

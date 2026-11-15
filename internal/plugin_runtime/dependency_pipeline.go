@@ -2,6 +2,8 @@ package pluginruntime
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -360,6 +362,11 @@ func (p *PluginDependencyPipeline) loadPyprojectDependencyConfig() (pyprojectDep
 	path := filepath.Join(p.ProjectRoot, "pyproject.toml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		// Go 部署不一定带 pyproject.toml（二进制分发没有 Python 工程文件）：
+		// 缺文件时按「无自定义索引」处理，走安装工具默认源，而不是取消安装。
+		if errors.Is(err, fs.ErrNotExist) {
+			return config, nil
+		}
 		return config, err
 	}
 	if err := toml.Unmarshal(raw, &config); err != nil {

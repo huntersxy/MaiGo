@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"github.com/bytedance/sonic"
 )

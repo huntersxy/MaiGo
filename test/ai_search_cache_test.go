@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	search "maibot-go/internal/webui/services/ai_search"
+	search "MaiGo/internal/webui/services/ai_search"
 )
 
 func TestAISearchCacheHitIsMarkedCached(t *testing.T) {

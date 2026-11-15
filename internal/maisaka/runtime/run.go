@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/bytedance/sonic"
 

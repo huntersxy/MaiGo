@@ -10,8 +10,8 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/webui/services/ai_search"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/webui/services/ai_search"
 )
 
 var defaultWebSearchCache = search.NewCache(search.DefaultCacheTTL, search.DefaultCacheMaxEntries)

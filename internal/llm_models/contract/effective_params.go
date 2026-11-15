@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 
 	"github.com/cloudwego/eino/components/model"
 )

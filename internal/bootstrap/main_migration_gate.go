@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/database/migrations"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/database/migrations"
+	maibotcfg "MaiGo/internal/config/maibot"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"

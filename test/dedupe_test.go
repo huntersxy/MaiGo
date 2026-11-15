@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	platformio "maibot-go/internal/platform_io"
+	platformio "MaiGo/internal/platform_io"
 )
 
 func TestDeduplicatorFirstSeenTrue(t *testing.T) {

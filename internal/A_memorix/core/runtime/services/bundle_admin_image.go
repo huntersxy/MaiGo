@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/A_memorix/core/storage"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // bundleBoolOr 读取布尔开关，缺省时使用 Python 默认值

@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // Base 是所有管理服务共享的依赖容器

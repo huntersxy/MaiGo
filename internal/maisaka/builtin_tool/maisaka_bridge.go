@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/person_info"
 
 	"go.uber.org/zap"
 )

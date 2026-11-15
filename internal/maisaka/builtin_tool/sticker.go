@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/emoji_system"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

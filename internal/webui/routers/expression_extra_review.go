@@ -11,7 +11,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 const expressionReviewLogMaxLimit = 200

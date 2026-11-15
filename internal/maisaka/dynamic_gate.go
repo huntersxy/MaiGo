@@ -1,6 +1,6 @@
 package maisaka
 
-import "maibot-go/internal/maisaka/turn_trigger"
+import "MaiGo/internal/maisaka/turn_trigger"
 
 // 动态门控常量对齐 dynamic_gate.py；实现见 internal/maisaka/turn_trigger
 const (

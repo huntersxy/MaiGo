@@ -3,7 +3,7 @@ package websocket
 import (
 	"strings"
 
-	"maibot-go/internal/core/internal_chat"
+	"MaiGo/internal/core/internal_chat"
 )
 
 // updateChatNickname 更新当前会话昵称

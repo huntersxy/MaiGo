@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,7 +12,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/plugin_market"
+	"MaiGo/internal/plugin_market"
 )
 
 // marketplaceInstallRequest 对齐 routers/plugin/schemas.InstallPluginRequest

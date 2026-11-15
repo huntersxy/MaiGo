@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/utils"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // serviceSlot 单个服务槽位，fill 返回 false 表示依赖不足、暂不装配

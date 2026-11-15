@@ -1,6 +1,6 @@
 package imagesystem
 
-import "maibot-go/internal/chat/image_system/schema"
+import "MaiGo/internal/chat/image_system/schema"
 
 // ImageType 图片记录类型，对齐 Python ImageType
 //

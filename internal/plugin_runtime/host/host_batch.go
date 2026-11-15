@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // pluginBatchTimeoutMS 批量插件操作超时；MaiBot 使用 max(runner_spawn_timeout*1000, 10000)

@@ -1,4 +1,4 @@
-module maibot-go
+module MaiGo
 
 go 1.26.5
 

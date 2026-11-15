@@ -10,7 +10,7 @@ const (
 )
 
 // Build 是构建时注入的应用版本，开发构建使用 dev
-// Dockerfile:35 通过 -X maibot-go/internal/common/version.Build=<VERSION> 注入
+// Dockerfile:35 通过 -X MaiGo/internal/common/version.Build=<VERSION> 注入
 var Build = "dev"
 
 // IsUnknown 判断版本是否缺失或为开发占位值 dev

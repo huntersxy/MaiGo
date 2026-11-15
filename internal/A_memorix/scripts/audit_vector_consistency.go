@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // auditResult 审计结果，字段顺序与 Python 输出一致

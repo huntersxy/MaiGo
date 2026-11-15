@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime"
 
 	"gorm.io/gorm"
 )

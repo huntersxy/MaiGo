@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	projectutils "maibot-go/internal/common/utils"
+	projectutils "MaiGo/internal/common/utils"
 
 	"github.com/PuerkitoBio/goquery"
 )

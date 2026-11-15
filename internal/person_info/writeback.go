@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
+	"MaiGo/internal/A_memorix"
 
 	"go.uber.org/zap"
 )

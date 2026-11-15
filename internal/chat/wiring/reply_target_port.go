@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/database"
 )
 
 // replyTargetResolver 按消息 ID 回查被引用消息，供 WebUI 实时推送补全引用卡片

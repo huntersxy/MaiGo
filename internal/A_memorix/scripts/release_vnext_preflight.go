@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // releasePreflight 对齐 _preflight_impl

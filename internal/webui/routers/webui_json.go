@@ -8,7 +8,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 func nullableString(value string) any {

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"

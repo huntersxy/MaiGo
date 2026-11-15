@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // PendingMedia 待下载缓存的媒体

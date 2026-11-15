@@ -6,15 +6,15 @@ package websocket
 import (
 	"context"
 
-	memory "maibot-go/internal/common/database"
-	"maibot-go/internal/core/internal_chat"
-	filesvc "maibot-go/internal/files"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/plugin_runtime"
-	"maibot-go/internal/webui/authutil"
-	auth "maibot-go/internal/webui/middleware"
-	webuichat "maibot-go/internal/webui/routers/chat"
+	memory "MaiGo/internal/common/database"
+	"MaiGo/internal/core/internal_chat"
+	filesvc "MaiGo/internal/files"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/webui/authutil"
+	auth "MaiGo/internal/webui/middleware"
+	webuichat "MaiGo/internal/webui/routers/chat"
 )
 
 // chatDeps 把本包依赖投影成 chat 子包的依赖

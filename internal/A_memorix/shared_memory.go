@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // SharedMemorySessionResolver 按配置解析共享长期记忆的会话集合

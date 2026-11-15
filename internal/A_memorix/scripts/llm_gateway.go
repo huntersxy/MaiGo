@@ -16,11 +16,11 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/pelletier/go-toml/v2"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/A_memorix/core/utils"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/A_memorix/core/utils"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/llm_models"
 )
 
 // scriptLLMGateway 脚本生成入口，按任务路由并复用重试与 JSON 解析

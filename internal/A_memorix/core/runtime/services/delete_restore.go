@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // restoreDeleteAction 对齐 _restore_delete_action

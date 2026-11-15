@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/A_memorix"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
-	"maibot-go/internal/person_info"
-	"maibot-go/internal/plugin_market"
+	"MaiGo/internal/A_memorix"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
+	"MaiGo/internal/person_info"
+	"MaiGo/internal/plugin_market"
 )
 
 // pluginPersonPort 把人物画像 Registry 接入插件 Host person.* 能力

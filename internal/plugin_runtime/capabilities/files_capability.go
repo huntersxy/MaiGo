@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/files"
+	"MaiGo/internal/files"
 )
 
 // makeFilesCapabilityHandler 把 files.* 能力转交给 files 模块

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/llm_models"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"

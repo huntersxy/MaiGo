@@ -14,8 +14,8 @@ import (
 
 	"gorm.io/gorm"
 
-	imagesystem "maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/image_system/schema"
+	imagesystem "MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/image_system/schema"
 )
 
 // EmojiRecord 表情包数据库记录（images 表，image_type='EMOJI'）

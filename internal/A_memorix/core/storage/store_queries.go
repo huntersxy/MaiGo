@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // ErrRelationHashEmpty 对齐 Python ValueError("relation_hash 不能为空")

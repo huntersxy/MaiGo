@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 // ListRecentMessages 按已入库 MaiBot session_id 列出 mai_messages 最近消息

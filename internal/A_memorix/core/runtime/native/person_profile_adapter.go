@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/A_memorix/core/retrieval"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // personProfileStoreAdapter 把 storage.Store 适配为画像存储接口

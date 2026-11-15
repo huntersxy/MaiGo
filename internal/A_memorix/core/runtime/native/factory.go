@@ -5,7 +5,7 @@ package native
 import (
 	"fmt"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
 )
 
 // ServicesFactory 返回 hostadapter.ServicesFactory，宿主传入插件根目录与配置后完成装配

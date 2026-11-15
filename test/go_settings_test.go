@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	maisaruntime "maibot-go/internal/runtime"
-	"maibot-go/internal/runtime/execution"
-	"maibot-go/internal/runtime/execution/scheduler"
-	auth "maibot-go/internal/webui/middleware"
-	webuiapi "maibot-go/internal/webui/routers"
+	maisaruntime "MaiGo/internal/runtime"
+	"MaiGo/internal/runtime/execution"
+	"MaiGo/internal/runtime/execution/scheduler"
+	auth "MaiGo/internal/webui/middleware"
+	webuiapi "MaiGo/internal/webui/routers"
 
 	"github.com/go-chi/chi/v5"
 )

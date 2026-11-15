@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/llm_models"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/schema"
 )

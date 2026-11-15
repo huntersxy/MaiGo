@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"maibot-go/internal/services/pythoncompat"
+	"MaiGo/internal/services/pythoncompat"
 )
 
 func TestPythonCompatUnconfiguredReturnsSentinel(t *testing.T) {

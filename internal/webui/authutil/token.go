@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	auth "maibot-go/internal/webui/middleware"
+	auth "MaiGo/internal/webui/middleware"
 )
 
 // TokenExpireSeconds 一次性 WS 令牌有效期

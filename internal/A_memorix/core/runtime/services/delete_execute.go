@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // executeDeleteAction 对齐 _execute_delete_action（事务化执行删除计划）

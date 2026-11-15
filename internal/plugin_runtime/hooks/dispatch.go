@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/circuitbreaker"
+	"MaiGo/internal/plugin_runtime/circuitbreaker"
 )
 
 // DispatchResult 一次命名 Hook 调用的聚合结果，对齐 host/hook_dispatcher.py HookDispatchResult

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 
 	"github.com/bytedance/sonic"
 )

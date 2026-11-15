@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"os"
 

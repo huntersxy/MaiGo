@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"strings"
 
-	"maibot-go/internal/common/utils"
+	"MaiGo/internal/common/utils"
 
 	"github.com/disintegration/imaging"
 	"golang.org/x/image/webp"

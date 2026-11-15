@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/common/self_update"
+	"MaiGo/internal/common/self_update"
 )
 
 // ClearPendingUpdate Runner 启动时丢弃遗留的更新请求，对齐 runtime.run_runner_process 中的 clear_pending_update

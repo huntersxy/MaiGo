@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 // Hub 出站写入面，由 maimmsg/server 实现

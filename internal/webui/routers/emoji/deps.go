@@ -6,9 +6,9 @@ package emoji
 import (
 	"net/http"
 
-	"maibot-go/internal/webui/authutil"
-	"maibot-go/internal/webui/httputil"
-	auth "maibot-go/internal/webui/middleware"
+	"MaiGo/internal/webui/authutil"
+	"MaiGo/internal/webui/httputil"
+	auth "MaiGo/internal/webui/middleware"
 )
 
 // Deps 表情包路由依赖

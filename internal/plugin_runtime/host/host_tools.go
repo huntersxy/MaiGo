@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/core/tooling"
+	"MaiGo/internal/core/tooling"
 )
 
 // FileScopeIssuer 为插件工具签发文件作用域，由 filesvc.Service 实现

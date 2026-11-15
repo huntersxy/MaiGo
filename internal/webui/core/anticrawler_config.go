@@ -8,7 +8,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // antiCrawlerConfig 对齐 MaiBot src/config/official_configs.py:5415-5474 的 [webui] 默认值

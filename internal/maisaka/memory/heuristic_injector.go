@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
-	"maibot-go/internal/person_info"
+	maisaka "MaiGo/internal/maisaka"
+	"MaiGo/internal/person_info"
 )
 
 // 启发式记忆参考常量

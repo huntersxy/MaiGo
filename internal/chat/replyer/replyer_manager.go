@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/prompt"
 )
 
 // NewReplyerManager 创建 replyer 实例缓存；newBuilder 负责按 requestType 构造装配器

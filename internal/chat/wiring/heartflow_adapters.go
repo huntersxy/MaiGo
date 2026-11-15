@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/debounce"
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/chat/debounce"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/person_info"
 )
 
 // HeartflowChatProvider 用 chat_sessions 提供心流会话信息

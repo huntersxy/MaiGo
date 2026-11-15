@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/platform_io"
 )
 
 // forwardNodesToMaimData 将平台转发节点编码为 maim_message 的 data 数组

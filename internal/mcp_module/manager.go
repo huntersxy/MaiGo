@@ -12,7 +12,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/core/tooling"
+	"MaiGo/internal/core/tooling"
 )
 
 // ServerConfig MCP 服务器配置

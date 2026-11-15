@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/mcp_module"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/manager/asynctask"
+	"MaiGo/internal/manager/asynctask"
 )
 
 // onlineTimeTask 把 OnlineTracker 的单轮心跳包装成可调度任务

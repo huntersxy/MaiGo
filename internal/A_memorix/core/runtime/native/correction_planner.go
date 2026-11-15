@@ -9,7 +9,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // correctionPlanner 使用提示词与文本网关生成修正计划

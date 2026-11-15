@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/components/model"
 )

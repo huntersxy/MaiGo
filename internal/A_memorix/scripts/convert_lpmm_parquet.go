@@ -14,7 +14,7 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // lpmmParquetFile 对齐 convert_vectors 中的 parquet_files 表项

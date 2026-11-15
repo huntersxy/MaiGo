@@ -14,7 +14,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/person_info"
 )
 
 func (d Deps) handlePersonList(w http.ResponseWriter, r *http.Request) {

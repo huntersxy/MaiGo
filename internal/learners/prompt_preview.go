@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka/display"
+	"MaiGo/internal/maisaka/display"
 
 	"github.com/bytedance/sonic"
 	"github.com/google/uuid"

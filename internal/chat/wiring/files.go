@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/files"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/files"
 )
 
 // FileIngestor 文件服务摄入端口，复用 filesvc 的远端附件校验

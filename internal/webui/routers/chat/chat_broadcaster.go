@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/core/internal_chat"
+	"MaiGo/internal/core/internal_chat"
 )
 
 // ChatBroadcaster 把统一发送链的 WebUI 消息写入内部聊天 Hub

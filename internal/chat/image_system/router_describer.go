@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 
 	"github.com/cloudwego/eino/schema"
 )

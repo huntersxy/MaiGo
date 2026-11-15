@@ -9,7 +9,7 @@ package llm
 import (
 	"context"
 
-	"maibot-go/internal/llm_models/contract"
+	"MaiGo/internal/llm_models/contract"
 )
 
 type (

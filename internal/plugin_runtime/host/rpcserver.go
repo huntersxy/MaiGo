@@ -15,8 +15,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
-	"maibot-go/internal/plugin_runtime/transport"
+	"MaiGo/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/transport"
 )
 
 // RPCServerOptions Host 端 RPC 服务参数

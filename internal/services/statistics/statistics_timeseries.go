@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/webui/schemas"
+	"MaiGo/internal/webui/schemas"
 )
 
 const (

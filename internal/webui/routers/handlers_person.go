@@ -10,7 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/person_info"
 )
 
 func (d Deps) handlePersonUpdate(w http.ResponseWriter, r *http.Request) {

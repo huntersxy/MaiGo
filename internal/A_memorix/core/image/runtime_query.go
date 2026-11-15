@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // SearchRequest 对齐 Python search 的关键字参数

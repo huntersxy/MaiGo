@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // EpisodeRetrievalStoreDeps Episode 检索所需的元数据能力

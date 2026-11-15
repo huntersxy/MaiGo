@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/rand/v2"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 
 	"go.uber.org/zap"
 )

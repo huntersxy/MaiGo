@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"go.uber.org/zap"
 )

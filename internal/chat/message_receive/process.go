@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/data_models/messagecomponent"
 
 	"go.uber.org/zap"
 )

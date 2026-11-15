@@ -11,7 +11,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/core/tooling"
+	"MaiGo/internal/core/tooling"
 )
 
 // Runtime Agent 侧只读 MCP 运行态视图

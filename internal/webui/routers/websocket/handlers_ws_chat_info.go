@@ -3,7 +3,7 @@ package websocket
 import (
 	"strconv"
 
-	"maibot-go/internal/core/internal_chat"
+	"MaiGo/internal/core/internal_chat"
 )
 
 // chatSessionInfo 构造 session_info 消息

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

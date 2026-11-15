@@ -3,7 +3,7 @@ package host
 import (
 	"context"
 	"fmt"
-	"maibot-go/internal/plugin_runtime/runner"
+	"MaiGo/internal/plugin_runtime/runner"
 	"strings"
 
 	"go.uber.org/zap"

@@ -1,8 +1,8 @@
 package capabilities
 
 import (
-	"maibot-go/internal/common/database"
-	filesvc "maibot-go/internal/files"
+	"MaiGo/internal/common/database"
+	filesvc "MaiGo/internal/files"
 )
 
 // 能力 handler 的导出入口。

@@ -16,7 +16,7 @@ import (
 	"regexp"
 	"strings"
 
-	"maibot-go/internal/common/media"
+	"MaiGo/internal/common/media"
 )
 
 // relayImageDir 工作区内放传话图片的子目录，对齐 Python 的 relay_images

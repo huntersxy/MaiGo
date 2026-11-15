@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // PlannerPrefixInput 规划器消息前缀构造参数

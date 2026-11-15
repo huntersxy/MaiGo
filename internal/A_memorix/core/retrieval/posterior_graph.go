@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // PosteriorGraphConfig 双重方案中的后验图补位配置，字段与 Python dataclass 一一对应

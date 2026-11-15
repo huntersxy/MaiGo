@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // BuildRawContent 生成 MaiBot mai_messages.raw_content 的等价 msgpack：

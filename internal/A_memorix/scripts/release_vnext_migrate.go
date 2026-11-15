@@ -13,8 +13,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // vnextReleaseSubcommands 合法子命令

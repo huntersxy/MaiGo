@@ -56,6 +56,13 @@ func CollectPluginDependencyManifests(pluginDirs []string) map[string]PluginDepe
 			if !entry.IsDir() || isReservedPluginDependencyDirectory(entry.Name()) {
 				continue
 			}
+			// 不是插件目录就跳过：插件根下既有 built_in 这类容器目录，也有插件数据目录
+			// （data/plugins/<id>），它们既没有 _manifest.json 也没有 plugin.py。
+			// 只有两者都缺时才跳过，避免掩盖真正残缺的 Python 插件。
+			if !isRegularFile(filepath.Join(pluginPath, "plugin.py")) &&
+				!isRegularFile(filepath.Join(pluginPath, "_manifest.json")) {
+				continue
+			}
 			if isPluginDisabledByConfig(pluginPath) {
 				continue
 			}
@@ -173,4 +180,10 @@ func loadPluginDependencyManifest(pluginPath string) (PluginDependencyManifest, 
 		})
 	}
 	return manifest, nil
+}
+
+// isRegularFile 判断路径是否为普通文件
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }

@@ -7,9 +7,9 @@ import (
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/maisaka"
-	maisakautils "maibot-go/internal/maisaka/utils"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/maisaka"
+	maisakautils "MaiGo/internal/maisaka/utils"
 )
 
 // memoryFeedbackInvokeTimeoutMS 对齐 Python memory_service.enqueue_feedback_task 的 10 秒超时

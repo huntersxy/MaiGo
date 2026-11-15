@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
 
 	"github.com/cloudwego/eino/components/model"
 )

@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/common/utils"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/maim_bridge"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/common/utils"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/maim_bridge"
 
 	"go.uber.org/zap"
 )

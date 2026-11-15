@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/learners"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )

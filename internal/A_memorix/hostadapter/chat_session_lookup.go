@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 // NewChatSessionLookup 用 chatsession 表把 stream/session ID 解析为 group/user 身份

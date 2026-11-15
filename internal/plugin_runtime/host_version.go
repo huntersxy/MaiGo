@@ -1,6 +1,6 @@
 package pluginruntime
 
-import "maibot-go/internal/common/version"
+import "MaiGo/internal/common/version"
 
 // DetectHostApplicationVersion 读取当前 Host 应用版本号，对齐 detect_host_application_version
 //

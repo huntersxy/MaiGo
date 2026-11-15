@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // AddParagraph 添加段落，对齐 Python add_paragraph

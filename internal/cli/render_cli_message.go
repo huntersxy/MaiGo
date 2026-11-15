@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/core/localoperator"
+	"MaiGo/internal/core/localoperator"
 
 	"go.uber.org/zap"
 )

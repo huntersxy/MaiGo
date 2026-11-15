@@ -12,9 +12,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/common/utils"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/common/utils"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // chatImagePreprocessor 在 Agent 消费消息前完成图片缓存、描述与过大图片处理

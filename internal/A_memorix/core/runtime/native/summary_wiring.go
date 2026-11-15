@@ -7,9 +7,9 @@ import (
 	"context"
 	"strings"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/utils"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // summaryAdapter 把服务层参数收敛为内核参数

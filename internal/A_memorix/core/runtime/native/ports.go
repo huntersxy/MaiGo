@@ -4,8 +4,8 @@ package native
 // 只处理与 storage 类型签名不一致的两个方法，其余方法由内嵌指针提升
 
 import (
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // metadataPort 把元数据存储适配为 services.Metadata

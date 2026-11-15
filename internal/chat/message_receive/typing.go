@@ -3,7 +3,7 @@ package messagereceive
 import (
 	"time"
 
-	chatutils "maibot-go/internal/chat/utils"
+	chatutils "MaiGo/internal/chat/utils"
 )
 
 // TypingConfig 对齐 MaiBot 打字时长配置（保留本包名称，供 sender 使用）

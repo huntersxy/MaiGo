@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"maibot-go/internal/runtime"
+	"MaiGo/internal/runtime"
 
 	"github.com/bytedance/sonic"
 )

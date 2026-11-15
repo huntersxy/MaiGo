@@ -6,18 +6,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maibot-go/internal/webui/routers/chat"
+	"MaiGo/internal/webui/routers/chat"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/services/memory_writeback"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/services/memory_writeback"
 )
 
 func (d Deps) imageWritebackJournalPath() string {

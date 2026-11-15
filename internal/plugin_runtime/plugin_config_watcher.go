@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 )
 
 // 插件配置监听默认参数，对齐 Python integration.py:1866-1872 的 FileWatcher 配置

@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // lpmmLoggerName 对齐 get_logger("A_Memorix.LPMMImport")

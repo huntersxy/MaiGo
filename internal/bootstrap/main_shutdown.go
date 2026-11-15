@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/runtime"
+	"MaiGo/internal/runtime"
 
 	"go.uber.org/zap"
 )

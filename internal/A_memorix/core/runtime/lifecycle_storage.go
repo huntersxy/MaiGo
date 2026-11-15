@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/embedding"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // 生命周期初始化使用的默认值，对齐 Python 侧关键字默认值

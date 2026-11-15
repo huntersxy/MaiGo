@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 func expressionClusterMemberPayload(raw map[string]any, chatByID map[string]learners.ChatInfo) map[string]any {

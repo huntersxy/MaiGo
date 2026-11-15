@@ -1,6 +1,6 @@
 package llm
 
-import "maibot-go/internal/config/maibot"
+import "MaiGo/internal/config/maibot"
 
 // HasTaskModels 判断 model_task_config 中该任务自身是否配置了非空 model_list（不含 fast_model→utils 继用；对齐 MaiBot _is_vlm_task_configured）
 func (r *Router) HasTaskModels(task TaskName) bool {

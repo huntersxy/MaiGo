@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	pluginmarket "maibot-go/internal/plugin_market"
+	pluginmarket "MaiGo/internal/plugin_market"
 )
 
 func TestMarketCacheServesHitAndRemainingTTL(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	projectutils "maibot-go/internal/common/utils"
-	"maibot-go/internal/emoji_system"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	projectutils "MaiGo/internal/common/utils"
+	"MaiGo/internal/emoji_system"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

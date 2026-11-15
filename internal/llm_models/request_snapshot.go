@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maibot-go/internal/llm_models/contract"
+	"MaiGo/internal/llm_models/contract"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,7 +30,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/logger"
+	"MaiGo/internal/common/logger"
 )
 
 const (
@@ -388,7 +388,7 @@ func buildRequestSnapshotPayload(spec requestSnapshotSpec, requestID string, now
 	}
 	return map[string]any{
 		"schema_version": goRequestSnapshotVersion,
-		"generator":      "maibot-go",
+		"generator":      "MaiGo",
 		"request": map[string]any{
 			"kind":         requestKind,
 			"operation":    strings.TrimSpace(spec.Operation),

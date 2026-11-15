@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 
 	"golang.org/x/sync/semaphore"
 )

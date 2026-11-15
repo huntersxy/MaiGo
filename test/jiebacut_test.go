@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"maibot-go/internal/chat/replyer/jiebacut"
+	"MaiGo/internal/chat/replyer/jiebacut"
 )
 
 // loadTestJiebaDictionary 读取 replyer 内嵌的 jieba 词典

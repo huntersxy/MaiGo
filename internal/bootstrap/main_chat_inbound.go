@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/chat/wiring"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/chat/wiring"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // chatFrequencyFallback 动态读取实例配置，热重载后不会沿用旧频率表

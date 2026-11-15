@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // 与 Python 逐字一致的错误文案

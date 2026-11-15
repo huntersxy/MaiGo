@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/core/localoperator"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/core/localoperator"
 )
 
 // CommandPolicyPort 把命令权限判定接到 localoperator

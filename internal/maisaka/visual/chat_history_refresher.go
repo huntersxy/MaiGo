@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 视觉占位文本

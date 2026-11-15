@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 
 	"go.uber.org/zap"
 )

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // LoadLearningSettingsFromConfig 将实例 TOML 映射为学习配置快照

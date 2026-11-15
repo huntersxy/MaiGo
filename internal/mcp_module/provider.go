@@ -5,7 +5,7 @@ package mcp
 import (
 	"context"
 
-	"maibot-go/internal/core/tooling"
+	"MaiGo/internal/core/tooling"
 )
 
 // ProviderName MCP 工具 Provider 名称

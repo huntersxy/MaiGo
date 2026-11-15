@@ -5,8 +5,8 @@ import (
 	"strings"
 	"fmt"
 
-	"maibot-go/internal/config"
-	"maibot-go/internal/config/persona"
+	"MaiGo/internal/config"
+	"MaiGo/internal/config/persona"
 
 	"go.uber.org/zap"
 )

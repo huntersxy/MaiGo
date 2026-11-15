@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	capnames "maibot-go/internal/plugin_runtime/capabilities"
+	capnames "MaiGo/internal/plugin_runtime/capabilities"
 )
 
 // CapabilityAuthorization 插件能力令牌表，对齐 host/authorization.py

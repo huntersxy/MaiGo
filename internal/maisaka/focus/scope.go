@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 // GetFocusScopeKey 共享组身份；无 focus_groups 时为 global 或单会话

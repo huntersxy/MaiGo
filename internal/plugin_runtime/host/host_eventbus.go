@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/core/eventbus"
+	"MaiGo/internal/core/eventbus"
 )
 
 const pluginEventExtraArgsKey = "__pluginruntime_extra_args"

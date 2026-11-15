@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 
 	"github.com/bytedance/sonic"
 )

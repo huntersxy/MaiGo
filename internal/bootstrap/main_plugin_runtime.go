@@ -8,10 +8,10 @@ import (
 
 	"gorm.io/gorm"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/plugin_runtime"
-	botservices "maibot-go/internal/services"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/plugin_runtime"
+	botservices "MaiGo/internal/services"
 )
 
 // pluginBotAccountReporter 把 Host 的 Bot 账号上报端口接到 services.BotAccountService

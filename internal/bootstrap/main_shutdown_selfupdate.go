@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/common/self_update"
+	"MaiGo/internal/common/self_update"
 )
 
 // cleanupSelfUpdateTempFiles 只清理自更新状态目录中的原子写临时文件

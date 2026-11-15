@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
-	"maibot-go/internal/common/self_update"
-	"maibot-go/internal/plugin_market"
+	"MaiGo/internal/common/self_update"
+	"MaiGo/internal/plugin_market"
 )
 
 // MarketplaceCatalog 是插件市场目录的只读视图，便于启动公告与 WebUI 更新检查复用

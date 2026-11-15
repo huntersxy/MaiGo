@@ -1,7 +1,7 @@
 package contract
 
 import (
-	payloadcontent "maibot-go/internal/llm_models/payload_content"
+	payloadcontent "MaiGo/internal/llm_models/payload_content"
 )
 
 // ContextItem 是上下文项的别名。

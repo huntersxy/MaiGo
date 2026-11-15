@@ -13,9 +13,9 @@ import (
 
 	_ "github.com/glebarez/go-sqlite"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/A_memorix/core/runtime/native"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/A_memorix/core/runtime/native"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // previewLimit 对齐 Python 迁移脚本 dry-run 只预览前 5 行

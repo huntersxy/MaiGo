@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	chatsession "maibot-go/internal/chat/session"
+	chatsession "MaiGo/internal/chat/session"
 )
 
 // memoryTimelineSourcesForChat 对齐 _timeline_sources_for_chat

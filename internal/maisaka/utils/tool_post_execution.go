@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // MemoryFeedbackTaskMetadataKey 记忆反馈任务标记键

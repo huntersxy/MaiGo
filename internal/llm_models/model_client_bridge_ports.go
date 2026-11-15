@@ -14,7 +14,7 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 
-	"maibot-go/internal/llm_models/model_client"
+	"MaiGo/internal/llm_models/model_client"
 )
 
 func init() {

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
-	"maibot-go/internal/services"
+	"MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/services"
 )
 
 // MaisakaRuntimeProvider 按 session_id 提供已创建的 Maisaka 运行时

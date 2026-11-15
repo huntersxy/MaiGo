@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // MergeExistingParagraphMetadata 合并已存在段落的 metadata，对齐 Python _merge_existing_paragraph_metadata

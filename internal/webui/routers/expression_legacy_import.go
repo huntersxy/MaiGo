@@ -11,7 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 type legacyExpressionImportMapping struct {

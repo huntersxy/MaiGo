@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/webui/middleware"
+	"MaiGo/internal/webui/middleware"
 )
 
 const (

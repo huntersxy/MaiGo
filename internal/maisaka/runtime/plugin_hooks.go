@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/onebot"
-	"maibot-go/internal/plugin_runtime"
-	"maibot-go/internal/plugin_runtime/hooks"
-	"maibot-go/internal/plugin_runtime/hostports"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/hostports"
 
 	"go.uber.org/zap"
 )

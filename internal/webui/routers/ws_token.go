@@ -8,7 +8,7 @@ package webuiapi
 import (
 	"net/http"
 
-	"maibot-go/internal/webui/authutil"
+	"MaiGo/internal/webui/authutil"
 )
 
 // webUISessionToken 从请求 Cookie 中取 WebUI 会话令牌

@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 const (

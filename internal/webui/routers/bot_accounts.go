@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	botservices "maibot-go/internal/services"
+	botservices "MaiGo/internal/services"
 )
 
 func normalizeBotAccountPlatform(platform string) string {

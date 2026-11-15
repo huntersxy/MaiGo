@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"maibot-go/internal/learners"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/llm_models"
 
 	"go.uber.org/zap"
 )

@@ -7,9 +7,9 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/learners"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 )
 
 // textLearningExtractFunc 便于 WebUI 测试注入学习服务，生产默认走 learners 实现

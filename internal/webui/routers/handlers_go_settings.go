@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/runtime/execution"
-	"maibot-go/internal/services/statistics"
+	"MaiGo/internal/runtime/execution"
+	"MaiGo/internal/services/statistics"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"

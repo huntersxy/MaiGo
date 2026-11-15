@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/llm_models"
 
 	"github.com/bytedance/sonic"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/components/model"
 )

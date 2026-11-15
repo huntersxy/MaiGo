@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/person_info"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/person_info"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

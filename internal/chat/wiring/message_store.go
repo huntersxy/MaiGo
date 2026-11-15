@@ -11,11 +11,11 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // MessageLogWriter 消息行写入端口，便于没有真实数据库时做装配测试

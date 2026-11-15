@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/prompt"
 )
 
 // configureMaisakaChatLoop 从实例配置注入 Planner 模板需要的名字、人格与聊天注意事项

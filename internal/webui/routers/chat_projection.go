@@ -7,7 +7,7 @@ package webuiapi
 // 而不必把整份 chat 逻辑复制到父包。
 
 import (
-	"maibot-go/internal/webui/routers/chat"
+	"MaiGo/internal/webui/routers/chat"
 )
 
 // chatDeps 把父包 Deps 投影成 chat 子包的依赖

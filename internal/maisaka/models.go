@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // ContextRole 上下文消息角色，对齐 Python LLMContextMessage 的 role

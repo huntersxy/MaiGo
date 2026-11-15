@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/config"
+	"MaiGo/internal/config"
 
 	"go.uber.org/zap"
 )

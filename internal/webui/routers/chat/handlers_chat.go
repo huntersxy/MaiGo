@@ -2,14 +2,14 @@ package chat
 
 import (
 	"context"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/platform_io"
 )
 
 type chatSessionItem struct {

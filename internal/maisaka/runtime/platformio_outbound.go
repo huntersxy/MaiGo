@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"

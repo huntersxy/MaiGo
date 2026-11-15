@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/strategies"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/strategies"
+	"MaiGo/internal/A_memorix/core/utils"
 
 	"golang.org/x/sync/semaphore"
 )

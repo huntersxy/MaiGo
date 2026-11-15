@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/prompt"
 )
 
 // maisakaPreviewTemplates 迁移期 CLI 默认展示的 Maisaka 模板（对齐 Python heartflow 主链路）

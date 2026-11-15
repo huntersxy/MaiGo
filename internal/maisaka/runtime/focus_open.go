@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/focus"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/focus"
 
 	"go.uber.org/zap"
 )

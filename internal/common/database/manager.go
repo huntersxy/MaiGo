@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 
-	"maibot-go/internal/common/logger"
+	"MaiGo/internal/common/logger"
 )
 
 type Manager struct {

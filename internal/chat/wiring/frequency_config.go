@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/chat/message_receive"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // ConfigFrequencyFallback 用聊天流配置计算默认回复频率

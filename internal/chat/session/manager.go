@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

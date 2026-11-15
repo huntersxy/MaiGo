@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // Host→Runner 调用方法名，对齐 MaiBot supervisor.py 的 send_request 调用

@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/self_update"
-	appversion "maibot-go/internal/common/version"
+	"MaiGo/internal/common/self_update"
+	appversion "MaiGo/internal/common/version"
 
 	"go.uber.org/zap"
 )

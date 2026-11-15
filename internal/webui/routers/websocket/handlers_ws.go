@@ -3,8 +3,8 @@ package websocket
 import (
 	"context"
 	"fmt"
-	webuichat "maibot-go/internal/webui/routers/chat"
-	webuiplugin "maibot-go/internal/webui/routers/plugin"
+	webuichat "MaiGo/internal/webui/routers/chat"
+	webuiplugin "MaiGo/internal/webui/routers/plugin"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,10 +15,10 @@ import (
 	"github.com/coder/websocket"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/logger"
-	"maibot-go/internal/maisaka/monitor"
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/webui/authutil"
+	"MaiGo/internal/common/logger"
+	"MaiGo/internal/maisaka/monitor"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/webui/authutil"
 )
 
 func (d Deps) handleWSLogs(w http.ResponseWriter, r *http.Request) {

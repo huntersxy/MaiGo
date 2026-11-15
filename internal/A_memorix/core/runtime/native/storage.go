@@ -12,13 +12,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
-	"maibot-go/internal/A_memorix/core/write"
+	"MaiGo/internal/A_memorix/core/embedding"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/write"
 )
 
 // 初始化默认值，对齐 Python lifecycle 关键字默认值

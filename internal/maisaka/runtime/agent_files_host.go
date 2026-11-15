@@ -9,12 +9,12 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"maibot-go/internal/agent"
-	"maibot-go/internal/agent/files"
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/computer"
-	"maibot-go/internal/files"
+	"MaiGo/internal/agent"
+	"MaiGo/internal/agent/files"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/computer"
+	"MaiGo/internal/files"
 
 	"github.com/bytedance/sonic"
 )

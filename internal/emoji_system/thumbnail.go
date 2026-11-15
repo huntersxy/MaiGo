@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"github.com/disintegration/imaging"
 	genwebp "github.com/gen2brain/webp"

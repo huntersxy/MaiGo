@@ -2,13 +2,13 @@ package chat
 
 import (
 	"encoding/json"
-	imagesystem "maibot-go/internal/chat/image_system"
+	imagesystem "MaiGo/internal/chat/image_system"
 	"net/http"
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/webui/httputil"
-	webuiutils "maibot-go/internal/webui/utils"
+	"MaiGo/internal/webui/httputil"
+	webuiutils "MaiGo/internal/webui/utils"
 )
 
 const (

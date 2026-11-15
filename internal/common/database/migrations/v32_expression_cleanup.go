@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	memutils "maibot-go/internal/A_memorix/core/utils"
+	memutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // promptExampleExpressionStyles 对齐 Python 学习 prompt 中泄漏的示例表达

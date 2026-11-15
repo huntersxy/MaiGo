@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"maibot-go/internal/services"
-	"maibot-go/internal/services/statistics"
+	"MaiGo/internal/services"
+	"MaiGo/internal/services/statistics"
 
 	"gorm.io/gorm"
 )

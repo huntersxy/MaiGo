@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // ClientConfigFromMaiBot 把 bot_config.toml [mcp.client] 转成运行时配置

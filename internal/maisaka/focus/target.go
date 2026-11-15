@@ -3,7 +3,7 @@ package focus
 import (
 	"strings"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 // TargetMatchesSession 精确匹配 platform/item_id/rule_type

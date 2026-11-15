@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	statschema "maibot-go/internal/services/statistics/schema"
+	statschema "MaiGo/internal/services/statistics/schema"
 
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // 桌宠控制能力，对齐 capabilities/registry.py 的 control 注册表

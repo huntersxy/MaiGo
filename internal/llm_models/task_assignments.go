@@ -1,6 +1,6 @@
 package llm
 
-import "maibot-go/internal/config/maibot"
+import "MaiGo/internal/config/maibot"
 
 // taskAssignmentSources 对齐 MaiBot model_task_config 的 TOML 任务键与 model_list 来源
 // 遥测上报用原始配置，不做 fast_model/learner 到 utils 的继用回退

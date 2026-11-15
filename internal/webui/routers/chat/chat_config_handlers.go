@@ -3,14 +3,14 @@ package chat
 import (
 	"encoding/json"
 	"fmt"
-	webuiutils "maibot-go/internal/webui/utils"
+	webuiutils "MaiGo/internal/webui/utils"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 func (d Deps) loadChatConfigForWrite(w http.ResponseWriter) (map[string]any, string, bool) {

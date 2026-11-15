@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // buildFullStateTables 按固定表顺序复制 state.tables

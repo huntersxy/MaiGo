@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"

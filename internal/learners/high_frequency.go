@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"maibot-go/internal/chat/replyer/jiebacut"
+	"MaiGo/internal/chat/replyer/jiebacut"
 )
 
 // 高频词学习第三路，对齐 MaiBot src/services/message_word_frequency_service.py

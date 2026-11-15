@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // VectorSpaceDeps 向量空间服务的依赖端口

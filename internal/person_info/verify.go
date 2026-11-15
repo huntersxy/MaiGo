@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 var factTemporaryMarkers = []string{

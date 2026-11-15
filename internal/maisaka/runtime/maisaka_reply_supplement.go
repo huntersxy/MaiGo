@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // agentReplySupplementGenerator 复用 Planner 模型与请求前缀生成回复补充编排

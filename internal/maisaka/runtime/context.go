@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/config"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
-	maisakactx "maibot-go/internal/maisaka/context"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/config"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
+	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/cloudwego/eino/components/tool"
 )

@@ -1,6 +1,6 @@
 package maisaka
 
-import "maibot-go/internal/maisaka/turn_trigger"
+import "MaiGo/internal/maisaka/turn_trigger"
 
 // IdleBackoffConfig 对应 MaiBot chat.reply_timing 空闲退避参数
 type IdleBackoffConfig = turn_trigger.IdleBackoffConfig

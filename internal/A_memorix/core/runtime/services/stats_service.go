@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // StatsDeps 统计服务依赖的存储能力

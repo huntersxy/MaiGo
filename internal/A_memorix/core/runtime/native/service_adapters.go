@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/retrieval"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
 )
 
 // searchAdapter 把内核检索接口转给 services.MemorySearchService

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	projectutils "maibot-go/internal/common/utils"
+	projectutils "MaiGo/internal/common/utils"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

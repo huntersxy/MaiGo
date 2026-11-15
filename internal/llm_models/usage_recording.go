@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/services/model_stats"
+	"MaiGo/internal/services/model_stats"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"

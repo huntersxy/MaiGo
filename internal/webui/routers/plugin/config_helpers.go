@@ -3,7 +3,7 @@ package plugin
 import (
 	"context"
 	"errors"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,8 +13,8 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime"
 )
 
 // resolvePluginConfigPaths 校验插件 ID 并定位已安装插件目录与 config.toml

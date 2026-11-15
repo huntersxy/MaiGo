@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/strategies"
+	"MaiGo/internal/A_memorix/core/strategies"
 )
 
 // sourceLabel 对齐 _source_label

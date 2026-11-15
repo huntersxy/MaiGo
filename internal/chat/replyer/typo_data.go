@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"maibot-go/internal/chat/replyer/jiebacut"
+	"MaiGo/internal/chat/replyer/jiebacut"
 
 	"github.com/bytedance/sonic"
 )

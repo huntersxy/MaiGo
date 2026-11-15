@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/desktop_pet"
+	"MaiGo/internal/desktop_pet"
 
 	"github.com/go-chi/chi/v5"
 )

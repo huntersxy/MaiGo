@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/media"
+	"MaiGo/internal/common/media"
 )
 
 // NormalizeContent 统一记忆去重时的空白和大小写
@@ -14,7 +14,7 @@ func NormalizeContent(raw string) string {
 
 // MessageLog 对应 MaiBot mai_messages（database_model.py::Messages），表名与列名逐字对齐。
 //
-// conversation_kind/target_id 等列是 maibot-go 的扩展（MaiBot 用 group_id 是否为空
+// conversation_kind/target_id 等列是 MaiGo 的扩展（MaiBot 用 group_id 是否为空
 // 隐含判断群/私聊），跟版时注意不要与官方新增列重名。
 type MessageLog struct {
 	ID                 uint                    `gorm:"primaryKey" json:"id"`

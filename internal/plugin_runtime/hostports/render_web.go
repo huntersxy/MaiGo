@@ -3,9 +3,9 @@ package hostports
 import (
 	"context"
 
-	"maibot-go/internal/plugin_runtime"
-	"maibot-go/internal/services/html_render"
-	"maibot-go/internal/web_search"
+	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/services/html_render"
+	"MaiGo/internal/web_search"
 )
 
 // Render HTML 渲染端口

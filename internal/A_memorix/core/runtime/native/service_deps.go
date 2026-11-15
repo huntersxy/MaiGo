@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/retrieval"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/services"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/services"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // searchDeps 绑定统一检索服务的真实端口
@@ -83,6 +83,10 @@ func (r *Runtime) ingestDeps() services.IngestDeps {
 		},
 		Initialize: func(ctx context.Context) error { return r.kernel.Initialize(ctx) },
 		Metadata:   func() *storage.Store { return r.metadataStore },
+		// Episode 物化：后台循环按来源重建，缺这三项会每轮报 generation_hash 为空
+		GenerationSignature: r.episodeGenerationSignature,
+		GenerationHash:      r.episodeGenerationHash,
+		PlanSourceRebuild:   r.planEpisodeSourceRebuild,
 		Persist: func() {
 			if err := r.kernel.Persist(context.Background(), false); err != nil {
 				r.logger.Warning(fmt.Sprintf("[native] 持久化内核状态失败: %v", err))

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	memory "maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
+	memory "MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
 
 	"github.com/pelletier/go-toml/v2"
 )

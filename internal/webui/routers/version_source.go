@@ -3,7 +3,7 @@ package webuiapi
 import (
 	"strings"
 
-	appversion "maibot-go/internal/common/version"
+	appversion "MaiGo/internal/common/version"
 )
 
 // buildVersion 统一解析 WebUI 对外版本号

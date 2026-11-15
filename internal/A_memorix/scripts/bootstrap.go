@@ -16,7 +16,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/pelletier/go-toml/v2"
 
-	"maibot-go/internal/A_memorix"
+	"MaiGo/internal/A_memorix"
 )
 
 // DefaultDBName 对齐 _bootstrap.DEFAULT_DB_PATH 中 data/MaiBot.db 的文件名

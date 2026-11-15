@@ -7,7 +7,7 @@ package llm
 // 子包不依赖父包任何符号，属干净的向下依赖。
 
 import (
-	payloadcontent "maibot-go/internal/llm_models/payload_content"
+	payloadcontent "MaiGo/internal/llm_models/payload_content"
 )
 
 type (

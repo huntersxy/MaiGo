@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 
 	"go.uber.org/zap"
 )

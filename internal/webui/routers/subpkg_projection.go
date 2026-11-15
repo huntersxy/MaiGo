@@ -10,11 +10,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/webui/httputil"
-	webuichat "maibot-go/internal/webui/routers/chat"
-	webuiemoji "maibot-go/internal/webui/routers/emoji"
-	webuiplugin "maibot-go/internal/webui/routers/plugin"
-	webuiws "maibot-go/internal/webui/routers/websocket"
+	"MaiGo/internal/webui/httputil"
+	webuichat "MaiGo/internal/webui/routers/chat"
+	webuiemoji "MaiGo/internal/webui/routers/emoji"
+	webuiplugin "MaiGo/internal/webui/routers/plugin"
+	webuiws "MaiGo/internal/webui/routers/websocket"
 )
 
 // websocketDeps 把父包 Deps 投影成 websocket 子包的依赖

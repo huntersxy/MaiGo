@@ -3,8 +3,8 @@ package debounce
 import (
 	"strings"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
 // ShapeFromComponents 对齐 get_message_shape：按组件 format_name 判 kind，长度只计 TextComponent

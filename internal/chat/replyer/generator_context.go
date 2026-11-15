@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/learners"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/llm_models"
 )
 
 // ShouldKeepReplyerHistoryMessage 对齐 _should_keep_replyer_history_message：

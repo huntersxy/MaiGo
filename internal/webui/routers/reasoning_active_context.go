@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/maisaka/display"
-	maisaruntime "maibot-go/internal/maisaka/runtime"
+	"MaiGo/internal/maisaka/display"
+	maisaruntime "MaiGo/internal/maisaka/runtime"
 )
 
 func (d Deps) handleReasoningActiveContext(w http.ResponseWriter, r *http.Request) {

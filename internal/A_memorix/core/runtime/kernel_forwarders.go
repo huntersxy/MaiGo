@@ -5,7 +5,7 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // MergeRuntimeConfigPatch 对齐 _merge_runtime_config_patch

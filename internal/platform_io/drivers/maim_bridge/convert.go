@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/message_server"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/common/message_server"
+	"MaiGo/internal/platform_io"
 )
 
 const inboundMetaMessageBase = "maimmsg.message_base"

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
 )
 
 // migrateChatHistoryLoggerName 对齐 get_logger("A_Memorix.MigrateChatHistory")

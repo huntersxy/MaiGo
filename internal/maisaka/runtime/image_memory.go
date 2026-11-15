@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
+	"MaiGo/internal/A_memorix"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

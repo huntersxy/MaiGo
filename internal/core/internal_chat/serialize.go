@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"strings"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 // BinaryLoader 按段类型与 hash 读取图片/表情缓存字节

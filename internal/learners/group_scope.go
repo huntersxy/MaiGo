@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 
 	"gorm.io/gorm"
 )

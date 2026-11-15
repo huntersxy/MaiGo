@@ -7,7 +7,7 @@ import (
 	"context"
 	"sort"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // VectorSearcher 向量召回能力，storage.VectorStore 直接满足

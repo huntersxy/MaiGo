@@ -14,11 +14,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/heart_flow"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io/drivers/onebot"
-	botservices "maibot-go/internal/services"
+	"MaiGo/internal/chat/heart_flow"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io/drivers/onebot"
+	botservices "MaiGo/internal/services"
 )
 
 // IdentityObserver 身份观察端口；生产注入 Registry

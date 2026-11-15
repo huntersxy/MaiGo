@@ -5,8 +5,8 @@ package runtime
 import (
 	"strings"
 
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/maisaka"
 )
 
 // SourceImages 返回当前会话可传给其他聊天的图片来源表

@@ -8,7 +8,7 @@ package model_client
 // 与 learners 的表达/黑话解析共用同一份实现。
 
 import (
-	"maibot-go/internal/common/jsonrepair"
+	"MaiGo/internal/common/jsonrepair"
 )
 
 // chatRepairJSON 按 Python json_repair 0.60.1 的口径修复工具调用参数。

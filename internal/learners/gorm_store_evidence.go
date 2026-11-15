@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 // LoadJargonEvidenceMessage 按 platform+message_id 读取证据消息正文

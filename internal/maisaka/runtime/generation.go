@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/config"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/mcp_module"
-	"maibot-go/internal/web_search"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/config"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/mcp_module"
+	"MaiGo/internal/web_search"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"

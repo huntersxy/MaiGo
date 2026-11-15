@@ -10,7 +10,7 @@ package host
 // 这里用类型别名把子包的契约暴露回包内，让 host_*.go 的调用点无需改动。
 
 import (
-	"maibot-go/internal/plugin_runtime/capabilities"
+	"MaiGo/internal/plugin_runtime/capabilities"
 )
 
 type (

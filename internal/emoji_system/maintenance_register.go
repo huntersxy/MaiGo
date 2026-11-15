@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"go.uber.org/zap"
 )

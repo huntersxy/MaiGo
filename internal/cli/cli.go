@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 )
 
 // Dispatch 解析 os.Args；Handled 为 false 时 main 应走原有默认启动路径

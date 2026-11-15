@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/agent/files"
-	"maibot-go/internal/files"
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/agent/files"
+	"MaiGo/internal/files"
+	"MaiGo/internal/mcp_module"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

@@ -6,9 +6,9 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/agent/files"
-	"maibot-go/internal/computer"
-	"maibot-go/internal/files"
+	"MaiGo/internal/agent/files"
+	"MaiGo/internal/computer"
+	"MaiGo/internal/files"
 )
 
 // FileToolHost 文件工具宿主，端口定义在 files 模块（对应 src/files/provider.py）

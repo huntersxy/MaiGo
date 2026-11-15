@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

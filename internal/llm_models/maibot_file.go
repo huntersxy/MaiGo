@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 // 当前 Go 层实现 OpenAI Chat Completions、OpenAI Responses、Gemini REST（含流式/语音/thought_signature/Google Search）

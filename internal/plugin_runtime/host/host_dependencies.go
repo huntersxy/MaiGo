@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 )
 
 // SyncPluginDependencies 执行插件 Python 依赖分析/补装，并把最终阻止列表写回 Host

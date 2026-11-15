@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // ToolRecordOptions 工具记录落库开关

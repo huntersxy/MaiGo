@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
+	"MaiGo/internal/chat/message_receive"
 )
 
 // RuntimeFrequencyLookup 读取心流运行时当前生效的回复频率

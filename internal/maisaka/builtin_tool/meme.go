@@ -8,8 +8,8 @@ import (
 	"time"
 	"unicode"
 
-	"maibot-go/internal/common/database"
-	projectutils "maibot-go/internal/common/utils"
+	"MaiGo/internal/common/database"
+	projectutils "MaiGo/internal/common/utils"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

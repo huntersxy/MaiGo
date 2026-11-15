@@ -52,7 +52,7 @@ func ProcessSnapshot(version string) ProcessStatus {
 	st := ProcessStatus{
 		Running: marked,
 		Version: version,
-		Backend: "maibot-go",
+		Backend: "MaiGo",
 	}
 	if !marked {
 		return st

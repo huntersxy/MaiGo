@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"maibot-go/internal/chat/image_system"
-	"maibot-go/internal/core/internal_chat"
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/core/internal_chat"
 )
 
 // chatHistoryBinaryLoader 为落库还原的图片/表情段回读二进制

@@ -3,7 +3,7 @@ package context
 import (
 	"strings"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 提示词分段键

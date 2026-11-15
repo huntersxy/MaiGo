@@ -1,6 +1,6 @@
 package maimbridge
 
-import "maibot-go/internal/platform_io"
+import "MaiGo/internal/platform_io"
 
 const (
 	// DriverIDMaimMsg 旧版 maim_message WS 多平台汇聚驱动

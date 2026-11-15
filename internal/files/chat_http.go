@@ -13,7 +13,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/webui/middleware"
+	"MaiGo/internal/webui/middleware"
 )
 
 // FileChat 文件页可选择的聊天流

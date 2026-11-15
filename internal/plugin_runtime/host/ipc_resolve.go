@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/transport"
+	"MaiGo/internal/plugin_runtime/transport"
 )
 
 // IPCListenKind 指定空地址时的默认传输类型

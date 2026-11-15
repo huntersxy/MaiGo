@@ -3,7 +3,7 @@ package focus
 import (
 	"sync"
 
-	"maibot-go/internal/maisaka/quote"
+	"MaiGo/internal/maisaka/quote"
 )
 
 // SessionRuntime 会话级 Focus 运行态（内存）；完整 FocusGroupRuntime 仍待迁移

@@ -6,7 +6,7 @@ package llm
 // 与「快照/统计层」共同使用，任务名类型也被两侧引用（对应 Python
 // src/llm_models/utils_model.py 的任务枚举 + payload_content/resp_format.py）。
 
-import "maibot-go/internal/llm_models/contract"
+import "MaiGo/internal/llm_models/contract"
 
 type (
 	// TaskName 模型任务名

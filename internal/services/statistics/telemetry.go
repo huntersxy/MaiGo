@@ -342,7 +342,7 @@ func (t *Telemetry) buildHeartbeatPayload() map[string]any {
 	}
 	return map[string]any{
 		"kind":           "heartbeat",
-		"backend":        "maibot-go",
+		"backend":        "MaiGo",
 		"version":        snap.Version,
 		"os_type":        osTypeLabel(),
 		"go_version":     runtime.Version(),

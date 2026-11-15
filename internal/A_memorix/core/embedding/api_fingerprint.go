@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // dimensionCacheEntry 进程级维度缓存条目，对应 (dimension, model_name, provider_name)

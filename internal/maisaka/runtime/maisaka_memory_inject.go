@@ -13,12 +13,12 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/A_memorix"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/maisaka"
-	maisakamemory "maibot-go/internal/maisaka/memory"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/A_memorix"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/maisaka"
+	maisakamemory "MaiGo/internal/maisaka/memory"
+	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/model"

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 const (

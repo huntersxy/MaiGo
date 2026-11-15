@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 // SenderText 把命令回复接到统一发送链，避免命令链另建一套平台发送

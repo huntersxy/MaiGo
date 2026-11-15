@@ -3,7 +3,7 @@ package messagereceive
 import (
 	"strings"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 func sessionFromRecord(row chatsession.Record) *BotChatSession {

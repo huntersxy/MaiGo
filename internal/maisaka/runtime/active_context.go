@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	maisaka "maibot-go/internal/maisaka"
-	maisakactx "maibot-go/internal/maisaka/context"
+	maisaka "MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 )
 
 // ErrChatSessionNotFound 聊天流不存在，对齐 WebUI active-context 的 404

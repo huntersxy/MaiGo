@@ -3,7 +3,7 @@ package host
 import (
 	"strings"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // PersonalityConfigPort 人设配置端口，对齐 MaiBot personality_service

@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // 占位模板：完整默认项生成见 MaiBot src/config/config.py generate_new_config_file

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"sync"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 var (

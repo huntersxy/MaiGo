@@ -7,16 +7,16 @@ import (
 	"strings"
 	"time"
 
-	messagereceive "maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	messagereceive "MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 const (

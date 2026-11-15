@@ -95,7 +95,7 @@ type NewerSchemaError struct {
 }
 
 func (e *NewerSchemaError) Error() string {
-	return fmt.Sprintf("数据库 schema 版本为 v%d，高于当前程序支持的 v%d，请升级 maibot-go", e.Version, e.Latest)
+	return fmt.Sprintf("数据库 schema 版本为 v%d，高于当前程序支持的 v%d，请升级 MaiGo", e.Version, e.Latest)
 }
 
 func (e *NewerSchemaError) Unwrap() error { return ErrSchemaNewer }

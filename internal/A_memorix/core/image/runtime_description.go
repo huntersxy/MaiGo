@@ -1,7 +1,7 @@
 package imagememory
 
 import (
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // ApplyModelDescription 对齐 Python apply_model_description，写入模型描述或暂存待绑定描述

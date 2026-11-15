@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 var vectorRecoveryStages = []string{"prepared", "quarantined", "metadata_reset", "new_generation_ready", "copying", "completed"}

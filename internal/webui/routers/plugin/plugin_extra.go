@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -20,8 +20,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 
-	"maibot-go/internal/common/network_security"
-	"maibot-go/internal/plugin_market"
+	"MaiGo/internal/common/network_security"
+	"MaiGo/internal/plugin_market"
 )
 
 // pluginAuthMiddleware 对齐 Python 插件路由：只有版本与 Git 状态无需登录

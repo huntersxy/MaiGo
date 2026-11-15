@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/mcp_module"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/mcp_module"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"maibot-go/internal/A_memorix/core/strategies"
+	"MaiGo/internal/A_memorix/core/strategies"
 
 	"golang.org/x/sync/semaphore"
 )

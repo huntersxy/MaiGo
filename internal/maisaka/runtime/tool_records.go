@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka"
-	maisakautils "maibot-go/internal/maisaka/utils"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
+	maisakautils "MaiGo/internal/maisaka/utils"
 )
 
 // agentToolRecordStore 把 Maisaka 工具执行记录落到 tool_records 表

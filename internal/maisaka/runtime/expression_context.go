@@ -3,10 +3,10 @@ package runtime
 import (
 	"context"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/learners"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/maisaka/builtin_tool"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

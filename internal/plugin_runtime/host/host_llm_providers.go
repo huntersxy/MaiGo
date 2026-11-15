@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // LLMProviderEntry Host 侧插件 LLM Provider 注册项，对齐 ClientProviderRegistration 的可观察字段

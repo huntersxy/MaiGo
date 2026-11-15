@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // episodeQuerySpanPattern 对齐 Python r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+"

@@ -8,7 +8,7 @@ package llm
 // 造成循环引用。这里保留父包的内部小写名，调用点无需改动。
 
 import (
-	"maibot-go/internal/llm_models/contract"
+	"MaiGo/internal/llm_models/contract"
 )
 
 const (

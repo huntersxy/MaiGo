@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // ToolRoute 同名工具在各会话上的来源与参数变体

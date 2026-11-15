@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 func main() {

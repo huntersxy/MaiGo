@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"maibot-go/internal/common/self_update"
+	"MaiGo/internal/common/self_update"
 )
 
 // 本文件对齐 ../MaiBot/src/webui/routers/system.py 的更新公告、历史记录与配置重载端点

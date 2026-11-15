@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/common/version"
+	"MaiGo/internal/common/version"
 )
 
 // CheckOptions 一次检查的参数

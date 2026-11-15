@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/message_receive"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/chat/message_receive"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // ConfigMessageFilter 从当前消息接收配置构造屏蔽词/正则过滤器

@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
-	chatsession "maibot-go/internal/chat/session"
-	memory "maibot-go/internal/common/database"
+	chatsession "MaiGo/internal/chat/session"
+	memory "MaiGo/internal/common/database"
 )
 
 // 对齐 MaiBot reasoning_process.py 的 session_infos：目录名解析 + chat_sessions 回填展示名/resolved_session_id。

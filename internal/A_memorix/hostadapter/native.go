@@ -3,9 +3,9 @@ package hostadapter
 // A_memorix 原生内核工厂接线：把 native 包的可扩展装配表接入宿主服务
 
 import (
-	"maibot-go/internal/A_memorix"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/runtime/native"
+	"MaiGo/internal/A_memorix"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/runtime/native"
 )
 
 // NativeServicesFactory 使用 A_Memorix 原生装配构造宿主内核服务集合

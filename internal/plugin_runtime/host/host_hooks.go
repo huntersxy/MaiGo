@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/hooks"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // EmitHook 触发命名 Hook，对齐 integration.invoke_hook

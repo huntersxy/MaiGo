@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // RelationWriteResult 对齐 Python dataclass RelationWriteResult

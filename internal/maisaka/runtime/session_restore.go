@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/config"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/config"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

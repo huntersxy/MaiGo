@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/core/localoperator"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/core/localoperator"
 
 	"github.com/google/uuid"
 )

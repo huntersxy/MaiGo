@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 
 	"go.uber.org/zap"
 )

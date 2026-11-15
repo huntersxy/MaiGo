@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
+	"MaiGo/internal/chat/session"
 )
 
 // 遥测统计载荷对齐 MaiBot src/services/telemetry_stats_service.py

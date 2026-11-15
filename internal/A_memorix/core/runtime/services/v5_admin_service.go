@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // V5AdminDeps V5 管理服务的依赖端口

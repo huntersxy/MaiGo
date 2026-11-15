@@ -128,7 +128,7 @@ func parseWebUIEntry(line string, seq uint64) (WebUIEntry, bool) {
 	levelText, _ := fields["level"].(string)
 	module := strings.TrimSpace(anyString(fields["logger"]))
 	if module == "" {
-		module = "maibot-go"
+		module = "MaiGo"
 	}
 	message := anyString(fields["msg"])
 	timeText := formatWebUITimestamp(anyString(fields["time"]))

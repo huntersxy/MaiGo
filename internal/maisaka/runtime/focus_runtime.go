@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/replyer"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka/quote"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka/quote"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )

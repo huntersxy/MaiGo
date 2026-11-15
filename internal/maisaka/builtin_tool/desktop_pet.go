@@ -10,11 +10,11 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/core/internal_chat"
-	"maibot-go/internal/desktop_pet"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/desktop_pet"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

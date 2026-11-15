@@ -1,6 +1,6 @@
 package learners
 
-import "maibot-go/internal/llm_models"
+import "MaiGo/internal/llm_models"
 
 // RefreshLearnerBatchRunner 在 Agent 注入 Router 后更新已缓存 ExpressionLearner
 func RefreshLearnerBatchRunner(l *ExpressionLearner, router *llm.Router, botName string) {

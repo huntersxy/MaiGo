@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/computer"
+	"MaiGo/internal/computer"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

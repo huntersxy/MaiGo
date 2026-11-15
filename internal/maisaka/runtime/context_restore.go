@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 
 	"github.com/cloudwego/eino/schema"
 )

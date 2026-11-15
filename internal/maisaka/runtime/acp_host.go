@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/common/media"
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"

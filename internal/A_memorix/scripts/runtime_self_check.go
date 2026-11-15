@@ -9,10 +9,10 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/embedding"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // runtimeSelfCheckSampleText 对齐 _DEFAULT_SAMPLE_TEXT

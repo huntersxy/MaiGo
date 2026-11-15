@@ -16,14 +16,14 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"gorm.io/gorm"
 
-	"maibot-go/internal/A_memorix/core/runtime/native"
-	"maibot-go/internal/A_memorix/core/utils"
-	"maibot-go/internal/A_memorix/scripts"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/services"
+	"MaiGo/internal/A_memorix/core/runtime/native"
+	"MaiGo/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/scripts"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/services"
 )
 
 // NativeRuntimeDeps 原生内核需要的宿主能力

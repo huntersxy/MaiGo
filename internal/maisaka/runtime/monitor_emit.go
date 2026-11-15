@@ -3,9 +3,9 @@ package runtime
 import (
 	"strconv"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka/monitor"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka/monitor"
 )
 
 func (a *Agent) monitorThinkSessionID(kind string, targetID int64) string {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 
 	"github.com/google/uuid"
 )

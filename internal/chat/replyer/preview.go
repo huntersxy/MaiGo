@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/maisaka/display"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka/display"
 
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"

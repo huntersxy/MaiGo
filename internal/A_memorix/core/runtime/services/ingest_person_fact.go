@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // ingestFactDedupStore 把 storage.Store 适配为 FactDedupStore

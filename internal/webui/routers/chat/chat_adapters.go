@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/platform_io"
 )
 
 // chatAdapterPolicyPayload 适配器策略结果，字段顺序对齐 Python AdapterPolicyResult.to_dict

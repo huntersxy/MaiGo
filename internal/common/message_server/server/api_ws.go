@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/message_server"
+	"MaiGo/internal/common/message_server"
 
 	"github.com/coder/websocket"
 	"go.uber.org/zap"

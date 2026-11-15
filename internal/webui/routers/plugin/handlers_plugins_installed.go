@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,9 +9,9 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	maibotcfg "maibot-go/internal/config/maibot"
-	"maibot-go/internal/plugin_market"
-	"maibot-go/internal/plugin_runtime/circuitbreaker"
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime/circuitbreaker"
 )
 
 // handlePluginInstalled 对齐 GET /plugins/installed

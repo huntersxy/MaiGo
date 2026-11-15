@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"maibot-go/internal/services/statistics"
+	"MaiGo/internal/services/statistics"
 )
 
 func (d Deps) handleSystemStatus(w http.ResponseWriter, r *http.Request) {

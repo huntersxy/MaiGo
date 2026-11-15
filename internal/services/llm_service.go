@@ -18,7 +18,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // LLMServiceClient 绑定一个任务/请求类型/会话的 LLM 服务入口

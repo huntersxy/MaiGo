@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/rand"
 
-	"maibot-go/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/hooks"
 )
 
 // SelectParams Maisaka send_emoji 选择链入参

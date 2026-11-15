@@ -5,8 +5,8 @@ package services
 // 启用开关来自 debug.enable_llm_cache_stats，由 bootstrap 调 ConfigureLLMCacheStatsFromInstance。
 
 import (
-	maibotcfg "maibot-go/internal/config/maibot"
-	llm "maibot-go/internal/llm_models"
+	maibotcfg "MaiGo/internal/config/maibot"
+	llm "MaiGo/internal/llm_models"
 )
 
 func init() {

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // 桌宠按钮超时与上限，对齐 supervisor.desktop_pet_buttons / desktop_pet_buttons.py

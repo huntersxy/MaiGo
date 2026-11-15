@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // CheckpointVersion 新版 Focus 检查点版本

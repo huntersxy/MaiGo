@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // 对齐 runtime.py 的常量

@@ -3,7 +3,7 @@ package visual
 import (
 	"strings"
 
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // ImageLimitPlaceholder 超限图片替换文本

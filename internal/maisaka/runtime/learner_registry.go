@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 // learnerRegistry 返回会话学习器注册表，按需初始化

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/utils"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/A_memorix/core/utils"
+	"MaiGo/internal/llm_models"
 )
 
 // imageEmbeddingRequestType 对齐 Python EmbeddingServiceClient 的 request_type

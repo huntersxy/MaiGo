@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // RunnerRPCError 保留 Runner RPC 错误码，供恢复预算判断

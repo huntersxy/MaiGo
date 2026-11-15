@@ -11,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"maibot-go/internal/chat/replyer/jiebacut"
+	"MaiGo/internal/chat/replyer/jiebacut"
 )
 
 // 词典与 Python jieba 0.42.1 一致，来源 internal/replyer/data/jieba_dict.txt.gz

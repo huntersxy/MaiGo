@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"maibot-go/internal/services/pythoncompat"
+	"MaiGo/internal/services/pythoncompat"
 )
 
 // TestPythonCompatSidecarRoundTrip 对真实侧车做一次往返。

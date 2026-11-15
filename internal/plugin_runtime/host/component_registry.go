@@ -14,7 +14,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // 组件聊天类型适用范围，对齐 component_registry.ComponentChatScope

@@ -3,7 +3,7 @@ package replyer
 import (
 	"context"
 
-	"maibot-go/internal/learners"
+	"MaiGo/internal/learners"
 )
 
 // SelectExpressions 委托 learners.MatchExpressions（有内存向量索引时优先 TopK，否则 DB 启发式）

@@ -3,8 +3,8 @@ package runtime
 import (
 	"strings"
 
-	"maibot-go/internal/maisaka"
-	"maibot-go/internal/maisaka/builtin_tool"
+	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
 )
 
 // structuredToolExecutionResult 把工具的结构化结果转换为 Maisaka 统一结果

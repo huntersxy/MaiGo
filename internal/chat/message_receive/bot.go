@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/core/localoperator"
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/core/localoperator"
+	"MaiGo/internal/platform_io"
 
 	"go.uber.org/zap"
 )

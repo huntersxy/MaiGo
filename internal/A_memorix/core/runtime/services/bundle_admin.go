@@ -15,8 +15,8 @@ import (
 	"sort"
 	"strings"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/A_memorix/core/storage"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 const (

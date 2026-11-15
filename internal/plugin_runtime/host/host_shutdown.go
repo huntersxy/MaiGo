@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // 关停排空超时，对齐 protocol.envelope.ShutdownPayload

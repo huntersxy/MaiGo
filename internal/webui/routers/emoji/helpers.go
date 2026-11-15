@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/webui/authutil"
-	"maibot-go/internal/webui/httputil"
+	"MaiGo/internal/webui/authutil"
+	"MaiGo/internal/webui/httputil"
 )
 
 // parseQueryIntStrict 严格解析整型查询参数：缺失返回 present=false，

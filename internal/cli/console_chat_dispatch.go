@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 // BotConsoleMessageReceiver 接收终端输入的正式消息处理链

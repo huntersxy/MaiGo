@@ -3,7 +3,7 @@ package host
 import (
 	"strings"
 
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // ApplyRunnerReady 记录 runner.ready 上报的装载状态，并结算使用时长

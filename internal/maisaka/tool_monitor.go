@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka/monitor"
+	"MaiGo/internal/maisaka/monitor"
 )
 
 // logToolCallSource 记录工具调用来自正文还是推理内容，对应 Python _log_tool_call_source

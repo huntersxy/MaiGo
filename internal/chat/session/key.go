@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 )
 
 // ConversationKey 生成 agent / mai_messages 用的会话作用域键（非 MaiBot session_id）

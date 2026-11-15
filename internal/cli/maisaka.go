@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/prompt"
 )
 
 const maisakaPreviewMax = 480

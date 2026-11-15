@@ -1,6 +1,6 @@
 package learners
 
-import "maibot-go/internal/llm_models"
+import "MaiGo/internal/llm_models"
 
 // RefreshMinerInferencer 在 Agent 注入 Router 后更新已缓存 JargonMiner
 func RefreshMinerInferencer(m *JargonMiner, router *llm.Router, botName string) {

@@ -22,8 +22,8 @@ import (
 	"time"
 	"unicode"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/llm_models"
 )
 
 const (

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"maibot-go/internal/A_memorix/core/runtime/native"
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/A_memorix/core/runtime/native"
+	"MaiGo/internal/llm_models"
 )
 
 // wireNativeImageEmbedding 把模型路由交给原生图片记忆运行时；provider 每次按当前路由解析

@@ -1,7 +1,7 @@
 package context
 
 import (
-	maisaka "maibot-go/internal/maisaka"
+	maisaka "MaiGo/internal/maisaka"
 )
 
 // 消息 ID 别名常量，转发 root 实现

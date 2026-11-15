@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/common/database"
-	commonutils "maibot-go/internal/common/utils"
+	"MaiGo/internal/common/database"
+	commonutils "MaiGo/internal/common/utils"
 )
 
 func pluginTimeRange(args map[string]any) (time.Time, time.Time) {

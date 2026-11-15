@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/maisaka/builtin_tool"
-	"maibot-go/internal/plugin_runtime"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/plugin_runtime"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"

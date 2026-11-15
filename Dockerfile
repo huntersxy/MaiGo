@@ -26,7 +26,7 @@ ARG TARGETARCH
 ARG VERSION=dev
 # 整份静态链接，产物不依赖任何系统动态库；sharpyuv 的 gamma 转换需要 libm
 ENV CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm"
-RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X maibot-go/internal/common/version.Build=${VERSION}" -o /out/maibot-go .
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" -o /out/maigo .
 
 FROM alpine:3.23
 ENV TZ=Asia/Shanghai
@@ -36,10 +36,13 @@ ENV TZ=Asia/Shanghai
 RUN apk add --no-cache ca-certificates su-exec tzdata wget python3 git && \
     addgroup -S maibot && adduser -S -G maibot maibot
 WORKDIR /app
-COPY --from=build /out/maibot-go /app/maibot-go
+COPY --from=build /out/maigo /app/maigo
 COPY --from=dashboard /out/maibot_dashboard/dist /app/dashboard/dist
 # Python Runner 独立 venv；MAIBOT_PLUGIN_SPAWN=1 时直接用它拉起原版 runner_main
 COPY --from=plugin-runtime /runner /app/plugin-runtime
+# 只读根目录下 Runner venv 需要可写才能装插件依赖：镜像内留一份种子，
+# 由 entrypoint 在命名卷首次挂载时拷进去
+RUN cp -a /app/plugin-runtime /opt/plugin-runtime
 # 内置插件清单随镜像分发：host 启动期读取 plugins/built_in/plugin_management/_manifest.json
 COPY plugins/built_in/plugin_management/_manifest.json /app/plugins/built_in/plugin_management/_manifest.json
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -48,6 +51,6 @@ COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /app/config /app/data /app/logs /app/plugins /app/stickers /app/media /app/temp && chown -R maibot:maibot /app
 EXPOSE 7468
 ENV MAIBOT_DASHBOARD_DIR=/app/dashboard/dist
-ENV MAIBOT_PLUGIN_PYTHON=/app/plugin-runtime/bin/python
+ENV MAIBOT_PLUGIN_PYTHON=/app/plugin-runtime/bin/python \n    PIP_NO_CACHE_DIR=1 \n    PIP_DISABLE_PIP_VERSION_CHECK=1
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["/app/maibot-go"]
+CMD ["/app/maigo"]

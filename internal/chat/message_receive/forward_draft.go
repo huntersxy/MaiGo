@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/database"
 )
 
 // ForwardDraft 一份待落库的合并转发，父级排在嵌套之前

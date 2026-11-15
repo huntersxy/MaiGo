@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka/monitor"
+	"MaiGo/internal/maisaka/monitor"
 )
 
 // subscribeMonitor 处理麦麦监控域订阅：分页模式下发会话概要，回放模式补发事件账本

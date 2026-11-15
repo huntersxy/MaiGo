@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	"maibot-go/internal/A_memorix/core/storage"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // ImageServiceDeps 图片记忆服务依赖的运行时与配置端口

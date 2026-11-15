@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
-	"maibot-go/internal/platform_io"
-	maibotcfg "maibot-go/internal/config/maibot"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/platform_io"
+	maibotcfg "MaiGo/internal/config/maibot"
 
-	capnames "maibot-go/internal/plugin_runtime/capabilities"
+	capnames "MaiGo/internal/plugin_runtime/capabilities"
 
 	toml "github.com/pelletier/go-toml/v2"
 )

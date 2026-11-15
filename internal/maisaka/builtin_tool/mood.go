@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/common/database"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

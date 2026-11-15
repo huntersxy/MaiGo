@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 
 	"github.com/pelletier/go-toml/v2"
 )

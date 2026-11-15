@@ -5,11 +5,11 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 
-	"maibot-go/internal/A_memorix/core/embedding"
-	"maibot-go/internal/A_memorix/core/retrieval"
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/embedding"
+	"MaiGo/internal/A_memorix/core/retrieval"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // copyAnyMap 深拷贝一层字典，避免调用方改写内核状态

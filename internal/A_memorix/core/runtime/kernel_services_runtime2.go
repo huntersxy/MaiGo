@@ -5,8 +5,8 @@ package memruntime
 import (
 	"context"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // VectorRecoveryService 对齐 MemoryVectorRecoveryService

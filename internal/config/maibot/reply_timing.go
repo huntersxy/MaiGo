@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/maisaka"
 )
 
 // IdleBackoffFromTiming 把 chat.reply_timing 映射为 Maisaka 空闲退避参数

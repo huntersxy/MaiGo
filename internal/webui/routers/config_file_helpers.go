@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	webuiutils "maibot-go/internal/webui/utils"
+	webuiutils "MaiGo/internal/webui/utils"
 	"math"
 	"net/http"
 	"os"
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	maibotcfg "maibot-go/internal/config/maibot"
+	maibotcfg "MaiGo/internal/config/maibot"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"

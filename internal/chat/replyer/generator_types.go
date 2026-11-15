@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"maibot-go/internal/llm_models"
+	"MaiGo/internal/llm_models"
 )
 
 // MaxHookRetries 对齐 maisaka_generator_base.REPLYER_MAX_HOOK_RETRIES

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/platform_io"
+	"MaiGo/internal/platform_io"
 )
 
 // BotConsoleCommandCompletions 对齐 Python BotConsole._COMMAND_COMPLETIONS

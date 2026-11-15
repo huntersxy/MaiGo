@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"maibot-go/internal/common/utils"
+	"MaiGo/internal/common/utils"
 
 	"go.uber.org/zap"
 )

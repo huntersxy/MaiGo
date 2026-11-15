@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	personinfo "maibot-go/internal/person_info"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	personinfo "MaiGo/internal/person_info"
 )
 
 func bodyRequiredString(w http.ResponseWriter, payload map[string]any, key string) (string, bool) {

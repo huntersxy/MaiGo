@@ -21,7 +21,7 @@ const (
 	ToolReadToolResult     BuiltinToolName = "read_tool_result"
 )
 
-// GoToolMapping 记录 maibot-go 当前对等或桥接关系，供迁移与提示词对照
+// GoToolMapping 记录 MaiGo 当前对等或桥接关系，供迁移与提示词对照
 var GoToolMapping = map[BuiltinToolName]string{
 	ToolStop:               "stop → stayQuiet（结束本轮）",
 	ToolReply:              "reply → speak（仅 content/text 直发；完整 replyer 未迁移）",

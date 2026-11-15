@@ -13,12 +13,12 @@ import (
 
 	"go.uber.org/zap"
 
-	imagememory "maibot-go/internal/A_memorix/core/image"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/common/database"
-	maibotcfg "maibot-go/internal/config/maibot"
+	imagememory "MaiGo/internal/A_memorix/core/image"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/database"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 const imageWritebackDefaultPollInterval = 2 * time.Second

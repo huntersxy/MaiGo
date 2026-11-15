@@ -16,8 +16,8 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/A_memorix"
-	memruntime "maibot-go/internal/A_memorix/core/runtime"
+	"MaiGo/internal/A_memorix"
+	memruntime "MaiGo/internal/A_memorix/core/runtime"
 )
 
 const memoryAdminMaxBodyBytes = 32 << 20

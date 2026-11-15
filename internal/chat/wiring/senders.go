@@ -10,11 +10,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/chat/message_receive"
-	"maibot-go/internal/common/data_models/messagecomponent"
-	"maibot-go/internal/emoji_system"
-	"maibot-go/internal/platform_io"
-	"maibot-go/internal/platform_io/drivers/maim_bridge"
+	"MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/platform_io"
+	"MaiGo/internal/platform_io/drivers/maim_bridge"
 )
 
 // ImageFileResolver 把图片 hash 解析为可发送的文件路径或 URL

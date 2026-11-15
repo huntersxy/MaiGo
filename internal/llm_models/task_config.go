@@ -3,7 +3,7 @@ package llm
 import (
 	"fmt"
 
-	"maibot-go/internal/config/maibot"
+	"MaiGo/internal/config/maibot"
 )
 
 // emptyTaskFallbacks 与 MaiBot utils_model.EMPTY_TASK_FALLBACKS 一致

@@ -4,17 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maibot-go/internal/plugin_runtime/capabilities"
+	"MaiGo/internal/plugin_runtime/capabilities"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"maibot-go/internal/core/eventbus"
-	"maibot-go/internal/core/tooling"
-	"maibot-go/internal/plugin_runtime/hooks"
-	"maibot-go/internal/plugin_runtime/protocol"
+	"MaiGo/internal/core/eventbus"
+	"MaiGo/internal/core/tooling"
+	"MaiGo/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/protocol"
 )
 
 // CapabilityHandler Host 侧能力实现，对齐 capability_service.CapabilityImpl 签名

@@ -3,8 +3,8 @@ package host
 import (
 	"context"
 
-	"maibot-go/internal/plugin_runtime/protocol"
-	"maibot-go/internal/plugin_runtime/transport"
+	"MaiGo/internal/plugin_runtime/protocol"
+	"MaiGo/internal/plugin_runtime/transport"
 )
 
 // defaultRPCSendQueueSize 默认发送队列容量，对齐 rpc_server.send_queue_size

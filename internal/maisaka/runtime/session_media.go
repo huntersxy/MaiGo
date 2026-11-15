@@ -3,7 +3,7 @@ package runtime
 import (
 	"strings"
 
-	"maibot-go/internal/common/media"
+	"MaiGo/internal/common/media"
 )
 
 // mediaShortHashLen 会话内用内容 md5 的前若干位定位媒体

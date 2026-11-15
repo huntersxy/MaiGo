@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"maibot-go/internal/maisaka/monitor"
-	"maibot-go/internal/maisaka/turn_trigger"
+	"MaiGo/internal/maisaka/monitor"
+	"MaiGo/internal/maisaka/turn_trigger"
 )
 
 // UpdateStageStatus 更新当前会话的阶段状态并广播 stage.status

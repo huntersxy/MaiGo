@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // AliasRebuilder 是关系哈希别名重建端口，避免服务层依赖存储包内部返回类型

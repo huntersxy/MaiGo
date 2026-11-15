@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // VectorRuntimeDeps 向量运行时依赖端口

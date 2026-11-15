@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/text/cases"
 
-	"maibot-go/internal/llm_models"
-	"maibot-go/internal/prompt"
+	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/config/maibot"
-	"maibot-go/internal/config/model_profiles"
-	"maibot-go/internal/llm_models/contract"
+	"MaiGo/internal/config/maibot"
+	"MaiGo/internal/config/model_profiles"
+	"MaiGo/internal/llm_models/contract"
 
 	"github.com/cloudwego/eino/components/model"
 )

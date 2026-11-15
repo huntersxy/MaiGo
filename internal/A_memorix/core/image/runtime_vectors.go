@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // ExportVectors 对齐 Python export_vectors，导出指定资产的图片向量 npz

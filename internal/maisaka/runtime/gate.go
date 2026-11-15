@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"maibot-go/internal/config"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/config"
+	"MaiGo/internal/maisaka"
 )
 
 // 门控权重来自 MaiBot 的离线拟合，作为上线起点，之后用本项目日志重新拟合

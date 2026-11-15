@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	maisakautils "maibot-go/internal/maisaka/utils"
+	maisakautils "MaiGo/internal/maisaka/utils"
 
 	"go.uber.org/zap"
 )

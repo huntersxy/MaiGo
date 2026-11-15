@@ -10,7 +10,7 @@ package learners
 import (
 	"encoding/json"
 
-	"maibot-go/internal/common/jsonrepair"
+	"MaiGo/internal/common/jsonrepair"
 
 	"github.com/bytedance/sonic"
 )

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"maibot-go/internal/chat/session"
-	"maibot-go/internal/common/database"
+	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/database"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"

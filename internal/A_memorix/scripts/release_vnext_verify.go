@@ -14,7 +14,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	"maibot-go/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/storage"
 )
 
 // releaseCheck 单项检查，对齐 CheckItem

@@ -3,7 +3,7 @@ package plugin
 import (
 	"sync"
 
-	"maibot-go/internal/plugin_market"
+	"MaiGo/internal/plugin_market"
 )
 
 const (

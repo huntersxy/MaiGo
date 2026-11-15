@@ -14,8 +14,8 @@ import (
 
 	"log/slog"
 
-	"maibot-go/internal/A_memorix/core/storage"
-	memorixutils "maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/storage"
+	memorixutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 // DualVectorStateDeps 双池向量状态服务依赖端口

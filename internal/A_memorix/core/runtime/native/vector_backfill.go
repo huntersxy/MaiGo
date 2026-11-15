@@ -8,7 +8,7 @@ import (
 	"context"
 	"strings"
 
-	"maibot-go/internal/A_memorix/core/utils"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // runParagraphBackfillOnce 执行一次段落向量回填

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"maibot-go/internal/learners"
-	"maibot-go/internal/maisaka"
+	"MaiGo/internal/learners"
+	"MaiGo/internal/maisaka"
 
 	"go.uber.org/zap"
 )
