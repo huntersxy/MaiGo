@@ -2,6 +2,7 @@ package learners
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -242,7 +243,7 @@ func (s *gormWebUIStore) latestMessageTimes(ctx context.Context, sessionIDs []st
 	}
 	var rows []struct {
 		SessionID string
-		Latest    time.Time
+		Latest    sql.NullString
 	}
 	if err := s.db.WithContext(ctx).Table("mai_messages").
 		Select("session_id, MAX(timestamp) AS latest").
@@ -250,9 +251,26 @@ func (s *gormWebUIStore) latestMessageTimes(ctx context.Context, sessionIDs []st
 		return out
 	}
 	for _, row := range rows {
-		out[row.SessionID] = row.Latest
+		if latest, ok := parseSQLiteDateTime(row.Latest.String); ok {
+			out[row.SessionID] = latest
+		}
 	}
 	return out
+}
+
+// parseSQLiteDateTime 对齐 SQLAlchemy DateTime 结果处理：SQLite 文本转 time.Time
+// 聚合列没有声明类型，驱动只返回文本，需按 DateTime 列的写入格式还原
+func parseSQLiteDateTime(text string) (time.Time, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05.999999", "2006-01-02 15:04:05", time.RFC3339Nano} {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func (s *gormWebUIStore) ExpressionStats(ctx context.Context, includeLegacy bool) (ExpressionStats, error) {

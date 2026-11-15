@@ -104,13 +104,7 @@ func (r *Runtime) vectorSpaceDeps() services.VectorSpaceDeps {
 		StoredEmbeddingFingerprint: func(ctx context.Context) map[string]any {
 			return r.kernel.StoredEmbeddingFingerprint(r.vectorStore)
 		},
-		ActiveVectorSpaceID: func() string {
-			space, err := r.readActiveVectorSpace()
-			if err != nil {
-				return ""
-			}
-			return space
-		},
+		ActiveVectorSpaceID: r.kernel.ActiveVectorSpaceID,
 		TargetVectorSpaceID: func() string { return r.kernel.TargetVectorSpaceID() },
 		RebuildLock:         func() *sync.Mutex { return r.kernel.VectorRebuildLock() },
 		SaveInputs:          r.kernel.SaveVectorSpaceInputs,

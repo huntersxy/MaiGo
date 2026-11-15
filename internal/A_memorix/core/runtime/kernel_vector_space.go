@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // VectorSpaceInputHash 对齐 input_hash，返回文本的 sha256 十六进制摘要
@@ -54,24 +53,10 @@ func (k *Kernel) RecordVectorSpaceInput(itemType string, itemID string, text str
 // VectorSpaceInputsPath 返回当前活动向量空间的输入映射文件
 func (k *Kernel) VectorSpaceInputsPath() string {
 	root := filepath.Join(k.dataDir, "vectors")
-	if space := k.activeVectorSpaceFromDisk(); space != "" {
+	if space := k.ActiveVectorSpaceID(); space != "" {
 		root = filepath.Join(root, "spaces", space)
 	}
 	return filepath.Join(root, "embedding_inputs.json")
-}
-
-// activeVectorSpaceFromDisk 读取 vectors/active.json 的 space_id
-func (k *Kernel) activeVectorSpaceFromDisk() string {
-	raw, err := os.ReadFile(filepath.Join(k.dataDir, "vectors", "active.json"))
-	if err != nil {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return ""
-	}
-	space, _ := payload["space_id"].(string)
-	return strings.TrimSpace(space)
 }
 
 // SaveVectorSpaceInputs 持久化输入映射，对齐 _save_inputs 的原子写入

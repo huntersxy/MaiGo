@@ -69,6 +69,8 @@ type RuntimeLifecycleDeps struct {
 	SparseWarmup func() (map[string]any, error)
 	// MakeVectorStores 构造三套向量存储并完成旧目录清理与恢复
 	MakeVectorStores func(dimension int) error
+	// CleanupStaleDualVectorBuildDirs 对齐 _cleanup_stale_dual_vector_build_dirs
+	CleanupStaleDualVectorBuildDirs func()
 	// ResumeVectorRecoveryIfNeeded 对齐 _resume_vector_recovery_if_needed，失败必须关闭向量通道
 	ResumeVectorRecoveryIfNeeded func(ctx context.Context) error
 	// LoadVectorStoresForRuntime 对齐 _embedding_state_service._load_vector_stores_for_runtime
@@ -403,6 +405,9 @@ func (s *RuntimeLifecycleOrchestrator) initializeVectorStores(ctx context.Contex
 			s.Deps.DisableVectorChannel(err)
 		}
 		return
+	}
+	if s.Deps.CleanupStaleDualVectorBuildDirs != nil {
+		s.Deps.CleanupStaleDualVectorBuildDirs()
 	}
 	if s.Deps.ResumeVectorRecoveryIfNeeded != nil {
 		if err := s.Deps.ResumeVectorRecoveryIfNeeded(ctx); err != nil {

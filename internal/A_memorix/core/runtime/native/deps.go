@@ -65,6 +65,7 @@ func (r *Runtime) lifecycleDeps() services.RuntimeLifecycleDeps {
 		SparseIndexEnabled:                   func() bool { return r.sparseEnabled },
 		SparseWarmup:                         r.sparseWarmup,
 		MakeVectorStores:                     r.makeVectorStores,
+		CleanupStaleDualVectorBuildDirs:      r.kernel.CleanupStaleDualVectorBuildDirs,
 		ResumeVectorRecoveryIfNeeded: func(ctx context.Context) error {
 			return r.kernel.ResumeVectorRecoveryIfNeeded()
 		},

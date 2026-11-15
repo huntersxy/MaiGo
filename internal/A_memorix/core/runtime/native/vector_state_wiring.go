@@ -195,13 +195,7 @@ func (r *Runtime) embeddingStateDeps() services.EmbeddingStateDeps {
 // dualVectorStateDeps 绑定双池目录、manifest 与向量库读写
 func (r *Runtime) dualVectorStateDeps() services.DualVectorStateDeps {
 	return services.DualVectorStateDeps{
-		ActiveVectorSpaceID: func() string {
-			space, err := r.readActiveVectorSpace()
-			if err != nil {
-				return ""
-			}
-			return space
-		},
+		ActiveVectorSpaceID:     r.kernel.ActiveVectorSpaceID,
 		DualVectorPoolsReady:    r.kernel.DualVectorPoolsReady,
 		SetDualVectorPoolsReady: r.kernel.SetDualVectorPoolsReady,
 		EmbeddingDimension:      r.kernel.EmbeddingDimension,

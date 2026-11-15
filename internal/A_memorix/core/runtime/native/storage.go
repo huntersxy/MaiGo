@@ -319,7 +319,7 @@ func (r *Runtime) storedVectorDimension() (int, bool, error) {
 
 // vectorSpaceRoot 返回当前活动向量空间的向量根目录
 func (r *Runtime) vectorSpaceRoot() string {
-	if space, err := r.readActiveVectorSpace(); err == nil && space != "" {
+	if space := r.kernel.ActiveVectorSpaceID(); space != "" {
 		return filepath.Join(r.kernel.DataDir(), "vectors", "spaces", space)
 	}
 	return filepath.Join(r.kernel.DataDir(), "vectors")
