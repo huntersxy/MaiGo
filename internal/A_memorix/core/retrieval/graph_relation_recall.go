@@ -25,9 +25,9 @@ func DefaultGraphRelationRecallConfig() GraphRelationRecallConfig {
 
 // Normalize 对齐 __post_init__ 的下限归一
 func (c *GraphRelationRecallConfig) Normalize() {
-	c.CandidateK = maxInt(c.CandidateK, 1)
-	c.MaxHop = maxInt(c.MaxHop, 1)
-	c.MaxPaths = maxInt(c.MaxPaths, 1)
+	c.CandidateK = max(c.CandidateK, 1)
+	c.MaxHop = max(c.MaxHop, 1)
+	c.MaxPaths = max(c.MaxPaths, 1)
 }
 
 // GraphRelationCandidate 进入检索器融合前，由图结构生成的关系候选
@@ -235,11 +235,11 @@ func (s *GraphRelationRecallService) buildCandidate(relationHash string, candida
 	if err != nil {
 		paragraphs = nil
 	}
-// 对齐 Python float(relation.get("confidence", 1.0) or 1.0)：0/None 回落 1.0
-		confidence := 1.0
-		if value, ok := numericValue(relation["confidence"]); ok && value != 0 {
-			confidence = value
-		}
+	// 对齐 Python float(relation.get("confidence", 1.0) or 1.0)：0/None 回落 1.0
+	confidence := 1.0
+	if value, ok := numericValue(relation["confidence"]); ok && value != 0 {
+		confidence = value
+	}
 	seeds := make([]string, len(seedEntities))
 	copy(seeds, seedEntities)
 	return GraphRelationCandidate{

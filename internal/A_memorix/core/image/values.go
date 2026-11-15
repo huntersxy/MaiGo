@@ -355,11 +355,3 @@ func isFiniteVector(vector []float32) bool {
 	}
 	return true
 }
-
-// maxInt 返回两个整数中的较大值
-func maxInt(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}

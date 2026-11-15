@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -60,12 +61,12 @@ func (a *Agent) handleCommand(ctx context.Context, msg *onebot.ConversationMessa
 	if commandName == "" || pluginID == "" {
 		return false
 	}
-	if sessionID != "" && containsString(announcement.Default.GetDisabledChatCommands(sessionID), commandName) {
+	if sessionID != "" && slices.Contains(announcement.Default.GetDisabledChatCommands(sessionID), commandName) {
 		zap.L().Info("用户禁用的命令，跳过处理", zap.String("command", commandName))
 		return false
 	}
 	config := a.pluginCommandConfig()
-	if containsString(config.DisabledCommands, pluginID+"."+commandName) {
+	if slices.Contains(config.DisabledCommands, pluginID+"."+commandName) {
 		zap.L().Info("命令已在命令管理中停用，按普通消息处理", zap.String("command", pluginID+"."+commandName))
 		return false
 	}
@@ -505,13 +506,4 @@ func stringListValue(raw any) []string {
 	default:
 		return nil
 	}
-}
-
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }

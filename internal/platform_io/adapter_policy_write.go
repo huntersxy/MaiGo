@@ -1,6 +1,7 @@
 package platformio
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -353,7 +354,7 @@ func chatPolicyEditorEqual(left, right ChatPolicyEditor) bool {
 
 // appendUniqueString 追加不重复的 ID
 func appendUniqueString(values []string, target string) []string {
-	if containsString(values, target) {
+	if slices.Contains(values, target) {
 		return values
 	}
 	return append(values, target)

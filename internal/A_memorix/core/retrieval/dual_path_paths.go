@@ -37,7 +37,7 @@ func (r *DualPathRetriever) retrieveParagraphsOnly(ctx context.Context, query st
 	if embeddingOK {
 		multiplier := 1
 		if temporal != nil {
-			multiplier = maxInt(1, temporal.CandidateMultiplier)
+			multiplier = max(1, temporal.CandidateMultiplier)
 		}
 		candidateK := r.capTemporalScanK(topK*2*multiplier, temporal)
 		paragraphIDs, paragraphScores, err := searchVectorStore(r.vectorStore, queryEmbedding, candidateK, scopeParagraphIDs(scope))
@@ -129,7 +129,7 @@ func (r *DualPathRetriever) retrieveRelationsOnly(ctx context.Context, query str
 	if embeddingOK {
 		multiplier := 1
 		if temporal != nil {
-			multiplier = maxInt(1, temporal.CandidateMultiplier)
+			multiplier = max(1, temporal.CandidateMultiplier)
 		}
 		candidateK := r.capTemporalScanK(topK*3*multiplier, temporal)
 		ids, scores, err := searchVectorStore(r.vectorStore, queryEmbedding, candidateK, scopeEntityIDs(scope))
@@ -224,25 +224,25 @@ func (r *DualPathRetriever) retrieveDualPath(ctx context.Context, query string, 
 	if relationIntent == nil {
 		relationIntent = map[string]any{}
 	}
-	relationTopK := maxInt(1, dualPathIntValue(relationIntent["relation_top_k"]))
+	relationTopK := max(1, dualPathIntValue(relationIntent["relation_top_k"]))
 	if _, exists := relationIntent["relation_top_k"]; !exists {
-		relationTopK = maxInt(1, r.config.TopKRelations)
+		relationTopK = max(1, r.config.TopKRelations)
 	}
 	forceRelationSparse := dualPathBool(relationIntent["force_relation_sparse"], false)
-	preserveTopRelations := maxInt(0, dualPathIntValue(relationIntent["preserve_top_relations"]))
+	preserveTopRelations := max(0, dualPathIntValue(relationIntent["preserve_top_relations"]))
 	pairPredicateRerankEnabled := dualPathBool(relationIntent["pair_predicate_rerank_enabled"], false)
-	pairPredicateLimit := maxInt(1, dualPathIntValue(relationIntent["pair_predicate_limit"]))
+	pairPredicateLimit := max(1, dualPathIntValue(relationIntent["pair_predicate_limit"]))
 	if _, exists := relationIntent["pair_predicate_limit"]; !exists {
-		pairPredicateLimit = maxInt(1, r.config.RelationIntent.PairPredicateLimit)
+		pairPredicateLimit = max(1, r.config.RelationIntent.PairPredicateLimit)
 	}
 	alphaOverride := optionalFloat(relationIntent["alpha_override"])
 
 	if r.isSparseOnlyRuntime() {
-		paraResults, err := r.searchParagraphsSparse(query, maxInt(topK*2, r.config.Sparse.CandidateK), temporal, scope)
+		paraResults, err := r.searchParagraphsSparse(query, max(topK*2, r.config.Sparse.CandidateK), temporal, scope)
 		if err != nil {
 			return nil, err
 		}
-		sparseRelationResults, err := r.searchRelationsSparse(query, maxInt(maxInt(topK, r.config.Sparse.RelationCandidateK), relationTopK), temporal, scope)
+		sparseRelationResults, err := r.searchRelationsSparse(query, max(max(topK, r.config.Sparse.RelationCandidateK), relationTopK), temporal, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +301,7 @@ func (r *DualPathRetriever) retrieveDualPath(ctx context.Context, query string, 
 
 	sparseParaResults := []RetrievalResult{}
 	if r.shouldUseSparse(embeddingOK, paraResults) {
-		results, err := r.searchParagraphsSparse(query, maxInt(topK*2, r.config.Sparse.CandidateK), temporal, scope)
+		results, err := r.searchParagraphsSparse(query, max(topK*2, r.config.Sparse.CandidateK), temporal, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -309,7 +309,7 @@ func (r *DualPathRetriever) retrieveDualPath(ctx context.Context, query string, 
 	}
 	sparseRelationResults := []RetrievalResult{}
 	if r.shouldUseSparseRelations(embeddingOK, relResults, forceRelationSparse) {
-		results, err := r.searchRelationsSparse(query, maxInt(maxInt(topK, r.config.Sparse.RelationCandidateK), relationTopK), temporal, scope)
+		results, err := r.searchRelationsSparse(query, max(max(topK, r.config.Sparse.RelationCandidateK), relationTopK), temporal, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -375,10 +375,10 @@ func (r *DualPathRetriever) sequentialRetrieve(queryEmbedding []float32, tempora
 func (r *DualPathRetriever) mixedCandidateBudget(paraTopK int, relTopK int, temporal *TemporalQueryOptions) int {
 	multiplier := 1
 	if temporal != nil {
-		multiplier = maxInt(1, temporal.CandidateMultiplier)
+		multiplier = max(1, temporal.CandidateMultiplier)
 	}
-	base := maxInt(paraTopK+relTopK, maxInt(paraTopK, relTopK)*2)
-	return maxInt(base*6*multiplier, 48)
+	base := max(paraTopK+relTopK, max(paraTopK, relTopK)*2)
+	return max(base*6*multiplier, 48)
 }
 
 // mergeBackfilledResults 对齐 _merge_backfilled_results
@@ -569,7 +569,7 @@ func (r *DualPathRetriever) collectMixedCandidates(queryEmbedding []float32, tem
 func (r *DualPathRetriever) searchParagraphs(queryEmbedding []float32, topK int, temporal *TemporalQueryOptions, scope *RetrievalScope) ([]RetrievalResult, error) {
 	multiplier := 1
 	if temporal != nil {
-		multiplier = maxInt(1, temporal.CandidateMultiplier)
+		multiplier = max(1, temporal.CandidateMultiplier)
 	}
 	candidateK := r.capTemporalScanK(topK*multiplier, temporal)
 	paraIDs, paraScores, err := searchVectorStore(r.vectorStore, queryEmbedding, candidateK, scopeParagraphIDs(scope))
@@ -583,7 +583,7 @@ func (r *DualPathRetriever) searchParagraphs(queryEmbedding []float32, topK int,
 func (r *DualPathRetriever) searchRelations(queryEmbedding []float32, topK int, temporal *TemporalQueryOptions, scope *RetrievalScope) ([]RetrievalResult, error) {
 	multiplier := 1
 	if temporal != nil {
-		multiplier = maxInt(1, temporal.CandidateMultiplier)
+		multiplier = max(1, temporal.CandidateMultiplier)
 	}
 	candidateK := r.capTemporalScanK(topK*multiplier, temporal)
 	relIDs, relScores, err := searchVectorStore(r.vectorStore, queryEmbedding, candidateK, scopeRelationIDs(scope))
@@ -608,7 +608,7 @@ func (r *DualPathRetriever) fuseResults(paraResults []RetrievalResult, relResult
 		relResults[index].Source = "fusion"
 	}
 
-	preserveTopRelations = maxInt(0, preserveTopRelations)
+	preserveTopRelations = max(0, preserveTopRelations)
 	preservedRelationHashes := map[string]struct{}{}
 	if preserveTopRelations > 0 && len(relResults) > 0 {
 		rankedRelations := cloneResultSlice(relResults)
@@ -717,7 +717,7 @@ func (r *DualPathRetriever) rerankRelationItemsByPair(results []RetrievalResult,
 	if len(relationItems) <= 1 {
 		return results
 	}
-	pairLimit = maxInt(1, pairLimit)
+	pairLimit = max(1, pairLimit)
 
 	groupOrder := make([]dualPathPairKey, 0, len(relationItems))
 	grouped := make(map[dualPathPairKey][]indexedRelation)

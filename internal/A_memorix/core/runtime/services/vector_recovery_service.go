@@ -350,7 +350,7 @@ func (s *VectorRecoveryService) CopyLegacyVectorsOnce(ctx context.Context, batch
 			remaining = append(remaining, item)
 		}
 	}
-	limit := maxInt(1, batchSize)
+	limit := max(1, batchSize)
 	batch := remaining
 	if len(batch) > limit {
 		batch = remaining[:limit]

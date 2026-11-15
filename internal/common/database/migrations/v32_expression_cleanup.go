@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,13 +206,13 @@ func mergeExpressionContent(group []expressionCleanupRow) ([]string, error) {
 			return nil, err
 		}
 		for _, content := range contents {
-			if !containsString(merged, content) {
+			if !slices.Contains(merged, content) {
 				merged = append(merged, content)
 			}
 		}
 	}
 	situation := strings.TrimSpace(group[0].situation)
-	if situation != "" && !containsString(merged, situation) {
+	if situation != "" && !slices.Contains(merged, situation) {
 		merged = append(merged, situation)
 	}
 	return merged, nil
@@ -238,7 +239,7 @@ func loadExpressionContentList(raw string, rowID int64) ([]string, error) {
 	contents := make([]string, 0, len(items))
 	for _, item := range items {
 		content := strings.TrimSpace(pyString(item))
-		if content != "" && !containsString(contents, content) {
+		if content != "" && !slices.Contains(contents, content) {
 			contents = append(contents, content)
 		}
 	}
@@ -311,15 +312,6 @@ func deleteExpressionRows(ctx context.Context, q querier, ids map[int64]struct{}
 		}
 	}
 	return nil
-}
-
-func containsString(items []string, target string) bool {
-	for _, item := range items {
-		if item == target {
-			return true
-		}
-	}
-	return false
 }
 
 func nullableString(value sql.NullString) any {

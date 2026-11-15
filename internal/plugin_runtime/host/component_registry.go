@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -857,7 +858,7 @@ func checkComponentEnabled(entry *ComponentEntry, filter ComponentFilter) bool {
 		return false
 	}
 	if filter.Platform != "" && len(entry.Platforms) > 0 {
-		if !containsString(entry.Platforms, strings.ToLower(strings.TrimSpace(filter.Platform))) {
+		if !slices.Contains(entry.Platforms, strings.ToLower(strings.TrimSpace(filter.Platform))) {
 			return false
 		}
 	}
@@ -1359,15 +1360,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func containsString(list []string, value string) bool {
-	for _, item := range list {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }
 
 func boolValue(raw any) bool {

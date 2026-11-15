@@ -5,6 +5,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -222,7 +223,7 @@ func (s *Store) GetParagraphHashesByRelationHashes(relationHashes []string) (map
 				continue
 			}
 			bucket := grouped[relationHash]
-			if !containsString(bucket, paragraphHash) {
+			if !slices.Contains(bucket, paragraphHash) {
 				grouped[relationHash] = append(bucket, paragraphHash)
 			}
 		}
@@ -328,7 +329,7 @@ func (s *Store) GetParagraphHashesByEntityHashes(entityHashes []string) (map[str
 				continue
 			}
 			bucket := grouped[entityHash]
-			if !containsString(bucket, paragraphHash) {
+			if !slices.Contains(bucket, paragraphHash) {
 				grouped[entityHash] = append(bucket, paragraphHash)
 			}
 		}
@@ -550,16 +551,6 @@ func (s *Store) queryRowsToDict(query string, args ...any) ([]map[string]any, er
 		out = append(out, s.rowToDict(row))
 	}
 	return out, nil
-}
-
-// containsString 判断切片是否已包含目标字符串
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 // intFromRow 读取整数列

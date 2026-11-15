@@ -108,7 +108,7 @@ func (s *GraphAdminService) MemoryGraphAdmin(ctx context.Context, action string,
 		return s.buildGraphNodeDetail(ctx, nodeID,
 			pyIntOr(payload["relation_limit"], 20, 1),
 			pyIntOr(payload["paragraph_limit"], 20, 1),
-			maxInt(12, pyIntOr(payload["evidence_node_limit"], 80, 12))), nil
+			max(12, pyIntOr(payload["evidence_node_limit"], 80, 12))), nil
 	case "edge_detail":
 		target := asString(payload["target"])
 		if target == "" {
@@ -116,7 +116,7 @@ func (s *GraphAdminService) MemoryGraphAdmin(ctx context.Context, action string,
 		}
 		return s.buildGraphEdgeDetail(ctx, asString(payload["source"]), target,
 			pyIntOr(payload["paragraph_limit"], 20, 1),
-			maxInt(12, pyIntOr(payload["evidence_node_limit"], 80, 12))), nil
+			max(12, pyIntOr(payload["evidence_node_limit"], 80, 12))), nil
 	case "create_node":
 		return s.createNode(ctx, payload), nil
 	case "delete_node":
@@ -623,14 +623,6 @@ func firstNonEmpty(values ...any) string {
 		}
 	}
 	return ""
-}
-
-// maxInt 返回较大值
-func maxInt(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 // sortStringsDesc 按时间戳降序排序辅助

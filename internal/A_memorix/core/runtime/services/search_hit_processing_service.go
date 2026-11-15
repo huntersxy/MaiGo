@@ -511,7 +511,7 @@ func (s *SearchHitService) ScopedSearchLimit(ctx context.Context, payload map[st
 		// 对齐 Python int(limit or 5)
 		limit = 5
 	}
-	return maxInt(1, limit), nil
+	return max(1, limit), nil
 }
 
 // ResolveAllowedChatIDs 对齐 _resolve_allowed_chat_ids
@@ -576,7 +576,7 @@ func (s *SearchHitService) DedupeRankedItems(ctx context.Context, payload map[st
 	if limit == 0 {
 		limit = 5
 	}
-	limit = maxInt(1, limit)
+	limit = max(1, limit)
 	rawItems := asList(payload["items"])
 	type rankedItem struct {
 		key   string

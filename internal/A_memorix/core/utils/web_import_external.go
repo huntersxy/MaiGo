@@ -59,14 +59,14 @@ func (m *WebImportManager) refreshMigrationProgress(taskID string, fileID string
 	if raw, ok := payload["stats"].(map[string]any); ok {
 		stats = raw
 	}
-	total := webImportMaxInt(0, webImportCoerceInt(stats["source_matched_total"], 0))
-	scanned := webImportMaxInt(0, webImportCoerceInt(stats["scanned_rows"], 0))
-	bad := webImportMaxInt(0, webImportCoerceInt(stats["bad_rows"], 0))
-	done := webImportMaxInt(0, scanned-bad)
-	migrated := webImportMaxInt(0, webImportCoerceInt(stats["migrated_rows"], 0))
-	lastID := webImportMaxInt(0, webImportCoerceInt(stats["last_committed_id"], 0))
+	total := max(0, webImportCoerceInt(stats["source_matched_total"], 0))
+	scanned := max(0, webImportCoerceInt(stats["scanned_rows"], 0))
+	bad := max(0, webImportCoerceInt(stats["bad_rows"], 0))
+	done := max(0, scanned-bad)
+	migrated := max(0, webImportCoerceInt(stats["migrated_rows"], 0))
+	lastID := max(0, webImportCoerceInt(stats["last_committed_id"], 0))
 	if total <= 0 {
-		total = webImportMaxInt(1, scanned)
+		total = max(1, scanned)
 	}
 	progress := 0.0
 	if total > 0 {
@@ -150,7 +150,7 @@ func (m *WebImportManager) runImportCommand(ctx context.Context, command []strin
 		code, stdout, stderr, err := m.deps.CommandRunner.Run(ctx, command, workingDir)
 		done <- commandResult{code: code, stdout: stdout, stderr: stderr, err: err}
 	}()
-	ticker := time.NewTicker(time.Duration(webImportMaxInt(1, int(m.timeoutConfig()["process_poll_seconds"]*1000))) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(max(1, int(m.timeoutConfig()["process_poll_seconds"]*1000))) * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -209,7 +209,7 @@ func (m *WebImportManager) processMaibotMigration(ctx context.Context, taskID st
 	badRows := 0
 	if report != nil {
 		if stats, ok := report["stats"].(map[string]any); ok {
-			badRows = webImportMaxInt(0, webImportCoerceInt(stats["bad_rows"], 0))
+			badRows = max(0, webImportCoerceInt(stats["bad_rows"], 0))
 		}
 	}
 	if code == 0 || code == 2 {

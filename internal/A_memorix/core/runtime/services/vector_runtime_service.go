@@ -310,16 +310,16 @@ func (s *VectorRuntimeService) rebuildAllVectors(ctx context.Context, locked boo
 // DetectCurrentEmbeddingDimensionForRebuild 对齐 _detect_current_embedding_dimension_for_rebuild
 func (s *VectorRuntimeService) DetectCurrentEmbeddingDimensionForRebuild(ctx context.Context) int {
 	if s.deps.DetectEmbeddingDimension == nil {
-		return maxInt(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
+		return max(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
 	}
 	dimension, err := s.deps.DetectEmbeddingDimension(ctx)
 	if err != nil {
 		s.LoggerWarn("embedding 维度检测失败: %v", err)
-		return maxInt(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
+		return max(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
 	}
 	if dimension <= 0 {
 		s.LoggerWarn("embedding 维度检测结果非法: %d", dimension)
-		return maxInt(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
+		return max(1, intOr(s.cfg("embedding.dimension", 0), 1, 1))
 	}
 	return dimension
 }

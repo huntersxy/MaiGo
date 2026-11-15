@@ -383,7 +383,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	cacheHit := finalResult.PromptCacheHitTokens
 	cacheMiss := finalResult.PromptCacheMissTokens
 	if cacheMiss == 0 && cacheHit > 0 {
-		cacheMiss = maxInt(finalResult.PromptTokens-cacheHit, 0)
+		cacheMiss = max(finalResult.PromptTokens-cacheHit, 0)
 	}
 	cacheTotal := cacheHit + cacheMiss
 	hitRate := 0.0
@@ -713,11 +713,4 @@ func durationMS(start, end time.Time) float64 {
 
 func round2(value float64) float64 {
 	return float64(int64(value*100+0.5)) / 100
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

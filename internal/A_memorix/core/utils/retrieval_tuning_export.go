@@ -155,18 +155,3 @@ func pyJSONValue(value any) string {
 		return fmt.Sprint(typed)
 	}
 }
-
-// maxIntValue 与 minIntValue 提供整数比较
-func maxIntValue(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}
-
-func minIntValue(left int, right int) int {
-	if left < right {
-		return left
-	}
-	return right
-}

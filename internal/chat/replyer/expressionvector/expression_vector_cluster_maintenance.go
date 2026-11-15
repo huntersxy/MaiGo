@@ -187,6 +187,10 @@ func expressionVectorClusterVectors(entries []expressionVectorClusterSample) [][
 }
 
 // rebuildExpressionVectorClusters 全量重聚类，reuse 时沿用旧簇数量与中心作为初始值
+//
+// 优先交给 Python 兼容侧车的原版 _run_kmeans；侧车未配置或失败时回落到
+// 本地逐位复刻实现。两条路径的输入约定相同（都已按行 L2 归一化），
+// 输出标签与中心因此可以直接互换。
 func rebuildExpressionVectorClusters(entries []expressionVectorClusterSample, previousCenters [][]float32, reuse bool) (map[uint]int, [][]float32, error) {
 	labels := make(map[uint]int, len(entries))
 	if len(entries) == 0 {
@@ -195,6 +199,10 @@ func rebuildExpressionVectorClusters(entries []expressionVectorClusterSample, pr
 	vectors := expressionVectorClusterVectors(entries)
 	// Python _choose_cluster_count 无论是否复用中心都用上一次簇数作为上限参考
 	clusterCount := chooseExpressionVectorClusterCount(len(entries), len(previousCenters))
+
+	if sidecarLabels, sidecarCenters, ok := sidecarRebuildExpressionVectorClusters(entries, vectors, previousCenters, clusterCount, reuse); ok {
+		return sidecarLabels, sidecarCenters, nil
+	}
 	centers := make([][]float32, 0, clusterCount)
 	if reuse && len(previousCenters) == clusterCount {
 		dimensionMatches := true

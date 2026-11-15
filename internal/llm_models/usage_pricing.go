@@ -61,7 +61,7 @@ func calculateModelUsageCost(cfg ModelConfig, usage *schema.TokenUsage, at time.
 	hit := int64(usage.PromptTokenDetails.CachedTokens)
 	miss := int64(0)
 	if miss == 0 && hit > 0 {
-		miss = maxInt64(prompt-hit, 0)
+		miss = max(prompt-hit, 0)
 	}
 	if hit+miss == 0 {
 		miss = prompt
@@ -80,15 +80,8 @@ func cachedTokenFields(usage *schema.TokenUsage) (hit, miss int64, enabled bool)
 	}
 	hit = int64(usage.PromptTokenDetails.CachedTokens)
 	if hit > 0 {
-		miss = maxInt64(int64(usage.PromptTokens)-hit, 0)
+		miss = max(int64(usage.PromptTokens)-hit, 0)
 		return hit, miss, true
 	}
 	return 0, 0, false
-}
-
-func maxInt64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }

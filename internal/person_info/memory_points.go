@@ -32,7 +32,7 @@ func LevenshteinDistance(left, right string) int {
 			if a[i] != b[j] {
 				substitutions++
 			}
-			current[j+1] = minInt(insertions, minInt(deletions, substitutions))
+			current[j+1] = min(insertions, min(deletions, substitutions))
 		}
 		previous = current
 	}
@@ -149,11 +149,4 @@ func (r *Registry) GetPersonIDByPersonName(ctx context.Context, personName strin
 		return ""
 	}
 	return ids[0]
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

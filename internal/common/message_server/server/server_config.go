@@ -1,6 +1,7 @@
 package server
 
 import (
+	"slices"
 	"strings"
 
 	"go.uber.org/zap"
@@ -32,7 +33,7 @@ func (s *Server) ApplyConfig(next Config) []string {
 		next.APIMaxMessageSize = defaultAPIMaxMessage
 	}
 	for key := range next.APIKeyIdentities {
-		if !containsString(next.APIKeys, key) {
+		if !slices.Contains(next.APIKeys, key) {
 			next.APIKeys = append(next.APIKeys, key)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,7 +64,7 @@ func ValidatePublicURL(rawURL string, options Options) (string, error) {
 	}
 	scheme := strings.ToLower(parsed.Scheme)
 	allowed := allowedSchemes(options.AllowedSchemes)
-	if !containsString(allowed, scheme) {
+	if !slices.Contains(allowed, scheme) {
 		return "", fmt.Errorf("仅允许以下协议: %s", strings.Join(allowed, ", "))
 	}
 	hostname := parsed.Hostname()
@@ -141,15 +142,6 @@ func allowedSchemes(configured []string) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func resolveHostAddresses(hostname string, options Options) ([]net.IP, error) {

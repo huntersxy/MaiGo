@@ -197,7 +197,7 @@ func (s *Store) FtsSearchBM25(matchQuery string, limit int, maxDocLen int, conn 
 		ORDER BY bm25_score ASC
 		LIMIT ?`, scopeClause)
 	args := append([]any{matchQuery}, scopeParams...)
-	args = append(args, maxInt(1, limit))
+	args = append(args, max(1, limit))
 	rows, err := c.Query(query, args...)
 	if err != nil {
 		zap.L().Warn("FTS 查询失败", zap.Error(err))
@@ -227,7 +227,7 @@ func (s *Store) FtsSearchTokenizedParagraphsBM25(matchQuery string, limit int, m
 		ORDER BY bm25_score ASC
 		LIMIT ?`, scopeClause)
 	args := append([]any{matchQuery}, scopeParams...)
-	args = append(args, maxInt(1, limit))
+	args = append(args, max(1, limit))
 	rows, err := c.Query(query, args...)
 	if err != nil {
 		zap.L().Warn("paragraph tokenized FTS 查询失败", zap.Error(err))
@@ -266,7 +266,7 @@ func (s *Store) FtsSearchRelationsBM25(matchQuery string, limit int, maxDocLen i
 		ORDER BY bm25_score ASC
 		LIMIT ?`, activeClause, scopeClause)
 	args := append([]any{matchQuery}, scopeParams...)
-	args = append(args, maxInt(1, limit))
+	args = append(args, max(1, limit))
 	rows, err := c.Query(query, args...)
 	if err != nil {
 		zap.L().Warn("relations FTS 查询失败", zap.Error(err))
@@ -333,7 +333,7 @@ func (s *Store) NgramSearchParagraphs(tokens []string, limit int, maxDocLen int,
 		args = append(args, token)
 	}
 	args = append(args, scopeParams...)
-	args = append(args, maxInt(1, limit))
+	args = append(args, max(1, limit))
 	rows, err := c.Query(query, args...)
 	if err != nil {
 		zap.L().Warn("ngram 倒排查询失败", zap.Error(err))
@@ -408,11 +408,4 @@ func scanFTSSearchHits(rows *sql.Rows, maxDocLen int) []FTSSearchHit {
 		return []FTSSearchHit{}
 	}
 	return out
-}
-
-func maxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

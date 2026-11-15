@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"maibot-go/internal/llm_models"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // EncodeOptions Encode 的选项，对应 Python 可选参数
@@ -180,16 +182,17 @@ func (a *EmbeddingAPIAdapter) encodeBatchInternal(
 		if concurrency < 1 {
 			concurrency = 1
 		}
-		semaphore := make(chan struct{}, concurrency)
+		sem := semaphore.NewWeighted(int64(concurrency))
 		vectors := make([][]float32, len(pending))
 		errorsByIndex := make([]error, len(pending))
 		var waitGroup sync.WaitGroup
 		for index := range pending {
 			waitGroup.Add(1)
-			semaphore <- struct{}{}
+			// 对齐原 channel 信号量：这里只限制并发度，不响应 ctx 取消。
+			_ = sem.Acquire(context.Background(), 1)
 			go func(index int) {
 				defer func() {
-					<-semaphore
+					sem.Release(1)
 					waitGroup.Done()
 				}()
 				vector, ok, err := a.getEmbeddingDirect(ctx, pending[index].text, dimensions, true)
@@ -346,7 +349,7 @@ func (a *EmbeddingAPIAdapter) requestWithRetry(
 		adapterLogger.Warn(fmt.Sprintf(
 			"Embedding 请求失败，重试 %d/%d，%.1fs 后重试: %v",
 			attempt,
-			maxIntValue(1, retry.MaxAttempts-1),
+			max(1, retry.MaxAttempts-1),
 			wait.Seconds(),
 			err,
 		))
@@ -512,12 +515,4 @@ func (a *EmbeddingAPIAdapter) fallbackDimension(configKey string) int {
 	a.stateMu.Unlock()
 	storeGlobalDimensionCache(configKey, dimensionCacheEntry{dimension: a.defaultDimension})
 	return a.defaultDimension
-}
-
-// maxIntValue 返回两个整数中的较大值
-func maxIntValue(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }

@@ -2,14 +2,19 @@ package visual
 
 import (
 	"bytes"
-	"container/list"
 	"encoding/base64"
+	"errors"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
-	"sync"
+
+	"github.com/jellydator/ttlcache/v3"
+	"golang.org/x/sync/singleflight"
 )
+
+// errEmojiCacheResult singleflight 返回值类型异常，属内部错误
+var errEmojiCacheResult = errors.New("visual: 表情缓存返回值类型异常")
 
 // 表情缩略图缓存常量
 const (
@@ -64,20 +69,14 @@ func scaleToFit(source image.Image, maxSide int) image.Image {
 	return scaled
 }
 
-type emojiCacheEntry struct {
-	key  string
-	part ImagePart
-	size int
-}
-
-// EmojiImageCache 线程间共享的 LRU，同时约束缓存字节数与条目数
+// EmojiImageCache 线程间共享的 LRU，同时约束缓存字节数与条目数。
+//
+// ttlcache 负责容量与字节预算淘汰（WithMaxCost 按 Base64 长度计费），
+// singleflight 合并同一图片的并发转换，对齐 Python emoji_image_cache
+// 的 pending Future 共享。
 type EmojiImageCache struct {
-	mu         sync.Mutex
-	maxBytes   int
-	maxEntries int
-	bytes      int
-	items      map[string]*list.Element
-	order      *list.List
+	items *ttlcache.Cache[string, ImagePart]
+	group singleflight.Group
 }
 
 // NewEmojiImageCache 创建表情图片缓存
@@ -88,12 +87,10 @@ func NewEmojiImageCache(maxBytes, maxEntries int) *EmojiImageCache {
 	if maxEntries <= 0 {
 		maxEntries = EmojiCacheMaxEntries
 	}
-	return &EmojiImageCache{
-		maxBytes:   maxBytes,
-		maxEntries: maxEntries,
-		items:      map[string]*list.Element{},
-		order:      list.New(),
-	}
+	return &EmojiImageCache{items: ttlcache.New(
+		ttlcache.WithCapacity[string, ImagePart](uint64(maxEntries)),
+		ttlcache.WithMaxCost[string, ImagePart](uint64(maxBytes), emojiImageCost),
+	)}
 }
 
 // Get 返回最终编码结果
@@ -101,42 +98,28 @@ func (c *EmojiImageCache) Get(binaryHash string, imageBytes []byte) (ImagePart, 
 	if c == nil {
 		return PrepareEmojiImage(imageBytes)
 	}
-	c.mu.Lock()
-	if element, ok := c.items[binaryHash]; ok {
-		c.order.MoveToFront(element)
-		entry := element.Value.(*emojiCacheEntry)
-		c.mu.Unlock()
-		return entry.part, nil
+	if item := c.items.Get(binaryHash); item != nil {
+		return item.Value(), nil
 	}
-	c.mu.Unlock()
-	part, err := PrepareEmojiImage(imageBytes)
+	result, err, _ := c.group.Do(binaryHash, func() (any, error) {
+		if item := c.items.Get(binaryHash); item != nil {
+			return item.Value(), nil
+		}
+		part, prepareErr := PrepareEmojiImage(imageBytes)
+		if prepareErr != nil {
+			return ImagePart{}, prepareErr
+		}
+		c.items.Set(binaryHash, part, ttlcache.NoTTL)
+		return part, nil
+	})
 	if err != nil {
 		return ImagePart{}, err
 	}
-	size := len(part.Base64)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, exists := c.items[binaryHash]; exists {
-		return part, nil
+	part, ok := result.(ImagePart)
+	if !ok {
+		return ImagePart{}, errEmojiCacheResult
 	}
-	element := c.order.PushFront(&emojiCacheEntry{key: binaryHash, part: part, size: size})
-	c.items[binaryHash] = element
-	c.bytes += size
-	c.pruneLocked()
 	return part, nil
-}
-
-func (c *EmojiImageCache) pruneLocked() {
-	for c.order.Len() > 0 && (c.bytes > c.maxBytes || c.order.Len() > c.maxEntries) {
-		oldest := c.order.Back()
-		if oldest == nil {
-			break
-		}
-		entry := oldest.Value.(*emojiCacheEntry)
-		c.order.Remove(oldest)
-		delete(c.items, entry.key)
-		c.bytes -= entry.size
-	}
 }
 
 // Len 当前缓存条目数
@@ -144,7 +127,10 @@ func (c *EmojiImageCache) Len() int {
 	if c == nil {
 		return 0
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.order.Len()
+	return c.items.Len()
+}
+
+// emojiImageCost 以 Base64 长度作为内存占用近似值，对齐 Python 的 getsizeof 口径
+func emojiImageCost(item ttlcache.CostItem[string, ImagePart]) uint64 {
+	return uint64(len(item.Value.Base64) + len(item.Value.Format) + len(item.Key))
 }

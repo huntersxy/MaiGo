@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -136,7 +137,7 @@ func normalizeIDList(value any) []string {
 	normalizedIDs := make([]string, 0, len(items))
 	for _, item := range items {
 		normalizedItem := policyStringValue(item)
-		if normalizedItem == "" || containsString(normalizedIDs, normalizedItem) {
+		if normalizedItem == "" || slices.Contains(normalizedIDs, normalizedItem) {
 			continue
 		}
 		normalizedIDs = append(normalizedIDs, normalizedItem)
@@ -149,7 +150,7 @@ func normalizeStringIDList(values []string) []string {
 	normalizedIDs := make([]string, 0, len(values))
 	for _, value := range values {
 		normalizedItem := strings.TrimSpace(value)
-		if normalizedItem == "" || containsString(normalizedIDs, normalizedItem) {
+		if normalizedItem == "" || slices.Contains(normalizedIDs, normalizedItem) {
 			continue
 		}
 		normalizedIDs = append(normalizedIDs, normalizedItem)
@@ -175,15 +176,6 @@ func copyAnyList(value any) []any {
 	copied := make([]any, len(items))
 	copy(copied, items)
 	return copied
-}
-
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func isSupportedDefaultAction(action string) bool {
@@ -298,7 +290,7 @@ func pruneEmptyUIPolicy(adapterPolicy map[string]any, chatType ChatType) {
 // pruneEmptyAdapterPolicy 删除只剩下身份字段的策略条目
 func pruneEmptyAdapterPolicy(adapters []any, target map[string]any) []any {
 	for key := range target {
-		if !containsString(policyIdentityKeys, key) {
+		if !slices.Contains(policyIdentityKeys, key) {
 			return adapters
 		}
 	}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // Status HTMLRenderService 运行态摘要
@@ -26,7 +28,7 @@ type Service struct {
 	mu      sync.RWMutex
 	lastErr string
 
-	sem chan struct{}
+	sem *semaphore.Weighted
 }
 
 // NewService 创建 HTML 渲染服务
@@ -34,7 +36,7 @@ func NewService(cfg Config) *Service {
 	cfg = normalizeConfig(cfg)
 	return &Service{
 		cfg: cfg,
-		sem: make(chan struct{}, cfg.ConcurrencyLimit),
+		sem: semaphore.NewWeighted(int64(cfg.ConcurrencyLimit)),
 	}
 }
 
@@ -158,14 +160,9 @@ func (s *Service) setLastErr(msg string) {
 }
 
 func (s *Service) acquire(ctx context.Context) error {
-	select {
-	case s.sem <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return s.sem.Acquire(ctx, 1)
 }
 
 func (s *Service) release() {
-	<-s.sem
+	s.sem.Release(1)
 }

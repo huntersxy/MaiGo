@@ -10,6 +10,8 @@ package llm
 import (
 	"context"
 	"sync"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // EmbeddingTextResult 批量嵌入中单项的结果或错误
@@ -51,19 +53,17 @@ func collectEmbeddingTextResults(
 		}
 		return out
 	}
-	sem := make(chan struct{}, maxConcurrent)
+	sem := semaphore.NewWeighted(int64(maxConcurrent))
 	var wait sync.WaitGroup
 	for index, text := range texts {
 		wait.Add(1)
 		go func(index int, text string) {
 			defer wait.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				out[index] = EmbeddingTextResult{Err: ctx.Err()}
+			if err := sem.Acquire(ctx, 1); err != nil {
+				out[index] = EmbeddingTextResult{Err: err}
 				return
 			}
-			defer func() { <-sem }()
+			defer sem.Release(1)
 			result, err := embed(ctx, text)
 			out[index] = EmbeddingTextResult{Result: result, Err: err}
 		}(index, text)

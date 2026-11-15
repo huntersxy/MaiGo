@@ -173,7 +173,7 @@ func (s *ProfileAdminService) queryWithFeedbackRefresh(ctx context.Context, pers
 	if s.deps.ProfileTTLSeconds != nil {
 		ttl = s.deps.ProfileTTLSeconds()
 	}
-	profile, err := service.QueryPersonProfile(ctx, pid, strings.TrimSpace(personKeyword), maxInt(1, limit), ttl, shouldForce, sourceNote)
+	profile, err := service.QueryPersonProfile(ctx, pid, strings.TrimSpace(personKeyword), max(1, limit), ttl, shouldForce, sourceNote)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (s *ProfileAdminService) buildPersonProfileResponse(profile map[string]any,
 		return emptyPersonProfileResponse(asString(profile["person_id"]), asString(profile["person_name"]))
 	}
 	evidence := make([]map[string]any, 0)
-	evidenceLimit := maxInt(1, limit)
+	evidenceLimit := max(1, limit)
 	for _, raw := range asList(profile["evidence_ids"]) {
 		hashValue := asString(raw)
 		if len(evidence) >= evidenceLimit {
@@ -299,7 +299,7 @@ func (s *ProfileAdminService) GetPersonProfile(ctx context.Context, personID str
 		return nil, err
 	}
 	s.MarkPersonActive(ctx, personID)
-	profile, err := s.queryWithFeedbackRefresh(ctx, personID, "", maxInt(4, limit), false, "sdk_memory_kernel.get_person_profile")
+	profile, err := s.queryWithFeedbackRefresh(ctx, personID, "", max(4, limit), false, "sdk_memory_kernel.get_person_profile")
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func (s *ProfileAdminService) RefreshPersonProfile(ctx context.Context, payload 
 	if s.deps.ProfileTTLSeconds != nil {
 		ttl = s.deps.ProfileTTLSeconds()
 	}
-	profile, err := service.QueryPersonProfile(ctx, personID, "", maxInt(4, limit), ttl, true, "sdk_memory_kernel.refresh_person_profile")
+	profile, err := service.QueryPersonProfile(ctx, personID, "", max(4, limit), ttl, true, "sdk_memory_kernel.refresh_person_profile")
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +343,7 @@ func (s *ProfileAdminService) QueryPersonProfileWithFeedbackRefresh(ctx context.
 	if err := s.initialize(ctx); err != nil {
 		return nil, err
 	}
-	return s.queryWithFeedbackRefresh(ctx, personID, "", maxInt(1, limit), false, "sdk_memory_kernel.query_person_profile")
+	return s.queryWithFeedbackRefresh(ctx, personID, "", max(1, limit), false, "sdk_memory_kernel.query_person_profile")
 }
 
 // ProcessPersonProfileRefreshQueueBatch 对齐 _process_feedback_profile_refresh_batch 的公开入口
@@ -351,7 +351,7 @@ func (s *ProfileAdminService) ProcessPersonProfileRefreshQueueBatch(ctx context.
 	if s.deps.ProcessProfileRefreshBatch == nil {
 		return map[string]any{"processed": 0, "refreshed": 0, "failed": 0}, nil
 	}
-	return s.deps.ProcessProfileRefreshBatch(ctx, maxInt(1, limit))
+	return s.deps.ProcessProfileRefreshBatch(ctx, max(1, limit))
 }
 
 // MemoryProfileAdmin 对齐 memory_profile_admin
@@ -385,7 +385,7 @@ func (s *ProfileAdminService) MemoryProfileAdmin(ctx context.Context, action str
 		}
 		return result, nil
 	case "query":
-		profile, err := s.queryWithFeedbackRefresh(ctx, asString(payload["person_id"]), firstNonEmptyString(asString(payload["person_keyword"]), asString(payload["keyword"])), maxInt(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1)), pyTruthy(payload["force_refresh"]), "sdk_memory_kernel.memory_profile_admin.query")
+		profile, err := s.queryWithFeedbackRefresh(ctx, asString(payload["person_id"]), firstNonEmptyString(asString(payload["person_keyword"]), asString(payload["keyword"])), max(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1)), pyTruthy(payload["force_refresh"]), "sdk_memory_kernel.memory_profile_admin.query")
 		if err != nil {
 			return nil, err
 		}
@@ -403,11 +403,11 @@ func (s *ProfileAdminService) MemoryProfileAdmin(ctx context.Context, action str
 		}
 		return profile, nil
 	case "evidence":
-		return s.profileEvidenceAdmin(ctx, asString(payload["person_id"]), firstNonEmptyString(asString(payload["person_keyword"]), asString(payload["keyword"])), maxInt(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1)), pyTruthy(payload["force_refresh"]))
+		return s.profileEvidenceAdmin(ctx, asString(payload["person_id"]), firstNonEmptyString(asString(payload["person_keyword"]), asString(payload["keyword"])), max(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1)), pyTruthy(payload["force_refresh"]))
 	case "correct_evidence":
 		return s.ProfileCorrectEvidenceAdmin(ctx, payload)
 	case "status":
-		summary, err := store.GetPersonProfileRefreshSummary(maxInt(1, intOr(payload["limit"], 20, 1)))
+		summary, err := store.GetPersonProfileRefreshSummary(max(1, intOr(payload["limit"], 20, 1)))
 		if err != nil {
 			return nil, err
 		}
@@ -417,7 +417,7 @@ func (s *ProfileAdminService) MemoryProfileAdmin(ctx context.Context, action str
 		}
 		return result, nil
 	case "process_pending":
-		result, err := s.ProcessPersonProfileRefreshQueueBatch(ctx, maxInt(1, intOr(payload["limit"], s.reconcileBatchSize(), 1)))
+		result, err := s.ProcessPersonProfileRefreshQueueBatch(ctx, max(1, intOr(payload["limit"], s.reconcileBatchSize(), 1)))
 		if err != nil {
 			return nil, err
 		}
@@ -427,7 +427,7 @@ func (s *ProfileAdminService) MemoryProfileAdmin(ctx context.Context, action str
 		}
 		return out, nil
 	case "list":
-		limit := maxInt(1, intOr(payload["limit"], 50, 1))
+		limit := max(1, intOr(payload["limit"], 50, 1))
 		rows, err := store.Query(`
 			SELECT s.person_id, s.profile_version, s.profile_text, s.updated_at, s.expires_at, s.source_note
 			FROM person_profile_snapshots s
@@ -751,7 +751,7 @@ func (s *ProfileAdminService) ProfileEvidenceResponse(ctx context.Context, profi
 		}
 	}
 	evidence := s.BuildProfileEvidenceItems(ctx, profile)
-	limit = maxInt(1, limit)
+	limit = max(1, limit)
 	if len(evidence) > limit {
 		evidence = evidence[:limit]
 	}
@@ -782,7 +782,7 @@ func (s *ProfileAdminService) ProfileEvidenceAdmin(ctx context.Context, personID
 }
 
 func (s *ProfileAdminService) profileEvidenceAdmin(ctx context.Context, personID string, personKeyword string, limit int, forceRefresh bool) (map[string]any, error) {
-	profile, err := s.queryWithFeedbackRefresh(ctx, personID, personKeyword, maxInt(1, limit), forceRefresh, "sdk_memory_kernel.memory_profile_admin.evidence")
+	profile, err := s.queryWithFeedbackRefresh(ctx, personID, personKeyword, max(1, limit), forceRefresh, "sdk_memory_kernel.memory_profile_admin.evidence")
 	if err != nil {
 		return nil, err
 	}
@@ -802,7 +802,7 @@ func (s *ProfileAdminService) ProfileCorrectEvidenceAdmin(ctx context.Context, p
 	if raw, ok := payload["refresh"]; ok && raw != nil {
 		refresh = pyTruthy(raw)
 	}
-	limit := maxInt(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1))
+	limit := max(1, intOr(firstAny(payload["limit"], payload["top_k"]), 12, 1))
 	switch evidenceType {
 	case "relation", "paragraph", "person_fact", "chat_summary":
 	default:
@@ -811,7 +811,7 @@ func (s *ProfileAdminService) ProfileCorrectEvidenceAdmin(ctx context.Context, p
 	if hashValue == "" {
 		return map[string]any{"success": false, "error": "画像证据 hash 不能为空"}, nil
 	}
-	evidencePayload, err := s.profileEvidenceAdmin(ctx, personID, personKeyword, maxInt(50, limit), false)
+	evidencePayload, err := s.profileEvidenceAdmin(ctx, personID, personKeyword, max(50, limit), false)
 	if err != nil {
 		return nil, err
 	}
@@ -865,7 +865,7 @@ func (s *ProfileAdminService) ProfileCorrectEvidenceAdmin(ctx context.Context, p
 		if s.deps.ProfileTTLSeconds != nil {
 			ttl = s.deps.ProfileTTLSeconds()
 		}
-		value, err := service.QueryPersonProfile(ctx, firstNonEmptyString(asString(evidencePayload["person_id"]), personID), "", maxInt(4, limit), ttl, true, "sdk_memory_kernel.memory_profile_admin.correct_evidence")
+		value, err := service.QueryPersonProfile(ctx, firstNonEmptyString(asString(evidencePayload["person_id"]), personID), "", max(4, limit), ttl, true, "sdk_memory_kernel.memory_profile_admin.correct_evidence")
 		if err != nil {
 			return nil, err
 		}

@@ -5,6 +5,7 @@ package embedding
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -253,7 +254,7 @@ func (a *EmbeddingAPIAdapter) GetEmbeddingConfigurationKey() (string, error) {
 	lastPrimary := a.lastPrimary
 	a.stateMu.Unlock()
 	model := lastModel
-	if !containsString(candidates, model) || primary != lastPrimary {
+	if !slices.Contains(candidates, model) || primary != lastPrimary {
 		model = primary
 	}
 	fingerprint, err := a.GetEmbeddingFingerprint(&EmbeddingFingerprintOptions{ModelName: &model})
@@ -265,16 +266,6 @@ func (a *EmbeddingAPIAdapter) GetEmbeddingConfigurationKey() (string, error) {
 		return "", errors.New("embedding 配置指纹缺少 hash")
 	}
 	return hashValue, nil
-}
-
-// containsString 判断字符串切片是否包含目标值
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 // describeFingerprint 便于日志输出指纹摘要

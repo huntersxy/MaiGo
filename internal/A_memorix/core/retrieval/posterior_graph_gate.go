@@ -50,10 +50,10 @@ func FindScoreCliff(results []RetrievalResult, dropRatio float64, minCoreResults
 		currentScore := results[index].Score
 		scoreDrop := previousScore - currentScore
 		if scoreDrop/previousScore > dropRatio {
-			return maxInt(minCoreResults, index)
+			return max(minCoreResults, index)
 		}
 	}
-	fallback := maxInt(minCoreResults, len(results)/2)
+	fallback := max(minCoreResults, len(results)/2)
 	if fallback > len(results) {
 		fallback = len(results)
 	}
@@ -110,7 +110,7 @@ func posteriorExtractSeedEvidence(retriever PosteriorGraphRetriever, queryProfil
 		strength string
 	}
 	scoreMap := make(map[seedKey]posteriorSeedEvidence)
-	topResults := posteriorTruncateResults(results, maxInt(1, scanTopK))
+	topResults := posteriorTruncateResults(results, max(1, scanTopK))
 	for index, item := range topResults {
 		rank := index + 1
 		profile := posteriorBuildCandidateProfile(retriever, item, maxTokens)
@@ -338,7 +338,7 @@ func posteriorRelationRank(result RetrievalResult) int {
 // posteriorCompetitionMerge 对齐 _competition_merge
 // scorer 为 nil 时使用默认竞争打分，测试可注入固定分数
 func posteriorCompetitionMerge(retriever PosteriorGraphRetriever, query string, baseResults, graphResults []RetrievalResult, topK int, cfg PosteriorGraphConfig, scorer posteriorCompetitionScorer) []RetrievalResult {
-	ranked := posteriorTruncateResults(baseResults, maxInt(1, topK))
+	ranked := posteriorTruncateResults(baseResults, max(1, topK))
 	if len(ranked) == 0 || len(graphResults) == 0 {
 		return ranked
 	}
@@ -349,7 +349,7 @@ func posteriorCompetitionMerge(retriever PosteriorGraphRetriever, query string, 
 	}
 	cliff := FindScoreCliff(ranked, cfg.DropRatio, cfg.MinCoreResults)
 	coreResults := ranked[:cliff]
-	remainingSlots := maxInt(0, topK-len(coreResults))
+	remainingSlots := max(0, topK-len(coreResults))
 	graphSlotLimit := remainingSlots
 	if cfg.MaxGraphSlots < graphSlotLimit {
 		graphSlotLimit = cfg.MaxGraphSlots
@@ -493,7 +493,7 @@ func ApplyPosteriorGraphGate(retriever PosteriorGraphRetriever, query string, ba
 		})
 		return []RetrievalResult{}
 	}
-	topKInt := maxInt(1, topK)
+	topKInt := max(1, topK)
 	alpha := retriever.Alpha()
 	if relationIntent != nil {
 		if override, exists := relationIntent["alpha_override"]; exists && override != nil {
@@ -568,7 +568,7 @@ func ApplyPosteriorGraphGate(retriever PosteriorGraphRetriever, query string, ba
 		baseTopKCount = topKInt
 	}
 	decision["graph_result_count"] = rawGraphCount
-	decision["filtered_graph_count"] = maxInt(0, rawGraphCount-len(graphResults))
+	decision["filtered_graph_count"] = max(0, rawGraphCount-len(graphResults))
 	decision["base_top_k_count"] = baseTopKCount
 	retriever.SetPosteriorGraphGateLastDecision(decision)
 	return posteriorTruncateResults(finalResults, topKInt)

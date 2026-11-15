@@ -36,7 +36,7 @@ func selectExpressionHitsByMMR(hits []ExpressionVectorHit, limit int, lambda flo
 		mmrScores[index] = lambda * relevance[index]
 	}
 
-	chosen := make([]int, 0, minInt(limit, len(hits)))
+	chosen := make([]int, 0, min(limit, len(hits)))
 	for len(chosen) < limit && len(chosen) < len(hits) {
 		best := -1
 		bestScore := 0.0
@@ -87,11 +87,4 @@ func expressionVectorCosine(a, b []float32) float64 {
 		return 0
 	}
 	return float64(dotProduct(a, b)) / denom
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

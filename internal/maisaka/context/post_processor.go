@@ -161,7 +161,7 @@ func trimHistoryToContextTarget(history []maisaka.ContextMessage, targetContextC
 		}
 	}
 	if len(chatMessageIndices) > 0 {
-		oldest := chatMessageIndices[maxInt(0, len(chatMessageIndices)-MinRetainedChatMessages)]
+		oldest := chatMessageIndices[max(0, len(chatMessageIndices)-MinRetainedChatMessages)]
 		if oldest < protectedStart {
 			protectedStart = oldest
 		}
@@ -252,11 +252,4 @@ func CollectToolTurnIDs(history []maisaka.ContextMessage) map[string]struct{} {
 		}
 	}
 	return turnIDs
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

@@ -61,7 +61,7 @@ func ApplyPipeline(text string, opts Options) PipelineResult {
 		pieces = []sentencePiece{{content: cleaned, separator: ""}}
 	}
 
-	segments := applyTypoPostProcess(pieces, cfg.Typo, opts.typoEnabled(cfg), rng)
+	segments := applyTypoPostProcess(opts.context(), pieces, cfg.Typo, opts.typoEnabled(cfg), rng, opts.TypoEngine)
 
 	if len(segments) > cfg.Splitter.MaxSentenceNum {
 		if cfg.Splitter.EnableOverflowReturnAll {
@@ -100,7 +100,7 @@ func applyLLMSplitterPipeline(text string, opts Options, cfg Config, rng *rand.R
 		pieces = []sentencePiece{{content: text}}
 	}
 
-	segments := applyTypoPostProcess(pieces, cfg.Typo, opts.typoEnabled(cfg), rng)
+	segments := applyTypoPostProcess(opts.context(), pieces, cfg.Typo, opts.typoEnabled(cfg), rng, opts.TypoEngine)
 
 	if len(segments) > cfg.Splitter.MaxSentenceNum {
 		if cfg.Splitter.EnableOverflowReturnAll {
@@ -116,4 +116,12 @@ func applyLLMSplitterPipeline(text string, opts Options, cfg Config, rng *rand.R
 	segments = mergeSegmentsToMaxCount(segments, cfg.Splitter.MaxSplitNum)
 	segments = attachTypingDelays(segments, opts.timingConfig(), cfg.TypingSpeed)
 	return PipelineResult{Segments: segments, Expression: expression}
+}
+
+// ApplyPipelineForTest 暴露段列表供 test/ 校验；生产代码请用 ApplyPipeline
+func ApplyPipelineForTest(ctx context.Context, text string, opts Options) []Segment {
+	if opts.Ctx == nil {
+		opts.Ctx = ctx
+	}
+	return ApplyPipeline(text, opts).Segments
 }

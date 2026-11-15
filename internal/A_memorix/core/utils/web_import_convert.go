@@ -223,7 +223,7 @@ func (m *WebImportManager) processTemporalBackfill(ctx context.Context, taskID s
 	}
 	dryRun := webImportCoerceBool(params["dry_run"], false)
 	noFallback := webImportCoerceBool(params["no_created_fallback"], false)
-	limit := webImportMaxInt(1, webImportCoerceInt(params["limit"], 100000))
+	limit := max(1, webImportCoerceInt(params["limit"], 100000))
 	summary, err := m.deps.TemporalBackfill(ctx, targetDir, limit, dryRun, noFallback)
 	if err != nil {
 		m.setFileFailed(taskID, file.FileID, err.Error())

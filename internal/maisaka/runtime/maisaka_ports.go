@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -639,7 +640,7 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 		ctx = t.Agent.buildConversationToolContext(ctx, t.Kind, t.TargetID, session)
 	}
 	if chatID := t.Agent.resolveMaiBotSessionID(ctx, t.Kind, t.TargetID); chatID != "" {
-		if containsString(announcement.Default.GetDisabledChatTools(chatID), invocation.ToolName) {
+		if slices.Contains(announcement.Default.GetDisabledChatTools(chatID), invocation.ToolName) {
 			return maisaka.ToolExecutionResult{Success: false, ToolName: invocation.ToolName, Message: "工具 " + invocation.ToolName + " 在当前聊天已被禁用"}, nil
 		}
 	}

@@ -10,48 +10,48 @@ import (
 
 // maxPasteChars 对齐 _max_paste_chars
 func (m *WebImportManager) maxPasteChars() int {
-	return webImportMaxInt(1000, m.cfgInt("web.import.max_paste_chars", 200000))
+	return max(1000, m.cfgInt("web.import.max_paste_chars", 200000))
 }
 
 // defaultFileConcurrency 对齐 _default_file_concurrency
 func (m *WebImportManager) defaultFileConcurrency() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.default_file_concurrency", 2))
+	return max(1, m.cfgInt("web.import.default_file_concurrency", 2))
 }
 
 // defaultChunkConcurrency 对齐 _default_chunk_concurrency
 func (m *WebImportManager) defaultChunkConcurrency() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.default_chunk_concurrency", 4))
+	return max(1, m.cfgInt("web.import.default_chunk_concurrency", 4))
 }
 
 // defaultNarrativeWindowSize 对齐 _default_narrative_window_size
 func (m *WebImportManager) defaultNarrativeWindowSize() int {
-	return webImportMaxInt(200, m.cfgInt("web.import.default_narrative_window_size", 1600))
+	return max(200, m.cfgInt("web.import.default_narrative_window_size", 1600))
 }
 
 // defaultNarrativeOverlap 对齐 _default_narrative_overlap
 func (m *WebImportManager) defaultNarrativeOverlap() int {
 	windowSize := m.defaultNarrativeWindowSize()
-	return webImportClamp(m.cfgInt("web.import.default_narrative_overlap", 400), 0, webImportMaxInt(0, windowSize-1))
+	return webImportClamp(m.cfgInt("web.import.default_narrative_overlap", 400), 0, max(0, windowSize-1))
 }
 
 // defaultFactualTargetSize 对齐 _default_factual_target_size
 func (m *WebImportManager) defaultFactualTargetSize() int {
-	return webImportMaxInt(200, m.cfgInt("web.import.default_factual_target_size", 1200))
+	return max(200, m.cfgInt("web.import.default_factual_target_size", 1200))
 }
 
 // maxImportChunkChars 对齐 _max_import_chunk_chars
 func (m *WebImportManager) maxImportChunkChars() int {
-	return webImportMaxInt(200, m.cfgInt("web.import.max_chunk_chars", 3200))
+	return max(200, m.cfgInt("web.import.max_chunk_chars", 3200))
 }
 
 // maxFileConcurrency 对齐 _max_file_concurrency
 func (m *WebImportManager) maxFileConcurrency() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.max_file_concurrency", 6))
+	return max(1, m.cfgInt("web.import.max_file_concurrency", 6))
 }
 
 // maxChunkConcurrency 对齐 _max_chunk_concurrency
 func (m *WebImportManager) maxChunkConcurrency() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.max_chunk_concurrency", 12))
+	return max(1, m.cfgInt("web.import.max_chunk_concurrency", 12))
 }
 
 // timeoutConfig 对齐 _timeout_config
@@ -68,7 +68,7 @@ func (m *WebImportManager) timeoutConfig() map[string]float64 {
 // llmRetryConfig 对齐 _llm_retry_config
 func (m *WebImportManager) llmRetryConfig() map[string]float64 {
 	timeout := m.timeoutConfig()
-	retries := webImportMaxInt(0, m.cfgInt("web.import.llm_retry.max_attempts", 4))
+	retries := max(0, m.cfgInt("web.import.llm_retry.max_attempts", 4))
 	minWait := math.Max(0.1, webImportCoerceFloat(m.cfg("web.import.llm_retry.min_wait_seconds", 3), 3))
 	maxWait := math.Max(minWait, webImportCoerceFloat(m.cfg("web.import.llm_retry.max_wait_seconds", 40), 40))
 	multiplier := math.Max(1, webImportCoerceFloat(m.cfg("web.import.llm_retry.backoff_multiplier", 3), 3))
@@ -82,17 +82,17 @@ func (m *WebImportManager) isEnabled() bool {
 
 // queueLimit 对齐 _queue_limit
 func (m *WebImportManager) queueLimit() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.max_queue_size", 20))
+	return max(1, m.cfgInt("web.import.max_queue_size", 20))
 }
 
 // maxFilesPerTask 对齐 _max_files_per_task
 func (m *WebImportManager) maxFilesPerTask() int {
-	return webImportMaxInt(1, m.cfgInt("web.import.max_files_per_task", 200))
+	return max(1, m.cfgInt("web.import.max_files_per_task", 200))
 }
 
 // maxFileSizeBytes 对齐 _max_file_size_bytes
 func (m *WebImportManager) maxFileSizeBytes() int64 {
-	mb := webImportMaxInt(1, m.cfgInt("web.import.max_file_size_mb", 20))
+	mb := max(1, m.cfgInt("web.import.max_file_size_mb", 20))
 	return int64(mb) * 1024 * 1024
 }
 
@@ -111,7 +111,7 @@ func (m *WebImportManager) GetRuntimeSettings() map[string]any {
 		"max_chunk_chars":               m.maxImportChunkChars(),
 		"max_file_concurrency":          m.maxFileConcurrency(),
 		"max_chunk_concurrency":         m.maxChunkConcurrency(),
-		"poll_interval_ms":              webImportMaxInt(200, m.cfgInt("web.import.poll_interval_ms", 1000)),
+		"poll_interval_ms":              max(200, m.cfgInt("web.import.poll_interval_ms", 1000)),
 		"maibot_source_db_default":      m.defaultMaibotSourceDB(),
 		"maibot_target_data_dir":        m.resolveDataDir(),
 		"path_aliases":                  m.GetPathAliases(),

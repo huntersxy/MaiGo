@@ -278,7 +278,7 @@ func (s *migrateSourceDB) preview(selection *migrateSelection, limit int) (*migr
 	}
 	rows.Close()
 	sampleQuery := fmt.Sprintf("SELECT %s FROM chat_history %s ORDER BY id ASC LIMIT ?", s.selectClause(false), where)
-	sampleParams := append(append([]any{}, params...), scriptMaxInt(1, limit))
+	sampleParams := append(append([]any{}, params...), max(1, limit))
 	rows, err = s.db.Query(sampleQuery, sampleParams...)
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (s *migrateSourceDB) iterRows(selection *migrateSelection, batchSize int, s
 	for {
 		where, params := s.buildWhere(selection, &cursor)
 		query := fmt.Sprintf("SELECT %s FROM chat_history %s ORDER BY id ASC LIMIT ?", s.selectClause(true), where)
-		bind := append(append([]any{}, params...), scriptMaxInt(1, batchSize))
+		bind := append(append([]any{}, params...), max(1, batchSize))
 		rows, err := s.db.Query(query, bind...)
 		if err != nil {
 			return nil, err
@@ -329,7 +329,7 @@ func (s *migrateSourceDB) iterRows(selection *migrateSelection, batchSize int, s
 func (s *migrateSourceDB) sampleRowsForVerify(selection *migrateSelection, size int) ([]migrateSourceRow, error) {
 	where, params := s.buildWhere(selection, nil)
 	query := fmt.Sprintf("SELECT %s FROM chat_history %s ORDER BY RANDOM() LIMIT ?", s.selectClause(true), where)
-	bind := append(append([]any{}, params...), scriptMaxInt(1, size))
+	bind := append(append([]any{}, params...), max(1, size))
 	rows, err := s.db.Query(query, bind...)
 	if err != nil {
 		return nil, err

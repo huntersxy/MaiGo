@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -145,7 +146,7 @@ func applyEnvOverrides(cfg *Config, defaults Config) {
 		cfg.APIMaxMessageSize = size
 	}
 	for key := range cfg.APIKeyIdentities {
-		if !containsString(cfg.APIKeys, key) {
+		if !slices.Contains(cfg.APIKeys, key) {
 			cfg.APIKeys = append(cfg.APIKeys, key)
 		}
 	}

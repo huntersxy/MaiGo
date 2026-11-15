@@ -185,7 +185,7 @@ func runImportJobBody(job *transferJob, archivePath string, enabled map[string]b
 	}
 	totalBytes := int64(0)
 	for _, entry := range entries {
-		totalBytes += maxInt64(0, int64(entry.Member.UncompressedSize64))
+		totalBytes += max(0, int64(entry.Member.UncompressedSize64))
 	}
 	job.stateMu.Lock()
 	job.TotalFiles = len(entries)
@@ -209,7 +209,7 @@ func runImportJobBody(job *transferJob, archivePath string, enabled map[string]b
 		}
 		job.stateMu.Lock()
 		job.ProcessedFiles++
-		job.ProcessedBytes += maxInt64(0, int64(entry.Member.UncompressedSize64))
+		job.ProcessedBytes += max(0, int64(entry.Member.UncompressedSize64))
 		updateTransferProgressLocked(job)
 		job.stateMu.Unlock()
 	}
@@ -260,13 +260,6 @@ func extractImportMember(member *zip.File, targetPath string, buffer []byte) err
 			return readErr
 		}
 	}
-}
-
-func maxInt64(a int64, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func transferFormBool(r *http.Request, key string, fallback bool) bool {

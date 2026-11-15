@@ -181,7 +181,7 @@ func (m *WebImportManager) InvalidateManifestForSources(sources []any) map[strin
 	result["unmatched_sources"] = unmatched
 	warnings := []string{}
 	if len(malformedKeys) > 0 {
-		preview := strings.Join(malformedKeys[:webImportMinInt(5, len(malformedKeys))], ", ")
+		preview := strings.Join(malformedKeys[:min(5, len(malformedKeys))], ", ")
 		extra := ""
 		if len(malformedKeys) > 5 {
 			extra = fmt.Sprintf(" ... (+%d)", len(malformedKeys)-5)

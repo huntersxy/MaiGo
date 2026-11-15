@@ -17,7 +17,7 @@ type Config struct {
 // SplitterConfig 规则断句相关参数
 type SplitterConfig struct {
 	Enable                  bool
-		Mode                    string // rule | llm；llm 走 pipeline/speak_pipeline
+	Mode                    string // rule | llm；llm 走 pipeline/speak_pipeline
 	MaxLength               int
 	MaxSentenceNum          int
 	MaxSplitNum             int
@@ -70,6 +70,8 @@ type Options struct {
 	Ctx context.Context
 	// LLMSplitter LLM 语义断句器；mode=llm 时必填
 	LLMSplitter LLMSplitterFunc
+	// TypoEngine 错别字注入后端；nil 时按 Python 兼容侧车配置自动选择
+	TypoEngine TypoEngine
 
 	Timing     TimingConfig
 	Expression *ExpressionRequest

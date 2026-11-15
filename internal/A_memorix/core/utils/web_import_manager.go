@@ -386,9 +386,9 @@ func (m *WebImportManager) graphVectorID(kind string, hashValue string) string {
 
 // embeddingWriteBatchSize 对齐 _embedding_write_batch_size
 func (m *WebImportManager) embeddingWriteBatchSize() int {
-	batchSize := webImportMaxInt(1, m.cfgInt("embedding.batch_size", 32))
-	concurrency := webImportMaxInt(1, m.cfgInt("embedding.max_concurrent", 1))
-	return webImportMinInt(512, batchSize*concurrency)
+	batchSize := max(1, m.cfgInt("embedding.batch_size", 32))
+	concurrency := max(1, m.cfgInt("embedding.max_concurrent", 1))
+	return min(512, batchSize*concurrency)
 }
 
 // vectorStoresForPersistence 对齐 _vector_stores_for_persistence
@@ -426,22 +426,6 @@ func (m *WebImportManager) saveRuntimeStoresLocked() {
 	if m.deps.Graph != nil {
 		_ = m.deps.Graph.Save()
 	}
-}
-
-// webImportMaxInt 返回较大值
-func webImportMaxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// webImportMinInt 返回较小值
-func webImportMinInt(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 var _ = context.Background

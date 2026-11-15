@@ -15,6 +15,8 @@ import (
 	"maibot-go/internal/A_memorix/core/storage"
 	"maibot-go/internal/A_memorix/core/strategies"
 	"maibot-go/internal/A_memorix/core/utils"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // RunProcessKnowledge 执行 process_knowledge.py 等价流程，返回进程退出码
@@ -89,7 +91,7 @@ func (a *AutoImporter) processAndImport(ctx context.Context, referenceTime time.
 	}
 
 	concurrency := max(1, a.concurrencyLimit)
-	semaphore := make(chan struct{}, concurrency)
+	sem := semaphore.NewWeighted(int64(concurrency))
 	results := make([]bool, len(files))
 	var waitGroup sync.WaitGroup
 	for index, path := range files {
@@ -97,10 +99,11 @@ func (a *AutoImporter) processAndImport(ctx context.Context, referenceTime time.
 			break
 		}
 		waitGroup.Add(1)
-		semaphore <- struct{}{}
+		// 对齐原 channel 信号量：只限制并发度，不响应 ctx 取消。
+		_ = sem.Acquire(context.Background(), 1)
 		go func(index int, path string) {
 			defer waitGroup.Done()
-			defer func() { <-semaphore }()
+			defer sem.Release(1)
 			results[index] = a.processSingleFile(ctx, path, referenceTime)
 		}(index, path)
 	}

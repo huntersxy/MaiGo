@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // ensureWorker 对齐 _ensure_worker
@@ -266,15 +268,16 @@ func (m *WebImportManager) processTaskFiles(ctx context.Context, taskID string) 
 	fileLimit := webImportCoerceInt(task.Params["file_concurrency"], m.defaultFileConcurrency())
 	chunkLimit := webImportCoerceInt(task.Params["chunk_concurrency"], m.defaultChunkConcurrency())
 	m.mu.Unlock()
-	fileSem := make(chan struct{}, webImportMaxInt(1, fileLimit))
-	chunkSem := make(chan struct{}, webImportMaxInt(1, chunkLimit))
+	fileSem := semaphore.NewWeighted(int64(max(1, fileLimit)))
+	chunkSem := semaphore.NewWeighted(int64(max(1, chunkLimit)))
 	var wg sync.WaitGroup
 	for _, file := range files {
 		wg.Add(1)
 		go func(file *WebImportFileRecord) {
 			defer wg.Done()
-			fileSem <- struct{}{}
-			defer func() { <-fileSem }()
+			// 对齐原 channel 信号量：只限制并发度，不响应 ctx 取消。
+			_ = fileSem.Acquire(context.Background(), 1)
+			defer fileSem.Release(1)
 			if err := m.processFile(ctx, taskID, file, chunkSem); err != nil {
 				m.setFileFailed(taskID, file.FileID, fmt.Sprintf("文件处理失败: %v", err))
 			}
@@ -285,7 +288,7 @@ func (m *WebImportManager) processTaskFiles(ctx context.Context, taskID string) 
 }
 
 // processFile 对齐 _process_file
-func (m *WebImportManager) processFile(ctx context.Context, taskID string, file *WebImportFileRecord, chunkSem chan struct{}) error {
+func (m *WebImportManager) processFile(ctx context.Context, taskID string, file *WebImportFileRecord, chunkSem *semaphore.Weighted) error {
 	m.setFileState(taskID, file.FileID, WebImportFilePreparing, "preparing")
 	if m.isCancelRequested(taskID) {
 		m.setFileCancelled(taskID, file.FileID, "任务已取消")

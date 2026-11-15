@@ -48,7 +48,7 @@ func (r *DualPathRetriever) extractGraphSeedEntities(query string, limit int) []
 		}
 		return lowerText(a.Name) < lowerText(b.Name)
 	})
-	limit = maxInt(0, limit)
+	limit = max(0, limit)
 	if limit < len(ranked) {
 		ranked = ranked[:limit]
 	}
@@ -289,7 +289,7 @@ func (r *DualPathRetriever) searchParagraphsSparse(query string, topK int, tempo
 	if r.sparseIndex == nil || !r.config.Sparse.Enabled {
 		return []RetrievalResult{}, nil
 	}
-	candidateK := maxInt(topK, r.config.Sparse.CandidateK)
+	candidateK := max(topK, r.config.Sparse.CandidateK)
 	candidateK = r.capTemporalScanK(candidateK, temporal)
 	var rows []map[string]any
 	if scope != nil {
@@ -365,7 +365,7 @@ func (r *DualPathRetriever) searchRelationsSparse(query string, topK int, tempor
 	if !r.config.Sparse.EnableRelationSparseFallback {
 		return []RetrievalResult{}, nil
 	}
-	candidateK := maxInt(topK, r.config.Sparse.RelationCandidateK)
+	candidateK := max(topK, r.config.Sparse.RelationCandidateK)
 	candidateK = r.capTemporalScanK(candidateK, temporal)
 	var rows []map[string]any
 	if scope != nil {
@@ -515,7 +515,7 @@ func (r *DualPathRetriever) mergeRelationResultsGraphEnhanced(vectorResults []Re
 			if !hasSupport || rawSupport == nil {
 				cached = supportCounts[item.HashValue]
 			} else {
-				cached = maxInt(0, dualPathIntValue(rawSupport))
+				cached = max(0, dualPathIntValue(rawSupport))
 			}
 			supportCache[item.HashValue] = cached
 		}

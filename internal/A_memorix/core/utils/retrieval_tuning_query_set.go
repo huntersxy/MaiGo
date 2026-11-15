@@ -192,7 +192,7 @@ func SplitRetrievalTuningQueryCases(cases []*RetrievalQueryCase, seed int) ([]*R
 			"holdout":  len(cases),
 		}
 	}
-	ratio := pyRound(float64(len(holdout))/float64(maxIntValue(1, len(cases))), 4)
+	ratio := pyRound(float64(len(holdout))/float64(max(1, len(cases))), 4)
 	return train, holdout, map[string]any{
 		"strategy":      "category_balanced_holdout",
 		"train":         len(train),

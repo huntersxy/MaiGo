@@ -190,9 +190,9 @@ func (s *EpisodeService) GenerationSignature() map[string]any {
 		"materialization_version": EpisodeMaterializationVersion,
 		"segmentation":            segmentation,
 		"grouping": map[string]any{
-			"max_paragraphs_per_call":    maxInt(1, s.cfgInt("episode.max_paragraphs_per_call", 20)),
-			"max_chars_per_call":         maxInt(200, s.cfgInt("episode.max_chars_per_call", 6000)),
-			"source_time_window_seconds": maxFloat(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0),
+			"max_paragraphs_per_call":    max(1, s.cfgInt("episode.max_paragraphs_per_call", 20)),
+			"max_chars_per_call":         max(200, s.cfgInt("episode.max_chars_per_call", 6000)),
+			"source_time_window_seconds": max(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0),
 		},
 		"source_policy": map[string]any{
 			"enabled":                      s.cfgBool("episode.enabled", true),
@@ -201,20 +201,6 @@ func (s *EpisodeService) GenerationSignature() map[string]any {
 			"feedback_hard_filter_enabled": s.FeedbackHardFilterEnabled,
 		},
 	}
-}
-
-func maxInt(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
-}
-
-func maxFloat(left, right float64) float64 {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 // GenerationHash 对齐 generation_hash
@@ -302,9 +288,9 @@ func (s *EpisodeService) GroupInputFingerprint(group map[string]any) (string, er
 		"source":                  pyStrip(pyStrOrEmpty(group["source"])),
 		"segmentation_generation": segmentationGeneration,
 		"grouping": map[string]any{
-			"max_paragraphs_per_call":  maxInt(1, s.cfgInt("episode.max_paragraphs_per_call", 20)),
-			"max_chars_per_call":       maxInt(200, s.cfgInt("episode.max_chars_per_call", 6000)),
-			"source_time_window_hours": maxFloat(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0),
+			"max_paragraphs_per_call":  max(1, s.cfgInt("episode.max_paragraphs_per_call", 20)),
+			"max_chars_per_call":       max(200, s.cfgInt("episode.max_chars_per_call", 6000)),
+			"source_time_window_hours": max(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0),
 		},
 		"paragraphs": payloads,
 	}
@@ -373,9 +359,9 @@ func (s *EpisodeService) GroupParagraphs(paragraphs []map[string]any) []map[stri
 	if len(paragraphs) == 0 {
 		return []map[string]any{}
 	}
-	maxParagraphs := maxInt(1, s.cfgInt("episode.max_paragraphs_per_call", 20))
-	maxChars := maxInt(200, s.cfgInt("episode.max_chars_per_call", 6000))
-	windowSeconds := maxFloat(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0)
+	maxParagraphs := max(1, s.cfgInt("episode.max_paragraphs_per_call", 20))
+	maxChars := max(200, s.cfgInt("episode.max_chars_per_call", 6000))
+	windowSeconds := max(60.0, s.cfgFloat("episode.source_time_window_hours", 24)*3600.0)
 
 	sourceOrder := make([]string, 0)
 	bySource := make(map[string][]map[string]any)

@@ -212,7 +212,7 @@ func (r *DualPathRetriever) estimateGraphReliability(candidates []*RetrievalResu
 		}
 	}
 	sort.SliceStable(ranked, func(left, right int) bool { return ranked[left].Score > ranked[right].Score })
-	limit := maxInt(1, scanLimit)
+	limit := max(1, scanLimit)
 	if len(ranked) > limit {
 		ranked = ranked[:limit]
 	}

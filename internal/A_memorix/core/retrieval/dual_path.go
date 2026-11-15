@@ -110,7 +110,7 @@ func NewDualPathRetriever(opts DualPathRetrieverOptions) (*DualPathRetriever, er
 			config.GraphRecall,
 		)
 	}
-	retriever.pprSemaphore = make(chan struct{}, maxInt(1, config.PPRConcurrencyLimit))
+	retriever.pprSemaphore = make(chan struct{}, max(1, config.PPRConcurrencyLimit))
 
 	zap.L().Debug("DualPathRetriever 初始化",
 		zap.String("strategy", string(config.RetrievalStrategy)),
@@ -281,10 +281,10 @@ func (r *DualPathRetriever) isRelationIntentQuery(query string) bool {
 func (r *DualPathRetriever) buildRelationIntentContext(query string, topK int) relationIntentContext {
 	cfg := r.config.RelationIntent
 	enabled := cfg.Enabled && r.isRelationIntentQuery(query)
-	baseRelationK := maxInt(1, r.config.TopKRelations)
-	relationTopK := maxInt(baseRelationK, topK)
+	baseRelationK := max(1, r.config.TopKRelations)
+	relationTopK := max(baseRelationK, topK)
 	if enabled {
-		relationTopK = maxInt(relationTopK, relationTopK*cfg.RelationCandidateMultiplier)
+		relationTopK = max(relationTopK, relationTopK*cfg.RelationCandidateMultiplier)
 	}
 	context := relationIntentContext{
 		Enabled:                    enabled,
@@ -307,20 +307,20 @@ func (r *DualPathRetriever) buildRelationIntentContext(query string, topK int) r
 
 // capTemporalScanK 对 temporal 模式候选召回数应用 max_scan 上限
 func (r *DualPathRetriever) capTemporalScanK(candidateK int, temporal *TemporalQueryOptions) int {
-	k := maxInt(1, candidateK)
+	k := max(1, candidateK)
 	if temporal != nil && temporal.MaxScan > 0 {
-		k = minInt(k, temporal.MaxScan)
+		k = min(k, temporal.MaxScan)
 	}
-	return maxInt(1, k)
+	return max(1, k)
 }
 
 // expandTemporalCandidateK 在范围过滤前扩大候选池
 func (r *DualPathRetriever) expandTemporalCandidateK(candidateK int, temporal *TemporalQueryOptions) int {
 	multiplier := 1
 	if temporal != nil {
-		multiplier = maxInt(1, temporal.CandidateMultiplier)
+		multiplier = max(1, temporal.CandidateMultiplier)
 	}
-	return r.capTemporalScanK(maxInt(1, candidateK)*multiplier, temporal)
+	return r.capTemporalScanK(max(1, candidateK)*multiplier, temporal)
 }
 
 // isValidEmbedding 对齐 _is_valid_embedding
@@ -502,14 +502,6 @@ func sliceTopK(results []RetrievalResult, topK int) []RetrievalResult {
 		end = 0
 	}
 	return results[:end]
-}
-
-// minInt 包内缺失的整数最小值辅助
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // PosteriorGraphConfig 返回后验图配置，供 ApplyPosteriorGraphGate 读取

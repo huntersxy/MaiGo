@@ -58,3 +58,6 @@ var ErrInvalidDownloadURL = errors.New("pluginmarket: 无效的下载地址")
 
 // ErrPluginNotFound 当前市场快照中找不到插件
 var ErrPluginNotFound = errors.New("pluginmarket: 未找到插件")
+
+// errMarketCacheResult singleflight 返回值类型异常，属内部错误
+var errMarketCacheResult = errors.New("pluginmarket: 市场缓存返回值类型异常")

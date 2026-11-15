@@ -700,19 +700,12 @@ func updateTransferProgressLocked(job *transferJob) {
 		return
 	}
 	if job.TotalBytes > 0 {
-		job.Progress = minInt(99, int(job.ProcessedBytes*100/job.TotalBytes))
+		job.Progress = min(99, int(job.ProcessedBytes*100/job.TotalBytes))
 	} else if job.TotalFiles > 0 {
-		job.Progress = minInt(99, job.ProcessedFiles*100/job.TotalFiles)
+		job.Progress = min(99, job.ProcessedFiles*100/job.TotalFiles)
 	} else {
 		job.Progress = 99
 	}
-}
-
-func minInt(a int, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func writeExportArchive(job *transferJob, archivePath string, manifest map[string]any, files []exportFile) error {

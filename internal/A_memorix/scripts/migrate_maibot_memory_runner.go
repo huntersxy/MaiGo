@@ -211,9 +211,9 @@ func (r *migrateRunner) initStores(ctx context.Context, requireEmbedding bool) e
 	if r.options.embedWorkers != nil {
 		workers = *r.options.embedWorkers
 	}
-	r.embedWorkers = scriptMaxInt(1, workers)
-	batchSize := scriptMaxInt(1, utils.PyIntOrZero(NestedGet(r.pluginConfig, "embedding.batch_size", 32)))
-	defaultDim := scriptMaxInt(1, utils.PyIntOrZero(NestedGet(r.pluginConfig, "embedding.dimension", 1024)))
+	r.embedWorkers = max(1, workers)
+	batchSize := max(1, utils.PyIntOrZero(NestedGet(r.pluginConfig, "embedding.batch_size", 32)))
+	defaultDim := max(1, utils.PyIntOrZero(NestedGet(r.pluginConfig, "embedding.dimension", 1024)))
 	retryConfig, _ := NestedGet(r.pluginConfig, "embedding.retry", map[string]any{}).(map[string]any)
 
 	r.dimension = r.readExistingDimension(defaultDim)

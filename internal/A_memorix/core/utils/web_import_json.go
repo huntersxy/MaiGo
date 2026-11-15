@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // webImportJSONUnit JSON 导入单元
@@ -31,7 +33,7 @@ type webImportJSONUnit struct {
 }
 
 // processJSONFile 对齐 _process_json_file
-func (m *WebImportManager) processJSONFile(ctx context.Context, taskID string, file *WebImportFileRecord, content string, chunkSem chan struct{}) error {
+func (m *WebImportManager) processJSONFile(ctx context.Context, taskID string, file *WebImportFileRecord, content string, chunkSem *semaphore.Weighted) error {
 	m.setFileStrategy(taskID, file.FileID, "json")
 	m.setFileState(taskID, file.FileID, WebImportFileSplitting, "splitting")
 	if err := m.ensureEmbeddingRuntimeReady(ctx); err != nil {
@@ -264,9 +266,10 @@ func (m *WebImportManager) webImportRegisterJSONUnits(taskID string, fileID stri
 }
 
 // processJSONUnit 对齐 _process_json_unit
-func (m *WebImportManager) processJSONUnit(ctx context.Context, taskID string, file *WebImportFileRecord, unit webImportJSONUnit, chunkSem chan struct{}, paragraphMetadata map[string]any) error {
-	chunkSem <- struct{}{}
-	defer func() { <-chunkSem }()
+func (m *WebImportManager) processJSONUnit(ctx context.Context, taskID string, file *WebImportFileRecord, unit webImportJSONUnit, chunkSem *semaphore.Weighted, paragraphMetadata map[string]any) error {
+	// 对齐原 channel 信号量：只限制并发度，不响应 ctx 取消。
+	_ = chunkSem.Acquire(context.Background(), 1)
+	defer chunkSem.Release(1)
 	if m.isCancelRequested(taskID) {
 		m.setChunkCancelled(taskID, file.FileID, unit.ChunkID, "任务已取消")
 		return nil

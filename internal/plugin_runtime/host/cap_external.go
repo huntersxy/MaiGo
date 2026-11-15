@@ -171,7 +171,7 @@ func makeRenderHandler(port PluginRenderPort) CapabilityHandler {
 			OmitBackground:    renderBool(args, "omit_background", false),
 			WaitUntil:         firstNonEmptyText(coalesceString(args, "wait_until"), "load"),
 			WaitForSelector:   coalesceString(args, "wait_for_selector"),
-			WaitForTimeoutMS:  maxIntValue(int(coalesceFloat(args, "wait_for_timeout_ms", 0)), 0),
+			WaitForTimeoutMS:  max(int(coalesceFloat(args, "wait_for_timeout_ms", 0)), 0),
 			TimeoutMS:         renderTimeoutMS(args),
 			AllowNetwork:      renderBool(args, "allow_network", false),
 		}
@@ -188,10 +188,10 @@ func renderViewport(args map[string]any) (int, int) {
 	width, height := 900, 500
 	if viewport, ok := args["viewport"].(map[string]any); ok {
 		if value, ok := renderNumericArg(viewport, "width"); ok {
-			width = maxIntValue(int(value), 1)
+			width = max(int(value), 1)
 		}
 		if value, ok := renderNumericArg(viewport, "height"); ok {
-			height = maxIntValue(int(value), 1)
+			height = max(int(value), 1)
 		}
 	}
 	return width, height
@@ -252,19 +252,12 @@ func renderNumericArg(args map[string]any, key string) (float64, bool) {
 
 func renderTimeoutMS(args map[string]any) int {
 	if raw, ok := args["render_timeout_ms"]; ok && raw != nil {
-		return maxIntValue(int(coalesceFloat(args, "render_timeout_ms", 0)), 0)
+		return max(int(coalesceFloat(args, "render_timeout_ms", 0)), 0)
 	}
 	if raw, ok := args["timeout_ms"]; ok && raw != nil {
-		return maxIntValue(int(coalesceFloat(args, "timeout_ms", 0)), 0)
+		return max(int(coalesceFloat(args, "timeout_ms", 0)), 0)
 	}
 	return 0
-}
-
-func maxIntValue(value, minimum int) int {
-	if value < minimum {
-		return minimum
-	}
-	return value
 }
 
 func makeMaisakaHandler(host *Host, port PluginMaisakaPort) CapabilityHandler {

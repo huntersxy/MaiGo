@@ -363,12 +363,12 @@ func (s *FeedbackService) ProcessFeedbackProfileRefreshBatch(ctx context.Context
 	if store == nil || s.deps.ProfileAdmin == nil {
 		return empty, nil
 	}
-	limit := maxInt(1, feedbackInt(payload["limit"], 1))
+	limit := max(1, feedbackInt(payload["limit"], 1))
 	maxRetry := 0
 	if payload["max_retry"] != nil {
-		maxRetry = maxInt(0, feedbackInt(payload["max_retry"], 0))
+		maxRetry = max(0, feedbackInt(payload["max_retry"], 0))
 	} else if s.deps.ProfileAdmin.deps.ProfileRefreshMaxRetry != nil {
-		maxRetry = maxInt(0, s.deps.ProfileAdmin.deps.ProfileRefreshMaxRetry())
+		maxRetry = max(0, s.deps.ProfileAdmin.deps.ProfileRefreshMaxRetry())
 	} else {
 		maxRetry = 3
 	}
@@ -390,7 +390,7 @@ func (s *FeedbackService) ProcessFeedbackProfileRefreshBatch(ctx context.Context
 		if err != nil || !claimed {
 			continue
 		}
-		limitValue := maxInt(4, intOr(s.Cfg("person_profile.top_k_evidence", 12), 12, 1))
+		limitValue := max(4, intOr(s.Cfg("person_profile.top_k_evidence", 12), 12, 1))
 		profile, refreshErr := s.deps.ProfileAdmin.RefreshPersonProfile(ctx, map[string]any{
 			"person_id": personID, "limit": limitValue, "mark_active": false,
 		})
@@ -1185,7 +1185,7 @@ func (s *FeedbackService) MemoryFeedbackAdmin(ctx context.Context, action string
 		return map[string]any{"success": false, "error": "metadata store unavailable"}, nil
 	}
 	if act == "list" {
-		limit := maxInt(1, feedbackInt(firstAny(payload["limit"], 50), 50))
+		limit := max(1, feedbackInt(firstAny(payload["limit"], 50), 50))
 		items, err := store.ListFeedbackTasks(storage.FeedbackTaskListOptions{
 			Limit:            limit,
 			Statuses:         tokens(firstAny(payload["status"], payload["statuses"])),

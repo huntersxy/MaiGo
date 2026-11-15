@@ -63,9 +63,9 @@ func DefaultPosteriorGraphConfig() PosteriorGraphConfig {
 // Normalize 对齐 __post_init__：计数项保底、比例项非负、阈值裁剪到 [0, 1]
 func (c *PosteriorGraphConfig) Normalize() {
 	c.DropRatio = posteriorMaxZero(c.DropRatio)
-	c.MinCoreResults = maxInt(c.MinCoreResults, 1)
-	c.MaxGraphSlots = maxInt(c.MaxGraphSlots, 0)
-	c.GateScanTopK = maxInt(c.GateScanTopK, 1)
+	c.MinCoreResults = max(c.MinCoreResults, 1)
+	c.MaxGraphSlots = max(c.MaxGraphSlots, 0)
+	c.GateScanTopK = max(c.GateScanTopK, 1)
 	c.GroundedConfidenceThreshold = posteriorClipScore(c.GroundedConfidenceThreshold)
 	c.IncidentalConfidenceThreshold = posteriorClipScore(c.IncidentalConfidenceThreshold)
 	c.MinQueryTokenCoverage = posteriorClipScore(c.MinQueryTokenCoverage)
@@ -77,7 +77,7 @@ func (c *PosteriorGraphConfig) Normalize() {
 	c.ComplementarityWeight = posteriorMaxZero(c.ComplementarityWeight)
 	c.SpecificityWeight = posteriorMaxZero(c.SpecificityWeight)
 	c.GapFillWeight = posteriorMaxZero(c.GapFillWeight)
-	c.MaxCandidateTokens = maxInt(c.MaxCandidateTokens, 8)
+	c.MaxCandidateTokens = max(c.MaxCandidateTokens, 8)
 }
 
 // posteriorCompetitionProfile 竞争打分所需的文本档次信息
@@ -431,9 +431,9 @@ func posteriorComplementarity(candidate, core posteriorCompetitionProfile, query
 
 // posteriorSpecificity 对齐 _compute_specificity
 func posteriorSpecificity(candidate posteriorCompetitionProfile, result RetrievalResult) float64 {
-	tokenCount := maxInt(1, len(candidate.tokens))
+	tokenCount := max(1, len(candidate.tokens))
 	entityDensity := posteriorClipScore(posteriorSafeRatio(len(candidate.entities), tokenCount) * 4.0)
-	brevity := 1.0 - math.Min(1.0, float64(maxInt(0, tokenCount-16))/16.0)
+	brevity := 1.0 - math.Min(1.0, float64(max(0, tokenCount-16))/16.0)
 	predicateBonus := 0.0
 	predicate := strings.ToLower(strings.TrimSpace(posteriorMetadataText(result.Metadata["predicate"])))
 	if predicate != "" {

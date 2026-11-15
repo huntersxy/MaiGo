@@ -16,6 +16,8 @@ import (
 	"maibot-go/internal/A_memorix/core/storage"
 	"maibot-go/internal/A_memorix/core/utils"
 	"maibot-go/internal/A_memorix/core/write"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // RunBackfillRelationVectors 执行 backfill_relation_vectors.py 等价流程，返回进程退出码
@@ -88,8 +90,8 @@ func RunBackfillRelationVectors(ctx context.Context, argv []string) int {
 	if args.Has("max-retry") {
 		maxRetry = args.Int("max-retry")
 	}
-	maxRetry = scriptMaxInt(1, maxRetry)
-	limit := scriptMaxInt(1, args.Int("limit"))
+	maxRetry = max(1, maxRetry)
+	limit := max(1, args.Int("limit"))
 
 	rows, err := metadataStore.ListRelationsByVectorState(states, limit, &maxRetry)
 	if err != nil {
@@ -173,8 +175,8 @@ type relationBackfillStat struct {
 // processRelationBackfillRows 对齐 _process_rows
 func processRelationBackfillRows(ctx context.Context, service *write.RelationWriteService, rows []map[string]any, concurrency int) relationBackfillStat {
 	stat := relationBackfillStat{}
-	limit := scriptMaxInt(1, concurrency)
-	semaphore := make(chan struct{}, limit)
+	limit := max(1, concurrency)
+	sem := semaphore.NewWeighted(int64(limit))
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	for _, row := range rows {
@@ -182,8 +184,9 @@ func processRelationBackfillRows(ctx context.Context, service *write.RelationWri
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
+			// 对齐原 channel 信号量：只限制并发度，不响应 ctx 取消。
+			_ = sem.Acquire(context.Background(), 1)
+			defer sem.Release(1)
 			result, err := service.EnsureRelationVector(
 				ctx,
 				strings.TrimSpace(utils.PyStr(row["hash"])),
@@ -225,7 +228,7 @@ func buildBackfillVectorStore(dataDir string, embConfig map[string]any) (*storag
 	}
 	dimension := utils.PyIntOrZero(NestedGet(embConfig, "dimension", 1024))
 	store, err := storage.NewVectorStore(storage.VectorStoreConfig{
-		Dimension:        scriptMaxInt(1, dimension),
+		Dimension:        max(1, dimension),
 		QuantizationType: utils.QuantizationInt8,
 		DataDir:          filepath.Join(dataDir, "vectors"),
 	})
@@ -324,12 +327,4 @@ func pyStringListRepr(values []string) string {
 		parts = append(parts, singleQuoteKey(value))
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
-}
-
-// scriptMaxInt 返回较大值
-func scriptMaxInt(left int, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }

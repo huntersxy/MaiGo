@@ -550,14 +550,14 @@ func (s *FeedbackService) SoftDeleteFeedbackCorrectionParagraphs(ctx context.Con
 // ExtractFeedbackMessages 对齐 _extract_feedback_messages
 func (s *FeedbackService) ExtractFeedbackMessages(ctx context.Context, payload map[string]any) (any, error) {
 	sessionID := strings.TrimSpace(asString(payload["session_id"]))
-	maxMessages := maxInt(1, feedbackInt(payload["max_messages"], 1))
+	maxMessages := max(1, feedbackInt(payload["max_messages"], 1))
 	queryTime := s.feedbackTimestamp(payload["query_time"])
 	dueTime := s.feedbackTimestamp(payload["due_time"])
 	collected := make([]string, 0)
 	if s.deps.Messages == nil || sessionID == "" {
 		return collected, nil
 	}
-	rows, err := s.deps.Messages(ctx, sessionID, float64(queryTime.UnixNano())/1e9, float64(dueTime.UnixNano())/1e9, maxInt(1, maxMessages*4), "latest")
+	rows, err := s.deps.Messages(ctx, sessionID, float64(queryTime.UnixNano())/1e9, float64(dueTime.UnixNano())/1e9, max(1, maxMessages*4), "latest")
 	if err != nil {
 		return nil, err
 	}
@@ -582,7 +582,7 @@ func (s *FeedbackService) ExtractFeedbackMessages(ctx context.Context, payload m
 // BuildFeedbackHitBriefs 对齐 _build_feedback_hit_briefs
 func (s *FeedbackService) BuildFeedbackHitBriefs(ctx context.Context, payload map[string]any) (any, error) {
 	hits := feedbackMapList(payload["hits"])
-	limit := maxInt(1, feedbackInt(payload["limit"], 12))
+	limit := max(1, feedbackInt(payload["limit"], 12))
 	store := s.store()
 	briefs := make([]map[string]any, 0, limit)
 	for index, raw := range hits {
@@ -625,8 +625,8 @@ func (s *FeedbackService) BuildFeedbackHitBriefs(ctx context.Context, payload ma
 			"subject":                subject,
 			"predicate":              predicate,
 			"object":                 object,
-			"linked_relation_hashes": linkedHashes[:minInt(6, len(linkedHashes))],
-			"linked_relation_texts":  linkedTexts[:minInt(3, len(linkedTexts))],
+			"linked_relation_hashes": linkedHashes[:min(6, len(linkedHashes))],
+			"linked_relation_texts":  linkedTexts[:min(3, len(linkedTexts))],
 		})
 	}
 	return briefs, nil

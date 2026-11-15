@@ -411,7 +411,7 @@ func (s *BackgroundTaskService) EpisodeMaterializationLoop(ctx context.Context) 
 			continue
 		}
 		if _, err := s.deps.ProcessEpisodeSourceRebuildBatch(ctx, map[string]any{
-			"limit":            maxInt(1, pyIntOr(s.cfg("episode.source_batch_size", 20), 20, 1)),
+			"limit":            max(1, pyIntOr(s.cfg("episode.source_batch_size", 20), 20, 1)),
 			"max_retry":        intOr(s.cfg("episode.source_max_retry", 3), 3, math.MinInt),
 			"lease_seconds":    mathMax(1.0, pyFloatOr(s.cfg("episode.source_lease_seconds", 1800.0), 1800.0)),
 			"max_wait_seconds": mathMax(0.0, pyFloatOr(s.cfg("episode.source_max_wait_seconds", 60.0), 0.0)),
@@ -538,7 +538,7 @@ func (s *BackgroundTaskService) PersonProfileRefreshLoop(ctx context.Context) er
 			continue
 		}
 		activeWindowHours := mathMax(1.0, pyFloatOr(s.cfg("person_profile.active_window_hours", 72.0), 72.0))
-		maxRefresh := maxInt(1, pyIntOr(s.cfg("person_profile.max_refresh_per_cycle", 50), 50, 1))
+		maxRefresh := max(1, pyIntOr(s.cfg("person_profile.max_refresh_per_cycle", 50), 50, 1))
 		cutoff := float64(time.Now().UnixNano())/1e9 - activeWindowHours*3600.0
 		candidates := make([]string, 0)
 		if s.deps.ActivePersonTimestamps != nil {
@@ -571,7 +571,7 @@ func (s *BackgroundTaskService) PersonProfileRefreshLoop(ctx context.Context) er
 				continue
 			}
 			if s.deps.RefreshPersonProfile != nil {
-				if _, err := s.deps.RefreshPersonProfile(ctx, personID, maxInt(4, pyIntOr(s.cfg("person_profile.top_k_evidence", 12), 12, 1))); err != nil {
+				if _, err := s.deps.RefreshPersonProfile(ctx, personID, max(4, pyIntOr(s.cfg("person_profile.top_k_evidence", 12), 12, 1))); err != nil {
 					s.LoggerWarn("刷新人物画像失败: %v", err)
 				}
 			}

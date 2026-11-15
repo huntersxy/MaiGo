@@ -16,6 +16,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
+	"golang.org/x/sync/semaphore"
 )
 
 // EmbeddingResult 单条向量结果，供 memorix / learners 使用
@@ -387,7 +388,7 @@ func EmbedTextsConcurrently(
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sem := make(chan struct{}, maxConcurrent)
+	sem := semaphore.NewWeighted(int64(maxConcurrent))
 	results := make([]EmbeddingResult, len(texts))
 	var wait sync.WaitGroup
 	var errMu sync.Mutex
@@ -407,13 +408,11 @@ func EmbedTextsConcurrently(
 		wait.Add(1)
 		go func(index int, text string) {
 			defer wait.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-runCtx.Done():
-				recordErr(runCtx.Err())
+			if err := sem.Acquire(runCtx, 1); err != nil {
+				recordErr(err)
 				return
 			}
-			defer func() { <-sem }()
+			defer sem.Release(1)
 			row, err := embed(runCtx, text)
 			if err != nil {
 				recordErr(err)

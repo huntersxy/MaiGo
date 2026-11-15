@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -118,7 +119,7 @@ func (h *Host) executePluginToolDirect(ctx context.Context, toolName string, arg
 	}
 	if len(entry.Platforms) > 0 {
 		platform := strings.ToLower(strings.TrimSpace(execCtx.Platform))
-		if platform == "" || !containsString(entry.Platforms, platform) {
+		if platform == "" || !slices.Contains(entry.Platforms, platform) {
 			return pluginToolFailure(entry.Name, "当前平台不在插件工具的 platforms 作用域内。")
 		}
 	}

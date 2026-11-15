@@ -273,7 +273,7 @@ func initializeClusterCenterIndices(vectors [][]float32, clusterCount int) []int
 	indices = append(indices, first)
 	closestDistances := make([]float32, len(vectors))
 	for index, vector := range vectors {
-		closestDistances[index] = maxFloat32(1-dotProduct(vector, vectors[first]), 0)
+		closestDistances[index] = max(1-dotProduct(vector, vectors[first]), 0)
 	}
 	closestDistances[first] = 0
 	selected := make([]bool, len(vectors))
@@ -299,7 +299,7 @@ func initializeClusterCenterIndices(vectors [][]float32, clusterCount int) []int
 		indices = append(indices, nextIndex)
 		selected[nextIndex] = true
 		for index, vector := range vectors {
-			distance := maxFloat32(1-dotProduct(vector, vectors[nextIndex]), 0)
+			distance := max(1-dotProduct(vector, vectors[nextIndex]), 0)
 			if distance < closestDistances[index] {
 				closestDistances[index] = distance
 			}
@@ -342,13 +342,6 @@ func expressionVectorChoice(rng *expressionVectorPCG64, probabilities []float32)
 		}
 	}
 	return len(cdf) - 1
-}
-
-func maxFloat32(left, right float32) float32 {
-	if left > right {
-		return left
-	}
-	return right
 }
 
 func assignClusterLabels(vectors, centers [][]float32) []int {

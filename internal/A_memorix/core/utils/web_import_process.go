@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"maibot-go/internal/A_memorix/core/strategies"
+
+	"golang.org/x/sync/semaphore"
 )
 
 // webImportMD5 对齐 hashlib.md5(content.encode("utf-8", errors="ignore")).hexdigest()
@@ -264,7 +266,7 @@ func (m *WebImportManager) webImportDetermineStrategy(filename string, content s
 }
 
 // processTextFile 对齐 _process_text_file
-func (m *WebImportManager) processTextFile(ctx context.Context, taskID string, file *WebImportFileRecord, content string, chunkSem chan struct{}) error {
+func (m *WebImportManager) processTextFile(ctx context.Context, taskID string, file *WebImportFileRecord, content string, chunkSem *semaphore.Weighted) error {
 	params := m.webImportTaskParams(taskID)
 	m.webImportSetSchemaDetectedIfEmpty(taskID, "plain_text")
 	strategy, err := m.webImportDetermineStrategy(file.Name, content, importValueText(params["strategy_override"]), webImportCoerceBool(params["chat_log"], false), params)
@@ -359,9 +361,10 @@ func webImportChatMetadataOrNil(params map[string]any) map[string]any {
 }
 
 // processTextChunk 对齐 _process_text_chunk
-func (m *WebImportManager) processTextChunk(ctx context.Context, taskID string, file *WebImportFileRecord, chunk strategies.ProcessedChunk, strategy strategies.BaseStrategy, llmEnabled bool, resolved *ResolvedLLMModel, chunkSem chan struct{}, chatLog bool, chatReferenceTime string, paragraphMetadata map[string]any) error {
-	chunkSem <- struct{}{}
-	defer func() { <-chunkSem }()
+func (m *WebImportManager) processTextChunk(ctx context.Context, taskID string, file *WebImportFileRecord, chunk strategies.ProcessedChunk, strategy strategies.BaseStrategy, llmEnabled bool, resolved *ResolvedLLMModel, chunkSem *semaphore.Weighted, chatLog bool, chatReferenceTime string, paragraphMetadata map[string]any) error {
+	// 对齐原 channel 信号量：只限制并发度，不响应 ctx 取消。
+	_ = chunkSem.Acquire(context.Background(), 1)
+	defer chunkSem.Release(1)
 	chunkID := chunk.Chunk.ChunkID
 	if m.isCancelRequested(taskID) {
 		m.setChunkCancelled(taskID, file.FileID, chunkID, "任务已取消")

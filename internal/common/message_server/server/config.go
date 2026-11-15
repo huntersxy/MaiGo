@@ -179,15 +179,6 @@ func stringFromAny(value any) string {
 	return ""
 }
 
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 // Addr 返回 host:port
 // splitHostPort 拆分监听地址为 host 与端口，解析失败时返回空 host 与 0
 func splitHostPort(addr string) (string, int) {

@@ -127,13 +127,6 @@ func calculateJargonMatchScore(candidateCount, firstMessageIndex, hfRank, hfCoun
 	return float64(candidateCount) + hfScore - float64(firstMessageIndex)*0.01
 }
 
-func max(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // NormalizeMatchText 对齐 _normalize_match_text
 func NormalizeMatchText(text string) string {
 	return strings.TrimSpace(strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(text)), " ")))

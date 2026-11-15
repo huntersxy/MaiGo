@@ -305,7 +305,7 @@ func (s *DualVectorStateService) RefreshDualVectorReadyManifestFromStores(ctx co
 			if s.deps.CountVectorRebuildTargets != nil {
 				targetCounts = s.deps.CountVectorRebuildTargets(ctx)
 			}
-			entityCount = minInt(graphCount, targetCounts["entities"])
+			entityCount = min(graphCount, targetCounts["entities"])
 			if entityCount < 0 {
 				entityCount = 0
 			}
@@ -871,13 +871,6 @@ func (s *DualVectorStateService) vectorStoreRaw() *storage.VectorStore {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func statusOrMissing(status string) string {

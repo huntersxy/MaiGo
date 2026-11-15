@@ -209,10 +209,10 @@ func (s *PersonProfileService) CollectVectorEvidence(ctx context.Context, aliase
 		return s.collectFallbackVectorEvidence(aliasQueries, topK, personID)
 	}
 
-	perAliasTopK := maxIntValue(2, topK/maxIntValue(1, len(aliasQueries)))
+	perAliasTopK := max(2, topK/max(1, len(aliasQueries)))
 	seenHash := map[string]struct{}{}
 	evidence := make([]map[string]any, 0, topK)
-	factLimit := maxIntValue(2, minIntValue(4, topK))
+	factLimit := max(2, min(4, topK))
 	factEvidence, err := s.collectPersonFactEvidence(personID, factLimit)
 	if err != nil {
 		return nil, err
@@ -277,7 +277,7 @@ func (s *PersonProfileService) collectFallbackVectorEvidence(aliasQueries []stri
 		if err != nil {
 			return nil, err
 		}
-		limit := maxIntValue(2, topK/2)
+		limit := max(2, topK/2)
 		if len(rows) > limit {
 			rows = rows[:limit]
 		}

@@ -133,7 +133,7 @@ func (r *ImageMemoryRuntime) Search(ctx context.Context, request SearchRequest) 
 			timings["embedding"] = round2(float64(time.Since(stageStarted).Nanoseconds()) / 1e6)
 			stageStarted = time.Now()
 			allowedIDs := append([]string{}, assetOrder...)
-			ids, scores, searchErr := store.Search(queryVector, maxInt(1, request.CandidateLimit), true, allowedIDs)
+			ids, scores, searchErr := store.Search(queryVector, max(1, request.CandidateLimit), true, allowedIDs)
 			if searchErr != nil {
 				return nil, searchErr
 			}
@@ -175,7 +175,7 @@ func (r *ImageMemoryRuntime) Search(ctx context.Context, request SearchRequest) 
 	sort.SliceStable(ordered, func(left int, right int) bool {
 		return ordered[left]["similarity"].(float64) > ordered[right]["similarity"].(float64)
 	})
-	limit := maxInt(1, request.CandidateLimit)
+	limit := max(1, request.CandidateLimit)
 	if len(ordered) < limit {
 		limit = len(ordered)
 	}

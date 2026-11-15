@@ -56,7 +56,7 @@ func (s *PersonProfileService) CollectRelationEvidence(aliases []string, limit i
 	sort.SliceStable(relations, func(left int, right int) bool {
 		return personProfileConfidenceSortKey(relations[left]) > personProfileConfidenceSortKey(relations[right])
 	})
-	limit = maxIntValue(1, limit)
+	limit = max(1, limit)
 	if len(relations) > limit {
 		relations = relations[:limit]
 	}
@@ -286,7 +286,7 @@ func (s *PersonProfileService) collectPersonFactClaims(personID string, limit in
 		return []map[string]any{}, nil
 	}
 	effectiveAt := s.nowFunc()
-	claims, err := s.store.ListPersonProfileFactClaims(personID, &effectiveAt, maxIntValue(1, limit))
+	claims, err := s.store.ListPersonProfileFactClaims(personID, &effectiveAt, max(1, limit))
 	if err != nil {
 		return nil, err
 	}

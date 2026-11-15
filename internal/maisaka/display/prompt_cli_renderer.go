@@ -80,7 +80,7 @@ func NormalizePreviewMetadata(metadata map[string]any) map[string]any {
 	}
 	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "prompt_cache_hit_tokens", "prompt_cache_miss_tokens"} {
 		if count, ok := toInt(rawValue(metadata, key)); ok {
-			normalized[key] = maxInt(count, 0)
+			normalized[key] = max(count, 0)
 		}
 	}
 	if _, ok := normalized["total_tokens"]; !ok {
@@ -214,7 +214,7 @@ func normalizeTokenMap(values map[string]any) map[string]int {
 	positive := false
 	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
 		if count, ok := toInt(rawValue(values, key)); ok {
-			result[key] = maxInt(count, 0)
+			result[key] = max(count, 0)
 			if count > 0 {
 				positive = true
 			}
@@ -283,13 +283,6 @@ func roundTo(value float64, places int) float64 {
 		scale *= 10
 	}
 	return float64(int(value*scale+0.5)) / scale
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func percentEncode(value string) string {

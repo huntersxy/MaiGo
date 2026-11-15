@@ -356,22 +356,15 @@ func normalizeCacheTokens(promptTokens int64, cacheEnabled bool, hitTokens, miss
 	if !cacheEnabled {
 		return 0, 0
 	}
-	hit := maxInt64(hitTokens, 0)
-	miss := maxInt64(missTokens, 0)
+	hit := max(hitTokens, 0)
+	miss := max(missTokens, 0)
 	if miss == 0 && hit > 0 {
-		miss = maxInt64(promptTokens-hit, 0)
+		miss = max(promptTokens-hit, 0)
 	}
 	if hit+miss == 0 && promptTokens > 0 {
 		miss = promptTokens
 	}
 	return hit, miss
-}
-
-func maxInt64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // formatPythonNaiveTime 输出 Python datetime.isoformat() 的 naive 本地时间

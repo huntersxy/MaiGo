@@ -61,8 +61,8 @@ func (r *Registry) RunEmojiCacheCleanup(ctx context.Context) (EmojiCacheCleanupR
 	}
 	settings := r.Settings().CacheCleanup
 	now := time.Now()
-	fileCutoff := now.Add(-time.Duration(maxInt(1, settings.EmojiFileRetentionDays)) * 24 * time.Hour)
-	recordCutoff := now.Add(-time.Duration(maxInt(1, settings.NoFileRecordRetentionDays)) * 24 * time.Hour)
+	fileCutoff := now.Add(-time.Duration(max(1, settings.EmojiFileRetentionDays)) * 24 * time.Hour)
+	recordCutoff := now.Add(-time.Duration(max(1, settings.NoFileRecordRetentionDays)) * 24 * time.Hour)
 
 	rows, err := mem.ListEmojiRecords(ctx)
 	if err != nil {
@@ -367,11 +367,4 @@ func mergeEmojiCleanupResult(target *EmojiCacheCleanupResult, source EmojiCacheC
 	target.RemovedRecords += source.RemovedRecords
 	target.RestoredFileFlags += source.RestoredFileFlags
 	target.SkippedRegisteredFiles += source.SkippedRegisteredFiles
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

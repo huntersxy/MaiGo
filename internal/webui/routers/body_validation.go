@@ -174,7 +174,7 @@ func jsonErrorPosition(raw []byte, err error) (int, string) {
 		pos := offset - 1
 		message := syntax.Error()
 		if strings.Contains(message, "looking for beginning of object key string") && offset-1 <= len(raw) && offset-1 >= 1 && raw[offset-1] == '}' {
-			return maxInt(offset-2, 0), "Illegal trailing comma before end of object"
+			return max(offset-2, 0), "Illegal trailing comma before end of object"
 		}
 		if strings.Contains(message, "looking for beginning of object key string") {
 			return pos, "Expecting property name enclosed in double quotes"
@@ -209,13 +209,6 @@ func jsonErrorPosition(raw []byte, err error) (int, string) {
 		return len(raw), "Expecting value"
 	}
 	return len(raw), err.Error()
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // requestBodyFieldOrder 返回 Pydantic 模型声明顺序；缺失时按字段名排序保证确定性

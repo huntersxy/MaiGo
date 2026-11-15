@@ -6,7 +6,11 @@
 //   - get_DAG / calc / __cut_DAG 逐行对应
 //
 // 词典数据与 CharFrequency 由 replyer/data 以 go:embed 提供；HMM 未登录词切分复用
-// github.com/wangbin/jiebago/finalseg（与 jieba finalseg 同源移植）
+// github.com/wangbin/jiebago/finalseg 的 __cut（与 jieba finalseg 同源），
+// 但**不复用**它的分块正则：jiebago 的 reSkip 是 (\d+\.\d+|[a-zA-Z0-9]+)，
+// Python 是 ([a-zA-Z0-9]+(?:\.\d+)?%?)，且 Python 对非汉字段原样输出不再逐字拆。
+// 直接用 jiebago 的 Cut 会把 "50%" 拆成 "50"/"%"、把 "%-." 拆成 "%"/"-"/"."
+// 与 Python 不一致，因此见 finalsegCut。
 package jiebacut
 
 import (
@@ -295,15 +299,46 @@ func (d *Dictionary) flushBuffer(buf []rune) []string {
 	}
 	word := string(buf)
 	if freq, ok := d.freq[word]; !ok || freq == 0 {
-		var out []string
-		for t := range finalseg.Cut(word) {
-			out = append(out, t)
-		}
-		return out
+		return finalsegCut(word)
 	}
 	out := make([]string, len(buf))
 	for i, r := range buf {
 		out[i] = string(r)
+	}
+	return out
+}
+
+// Python jieba finalseg 的分块正则，与 jiebago/finalseg 的实现不同：
+//
+//	Python : re_han = ([一-鿕]+)   re_skip = ([a-zA-Z0-9]+(?:\.\d+)?%?)
+//	jiebago: reHan  = \p{Han}+             reSkip  = (\d+\.\d+|[a-zA-Z0-9]+)
+//
+// 直接用 jiebago 的 Cut 会把 "50%" 拆成 "50" + "%"、"v1.2" 拆成 "v1" + "." + "2"，
+// 与 Python 原版不一致。这里按 Python 的正则自行分块，只把纯汉字段交给
+// jiebago 的 HMM（其 __cut 与 jieba finalseg 同源），非汉字段自己处理。
+var (
+	finalsegHan  = regexp.MustCompile(`([\x{4E00}-\x{9FD5}]+)`)
+	finalsegSkip = regexp.MustCompile(`([a-zA-Z0-9]+(?:\.[0-9]+)?%?)`)
+)
+
+// finalsegCut 等价 Python jieba.finalseg.cut(sentence)
+//
+// Python 对非汉字段只做 re_skip 切分、原样输出每一段（不再逐字拆开），
+// 所以 "%-." 这种片段会整体保留。
+func finalsegCut(sentence string) []string {
+	var out []string
+	for _, block := range splitKeepingSeparators(finalsegHan, sentence) {
+		if finalsegHan.MatchString(block) {
+			for word := range finalseg.Cut(block) {
+				out = append(out, word)
+			}
+			continue
+		}
+		for _, piece := range splitKeepingSeparators(finalsegSkip, block) {
+			if piece != "" {
+				out = append(out, piece)
+			}
+		}
 	}
 	return out
 }

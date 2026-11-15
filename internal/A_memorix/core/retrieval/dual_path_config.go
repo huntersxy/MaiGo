@@ -104,9 +104,9 @@ func (c *DualPathRetrieverConfig) Normalize() error {
 	if c.PPRTimeoutSeconds <= 0 {
 		return fmt.Errorf("ppr_timeout_seconds必须大于0: %v", c.PPRTimeoutSeconds)
 	}
-	c.PPRLocalMaxNodes = maxInt(16, c.PPRLocalMaxNodes)
-	c.PPRLocalHops = maxInt(1, c.PPRLocalHops)
-	c.PPRLocalMinGraphNodes = maxInt(0, c.PPRLocalMinGraphNodes)
+	c.PPRLocalMaxNodes = max(16, c.PPRLocalMaxNodes)
+	c.PPRLocalHops = max(1, c.PPRLocalHops)
+	c.PPRLocalMinGraphNodes = max(0, c.PPRLocalMinGraphNodes)
 
 	c.Sparse.Normalize()
 	if err := c.Sparse.Validate(); err != nil {
@@ -169,9 +169,9 @@ func DefaultRelationIntentConfig() RelationIntentConfig {
 // Normalize 对齐 __post_init__ 的钳制与布尔化
 func (c *RelationIntentConfig) Normalize() {
 	c.AlphaOverride = math.Min(1.0, math.Max(0.0, c.AlphaOverride))
-	c.RelationCandidateMultiplier = maxInt(1, c.RelationCandidateMultiplier)
-	c.PreserveTopRelations = maxInt(0, c.PreserveTopRelations)
-	c.PairPredicateLimit = maxInt(1, c.PairPredicateLimit)
+	c.RelationCandidateMultiplier = max(1, c.RelationCandidateMultiplier)
+	c.PreserveTopRelations = max(0, c.PreserveTopRelations)
+	c.PairPredicateLimit = max(1, c.PairPredicateLimit)
 }
 
 // VectorPoolsConfig 双向量池检索配置
@@ -230,11 +230,11 @@ func (c *VectorPoolsConfig) Normalize() error {
 	if c.Mode != "single" && c.Mode != "dual" {
 		c.Mode = "single"
 	}
-	c.ParagraphTopK = maxInt(1, c.ParagraphTopK)
-	c.GraphTopK = maxInt(1, c.GraphTopK)
-	c.GraphExpandParagraphK = maxInt(1, c.GraphExpandParagraphK)
-	c.RelationExpandPerHit = maxInt(1, c.RelationExpandPerHit)
-	c.EntityExpandPerHit = maxInt(1, c.EntityExpandPerHit)
+	c.ParagraphTopK = max(1, c.ParagraphTopK)
+	c.GraphTopK = max(1, c.GraphTopK)
+	c.GraphExpandParagraphK = max(1, c.GraphExpandParagraphK)
+	c.RelationExpandPerHit = max(1, c.RelationExpandPerHit)
+	c.EntityExpandPerHit = max(1, c.EntityExpandPerHit)
 	c.RelationEvidenceWeight = math.Max(0.0, c.RelationEvidenceWeight)
 	c.EntityEvidenceWeight = math.Max(0.0, c.EntityEvidenceWeight)
 	c.SemanticWeight = math.Max(0.0, c.SemanticWeight)
@@ -246,7 +246,7 @@ func (c *VectorPoolsConfig) Normalize() error {
 		return err
 	}
 	c.ScoreCalibrationMethod = method
-	c.ScoreCalibrationRRFK = maxInt(1, c.ScoreCalibrationRRFK)
+	c.ScoreCalibrationRRFK = max(1, c.ScoreCalibrationRRFK)
 
 	overrides := c.RelationIntent
 	if overrides != nil {
@@ -274,7 +274,7 @@ func (c *VectorPoolsConfig) Normalize() error {
 			c.ReturnRelationItems = dualPathBool(value, c.ReturnRelationItems)
 		}
 	}
-	c.RelationIntentGraphTopK = maxInt(1, c.RelationIntentGraphTopK)
+	c.RelationIntentGraphTopK = max(1, c.RelationIntentGraphTopK)
 	c.RelationIntentSemanticWeight = math.Max(0.0, c.RelationIntentSemanticWeight)
 	c.RelationIntentSparseWeight = math.Max(0.0, c.RelationIntentSparseWeight)
 	c.RelationIntentGraphWeight = math.Max(0.0, c.RelationIntentGraphWeight)
@@ -313,7 +313,7 @@ func (c *FusionConfig) Normalize() {
 	if c.NormalizeMethod == "" {
 		c.NormalizeMethod = "minmax"
 	}
-	c.RRFK = maxInt(1, c.RRFK)
+	c.RRFK = max(1, c.RRFK)
 	c.VectorWeight = math.Max(0.0, c.VectorWeight)
 	c.BM25Weight = math.Max(0.0, c.BM25Weight)
 	sum := c.VectorWeight + c.BM25Weight

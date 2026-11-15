@@ -138,7 +138,7 @@ func (s *GraphAdminService) BuildGraphNodeDetail(ctx context.Context, payload ma
 	return s.buildGraphNodeDetail(ctx, nodeID,
 		intOr(payload["relation_limit"], 20, 1),
 		intOr(payload["paragraph_limit"], 20, 1),
-		maxInt(12, intOr(payload["evidence_node_limit"], 80, 12))), nil
+		max(12, intOr(payload["evidence_node_limit"], 80, 12))), nil
 }
 
 // BuildGraphEdgeDetail 构造边详情
@@ -150,7 +150,7 @@ func (s *GraphAdminService) BuildGraphEdgeDetail(ctx context.Context, payload ma
 	}
 	return s.buildGraphEdgeDetail(ctx, source, target,
 		intOr(payload["paragraph_limit"], 20, 1),
-		maxInt(12, intOr(payload["evidence_node_limit"], 80, 12))), nil
+		max(12, intOr(payload["evidence_node_limit"], 80, 12))), nil
 }
 
 // DeleteSources 删除来源

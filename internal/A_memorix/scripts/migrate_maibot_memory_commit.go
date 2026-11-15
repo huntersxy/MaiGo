@@ -18,9 +18,9 @@ import (
 
 // migrate 对齐 _migrate
 func (r *migrateRunner) migrate(ctx context.Context, startAfter int64) error {
-	readBatchSize := scriptMaxInt(1, r.options.readBatchSize)
-	commitWindowRows := scriptMaxInt(1, r.options.commitWindowRows)
-	logEvery := scriptMaxInt(1, r.options.logEvery)
+	readBatchSize := max(1, r.options.readBatchSize)
+	commitWindowRows := max(1, r.options.commitWindowRows)
+	logEvery := max(1, r.options.logEvery)
 	var window []*migrateMappedRow
 	windowScanned := 0
 	lastSeenID := startAfter
@@ -182,13 +182,13 @@ func (r *migrateRunner) commitWindow(ctx context.Context, rows []*migrateMappedR
 			}
 		}
 	}
-	paragraphAdded, err := r.embedAndAddVectors(ctx, paragraphTexts, scriptMaxInt(1, r.options.embedBatchSize))
+	paragraphAdded, err := r.embedAndAddVectors(ctx, paragraphTexts, max(1, r.options.embedBatchSize))
 	if err != nil {
 		return err
 	}
 	entityAdded := 0
 	if len(entityTexts) > 0 {
-		entityAdded, err = r.embedAndAddVectors(ctx, entityTexts, scriptMaxInt(1, r.options.entityEmbedBatch))
+		entityAdded, err = r.embedAndAddVectors(ctx, entityTexts, max(1, r.options.entityEmbedBatch))
 		if err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (r *migrateRunner) embedAndAddVectors(ctx context.Context, idToText map[str
 		ids = append(ids, hashValue)
 		texts = append(texts, idToText[hashValue])
 	}
-	chunkSize := scriptMaxInt(1, batchSize)
+	chunkSize := max(1, batchSize)
 	totalAdded := 0
 	for start := 0; start < len(ids); start += chunkSize {
 		end := start + chunkSize

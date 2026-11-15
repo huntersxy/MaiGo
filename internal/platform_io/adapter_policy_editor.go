@@ -2,6 +2,7 @@ package platformio
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -152,14 +153,14 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 		if listType == "" {
 			listType = listTypeWhitelist
 		}
-		wildcard := containsString(legacyIDs, "*")
+		wildcard := slices.Contains(legacyIDs, "*")
 		if listType == listTypeBlacklist {
 			editor.DefaultAction = defaultActionAllow
 			if wildcard {
 				editor.DefaultAction = defaultActionBlock
 			}
 			for _, item := range legacyIDs {
-				if item == "*" || containsString(editor.AllowIDs, item) {
+				if item == "*" || slices.Contains(editor.AllowIDs, item) {
 					continue
 				}
 				editor.DenyIDs = append(editor.DenyIDs, item)
@@ -170,7 +171,7 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 				editor.DefaultAction = defaultActionAllow
 			}
 			for _, item := range legacyIDs {
-				if item == "*" || containsString(editor.DenyIDs, item) {
+				if item == "*" || slices.Contains(editor.DenyIDs, item) {
 					continue
 				}
 				editor.AllowIDs = append(editor.AllowIDs, item)
@@ -301,7 +302,7 @@ func normalizeEditorPolicies(policies map[ChatType]ChatPolicyEditor) (map[ChatTy
 func dedupeStrings(values []string) []string {
 	deduped := make([]string, 0, len(values))
 	for _, value := range values {
-		if containsString(deduped, value) {
+		if slices.Contains(deduped, value) {
 			continue
 		}
 		deduped = append(deduped, value)
@@ -313,7 +314,7 @@ func dedupeStrings(values []string) []string {
 func excludeStrings(values []string, excluded []string) []string {
 	filtered := make([]string, 0, len(values))
 	for _, value := range values {
-		if containsString(excluded, value) || containsString(filtered, value) {
+		if slices.Contains(excluded, value) || slices.Contains(filtered, value) {
 			continue
 		}
 		filtered = append(filtered, value)
@@ -325,7 +326,7 @@ func excludeStrings(values []string, excluded []string) []string {
 func conflictingValues(left, right []string) []string {
 	conflicts := make([]string, 0)
 	for _, value := range left {
-		if containsString(right, value) && !containsString(conflicts, value) {
+		if slices.Contains(right, value) && !slices.Contains(conflicts, value) {
 			conflicts = append(conflicts, value)
 		}
 	}

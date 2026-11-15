@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/semaphore"
 )
 
 var managerLogger = zap.L().Named("A_Memorix.EmbeddingManager")
@@ -223,14 +224,15 @@ func (m *EmbeddingManager) EncodeBatch(
 		err        error
 	}
 	results := make([]batchResult, len(batches))
-	sem := make(chan struct{}, workers)
+	sem := semaphore.NewWeighted(int64(workers))
 	var waitGroup sync.WaitGroup
 	for index, batch := range batches {
 		waitGroup.Add(1)
-		sem <- struct{}{}
+		// 对齐原 channel 信号量：这里只限制并发度，不响应 ctx 取消。
+		_ = sem.Acquire(context.Background(), 1)
 		go func(index int, batch []string) {
 			defer func() {
-				<-sem
+				sem.Release(1)
 				waitGroup.Done()
 			}()
 			embeddings, err := m.Encode(ctx, batch, batchSize, false, true)

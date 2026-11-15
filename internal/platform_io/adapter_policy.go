@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -284,7 +285,7 @@ func evaluatePolicy(policy map[string]any, source string, chatType ChatType, tar
 
 	denyIDs := normalizeIDList(policy[policyDenyIDsKey])
 	allowIDs := normalizeIDList(policy[policyAllowIDsKey])
-	if wildcard := containsString(denyIDs, "*"); containsString(denyIDs, targetID) || wildcard {
+	if wildcard := slices.Contains(denyIDs, "*"); slices.Contains(denyIDs, targetID) || wildcard {
 		return AdapterPolicyResult{
 			Allowed:    false,
 			Configured: true,
@@ -296,7 +297,7 @@ func evaluatePolicy(policy map[string]any, source string, chatType ChatType, tar
 			MatchedIDs: matchedIDs(denyIDs, targetID),
 		}, true
 	}
-	if wildcard := containsString(allowIDs, "*"); containsString(allowIDs, targetID) || wildcard {
+	if wildcard := slices.Contains(allowIDs, "*"); slices.Contains(allowIDs, targetID) || wildcard {
 		return AdapterPolicyResult{
 			Allowed:    true,
 			Configured: true,
@@ -334,8 +335,8 @@ func evaluatePolicy(policy map[string]any, source string, chatType ChatType, tar
 	}
 
 	ids := normalizeIDList(policy[policyIDsKey])
-	wildcardMatched := containsString(ids, "*")
-	targetMatched := wildcardMatched || containsString(ids, targetID)
+	wildcardMatched := slices.Contains(ids, "*")
+	targetMatched := wildcardMatched || slices.Contains(ids, targetID)
 
 	var allowed bool
 	var reason string
@@ -367,10 +368,10 @@ func evaluatePolicy(policy map[string]any, source string, chatType ChatType, tar
 
 // matchedIDs 返回命中的名单项，通配符优先
 func matchedIDs(ids []string, targetID string) []string {
-	if containsString(ids, "*") {
+	if slices.Contains(ids, "*") {
 		return []string{"*"}
 	}
-	if containsString(ids, targetID) {
+	if slices.Contains(ids, targetID) {
 		return []string{targetID}
 	}
 	return []string{}

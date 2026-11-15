@@ -79,7 +79,7 @@ func (m *WebImportManager) normalizeCommonImportParams(payload map[string]any, d
 	clearManifest := webImportCoerceBool(payload["clear_manifest"], false)
 	maxChunk := m.maxImportChunkChars()
 	narrativeWindow := webImportClamp(webImportCoerceInt(payload["narrative_window_size"], m.defaultNarrativeWindowSize()), 200, maxChunk)
-	narrativeOverlap := webImportClamp(webImportCoerceInt(payload["narrative_overlap"], m.defaultNarrativeOverlap()), 0, webImportMaxInt(0, narrativeWindow-1))
+	narrativeOverlap := webImportClamp(webImportCoerceInt(payload["narrative_overlap"], m.defaultNarrativeOverlap()), 0, max(0, narrativeWindow-1))
 	factualTarget := webImportClamp(webImportCoerceInt(payload["factual_target_size"], m.defaultFactualTargetSize()), 200, maxChunk)
 	return map[string]any{
 		"input_mode":            inputMode,

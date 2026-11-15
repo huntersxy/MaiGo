@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -253,7 +254,7 @@ func (s *CorrectionAdminService) collectCandidates(scope, personID, personKeywor
 		if scope == "person_profile" {
 			personIDs := paragraphPersonIDs(row)
 			if personID != "" {
-				if !containsString(personIDs, personID) {
+				if !slices.Contains(personIDs, personID) {
 					continue
 				}
 			} else if keyword != "" {
@@ -555,16 +556,6 @@ func (s *CorrectionAdminService) rollbackFuzzyModify(ctx context.Context, payloa
 func asFloatValue(value any) float64 {
 	parsed, _ := asFloat(value)
 	return parsed
-}
-
-// containsString 判断切片是否包含目标
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 var _ = sort.Strings

@@ -131,7 +131,7 @@ func (s *Store) UpsertEpisode(payload map[string]any, conn *Conn) (map[string]an
 		jsonDumps(participants),
 		jsonDumps(keywords),
 		jsonDumps(evidenceIDs),
-		maxInt(0, paragraphCount),
+		max(0, paragraphCount),
 		llmConfidence,
 		optionalString(strings.TrimSpace(episodeStrOrEmpty(payload["segmentation_model"]))),
 		optionalString(strings.TrimSpace(episodeStrOrEmpty(payload["segmentation_version"]))),

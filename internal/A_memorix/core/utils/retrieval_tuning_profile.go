@@ -190,7 +190,7 @@ func retrievalTuningClampInt(value any, defaultValue int, minValue int, maxValue
 	if err != nil {
 		parsed = defaultValue
 	}
-	return maxIntValue(minValue, minIntValue(maxValue, parsed))
+	return max(minValue, min(maxValue, parsed))
 }
 
 // retrievalTuningClampFloat 对齐 _clamp_float

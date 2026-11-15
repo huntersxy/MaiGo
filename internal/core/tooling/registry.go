@@ -139,7 +139,7 @@ func (r *ToolRegistry) listRoutes(ctx context.Context, availability *ToolAvailab
 			candidate := toolNameSanitizer.ReplaceAllString(prefix+"_"+originalName, "_")
 			if len(candidate) > 64 || hasToolName(byName, candidate) || hasToolName(reserved, candidate) {
 				digest := sha256.Sum256([]byte(entry.provider.ProviderName() + ":" + source + ":" + originalName))
-				candidate = candidate[:minInt(51, len(candidate))] + "_" + hex.EncodeToString(digest[:])[:12]
+				candidate = candidate[:min(51, len(candidate))] + "_" + hex.EncodeToString(digest[:])[:12]
 			}
 			if hasToolName(byName, candidate) || hasToolName(reserved, candidate) {
 				return nil, fmt.Errorf("工具来源重复，无法分配唯一名称：%s/%s/%s", entry.provider.ProviderName(), source, originalName)
@@ -333,11 +333,4 @@ func cloneAny(value any) any {
 	default:
 		return typed
 	}
-}
-
-func minInt(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
 }

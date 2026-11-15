@@ -93,7 +93,7 @@ func (r *DualPathRetriever) collectDualGraphEvidence(queryEmbedding []float32, t
 		Evidence  map[string]any
 	}
 	expandedEntries := []expandedEntry{}
-	maxExpand := maxInt(1, maxInt(cfg.RelationExpandPerHit, cfg.EntityExpandPerHit))
+	maxExpand := max(1, max(cfg.RelationExpandPerHit, cfg.EntityExpandPerHit))
 	for itemIndex, item := range normalizedItems {
 		var evidenceScore float64
 		var paragraphs []map[string]any
@@ -173,7 +173,7 @@ func (r *DualPathRetriever) collectDualGraphEvidence(queryEmbedding []float32, t
 		}
 		return expandedEntries[left].Order < expandedEntries[right].Order
 	})
-	limit = minInt(cfg.GraphExpandParagraphK, len(expandedEntries))
+	limit = min(cfg.GraphExpandParagraphK, len(expandedEntries))
 	payloads := []dualGraphEvidencePayload{}
 	indexByHash := map[string]int{}
 	for _, entry := range expandedEntries[:limit] {
@@ -213,7 +213,7 @@ func (r *DualPathRetriever) mergeLegacyVectorCandidates(ctx context.Context, que
 			allowed[hashValue] = struct{}{}
 		}
 	}
-	legacyIDs, legacyScores, err := searchVectorStore(r.legacyVectorStore, queryEmbedding, maxInt(1, topK), allowed)
+	legacyIDs, legacyScores, err := searchVectorStore(r.legacyVectorStore, queryEmbedding, max(1, topK), allowed)
 	if err != nil {
 		return err
 	}
@@ -365,7 +365,7 @@ func (r *DualPathRetriever) retrieveDualVectorPools(ctx context.Context, query s
 	candidates := map[string]*RetrievalResult{}
 	order := []string{}
 	if embeddingOK && queryEmbedding != nil {
-		paragraphTopK := r.expandTemporalCandidateK(maxInt(topK, r.config.VectorPools.ParagraphTopK), temporal)
+		paragraphTopK := r.expandTemporalCandidateK(max(topK, r.config.VectorPools.ParagraphTopK), temporal)
 		paragraphIDs, paragraphScores, err := searchVectorStore(r.paragraphVectorStore, queryEmbedding, paragraphTopK, scopeParagraphIDs(scope))
 		if err != nil {
 			return nil, err
@@ -406,7 +406,7 @@ func (r *DualPathRetriever) retrieveDualVectorPools(ctx context.Context, query s
 			scoreMeta["graph_evidence"] = aggregateGraphEvidenceScore(candidate)
 		}
 
-		if err := r.mergeLegacyVectorCandidates(ctx, queryEmbedding, candidates, &order, maxInt(paragraphTopK, graphTopK), temporal, scope); err != nil {
+		if err := r.mergeLegacyVectorCandidates(ctx, queryEmbedding, candidates, &order, max(paragraphTopK, graphTopK), temporal, scope); err != nil {
 			return nil, err
 		}
 	} else {
@@ -415,7 +415,7 @@ func (r *DualPathRetriever) retrieveDualVectorPools(ctx context.Context, query s
 
 	sparseResults := []RetrievalResult{}
 	if r.shouldUseSparse(embeddingOK, resultValues(candidateValues(candidates, order))) {
-		results, err := r.searchParagraphsSparse(query, maxInt(topK*2, r.config.Sparse.CandidateK), temporal, scope)
+		results, err := r.searchParagraphsSparse(query, max(topK*2, r.config.Sparse.CandidateK), temporal, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -447,7 +447,7 @@ func (r *DualPathRetriever) retrieveDualVectorPools(ctx context.Context, query s
 	configuredSparseWeight := sparseWeight
 	configuredGraphWeight := graphWeight
 	semanticWeight, sparseWeight, graphWeight, graphReliability := r.calibrateDualPoolWeights(
-		results, semanticWeight, sparseWeight, graphWeight, maxInt(10, topK*2),
+		results, semanticWeight, sparseWeight, graphWeight, max(10, topK*2),
 	)
 
 	scoreMaps := map[string]map[string]float64{

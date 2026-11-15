@@ -1,12 +1,12 @@
 package search
 
 import (
-	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"sync"
 	"time"
+
+	"github.com/jellydator/ttlcache/v3"
 )
 
 const (
@@ -14,20 +14,13 @@ const (
 	DefaultCacheMaxEntries = 128
 )
 
-type cacheEntry struct {
-	key       string
-	expiresAt time.Time
-	response  Response
-}
-
-// Cache 有界 TTL/LRU 缓存，行为对齐 Python _AI_SEARCH_CACHE
+// Cache 有界 TTL/LRU 缓存，行为对齐 Python _AI_SEARCH_CACHE。
+//
+// Python 命中时只把键移到末尾，不延长 expires_at；ttlcache 默认在 Get 时续期，
+// 这里关闭 touch-on-hit 保持「过期时间从写入时刻计算」。
+// 过期项由 Get 懒删除，容量满时按 LRU 淘汰，不需要后台清理 goroutine。
 type Cache struct {
-	mu         sync.Mutex
-	ttl        time.Duration
-	maxEntries int
-	entries    map[string]*list.Element
-	order      *list.List
-	now        func() time.Time
+	items *ttlcache.Cache[string, Response]
 }
 
 // NewCache 构造缓存，参数非法时回落默认值
@@ -38,54 +31,33 @@ func NewCache(ttl time.Duration, maxEntries int) *Cache {
 	if maxEntries <= 0 {
 		maxEntries = DefaultCacheMaxEntries
 	}
-	return &Cache{
-		ttl: ttl, maxEntries: maxEntries,
-		entries: make(map[string]*list.Element), order: list.New(),
-		now: time.Now,
-	}
+	return &Cache{items: ttlcache.New(
+		ttlcache.WithTTL[string, Response](ttl),
+		ttlcache.WithCapacity[string, Response](uint64(maxEntries)),
+		ttlcache.WithDisableTouchOnHit[string, Response](),
+	)}
 }
 
 // Get 读取未过期缓存并提升 LRU 顺序，返回 Cached=true 的副本
 func (c *Cache) Get(key string) (Response, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	element, ok := c.entries[key]
-	if !ok {
+	if c == nil || c.items == nil {
 		return Response{}, false
 	}
-	entry := element.Value.(*cacheEntry)
-	if !entry.expiresAt.After(c.now()) {
-		c.order.Remove(element)
-		delete(c.entries, key)
+	item := c.items.Get(key)
+	if item == nil {
 		return Response{}, false
 	}
-	c.order.MoveToBack(element)
-	cloned := cloneResponse(entry.response)
+	cloned := cloneResponse(item.Value())
 	cloned.Cached = true
 	return cloned, true
 }
 
 // Set 写入缓存并按 LRU 淘汰
 func (c *Cache) Set(key string, response Response) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if element, ok := c.entries[key]; ok {
-		entry := element.Value.(*cacheEntry)
-		entry.expiresAt = c.now().Add(c.ttl)
-		entry.response = cloneResponse(response)
-		c.order.MoveToBack(element)
+	if c == nil || c.items == nil {
 		return
 	}
-	entry := &cacheEntry{key: key, expiresAt: c.now().Add(c.ttl), response: cloneResponse(response)}
-	c.entries[key] = c.order.PushBack(entry)
-	for c.order.Len() > c.maxEntries {
-		front := c.order.Front()
-		if front == nil {
-			break
-		}
-		c.order.Remove(front)
-		delete(c.entries, front.Value.(*cacheEntry).key)
-	}
+	c.items.Set(key, cloneResponse(response), ttlcache.DefaultTTL)
 }
 
 // Key 缓存键同时包含问题、语言和候选目录

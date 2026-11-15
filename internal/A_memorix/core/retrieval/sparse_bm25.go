@@ -74,11 +74,11 @@ func (c *SparseBM25Config) Normalize() {
 	if c.TokenizerMode == "" {
 		c.TokenizerMode = "jieba"
 	}
-	c.CharNgramN = maxInt(c.CharNgramN, 1)
-	c.CandidateK = maxInt(c.CandidateK, 1)
-	c.MaxDocLen = maxInt(c.MaxDocLen, 0)
-	c.RelationCandidateK = maxInt(c.RelationCandidateK, 1)
-	c.RelationMaxDocLen = maxInt(c.RelationMaxDocLen, 0)
+	c.CharNgramN = max(c.CharNgramN, 1)
+	c.CandidateK = max(c.CandidateK, 1)
+	c.MaxDocLen = max(c.MaxDocLen, 0)
+	c.RelationCandidateK = max(c.RelationCandidateK, 1)
+	c.RelationMaxDocLen = max(c.RelationMaxDocLen, 0)
 }
 
 // Validate 校验配置取值，错误文案对齐 Python
@@ -498,7 +498,7 @@ func (i *SparseBM25Index) Search(query string, k int, allowedIDs []string) []map
 	if matchQuery == "" {
 		return nil
 	}
-	limit := maxInt(k, 1)
+	limit := max(k, 1)
 	allowed, emptyAllowed := normalizeAllowedIDs(allowedIDs)
 	if emptyAllowed {
 		return nil
@@ -515,7 +515,7 @@ func (i *SparseBM25Index) Search(query string, k int, allowedIDs []string) []map
 	}
 
 	results := make([]map[string]any, 0, len(rows))
-	tokenCount := maxInt(len(matchTokens), 1)
+	tokenCount := max(len(matchTokens), 1)
 	for rank, row := range rows {
 		contentLow := strings.ToLower(row.Content)
 		matched := make(map[string]struct{}, len(matchTokens))
@@ -552,7 +552,7 @@ func (i *SparseBM25Index) SearchRelations(query string, k int, allowedIDs []stri
 	if matchQuery == "" {
 		return nil
 	}
-	limit := maxInt(k, 1)
+	limit := max(k, 1)
 	allowed, emptyAllowed := normalizeAllowedIDs(allowedIDs)
 	if emptyAllowed {
 		return nil
@@ -616,7 +616,7 @@ func (i *SparseBM25Index) fallbackSubstringSearch(tokens []string, limit int, al
 		}
 		params = append(params, string(encoded))
 	}
-	scanLimit := maxInt(limit*8, 200)
+	scanLimit := max(limit*8, 200)
 	params = append(params, scanLimit)
 	sqlText := `
 		SELECT p.hash, p.content
@@ -630,7 +630,7 @@ func (i *SparseBM25Index) fallbackSubstringSearch(tokens []string, limit int, al
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
-	tokenCount := maxInt(len(uniq), 1)
+	tokenCount := max(len(uniq), 1)
 	type scored struct {
 		hash    string
 		content string
@@ -652,7 +652,7 @@ func (i *SparseBM25Index) fallbackSubstringSearch(tokens []string, limit int, al
 			continue
 		}
 		coverage := float64(matched) / float64(tokenCount)
-		lengthBonus := float64(matchedLen) / float64(maxInt(len([]rune(contentLow)), 1))
+		lengthBonus := float64(matchedLen) / float64(max(len([]rune(contentLow)), 1))
 		if i.config.MaxDocLen > 0 {
 			content = truncateRunes(content, i.config.MaxDocLen)
 		}
@@ -797,11 +797,4 @@ func truncateRunes(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit])
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

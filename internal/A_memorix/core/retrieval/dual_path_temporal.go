@@ -332,7 +332,7 @@ func (r *DualPathRetriever) retrieveTemporalOnly(temporal *TemporalQueryOptions,
 	if temporal == nil {
 		return []RetrievalResult{}, nil
 	}
-	multiplier := maxInt(1, temporal.CandidateMultiplier)
+	multiplier := max(1, temporal.CandidateMultiplier)
 	limit := r.capTemporalScanK(topK*multiplier, temporal)
 	var allowedHashes []string
 	if scope != nil {
