@@ -91,6 +91,7 @@ planner_subagent = false
 advanced_sub_agent = false
 
 [experimental]
+desktop_pet_exploration_enabled = false
 passive_replyer = false
 focus_mode = false
 focus_on_private = false

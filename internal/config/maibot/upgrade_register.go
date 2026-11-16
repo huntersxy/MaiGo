@@ -22,7 +22,8 @@ func registerDefaultUpgrades(r *UpgradeRegistry) {
 	r.Register("8.15.37", "8.15.62", upgradeMigrateWebUIHTTPBindings)
 	r.Register("8.15.62", "8.16.9", upgradeRemoveGlobalTalkValueRules)
 	r.Register("8.16.9", "8.16.11", upgradeRemoveTalkValueRulesSwitch)
-	r.Register("8.16.11", BotConfigTargetVersion, noopBotUpgrade)
+	r.Register("8.16.11", "8.16.15", noopBotUpgrade)
+	r.Register("8.16.15", BotConfigTargetVersion, noopBotUpgrade)
 
 	// model_config：锚点 1.17.17（MODEL_CONFIG_UPGRADE_HOOKS）
 	r.RegisterModel("0.0.0", "1.17.17", upgradeLabelLegacyModelTypes)
