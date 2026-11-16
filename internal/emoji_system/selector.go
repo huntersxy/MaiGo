@@ -46,7 +46,12 @@ func SelectWithPicker(ctx context.Context, mgr *Manager, params SelectParams, pi
 	}))
 	logEmojiHookResult(hookEmojiMaisakaBeforeSelect, beforeResult)
 	if beforeResult.Aborted {
-		return nil, &SelectionAbortedError{Message: hookAbortMessage(beforeResult.Kwargs, defaultEmojiSelectAbortMessage)}
+		return nil, &SelectionAbortedError{
+			Message:     hookAbortMessage(beforeResult.Kwargs, defaultEmojiSelectAbortMessage),
+			HookName:    beforeResult.HookName,
+			HandlerName: beforeResult.StoppedBy,
+			Reason:      beforeResult.AbortReason,
+		}
 	}
 	state.applyHookResult(beforeResult.Kwargs)
 
@@ -68,7 +73,12 @@ func SelectWithPicker(ctx context.Context, mgr *Manager, params SelectParams, pi
 	}))
 	logEmojiHookResult(hookEmojiMaisakaAfterSelect, afterResult)
 	if afterResult.Aborted {
-		return nil, &SelectionAbortedError{Message: hookAbortMessage(afterResult.Kwargs, defaultEmojiSendAbortMessage)}
+		return nil, &SelectionAbortedError{
+			Message:     hookAbortMessage(afterResult.Kwargs, defaultEmojiSendAbortMessage),
+			HookName:    afterResult.HookName,
+			HandlerName: afterResult.StoppedBy,
+			Reason:      afterResult.AbortReason,
+		}
 	}
 
 	requestedEmotion := hookStringValue(afterResult.Kwargs, "requested_emotion", state.emotion)

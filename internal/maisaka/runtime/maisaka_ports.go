@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -540,6 +541,44 @@ func toolSpecsFromCatalog(catalog []tools.ToolCatalogEntry) []maisaka.ToolSpec {
 	return specs
 }
 
+// replyGenerationError 携带 replyer 失败类型，供 reply 工具反馈给 Planner
+type replyGenerationError struct {
+	Code    string
+	Reason  string
+	Details map[string]any
+}
+
+func (e *replyGenerationError) Error() string { return e.Reason }
+
+// replyToolFailureResult 把 replyer 失败类型转换成 Planner 可读的工具结果
+func replyToolFailureResult(invocation maisaka.ToolInvocation, err error) (maisaka.ToolExecutionResult, bool) {
+	var failure *replyGenerationError
+	if !errors.As(err, &failure) {
+		return maisaka.ToolExecutionResult{}, false
+	}
+	msgID := strings.TrimSpace(fmt.Sprint(invocation.Arguments["msg_id"]))
+	payload := map[string]any{"msg_id": msgID, "error_code": failure.Code, "reason": failure.Reason}
+	message := failure.Reason
+	if abort, ok := failure.Details["hook_abort"].(map[string]any); ok {
+		reason := strings.TrimSpace(fmt.Sprint(abort["reason"]))
+		payload["error_code"] = "plugin_aborted"
+		payload["hook_abort"] = abort
+		message = "本次操作被插件主动拦截：" + reason + "。请根据原因调整调用或停止，勿原样重复调用。"
+	}
+	payload["message"] = message
+	encoded, marshalErr := sonic.MarshalString(payload)
+	if marshalErr != nil {
+		return maisaka.ToolExecutionResult{}, false
+	}
+	return maisaka.ToolExecutionResult{
+		Success:  false,
+		ToolName: "reply",
+		Content:  encoded,
+		Message:  message,
+		Metadata: map[string]any{"structured_content": payload},
+	}, true
+}
+
 // injectReplyerContent 让 reply 工具先走独立 Replyer 生成正文
 func (t *AgentToolRuntime) injectReplyerContent(ctx context.Context, kind string, targetID int64, session *Session, arguments map[string]any) error {
 	if arguments == nil {
@@ -649,6 +688,9 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 	}
 	if invocation.ToolName == "reply" && !replyerGeneratedArgument(invocation.Arguments) {
 		if err := t.injectReplyerContent(ctx, t.Kind, t.TargetID, session, invocation.Arguments); err != nil {
+			if result, ok := replyToolFailureResult(invocation, err); ok {
+				return result, nil
+			}
 			return maisaka.ToolExecutionResult{Success: false, ToolName: "reply", Message: err.Error()}, nil
 		}
 	}

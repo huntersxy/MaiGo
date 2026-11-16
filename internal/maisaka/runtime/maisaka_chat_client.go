@@ -384,7 +384,7 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.MultipleProbability = bot.Personality.MultipleProbability
 	cfg.GroupChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.GroupChatPrompt)
 	cfg.PrivateChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.PrivateChatPrompts)
-	cfg.ReplyerRetroPrompt = bot.Debug.ReplyerRetroPrompt
+	cfg.CreativeMode = bot.Chat.CreativeMode
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
 	cfg.KeepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
 	cfg.KeywordRules = replyer.KeywordRulesFromConfig(bot.KeywordReaction.KeywordRules)
@@ -590,7 +590,11 @@ func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, 
 		if message == "" {
 			message = "Replyer 生成失败"
 		}
-		return "", fmt.Errorf("%s", message)
+		code := strings.TrimSpace(result.ErrorCode)
+		if code == "" {
+			code = "generation_failed"
+		}
+		return "", &replyGenerationError{Code: code, Reason: message, Details: result.ErrorDetails}
 	}
 	text := strings.TrimSpace(result.Completion.ResponseText)
 	if text == "" {

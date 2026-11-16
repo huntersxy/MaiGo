@@ -20,5 +20,11 @@ func (ReplyerHookInvoker) InvokeHook(ctx context.Context, name string, kwargs ma
 	if len(result.Errors) > 0 {
 		zap.L().Warn("Replyer Hook 执行失败", zap.String("hook", name), zap.Strings("errors", result.Errors))
 	}
-	return replyer.HookResult{Aborted: result.Aborted, Kwargs: result.Kwargs}, nil
+	return replyer.HookResult{
+		Aborted:     result.Aborted,
+		Kwargs:      result.Kwargs,
+		HookName:    result.HookName,
+		HandlerName: result.StoppedBy,
+		Reason:      result.AbortReason,
+	}, nil
 }

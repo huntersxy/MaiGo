@@ -366,6 +366,7 @@ type CapabilitiesConfig struct {
 
 type ChatConfig struct {
 	EnableReplyAt                    bool                  `toml:"enable_reply_at,omitempty"`
+	CreativeMode                     bool                  `toml:"creative_mode,omitempty"`
 	MaxContextSize                   int                   `toml:"max_context_size,omitempty"`
 	MaxPrivateContextSize            int                   `toml:"max_private_context_size,omitempty"`
 	ContextCompactionSummaryMaxChars int                   `toml:"context_compaction_summary_max_chars,omitempty"`
@@ -450,7 +451,6 @@ type ComputerConfig struct {
 }
 
 type DebugConfig struct {
-	ReplyerRetroPrompt          bool `toml:"replyer_retro_prompt,omitempty"`
 	EnableConsoleInput          bool `toml:"enable_console_input,omitempty"`
 	ShowMaisakaThinking         bool `toml:"show_maisaka_thinking,omitempty"`
 	SaveMaisakaReasoning        bool `toml:"save_maisaka_reasoning,omitempty"`

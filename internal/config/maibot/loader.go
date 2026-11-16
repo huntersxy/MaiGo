@@ -14,7 +14,7 @@ import (
 // 默认在版本升级或旧版迁移后写回磁盘；MAIBOT_CONFIG_WRITEBACK=0/false 可显式关闭（见 writeback.go）
 // 见 MaiBot src/config/config.py CONFIG_VERSION / MODEL_CONFIG_VERSION
 const (
-	BotConfigTargetVersion   = "8.15.68"
+	BotConfigTargetVersion   = "8.15.71"
 	ModelConfigTargetVersion = "1.17.25"
 )
 
@@ -158,44 +158,6 @@ func hasReloadScope(scopes []ReloadScope, scope ReloadScope) bool {
 	return false
 }
 
-// syncRetroReplyPrompt 对齐 ConfigManager._sync_retro_reply_prompt：
-// replyer 使用 v2p1-contract/v2p1-raw 或名称含 mai-replier 的模型时强制开启 retro prompt
-func syncRetroReplyPrompt(out *InstanceConfig) error {
-	if out == nil {
-		return nil
-	}
-	replyerModels := make(map[string]struct{})
-	for _, name := range out.Model.ModelTaskConfig.Replyer.ModelList {
-		if trimmed := strings.TrimSpace(name); trimmed != "" {
-			replyerModels[trimmed] = struct{}{}
-		}
-	}
-	forced := false
-	for _, model := range out.Model.Models {
-		if _, ok := replyerModels[strings.TrimSpace(model.Name)]; !ok {
-			continue
-		}
-		for _, value := range []string{model.Name, model.ModelIdentifier} {
-			normalized := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "_", "-")
-			if normalized == "v2p1-contract" || normalized == "v2p1-raw" || strings.Contains(normalized, "mai-replier") {
-				forced = true
-				break
-			}
-		}
-		if forced {
-			break
-		}
-	}
-	if !forced || out.Bot.Debug.ReplyerRetroPrompt {
-		return nil
-	}
-	out.Bot.Debug.ReplyerRetroPrompt = true
-	if err := writeUpgradedBotConfig(out.BotConfigPath, out.BotInner, out.Bot); err != nil {
-		return fmt.Errorf("同步 replyer retro prompt 写回: %w", err)
-	}
-	return nil
-}
-
 func finalizeLoadedConfig(out *InstanceConfig, opts LoadOptions) (*InstanceConfig, error) {
 	root := out.Dir
 	botVerBefore := out.BotInner.Version
@@ -216,9 +178,6 @@ func finalizeLoadedConfig(out *InstanceConfig, opts LoadOptions) (*InstanceConfi
 	}
 	if err := ValidateBotConfig(out.Bot); err != nil {
 		return nil, fmt.Errorf("bot_config 校验: %w", err)
-	}
-	if err := syncRetroReplyPrompt(out); err != nil {
-		return nil, err
 	}
 	if err := ValidateFilesConfig(out.Bot); err != nil {
 		return nil, fmt.Errorf("bot_config files 校验: %w", err)

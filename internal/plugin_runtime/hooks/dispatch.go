@@ -23,6 +23,35 @@ type DispatchResult struct {
 	StoppedBy     string
 	CustomResults []any
 	Errors        []string
+	AbortReason   string
+}
+
+// HookAbortedError 把 Hook 中止信息跨业务调用层传递；不代表处理器执行异常
+type HookAbortedError struct {
+	HookName    string
+	HandlerName string
+	Reason      string
+}
+
+func (e *HookAbortedError) Error() string {
+	reason := strings.TrimSpace(e.Reason)
+	if reason == "" {
+		reason = "未提供原因"
+	}
+	return "Hook " + e.HookName + " 被 " + e.HandlerName + " 中止：" + reason
+}
+
+// ToDict 返回可用于工具回执与监控的中止信息
+func (e *HookAbortedError) ToDict() map[string]any {
+	return map[string]any{"hook_name": e.HookName, "handler_name": e.HandlerName, "reason": e.Reason}
+}
+
+// RaiseIfAborted 在需要跨调用层传递中止时使用，由业务边界接收并处理
+func (r DispatchResult) RaiseIfAborted() error {
+	if !r.Aborted {
+		return nil
+	}
+	return &HookAbortedError{HookName: r.HookName, HandlerName: r.StoppedBy, Reason: r.AbortReason}
 }
 
 // Registry 命名 Hook 订阅与分发
@@ -378,11 +407,27 @@ func (r *Registry) mergeBlockingResult(spec HookSpec, sub Subscription, handlerL
 		if spec.AllowAbort() {
 			out.Aborted = true
 			out.StoppedBy = handlerLabel
+			out.AbortReason = abortReason(exec)
 		} else {
 			out.Errors = append(out.Errors,
 				"Hook "+out.HookName+" 不允许 abort，已忽略 "+handlerLabel+" 的 abort 请求")
 		}
 	}
+}
+
+// abortReason 读取 custom_result.reason，旧表情 Hook 的 abort_message 只在此归一化
+func abortReason(exec HandlerResult) string {
+	if custom, ok := exec.CustomResult.(map[string]any); ok {
+		if reason, ok := custom["reason"].(string); ok && strings.TrimSpace(reason) != "" {
+			return strings.TrimSpace(reason)
+		}
+	}
+	if exec.ModifiedKwargs != nil {
+		if legacy, ok := exec.ModifiedKwargs["abort_message"].(string); ok {
+			return strings.TrimSpace(legacy)
+		}
+	}
+	return ""
 }
 
 // applyErrorPolicy 对齐 hook_dispatcher._apply_error_policy：仅 abort 策略且 Hook 允许 abort 时中止本次调用，

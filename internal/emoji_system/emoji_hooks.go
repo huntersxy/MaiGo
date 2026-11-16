@@ -28,7 +28,10 @@ const DefaultSampleSize = defaultEmojiSampleSize
 
 // SelectionAbortedError Hook 中止表情选择/发送；Message 对齐 maisaka_tool 的 abort_message
 type SelectionAbortedError struct {
-	Message string
+	Message     string
+	HookName    string
+	HandlerName string
+	Reason      string
 }
 
 func (e *SelectionAbortedError) Error() string {
@@ -39,6 +42,14 @@ func (e *SelectionAbortedError) Error() string {
 		return msg
 	}
 	return defaultEmojiSelectAbortMessage
+}
+
+// AbortDetails 返回中止来源，供工具结果反馈给 Planner
+func (e *SelectionAbortedError) AbortDetails() map[string]any {
+	if e == nil {
+		return map[string]any{"hook_name": "", "handler_name": "", "reason": ""}
+	}
+	return map[string]any{"hook_name": e.HookName, "handler_name": e.HandlerName, "reason": e.Reason}
 }
 
 // logEmojiHookResult 记录 Hook 执行期错误（对齐 MaiBot logger.warning）

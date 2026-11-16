@@ -37,6 +37,9 @@ func emitReplyBeforePostProcess(ctx context.Context, content string, replyTo int
 			zap.Strings("errors", result.Errors))
 	}
 	replyText := content
+	if result.Aborted {
+		return "", replyer.PostProcessOptions{}, result.RaiseIfAborted()
+	}
 	if raw, ok := result.Kwargs["response"]; ok {
 		replyText = strings.TrimSpace(hookStringValue(raw))
 	}

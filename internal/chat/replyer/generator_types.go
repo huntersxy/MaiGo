@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"MaiGo/internal/llm_models"
+	"MaiGo/internal/plugin_runtime/hooks"
 )
 
 // MaxHookRetries 对齐 maisaka_generator_base.REPLYER_MAX_HOOK_RETRIES
@@ -117,8 +118,19 @@ type LLMClientFactory func(taskName, requestType, sessionID string) (LLMClient, 
 
 // HookResult 对齐插件 Hook 调用结果
 type HookResult struct {
-	Aborted bool
-	Kwargs  map[string]any
+	Aborted     bool
+	Kwargs      map[string]any
+	HookName    string
+	HandlerName string
+	Reason      string
+}
+
+// AbortError 把 Hook 中止信息转成跨调用层的错误；未中止时返回 nil
+func (r HookResult) AbortError() error {
+	if !r.Aborted {
+		return nil
+	}
+	return &hooks.HookAbortedError{HookName: r.HookName, HandlerName: r.HandlerName, Reason: r.Reason}
 }
 
 // HookInvoker 是 replyer 对插件运行时的最小端口
@@ -197,6 +209,10 @@ type ReplyGenerationResult struct {
 	TextFragments []string
 
 	ErrorMessage string
+	// ErrorCode 可供调用方区分的失败类型；成功时为空
+	ErrorCode string
+	// ErrorDetails 结构化失败详情，例如中止回复的 Hook、处理器和原因
+	ErrorDetails map[string]any
 
 	RequestMessageCount int
 	RequestMessages     []llm.ContextItem

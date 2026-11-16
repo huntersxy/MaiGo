@@ -9,13 +9,14 @@ import (
 
 const (
 	retroGroupPrompt       = "retro_replyer"
+	retroGroupLightPrompt  = "retro_replyer_light"
 	retroPrivatePrompt     = "retro_private_replyer"
 	retroPrivateSelfPrompt = "retro_private_replyer_self"
 	shortReplyStyle        = "简短表达"
 )
 
 // BuildRetroRequestMessages 对齐 RetroReplyPromptMixin._build_retro_request_messages
-func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req ReplyRequest) ([]RequestMessage, error) {
+func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req ReplyRequest, maiReplier bool) ([]RequestMessage, error) {
 	_ = ctx
 	history := make([]ChatMessage, 0, len(req.History))
 	for _, message := range req.History {
@@ -29,8 +30,28 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			history = append(history, message)
 		}
 	}
-	promptName := b.SelectRetroPromptName(history, req)
+	promptName := b.SelectRetroPromptName(history, req, maiReplier)
 	systemPrompt := b.BuildPersonalityPrompt()
+	if !maiReplier {
+		systemPrompt = joinBlocks("\n\n",
+			systemPrompt,
+			b.BuildGroupChatAttentionBlock(),
+			strings.TrimSpace(b.Config.AttentionDriftBlock),
+		)
+		// 通用复古保留普通回复中的附件参考、重复回复提醒及篇幅要求
+		extraBlocks := []string{req.ReplyRequirements}
+		args := req.ReplyToolArgs
+		if reminder := strings.TrimSpace(stringValue(args[duplicateTargetReplyReminderArg])); reminder != "" {
+			extraBlocks = append(extraBlocks, reminder)
+		}
+		if attachment, err := b.BuildReplyAttachmentPrompt(history, req.Target, args); err == nil {
+			if strings.TrimSpace(attachment) != "" {
+				extraBlocks = append(extraBlocks, "【额外发送内容参考】\n"+strings.TrimSpace(attachment))
+			}
+		}
+		extraBlocks = append(extraBlocks, BuildRequestedReplyStyleMessage(stringValue(args["reply_style"])))
+		req.ReplyRequirements = joinBlocks("\n\n", extraBlocks...)
+	}
 	var visualImages []retroVisualImage
 	if req.EnableVisualMessage {
 		dialogue, images, sent := b.buildRetroVisualRequest(history, resolveMaxImageNum(req.MaxImageNum), req.ImageQuality)
@@ -45,7 +66,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			}
 		}
 		req.History = history
-		templateContext := b.BuildRetroTemplateContext(history, req)
+		templateContext := b.BuildRetroTemplateContext(history, req, maiReplier)
 		templateContext["dialogue_prompt"] = dialogue
 		userMessage, err := b.LoadPrompt(promptName, templateContext)
 		if err != nil {
@@ -62,7 +83,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			userRequest,
 		}, nil
 	}
-	templateContext := b.BuildRetroTemplateContext(history, req)
+	templateContext := b.BuildRetroTemplateContext(history, req, maiReplier)
 	userMessage, err := b.LoadPrompt(promptName, templateContext)
 	if err != nil {
 		return nil, fmt.Errorf("加载复古 replyer 模板 %s 失败: %w", promptName, err)
@@ -71,6 +92,17 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userMessage},
 	}, nil
+}
+
+// joinBlocks 按顺序拼接非空块
+func joinBlocks(separator string, parts ...string) string {
+	blocks := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			blocks = append(blocks, trimmed)
+		}
+	}
+	return strings.Join(blocks, separator)
 }
 
 // retroTargetWithoutVisual 把已发送图片/表情包替换为文本标记，对齐 Python 的目标消息副本
@@ -99,8 +131,12 @@ func retroTargetWithoutVisual(target *ReplyTarget, sent map[int]bool) *ReplyTarg
 }
 
 // SelectRetroPromptName 按群聊/私聊、是否补充自己发言选择复古模板
-func (b *PromptBuilder) SelectRetroPromptName(history []ChatMessage, req ReplyRequest) string {
+func (b *PromptBuilder) SelectRetroPromptName(history []ChatMessage, req ReplyRequest, maiReplier bool) string {
 	if b.IsRetroGroupChat(req) {
+		// Mai Replier 对齐训练分布：群聊恒用标准模板；通用复古保留简短回复模板
+		if !maiReplier && IsRetroShortReply(req.ThinkLevel, req.ReplyToolArgs) {
+			return retroGroupLightPrompt
+		}
 		return retroGroupPrompt
 	}
 	if req.Target != nil && req.Target.IsBotSelf {
@@ -126,7 +162,7 @@ func IsRetroShortReply(thinkLevel int, replyToolArgs map[string]any) bool {
 }
 
 // BuildRetroTemplateContext 按旧版块顺序准备模板占位符
-func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req ReplyRequest) map[string]string {
+func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req ReplyRequest, maiReplier bool) map[string]string {
 	combinedReference := b.BuildReplyReferenceMessage(req.ReplyReason, req.ReplyReference)
 	replyStyle := b.SelectTemporaryReplyStyle()
 	if strings.TrimSpace(replyStyle) == "" {
@@ -136,17 +172,25 @@ func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req Rep
 	if b.Now != nil {
 		now = b.Now()
 	}
+	expressionHabitsBlock := ""
+	keywordsReactionPrompt := ""
+	if !maiReplier {
+		expressionHabitsBlock = strings.TrimSpace(req.ExpressionHabits)
+		if prompt, err := b.BuildKeywordReactionPrompt(history, req.Target); err == nil {
+			keywordsReactionPrompt = prompt
+		}
+	}
 	return map[string]string{
 		"bot_name":                 b.Config.BotName,
 		"sender_name":              b.BuildRetroSenderName(history, req.Target),
 		"reply_style":              replyStyle,
-		"expression_habits_block":  "",
+		"expression_habits_block":  expressionHabitsBlock,
 		"extra_info_block":         BuildRetroExtraInfoBlock(req.ReplyRequirements),
 		"dialogue_prompt":          b.BuildRetroDialogueBlock(history),
 		"time_block":               "当前时间：" + now.Format("2006-01-02 15:04:05"),
 		"reply_target_block":       b.BuildRetroReplyTargetBlock(req.Target, history),
 		"planner_reasoning":        combinedReference,
-		"keywords_reaction_prompt": "",
+		"keywords_reaction_prompt": keywordsReactionPrompt,
 	}
 }
 

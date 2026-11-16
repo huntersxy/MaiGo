@@ -3,6 +3,7 @@ package replyer
 import (
 	"context"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 )
@@ -139,8 +140,8 @@ type GeneratorConfig struct {
 	// PromptLocale 用于输出格式说明；为空时默认 zh-CN
 	PromptLocale string
 
-	// ReplyerRetroPrompt 对齐 debug.replyer_retro_prompt
-	ReplyerRetroPrompt bool
+	// CreativeMode 对齐 chat.creative_mode：普通模型使用通用复古模板
+	CreativeMode bool
 
 	// SaveReasoning 对齐 debug.save_maisaka_reasoning：持久化 Replyer 请求与输出预览
 	SaveReasoning bool
@@ -175,6 +176,12 @@ type ReplyRequest struct {
 
 	// EnableVisualMessage 对齐 model_info.visual：开启后历史图片按多模态内容发送
 	EnableVisualMessage bool
+	// ModelInfo 本次实际选中的模型；用于按模型解析提示词适配
+	ModelInfo *ModelInfo
+	// PromptProfile 调用方显式指定的提示词适配：standard/retro/mai_replier/document
+	PromptProfile string
+	// ThinkLevel 对齐 think_level：0 表示简短回复
+	ThinkLevel int
 	// EnableVisualPlanner planner 是否按视觉模式运行；开启时文本模型不再等待识图
 	EnableVisualPlanner bool
 	// ImageRecognitionRefresher 回复生成前刷新历史图片识别结果，返回刷新条数
@@ -235,12 +242,32 @@ type ReplyerManager struct {
 	byCache map[string]*PromptBuilder
 }
 
-// RequestMessages 按配置选择普通或 retro 提示词模板
+// RequestMessages 按本次实际模型选择提示词模板
 func (b *PromptBuilder) RequestMessages(ctx context.Context, req ReplyRequest) ([]RequestMessage, error) {
-	if b.Config.ReplyerRetroPrompt {
-		return b.BuildRetroRequestMessages(ctx, req)
+	profile := strings.TrimSpace(req.PromptProfile)
+	if profile == "" && req.ModelInfo != nil {
+		profile = b.ResolvePromptProfile(req.ModelInfo)
+	}
+	if profile == "retro" || profile == "mai_replier" {
+		return b.BuildRetroRequestMessages(ctx, req, profile == "mai_replier")
 	}
 	return b.BuildRequestMessages(ctx, req)
+}
+
+// ResolvePromptProfile 按本次实际模型选适配；不修改会话实例状态，避免并发请求互相污染
+func (b *PromptBuilder) ResolvePromptProfile(info *ModelInfo) string {
+	if info != nil {
+		for _, value := range []string{info.Name, info.ModelIdentifier} {
+			name := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(value)), "_", "-")
+			if strings.Contains(name, "mai-replier") || name == "v2p1-contract" || name == "v2p1-raw" {
+				return "mai_replier"
+			}
+		}
+	}
+	if b.Config.CreativeMode {
+		return "retro"
+	}
+	return "standard"
 }
 
 // LoadPrompt 调用注入的模板加载器

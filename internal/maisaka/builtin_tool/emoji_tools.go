@@ -27,12 +27,14 @@ type SendEmojiInput struct {
 
 // sendEmojiOutput send_emoji 的模型可见结构化结果，键集合对齐 Python structured_result
 type sendEmojiOutput struct {
-	Success        bool     `json:"success"`
-	Message        string   `json:"message"`
-	Description    string   `json:"description"`
-	Emotion        []string `json:"emotion"`
-	MatchedEmotion string   `json:"matched_emotion"`
-	Reason         string   `json:"reason"`
+	Success        bool           `json:"success"`
+	Message        string         `json:"message"`
+	Description    string         `json:"description"`
+	Emotion        []string       `json:"emotion"`
+	MatchedEmotion string         `json:"matched_emotion"`
+	Reason         string         `json:"reason"`
+	ErrorCode      string         `json:"error_code,omitempty"`
+	HookAbort      map[string]any `json:"hook_abort,omitempty"`
 	// SelectionMetadata 选择器产出的监控元数据，不进 structured_content，由结果转换器消费
 	SelectionMetadata map[string]any `json:"selection_metadata,omitempty"`
 }
@@ -184,6 +186,19 @@ func sendEmojiCore(ctx context.Context, msgID string, emojiID uint) sendEmojiOut
 		Indices:       indices,
 	})
 	if selectErr != nil {
+		var aborted *emojisystem.SelectionAbortedError
+		if errors.As(selectErr, &aborted) {
+			output.SelectionMetadata = buildEmojiMonitorMetadata(nil, nil, aborted.Error())
+			reason := strings.TrimSpace(aborted.Reason)
+			if reason == "" {
+				reason = "未提供原因"
+			}
+			output.Success = false
+			output.ErrorCode = "plugin_aborted"
+			output.HookAbort = aborted.AbortDetails()
+			output.Message = "本次操作被插件主动拦截：" + reason + "。请根据原因调整调用或停止，勿原样重复调用。"
+			return output
+		}
 		output.SelectionMetadata = buildEmojiMonitorMetadata(nil, nil, selectErr.Error())
 		if errors.Is(selectErr, errEmojiVLMNotConfigured) || strings.Contains(selectErr.Error(), emojiVLMNotConfiguredMessage) {
 			output.Message = emojiVLMNotConfiguredMessage

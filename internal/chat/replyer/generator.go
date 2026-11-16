@@ -2,6 +2,7 @@ package replyer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka/display"
+	"MaiGo/internal/plugin_runtime/hooks"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -84,32 +86,27 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	pluginReplyPrompt := stringValue(activeToolArgs["_plugin_reply_prompt"])
 	filteredHistory := filterReplyerHistory(req.History)
 	sessionID := g.resolveSessionID(req)
+	var err error
 
-	replyContext, err := g.buildReplyContext(ctx, filteredHistory, req.Target, req.ReplyReason, sessionID, req.SubAgentRunner, activeToolArgs)
-	if err != nil {
-		zap.L().Error("构建回复上下文失败", zap.Error(err))
-		result.ErrorMessage = "构建回复上下文失败: " + err.Error()
-		result.Metrics = GenerationMetrics{OverallMS: durationMS(startedAt, g.now())}
+	// 表达召回推迟到实际模型选定后，避免 Mai Replier 等适配产生无效模型调用
+	var replyContext *ReplyContext
+	expressionHabitsOverride := strings.TrimSpace(req.ExpressionHabits)
+	selectedIDsOverride := req.SelectedExpressionIDs
+	selectedDetailsOverride := req.SelectedExpressions
+	var activeExpressionHabits string
+	var activePromptProfile string
+
+	finalizeAbort := func(exc error) (bool, ReplyGenerationResult) {
+		aborted, ok := exc.(*hooks.HookAbortedError)
+		if !ok {
+			aborted = &hooks.HookAbortedError{Reason: exc.Error()}
+		}
+		result.ErrorCode = "plugin_aborted"
+		result.ErrorMessage = aborted.Error()
+		result.ErrorDetails = map[string]any{"hook_abort": aborted.ToDict()}
+		result.Metrics.OverallMS = durationMS(startedAt, g.now())
 		return finalize(false)
 	}
-
-	mergedExpressionHabits := strings.TrimSpace(req.ExpressionHabits)
-	if mergedExpressionHabits == "" {
-		mergedExpressionHabits = replyContext.ExpressionHabits
-	}
-	if req.SelectedExpressionIDs != nil {
-		result.SelectedExpressionIDs = append([]int(nil), req.SelectedExpressionIDs...)
-	} else {
-		result.SelectedExpressionIDs = append([]int(nil), replyContext.SelectedExpressionIDs...)
-	}
-	if req.SelectedExpressions != nil {
-		result.SelectedExpressionDetails = cloneExpressionMaps(req.SelectedExpressions)
-	} else {
-		result.SelectedExpressionDetails = cloneExpressionMaps(replyContext.SelectedExpressions)
-	}
-	// 对齐 Python：合并后的选择结果贯穿 Hook 与重试，调用方显式传入时优先
-	req.SelectedExpressionIDs = append([]int(nil), result.SelectedExpressionIDs...)
-	req.SelectedExpressions = cloneExpressionMaps(result.SelectedExpressionDetails)
 
 	retryConstraints := make([]string, 0)
 	retryReasons := make([]string, 0)
@@ -133,6 +130,9 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 
 	for {
 		beforeRequest := g.invokeBeforeRequestHook(ctx, sessionID, filteredHistory, req, defaultTaskName, activeToolArgs, retryCount)
+		if beforeRequest.Aborted {
+			return finalizeAbort(beforeRequest.AbortError())
+		}
 		if raw, ok := beforeRequest.Kwargs["reply_tool_args"].(map[string]any); ok {
 			activeToolArgs = normalizeReplyToolArgs(raw)
 		}
@@ -147,21 +147,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		}
 
 		promptStarted := g.now()
-		attemptRequest := req
-		attemptRequest.History = filteredHistory
-		attemptRequest.ReplyToolArgs = activeToolArgs
-		attemptRequest.ExpressionHabits = mergedExpressionHabits
-		attemptRequest.ReplyRequirements = joinNonEmpty(strings.TrimSpace(req.ReplyRequirements), strings.TrimSpace(extraPrompt), "\n\n")
-		attemptRequest.RetryConstraints = append([]string(nil), retryConstraints...)
-		attemptRequest.EnableVisualMessage = g.resolveEnableVisualMessage(req, nil)
-
-		requestItems, buildErr := g.buildRequestMessages(ctx, attemptRequest, nil)
-		if buildErr != nil {
-			zap.L().Error("构建提示词失败", zap.Error(buildErr))
-			result.ErrorMessage = "构建提示词失败: " + buildErr.Error()
-			result.Metrics = GenerationMetrics{OverallMS: durationMS(startedAt, g.now())}
-			return finalize(false)
-		}
+		var requestItems []llm.ContextItem
 
 		activeClient := g.LLM
 		if activeTaskName != defaultTaskName && g.LLMFactory != nil {
@@ -179,25 +165,58 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		}
 
 		factory := func(factoryCtx context.Context, info *ModelInfo) ([]llm.ContextItem, error) {
-			visualRequest := req
-			visualRequest.History = filteredHistory
-			visualRequest.ReplyToolArgs = activeToolArgs
-			visualRequest.ExpressionHabits = mergedExpressionHabits
-			visualRequest.ReplyRequirements = joinNonEmpty(strings.TrimSpace(req.ReplyRequirements), strings.TrimSpace(extraPrompt), "\n\n")
-			visualRequest.RetryConstraints = append([]string(nil), retryConstraints...)
-			visualRequest.EnableVisualMessage = g.resolveEnableVisualMessage(req, info)
+			attemptRequest := req
+			attemptRequest.ModelInfo = info
+			attemptRequest.PromptProfile = g.promptProfileFor(info)
+			activePromptProfile = attemptRequest.PromptProfile
+			attemptRequest.History = filteredHistory
+			attemptRequest.ReplyToolArgs = activeToolArgs
+			attemptRequest.ReplyRequirements = joinNonEmpty(strings.TrimSpace(req.ReplyRequirements), strings.TrimSpace(extraPrompt), "\n\n")
+			attemptRequest.RetryConstraints = append([]string(nil), retryConstraints...)
+			attemptRequest.EnableVisualMessage = g.resolveEnableVisualMessage(req, info)
 			// 文本模型进入前等待并刷新识图结果，对应 Python image_recognition_refresher
-			if !visualRequest.EnableVisualMessage && visualRequest.EnableVisualPlanner && visualRequest.ImageRecognitionRefresher != nil {
-				if refreshed := visualRequest.ImageRecognitionRefresher(factoryCtx, filteredHistory); refreshed > 0 {
+			if !attemptRequest.EnableVisualMessage && attemptRequest.EnableVisualPlanner && attemptRequest.ImageRecognitionRefresher != nil {
+				if refreshed := attemptRequest.ImageRecognitionRefresher(factoryCtx, filteredHistory); refreshed > 0 {
 					filteredHistory = filterReplyerHistory(filteredHistory)
-					visualRequest.History = filteredHistory
+					attemptRequest.History = filteredHistory
 				}
 			}
-			items, err := g.buildRequestMessages(factoryCtx, visualRequest, info)
+			attemptExpressionHabits := ""
+			if activePromptProfile != "mai_replier" {
+				if replyContext == nil {
+					built, buildErr := g.buildReplyContext(factoryCtx, filteredHistory, req.Target, req.ReplyReason, sessionID, req.SubAgentRunner, activeToolArgs)
+					if buildErr != nil {
+						return nil, fmt.Errorf("构建回复上下文失败: %w", buildErr)
+					}
+					replyContext = &built
+				}
+				attemptExpressionHabits = expressionHabitsOverride
+				if attemptExpressionHabits == "" {
+					attemptExpressionHabits = replyContext.ExpressionHabits
+				}
+				if selectedIDsOverride != nil {
+					result.SelectedExpressionIDs = append([]int(nil), selectedIDsOverride...)
+				} else {
+					result.SelectedExpressionIDs = append([]int(nil), replyContext.SelectedExpressionIDs...)
+				}
+				if selectedDetailsOverride != nil {
+					result.SelectedExpressionDetails = cloneExpressionMaps(selectedDetailsOverride)
+				} else {
+					result.SelectedExpressionDetails = cloneExpressionMaps(replyContext.SelectedExpressions)
+				}
+			} else {
+				result.SelectedExpressionIDs = nil
+				result.SelectedExpressionDetails = nil
+			}
+			activeExpressionHabits = attemptExpressionHabits
+			attemptRequest.ExpressionHabits = attemptExpressionHabits
+			attemptRequest.SelectedExpressionIDs = append([]int(nil), result.SelectedExpressionIDs...)
+			attemptRequest.SelectedExpressions = cloneExpressionMaps(result.SelectedExpressionDetails)
+			items, err := g.buildRequestMessages(factoryCtx, attemptRequest, info)
 			if err != nil {
 				return nil, err
 			}
-			items = g.invokeBeforeModelRequestHook(factoryCtx, items, sessionID, activeTaskName, activeModelName, info, retryCount, req, activeToolArgs)
+			items = g.invokeBeforeModelRequestHook(factoryCtx, items, sessionID, activeTaskName, activeModelName, info, retryCount, attemptRequest, activeToolArgs)
 			requestItems = items
 			return items, nil
 		}
@@ -207,6 +226,10 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		promptMS = durationMS(promptStarted, g.now())
 		llmMS = durationMS(llmStarted, g.now())
 		if generateErr != nil {
+			var aborted *hooks.HookAbortedError
+			if errors.As(generateErr, &aborted) {
+				return finalizeAbort(aborted)
+			}
 			zap.L().Error("Maisaka 回复器调用失败", zap.Error(generateErr))
 			result.ErrorMessage = generateErr.Error()
 			result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
@@ -272,6 +295,15 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 
 		hookOriginalResponse := responseText
 		after := g.invokeAfterResponseHook(ctx, sessionID, generationResult, activeTaskName, activeModelName, retryCount, req, activeToolArgs, responseText)
+		// 主动中止优先于正文改写和重生成，保留原因供 reply 工具反馈给 Planner
+		if after.Aborted {
+			abortErr, _ := after.AbortError().(*hooks.HookAbortedError)
+			result.ErrorCode = "plugin_aborted"
+			result.ErrorMessage = abortErr.Error()
+			result.ErrorDetails = map[string]any{"hook_abort": abortErr.ToDict()}
+			responseText = ""
+			break
+		}
 		finalOutputItems := generationResult.OutputItems
 		if rawItems, exists := after.Kwargs["output_items"]; exists && !reflect.DeepEqual(rawItems, llm.SerializeContextItemsSnapshot(generationResult.OutputItems)) {
 			if items, err := llm.DeserializeContextItemsSnapshot(rawItems); err == nil {
@@ -298,6 +330,13 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		}
 		generationResult.OutputItems = finalOutputItems
 		generationResult.Response = responseText
+		if responseText == "" && result.ErrorCode == "" {
+			if hookOriginalResponse != "" {
+				result.ErrorCode = "plugin_empty_response"
+			} else {
+				result.ErrorCode = "model_empty_response"
+			}
+		}
 
 		retryRequested := coerceHookBool(after.Kwargs["retry"], false)
 		matchedRegex := strings.TrimSpace(stringValue(after.Kwargs["matched_regex"]))
@@ -305,7 +344,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		matchedRegexDescription := strings.TrimSpace(stringValue(after.Kwargs["matched_regex_description"]))
 		retryReason := strings.TrimSpace(stringValue(after.Kwargs["retry_reason"]))
 
-		if g.usesRetroPrompt() && !retroPeriodRegenerationRequested && containsAny(responseText, "发个句号", "一个句号") && retryCount < g.maxHookRetries() {
+		if activePromptProfile == "mai_replier" && !retroPeriodRegenerationRequested && containsAny(responseText, "发个句号", "一个句号") && retryCount < g.maxHookRetries() {
 			retroPeriodRegenerationRequested = true
 			retryRequested = true
 			retryReason = joinNonEmpty(retryReason, "上一次回复出现了异常的句号问话，请根据实际聊天内容重新生成回复。", "；")
@@ -399,8 +438,8 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	result.Metrics.Extra["replyer_aggregate_prompt_tokens"] = aggregatePromptTokens
 	result.Metrics.Extra["replyer_aggregate_completion_tokens"] = aggregateCompletionTokens
 	result.Metrics.Extra["replyer_aggregate_total_tokens"] = aggregateTotalTokens
-	if len(result.SelectedExpressionIDs) > 0 && strings.TrimSpace(mergedExpressionHabits) != "" {
-		result.Metrics.Extra["selected_expression_habits"] = strings.TrimSpace(mergedExpressionHabits)
+	if len(result.SelectedExpressionIDs) > 0 && strings.TrimSpace(activeExpressionHabits) != "" {
+		result.Metrics.Extra["selected_expression_habits"] = strings.TrimSpace(activeExpressionHabits)
 	}
 	if len(retryReasons) > 0 {
 		result.Metrics.Extra["replyer_retry_reasons"] = retryReasons
@@ -418,7 +457,14 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	result.RequestMessages = finalRequestItems
 	g.persistReplyPreview(&result, sessionID, req.ReplyReason)
 	if strings.TrimSpace(responseText) == "" {
-		result.ErrorMessage = "回复器返回了空内容"
+		if result.ErrorCode != "plugin_aborted" {
+			if result.ErrorCode == "plugin_empty_response" {
+				result.ErrorMessage = "插件 Hook 将回复正文修改为空。请调整回复目标或停止本次回复，勿原样重复调用。"
+			} else {
+				result.ErrorMessage = "模型未生成回复正文。"
+			}
+		}
+		zap.L().Warn(result.ErrorMessage)
 		return finalize(false)
 	}
 	result.TextFragments = []string{responseText}
@@ -426,9 +472,6 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 }
 
 func (g *ReplyGenerator) buildReplyContext(ctx context.Context, history []ChatMessage, target *ReplyTarget, replyReason, sessionID string, runner func(context.Context, string) (string, error), replyToolArgs map[string]any) (ReplyContext, error) {
-	if g.usesRetroPrompt() {
-		return ReplyContext{}, nil
-	}
 	if sessionID == "" {
 		zap.L().Warn("构建 Maisaka 回复上下文失败：缺少会话标识")
 		return ReplyContext{}, nil
@@ -518,11 +561,15 @@ func (g *ReplyGenerator) requestType() string {
 	return "maisaka.replyer"
 }
 
-func (g *ReplyGenerator) usesRetroPrompt() bool {
-	if g.DocumentMode || g.Builder == nil {
-		return false
+// promptProfileFor 按本次实际模型解析提示词适配
+func (g *ReplyGenerator) promptProfileFor(info *ModelInfo) string {
+	if g.DocumentMode {
+		return "document"
 	}
-	return g.Builder.Config.ReplyerRetroPrompt
+	if g.Builder == nil {
+		return "standard"
+	}
+	return g.Builder.ResolvePromptProfile(info)
 }
 
 func (g *ReplyGenerator) maxHookRetries() int {
