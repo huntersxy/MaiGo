@@ -1,11 +1,11 @@
 package webuiapi
 
 import (
+	webuiutils "MaiGo/internal/webui/utils"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	webuiutils "MaiGo/internal/webui/utils"
 	"math"
 	"net/http"
 	"os"
@@ -180,6 +180,19 @@ func validateModelConfigMap(doc map[string]any) error {
 		return err
 	}
 	return maibotcfg.ValidateModelConfig(file, nil)
+}
+
+// modelConfigWarnings 返回允许启动的模型配置问题
+func modelConfigWarnings(doc map[string]any) []string {
+	raw, err := toml.Marshal(coerceIntegralFloats(doc))
+	if err != nil {
+		return nil
+	}
+	var file maibotcfg.ModelConfigFile
+	if err := toml.Unmarshal(raw, &file); err != nil {
+		return nil
+	}
+	return maibotcfg.ModelConfigWarnings(file)
 }
 
 // validateModelConfigFile 校验磁盘上的 model_config 文件，错误文案对齐 Python

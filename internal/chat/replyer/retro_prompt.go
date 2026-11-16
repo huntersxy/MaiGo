@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	retroGroupPrompt       = "retro_replyer"
-	retroGroupLightPrompt  = "retro_replyer_light"
-	retroPrivatePrompt     = "retro_private_replyer"
-	retroPrivateSelfPrompt = "retro_private_replyer_self"
-	shortReplyStyle        = "简短表达"
+	replyGroupPrompt               = "reply_group"
+	replyGroupMaiReplierPrompt     = "reply_group_mai_replier"
+	replyPrivatePrompt             = "reply_private"
+	replyPrivateMaiReplierPrompt   = "reply_private_mai_replier"
+	replyPrivateFollowupPrompt     = "reply_private_followup"
+	replyPrivateFollowupMaiReplier = "reply_private_followup_mai_replier"
+	shortReplyStyle                = "简短表达"
 )
 
 // BuildRetroRequestMessages 对齐 RetroReplyPromptMixin._build_retro_request_messages
@@ -31,6 +33,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 		}
 	}
 	promptName := b.SelectRetroPromptName(history, req, maiReplier)
+	lengthInstruction := ""
 	systemPrompt := b.BuildPersonalityPrompt()
 	if !maiReplier {
 		systemPrompt = joinBlocks("\n\n",
@@ -38,7 +41,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			b.BuildGroupChatAttentionBlock(),
 			strings.TrimSpace(b.Config.AttentionDriftBlock),
 		)
-		// 通用复古保留普通回复中的附件参考、重复回复提醒及篇幅要求
+		// 通用复古保留附件参考与重复回复提醒，篇幅要求单独进入模板
 		extraBlocks := []string{req.ReplyRequirements}
 		args := req.ReplyToolArgs
 		if reminder := strings.TrimSpace(stringValue(args[duplicateTargetReplyReminderArg])); reminder != "" {
@@ -49,8 +52,12 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 				extraBlocks = append(extraBlocks, "【额外发送内容参考】\n"+strings.TrimSpace(attachment))
 			}
 		}
-		extraBlocks = append(extraBlocks, BuildRequestedReplyStyleMessage(stringValue(args["reply_style"])))
 		req.ReplyRequirements = joinBlocks("\n\n", extraBlocks...)
+		requestedStyle := strings.TrimSpace(stringValue(args["reply_style"]))
+		if requestedStyle == "" && req.ThinkLevel == 0 {
+			requestedStyle = shortReplyStyle
+		}
+		lengthInstruction = b.BuildRequestedReplyStyleMessage(requestedStyle)
 	}
 	var visualImages []retroVisualImage
 	if req.EnableVisualMessage {
@@ -66,7 +73,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			}
 		}
 		req.History = history
-		templateContext := b.BuildRetroTemplateContext(history, req, maiReplier)
+		templateContext := b.BuildRetroTemplateContext(history, req, maiReplier, lengthInstruction)
 		templateContext["dialogue_prompt"] = dialogue
 		userMessage, err := b.LoadPrompt(promptName, templateContext)
 		if err != nil {
@@ -83,7 +90,7 @@ func (b *PromptBuilder) BuildRetroRequestMessages(ctx context.Context, req Reply
 			userRequest,
 		}, nil
 	}
-	templateContext := b.BuildRetroTemplateContext(history, req, maiReplier)
+	templateContext := b.BuildRetroTemplateContext(history, req, maiReplier, lengthInstruction)
 	userMessage, err := b.LoadPrompt(promptName, templateContext)
 	if err != nil {
 		return nil, fmt.Errorf("加载复古 replyer 模板 %s 失败: %w", promptName, err)
@@ -130,19 +137,25 @@ func retroTargetWithoutVisual(target *ReplyTarget, sent map[int]bool) *ReplyTarg
 	return &copied
 }
 
-// SelectRetroPromptName 按群聊/私聊、是否补充自己发言选择复古模板
+// SelectRetroPromptName 按会话类型、模型和是否补充自己发言选择模板
 func (b *PromptBuilder) SelectRetroPromptName(history []ChatMessage, req ReplyRequest, maiReplier bool) string {
 	if b.IsRetroGroupChat(req) {
-		// Mai Replier 对齐训练分布：群聊恒用标准模板；通用复古保留简短回复模板
-		if !maiReplier && IsRetroShortReply(req.ThinkLevel, req.ReplyToolArgs) {
-			return retroGroupLightPrompt
+		if maiReplier {
+			return replyGroupMaiReplierPrompt
 		}
-		return retroGroupPrompt
+		return replyGroupPrompt
 	}
-	if req.Target != nil && req.Target.IsBotSelf {
-		return retroPrivateSelfPrompt
+	selfReply := req.Target != nil && req.Target.IsBotSelf
+	if maiReplier {
+		if selfReply {
+			return replyPrivateFollowupMaiReplier
+		}
+		return replyPrivateMaiReplierPrompt
 	}
-	return retroPrivatePrompt
+	if selfReply {
+		return replyPrivateFollowupPrompt
+	}
+	return replyPrivatePrompt
 }
 
 // IsRetroGroupChat 判断当前会话是否为群聊
@@ -153,16 +166,8 @@ func (b *PromptBuilder) IsRetroGroupChat(req ReplyRequest) bool {
 	return false
 }
 
-// IsRetroShortReply 判断是否属于简短回复（保留旧版 think_level=0 语义）
-func IsRetroShortReply(thinkLevel int, replyToolArgs map[string]any) bool {
-	if thinkLevel == 0 {
-		return true
-	}
-	return strings.TrimSpace(stringValue(replyToolArgs["reply_style"])) == shortReplyStyle
-}
-
 // BuildRetroTemplateContext 按旧版块顺序准备模板占位符
-func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req ReplyRequest, maiReplier bool) map[string]string {
+func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req ReplyRequest, maiReplier bool, lengthInstruction string) map[string]string {
 	combinedReference := b.BuildReplyReferenceMessage(req.ReplyReason, req.ReplyReference)
 	replyStyle := b.SelectTemporaryReplyStyle()
 	if strings.TrimSpace(replyStyle) == "" {
@@ -191,7 +196,7 @@ func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req Rep
 	return map[string]string{
 		"bot_name":                 b.Config.BotName,
 		"sender_name":              b.BuildRetroSenderName(history, req.Target),
-		"reply_style":              replyStyle,
+		"reply_style":              joinBlocks("\n", replyStyle, lengthInstruction),
 		"expression_habits_block":  expressionHabitsBlock,
 		"extra_info_block":         BuildRetroExtraInfoBlock(req.ReplyRequirements),
 		"dialogue_prompt":          b.BuildRetroDialogueBlock(history),

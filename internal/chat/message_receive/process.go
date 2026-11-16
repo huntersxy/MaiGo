@@ -27,6 +27,8 @@ type ImageRef struct {
 type EmojiRef struct {
 	Hash    string
 	Content string
+	// Binary 已加载的表情包字节；用于缓存前 Hook
+	Binary []byte
 }
 
 // VoiceRef 语音转录输入
@@ -363,7 +365,7 @@ func (p *Processor) processEmoji(ctx context.Context, msg *SessionMessage, item 
 	}
 	content := "[表情包]"
 	if p.Emojis != nil {
-		description, err := p.Emojis.DescribeEmoji(ctx, msg.SessionID, EmojiRef{Hash: item.Hash, Content: item.Content}, opts.EnableHeavyMediaAnalysis)
+		description, err := p.Emojis.DescribeEmoji(ctx, msg.SessionID, EmojiRef{Hash: item.Hash, Content: item.Content, Binary: item.Binary}, opts.EnableHeavyMediaAnalysis)
 		if err == nil {
 			if description = strings.TrimSpace(description); description != "" {
 				content = "[表情包: " + description + "]"

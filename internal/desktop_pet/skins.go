@@ -147,13 +147,50 @@ func builtinSkin() SkinDocument {
 	}
 }
 
+// bundledSkinManifestPaths 返回程序自带皮肤清单，随镜像放在 desktop_pet/presets
+func bundledSkinManifestPaths() []string {
+	patterns := make([]string, 0, 4)
+	if root := strings.TrimSpace(os.Getenv("MAIBOT_DESKTOP_PET_PRESETS")); root != "" {
+		patterns = append(patterns, filepath.Join(root, "*", "skin.json"))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		patterns = append(patterns,
+			filepath.Join(cwd, "desktop_pet", "presets", "*", "skin.json"),
+			filepath.Join(cwd, "internal", "desktop_pet", "presets", "*", "skin.json"),
+		)
+	}
+	if executable, err := os.Executable(); err == nil {
+		dir := filepath.Dir(executable)
+		patterns = append(patterns,
+			filepath.Join(dir, "desktop_pet", "presets", "*", "skin.json"),
+			filepath.Join(dir, "presets", "*", "skin.json"),
+		)
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0)
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			if _, dup := seen[match]; dup {
+				continue
+			}
+			seen[match] = struct{}{}
+			out = append(out, match)
+		}
+	}
+	return out
+}
+
 // skinManifestPaths 列出候选皮肤清单，对齐 skin_directories
 func skinManifestPaths(root string) []string {
 	patterns := []string{
 		filepath.Join(root, "data", "desktop_pet", "skins", "*", "skin.json"),
 		filepath.Join(root, "plugins", "*", "skins", "*", "skin.json"),
 	}
-	var out []string
+	out := bundledSkinManifestPaths()
 	for _, pattern := range patterns {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {

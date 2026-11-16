@@ -53,10 +53,6 @@ func newOpenAIResponsesClient(cfg ModelConfig) (model.AgenticModel, error) {
 	if baseURL == "" || modelName == "" {
 		return nil, fmt.Errorf("主模型配置不完整")
 	}
-	if strings.TrimSpace(cfg.APIKey) == "" && !strings.EqualFold(strings.TrimSpace(cfg.AuthType), authTypeNone) {
-		// 对齐 MaiBot APIProvider 校验：只有 auth_type=none 允许空密钥
-		return nil, fmt.Errorf("主模型配置不完整")
-	}
 	extra, err := splitResponsesExtraParams(cfg.ExtraParams)
 	if err != nil {
 		return nil, err

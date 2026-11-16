@@ -388,7 +388,7 @@ func NormalizePromptName(name string) (string, error) {
 	if candidate == "." || candidate == ".." || !safePromptName(candidate) {
 		return "", fmt.Errorf("Prompt 名称 '%s' 非法", name)
 	}
-	return candidate, nil
+	return CanonicalPromptName(candidate), nil
 }
 
 // NormalizePromptCategory 校验 category 路径（可多级，/ 分隔）

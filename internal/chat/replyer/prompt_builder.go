@@ -111,17 +111,48 @@ func BuildTemporaryReplyStyleMessage(replyStyle string) string {
 }
 
 // BuildRequestedReplyStyleMessage 对齐 _build_requested_reply_style_message
-func BuildRequestedReplyStyleMessage(replyStyle string) string {
-	styleMessages := map[string]string{
-		"简短表达": "请简短的回复，符合口语习惯，1-2句短句即可。不要长篇大论，无复杂修辞和比喻。",
-		"正常回复": "",
-		"长回复":  "可以针对问题做出较为详细的评论和说明，不限制回复长度",
-	}
+func (b *PromptBuilder) BuildRequestedReplyStyleMessage(replyStyle string) string {
+	styleMessages := replyLengthInstructions(b.Config.PromptLocale)
 	normalized := strings.TrimSpace(replyStyle)
 	if normalized == "" {
-		return ""
+		normalized = "正常回复"
 	}
 	return styleMessages[normalized]
+}
+
+func replyLengthInstructions(locale string) map[string]string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "en"):
+		return map[string]string{
+			"简短表达": "Reply in one or two short sentences, as you would in a casual conversation.",
+			"正常回复": "Keep the reply concise and give the topic as much space as it needs.",
+			"长回复":  "Use as much space as needed to make the point clear, and expand on key details.",
+		}
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "ja"):
+		return map[string]string{
+			"简短表达": "普段の会話のように、短い一文か二文で自然に返信してください。",
+			"正常回复": "話題に合った長さで、簡潔に返信してください。",
+			"长回复":  "要点が伝わる長さを目安に、重要な点は掘り下げて説明してください。",
+		}
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "ru"):
+		return map[string]string{
+			"简短表达": "Ответьте одной или двумя короткими фразами, как в обычном разговоре.",
+			"正常回复": "Отвечайте кратко и соразмерно теме.",
+			"长回复":  "Пишите столько, сколько нужно для ясности, и поясните важные детали.",
+		}
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(locale)), "fr"):
+		return map[string]string{
+			"简短表达": "Répondez en une ou deux phrases courtes, comme dans une conversation ordinaire.",
+			"正常回复": "Restez concis et adaptez la longueur de la réponse au sujet.",
+			"长回复":  "Prenez la place nécessaire pour être clair et développez les points importants.",
+		}
+	default:
+		return map[string]string{
+			"简短表达": "用一到两句口语短句回复，像平时接话一样自然。",
+			"正常回复": "篇幅与当前话题相称，保持简洁。",
+			"长回复":  "本次篇幅以说清问题为准，可以展开解释关键细节。",
+		}
+	}
 }
 
 // BuildRetryConstraintSentence 对齐 _build_retry_constraint_sentence
@@ -360,7 +391,7 @@ func (b *PromptBuilder) BuildRequestMessages(ctx context.Context, req ReplyReque
 	}
 	temporaryStyleMessage := BuildTemporaryReplyStyleMessage(b.SelectTemporaryReplyStyle())
 	replyReferenceMessage := b.BuildReplyReferenceMessage(req.ReplyReason, req.ReplyReference)
-	requestedStyleMessage := BuildRequestedReplyStyleMessage(req.ReplyStyle)
+	requestedStyleMessage := b.BuildRequestedReplyStyleMessage(req.ReplyStyle)
 
 	items := make([]RequestMessage, 0, len(req.History)+6)
 	items = append(items, RequestMessage{Role: "system", Content: systemPrompt})

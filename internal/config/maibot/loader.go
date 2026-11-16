@@ -14,7 +14,7 @@ import (
 // 默认在版本升级或旧版迁移后写回磁盘；MAIBOT_CONFIG_WRITEBACK=0/false 可显式关闭（见 writeback.go）
 // 见 MaiBot src/config/config.py CONFIG_VERSION / MODEL_CONFIG_VERSION
 const (
-	BotConfigTargetVersion   = "8.16.16"
+	BotConfigTargetVersion   = "8.16.18"
 	ModelConfigTargetVersion = "1.17.25"
 )
 
@@ -176,6 +176,7 @@ func finalizeLoadedConfig(out *InstanceConfig, opts LoadOptions) (*InstanceConfi
 		ModelTo:   out.ModelInner.Version,
 		Reasons:   reasons,
 	}
+	out.Bot.Chat.ReplyTiming.EnsureTalkRuleGroups()
 	if err := ValidateBotConfig(out.Bot); err != nil {
 		return nil, fmt.Errorf("bot_config 校验: %w", err)
 	}

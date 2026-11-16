@@ -6,8 +6,27 @@ package hooks
 func emojiHookSpecs() []HookSpec {
 	return []HookSpec{
 		{
+			Name:        "emoji.receive.before_cache",
+			Description: "聊天表情未命中缓存且即将写入时触发，可跳过该表情的缓存和内置识别。",
+			ParametersSchema: hookSchema(map[string]any{
+				"emoji_hash":         map[string]any{"type": "string", "description": "表情包的 SHA-256 哈希。"},
+				"binary_data_base64": map[string]any{"type": "string", "description": "原始表情包的 Base64 数据。"},
+				"session_id":         map[string]any{"type": "string", "description": "来源聊天会话 ID。"},
+			}, "emoji_hash", "binary_data_base64", "session_id"),
+			DefaultTimeoutMS: 5000,
+		},
+		{
+			Name:        "emoji.maintenance.before_register",
+			Description: "定时维护尝试注册候选表情前触发，可跳过当前候选并继续扫描。",
+			ParametersSchema: hookSchema(map[string]any{
+				"file_name": map[string]any{"type": "string", "description": "候选表情包文件名。"},
+				"file_size": map[string]any{"type": "integer", "description": "候选文件的字节数。"},
+			}, "file_name", "file_size"),
+			DefaultTimeoutMS: 5000,
+		},
+		{
 			Name:        "emoji.register.after_build_description",
-			Description: "表情包描述生成并通过内容审查后触发，可改写描述文本或拒绝本次注册。",
+			Description: "视觉模型生成表情包描述后触发，可改写描述或中止本次描述生成。",
 			ParametersSchema: hookSchema(map[string]any{
 				"emoji": map[string]any{
 					"type":        "object",

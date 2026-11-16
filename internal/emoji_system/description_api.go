@@ -19,6 +19,11 @@ type EmojiDescription struct {
 //
 // wait=false 时只确保文件入库并调度后台描述任务，对齐 MaiBot 的 wait_for_build=False
 func (r *Registry) GetEmojiDescription(ctx context.Context, content []byte, hash string, wait bool) (EmojiDescription, bool, error) {
+	return r.GetEmojiDescriptionForSession(ctx, content, hash, wait, "")
+}
+
+// GetEmojiDescriptionForSession 携带来源会话，供 emoji.receive.before_cache Hook 使用
+func (r *Registry) GetEmojiDescriptionForSession(ctx context.Context, content []byte, hash string, wait bool, sessionID string) (EmojiDescription, bool, error) {
 	if r == nil {
 		return EmojiDescription{}, false, errMemoryUnavailable
 	}
@@ -49,6 +54,9 @@ func (r *Registry) GetEmojiDescription(ctx context.Context, content []byte, hash
 		return EmojiDescription{Description: desc, Emotions: NormalizeEmotionTags(desc)}, true, nil
 	}
 	if len(content) == 0 {
+		return EmojiDescription{}, false, nil
+	}
+	if !emojiReceiveAllowed(ctx, hash, content, sessionID) {
 		return EmojiDescription{}, false, nil
 	}
 	if !r.canDescribe() {

@@ -39,6 +39,7 @@ func (d Deps) handleConfigModelGet(w http.ResponseWriter, r *http.Request) {
 		writeConfigReadError(w, err)
 		return
 	}
+	doc["_warnings"] = modelConfigWarnings(doc)
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "config": doc})
 }
 
@@ -77,6 +78,7 @@ func (d Deps) handleConfigModelUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
 		return
 	}
+	delete(body, "_warnings")
 	if err := validateModelConfigMap(body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
 		return
@@ -85,7 +87,7 @@ func (d Deps) handleConfigModelUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "保存配置文件失败: " + err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置已保存"})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置已保存", "warnings": modelConfigWarnings(body)})
 }
 
 // handleConfigBotRawGet 对应 GET /api/webui/config/bot/raw 与 GET /api/config/raw
@@ -236,7 +238,7 @@ func (d Deps) handleConfigModelSectionUpdate(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "更新配置节失败: " + err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置节 '" + section + "' 已保存"})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置节 '" + section + "' 已保存", "warnings": modelConfigWarnings(doc)})
 }
 
 // applySectionPatch 对齐 Python：列表/标量直接替换，字典递归合并

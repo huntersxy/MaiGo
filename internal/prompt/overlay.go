@@ -96,7 +96,7 @@ func scanCustomPromptsDir(customRoot string) (map[string]map[string]string, map[
 		if !strings.HasSuffix(name, ".prompt") {
 			continue
 		}
-		stem := strings.TrimSuffix(name, ".prompt")
+		stem := CanonicalPromptName(strings.TrimSuffix(name, ".prompt"))
 		if !safePromptName(stem) {
 			continue
 		}
@@ -145,7 +145,7 @@ func readPromptFilesInDir(dir string) (map[string]string, map[string]PromptMetad
 				}
 			}
 		}
-		stem := strings.TrimSuffix(name, ".prompt")
+		stem := CanonicalPromptName(strings.TrimSuffix(name, ".prompt"))
 		if !safePromptName(stem) {
 			return nil
 		}

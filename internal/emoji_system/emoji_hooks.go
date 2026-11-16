@@ -2,6 +2,7 @@ package emojisystem
 
 import (
 	"context"
+	"encoding/base64"
 	"path/filepath"
 	"strings"
 
@@ -10,7 +11,40 @@ import (
 	"go.uber.org/zap"
 )
 
-const hookEmojiRegisterAfterBuildDescription = "emoji.register.after_build_description"
+const (
+	hookEmojiReceiveBeforeCache            = "emoji.receive.before_cache"
+	hookEmojiMaintenanceBeforeRegister     = "emoji.maintenance.before_register"
+	hookEmojiRegisterAfterBuildDescription = "emoji.register.after_build_description"
+)
+
+// emojiReceiveAllowed 对齐 emoji.receive.before_cache：插件可中止缓存与内置识别
+func emojiReceiveAllowed(ctx context.Context, hash string, content []byte, sessionID string) bool {
+	result := hooks.EmitGlobal(ctx, hookEmojiReceiveBeforeCache, map[string]any{
+		"emoji_hash":         hash,
+		"binary_data_base64": base64.StdEncoding.EncodeToString(content),
+		"session_id":         sessionID,
+	})
+	logEmojiHookResult(hookEmojiReceiveBeforeCache, result)
+	if result.Aborted {
+		zap.L().Info("插件跳过聊天表情缓存", zap.String("emoji_hash", hash))
+		return false
+	}
+	return true
+}
+
+// emojiMaintenanceAllowed 对齐 emoji.maintenance.before_register：插件可跳过当前候选
+func emojiMaintenanceAllowed(ctx context.Context, fileName string, fileSize int64) bool {
+	result := hooks.EmitGlobal(ctx, hookEmojiMaintenanceBeforeRegister, map[string]any{
+		"file_name": fileName,
+		"file_size": fileSize,
+	})
+	logEmojiHookResult(hookEmojiMaintenanceBeforeRegister, result)
+	if result.Aborted {
+		zap.L().Info("插件跳过自动注册表情", zap.String("file_name", fileName))
+		return false
+	}
+	return true
+}
 
 // logEmojiHookResult 记录 Hook 执行期错误（对齐 MaiBot logger.warning）
 func logEmojiHookResult(hookName string, result hooks.DispatchResult) {

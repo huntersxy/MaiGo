@@ -61,12 +61,14 @@ func applyBotToRuntime(bot BotConfigFile) error {
 }
 
 func mergeChatFromReplyTiming(cfg *config.RuntimeConfig, rt ChatReplyTimingConfig, platform string) {
+	rt.EnsureTalkRuleGroups()
 	if rt.TalkValue >= 0 && rt.TalkValue <= 1 {
 		cfg.Chat.TalkFrequency = rt.TalkValue
 	}
-	cfg.Chat.EnableTimeRules = len(rt.TalkValueRules) > 0
+	rules := rt.TalkRuleGroups.ActiveRules()
+	cfg.Chat.EnableTimeRules = len(rules) > 0
 	if cfg.Chat.EnableTimeRules {
-		cfg.Chat.TimeRules = talkRulesForRuntime(rt.TalkValueRules, platform)
+		cfg.Chat.TimeRules = talkRulesForRuntime(rules, platform)
 	}
 }
 
@@ -95,7 +97,7 @@ func mergeMediaFromVisual(cfg *config.RuntimeConfig, visual VisualConfig) {
 func talkRulesForRuntime(rules []TalkRulesItem, platform string) []config.TimeRuleConfig {
 	out := make([]config.TimeRuleConfig, 0, len(rules))
 	for _, rule := range rules {
-		if strings.TrimSpace(rule.RuleType) != "group" {
+		if !rule.RuleEnabled() || strings.TrimSpace(rule.RuleType) != "group" {
 			continue
 		}
 		rulePlatform := strings.TrimSpace(rule.Platform)

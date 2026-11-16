@@ -110,14 +110,36 @@ func validateChatConfig(cfg ChatConfig) error {
 			return fmt.Errorf("chat.reply_style.private_quote_frequency 非法: %s", value)
 		}
 	}
-	for index, rule := range cfg.ReplyTiming.TalkValueRules {
-		if strings.TrimSpace(rule.RuleType) != "group" {
-			continue
+	groups := cfg.ReplyTiming.TalkRuleGroups
+	if len(cfg.ReplyTiming.TalkValueRules) > 0 && len(groups.Groups) > 0 {
+		return fmt.Errorf("动态发言配置同时包含旧规则和规则组，请合并后移除 talk_value_rules")
+	}
+	names := make(map[string]struct{}, len(groups.Groups))
+	for _, group := range groups.Groups {
+		name := group.Name
+		if strings.TrimSpace(name) == "" || name != strings.TrimSpace(name) {
+			return fmt.Errorf("动态发言规则组名称须非空、无首尾空白且唯一")
 		}
-		platformGlobal := strings.TrimSpace(rule.Platform) == "" || strings.TrimSpace(rule.Platform) == "*"
-		itemGlobal := strings.TrimSpace(rule.ItemId) == "" || strings.TrimSpace(rule.ItemId) == "*"
-		if platformGlobal && itemGlobal {
-			return fmt.Errorf("chat.reply_timing.talk_value_rules[%d] 必须指定平台或群聊 ID；所有群的默认频率请使用总体发言频率", index)
+		if _, dup := names[name]; dup {
+			return fmt.Errorf("动态发言规则组名称须非空、无首尾空白且唯一")
+		}
+		names[name] = struct{}{}
+	}
+	if len(groups.Groups) > 0 {
+		if _, ok := names[strings.TrimSpace(groups.ActiveGroup)]; !ok {
+			return fmt.Errorf("找不到启用的动态发言规则组：%s", groups.ActiveGroup)
+		}
+	}
+	for groupIndex, group := range groups.Groups {
+		for index, rule := range group.Rules {
+			if strings.TrimSpace(rule.RuleType) != "group" {
+				continue
+			}
+			platformGlobal := strings.TrimSpace(rule.Platform) == "" || strings.TrimSpace(rule.Platform) == "*"
+			itemGlobal := strings.TrimSpace(rule.ItemId) == "" || strings.TrimSpace(rule.ItemId) == "*"
+			if platformGlobal && itemGlobal {
+				return fmt.Errorf("chat.reply_timing.talk_rule_groups.groups[%d].rules[%d] 必须指定平台或群聊 ID；所有群的默认频率请使用总体发言频率", groupIndex, index)
+			}
 		}
 	}
 	return nil

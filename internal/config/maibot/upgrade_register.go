@@ -24,7 +24,9 @@ func registerDefaultUpgrades(r *UpgradeRegistry) {
 	r.Register("8.16.9", "8.16.11", upgradeRemoveTalkValueRulesSwitch)
 	r.Register("8.16.11", "8.16.15", noopBotUpgrade)
 	r.Register("8.16.15", "8.16.16", noopBotUpgrade)
-	r.Register("8.16.16", BotConfigTargetVersion, noopBotUpgrade)
+	r.Register("8.16.16", "8.16.17", noopBotUpgrade)
+	r.Register("8.16.17", "8.16.18", upgradeGroupTalkValueRules)
+	r.Register("8.16.18", BotConfigTargetVersion, noopBotUpgrade)
 
 	// model_config：锚点 1.17.17（MODEL_CONFIG_UPGRADE_HOOKS）
 	r.RegisterModel("0.0.0", "1.17.17", upgradeLabelLegacyModelTypes)
@@ -55,7 +57,7 @@ func upgradeRemoveGlobalTalkValueRules(bot *BotConfigFile) []string {
 	return []string{"chat.reply_timing.talk_value_rules"}
 }
 
-// upgradeRemoveTalkValueRulesSwitch 对齐 8.16.11：移除规则总开关，关闭时清空规则
+// upgradeRemoveTalkValueRulesSwitch 对齐 8.16.11：移除规则总开关，关闭时规则保留但停用
 func upgradeRemoveTalkValueRulesSwitch(bot *BotConfigFile) []string {
 	timing := &bot.Chat.ReplyTiming
 	if timing.EnableTalkValueRules == nil {
@@ -65,10 +67,34 @@ func upgradeRemoveTalkValueRulesSwitch(bot *BotConfigFile) []string {
 	timing.EnableTalkValueRules = nil
 	reasons := []string{"chat.reply_timing.enable_talk_value_rules"}
 	if !enabled && len(timing.TalkValueRules) > 0 {
-		timing.TalkValueRules = nil
+		disabled := false
+		for index := range timing.TalkValueRules {
+			timing.TalkValueRules[index].Enabled = &disabled
+		}
 		reasons = append(reasons, "chat.reply_timing.talk_value_rules")
 	}
 	return reasons
+}
+
+// upgradeGroupTalkValueRules 对齐 8.16.18：旧规则迁入默认发言规则组
+func upgradeGroupTalkValueRules(bot *BotConfigFile) []string {
+	timing := &bot.Chat.ReplyTiming
+	if len(timing.TalkValueRules) == 0 && len(timing.TalkRuleGroups.Groups) > 0 {
+		return nil
+	}
+	if len(timing.TalkRuleGroups.Groups) > 0 {
+		// 新旧字段同时存在时无法判断意图，交由校验拒绝
+		return nil
+	}
+	timing.TalkRuleGroups = TalkRuleGroups{
+		ActiveGroup: DefaultTalkRuleGroupName,
+		Groups: []TalkRuleGroup{{
+			Name:  DefaultTalkRuleGroupName,
+			Rules: timing.TalkValueRules,
+		}},
+	}
+	timing.TalkValueRules = nil
+	return []string{"chat.reply_timing.talk_rule_groups"}
 }
 
 // upgradeCopyPersonalityToBehaviorStyle 对齐 8.14.29：Planner 行为风格首次拆分时沿用原 personality 字段

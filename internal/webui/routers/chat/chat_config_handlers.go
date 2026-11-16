@@ -64,6 +64,54 @@ func normalizeChatTalkTime(value string) (string, error) {
 	return normalized, nil
 }
 
+const defaultTalkRuleGroupName = "默认"
+
+// chatTalkRuleGroups 返回规则组表，缺失时从旧规则迁移
+func chatTalkRuleGroups(replyTiming map[string]any) map[string]any {
+	if groups, ok := replyTiming["talk_rule_groups"].(map[string]any); ok {
+		return groups
+	}
+	rules := make([]any, 0)
+	for _, rule := range chatConfigRules(replyTiming["talk_value_rules"]) {
+		rules = append(rules, chatTalkRuleConfig(rule))
+	}
+	groups := map[string]any{
+		"active_group": defaultTalkRuleGroupName,
+		"groups": []any{map[string]any{
+			"name": defaultTalkRuleGroupName, "rules": rules,
+		}},
+	}
+	replyTiming["talk_rule_groups"] = groups
+	delete(replyTiming, "talk_value_rules")
+	return groups
+}
+
+func chatActiveTalkGroup(groups map[string]any) map[string]any {
+	active := chatConfigString(groups["active_group"])
+	for _, group := range chatConfigRules(groups["groups"]) {
+		if chatConfigString(group["name"]) == active {
+			return group
+		}
+	}
+	for _, group := range chatConfigRules(groups["groups"]) {
+		return group
+	}
+	return nil
+}
+
+func chatSetActiveTalkGroupRules(groups map[string]any, rules []map[string]any) {
+	items := make([]any, len(rules))
+	for index, rule := range rules {
+		items[index] = rule
+	}
+	if group := chatActiveTalkGroup(groups); group != nil {
+		group["rules"] = items
+		return
+	}
+	groups["active_group"] = defaultTalkRuleGroupName
+	groups["groups"] = []any{map[string]any{"name": defaultTalkRuleGroupName, "rules": items}}
+}
+
 func chatTalkRuleConfig(rule map[string]any) map[string]any {
 	platform, itemID, ruleType := chatRuleTargets(rule)
 	if ruleType == "" {
@@ -72,6 +120,7 @@ func chatTalkRuleConfig(rule map[string]any) map[string]any {
 	return map[string]any{
 		"platform": platform, "item_id": itemID, "rule_type": ruleType,
 		"time": chatConfigString(rule["time"]), "value": chatConfigFloat(rule["value"], 0),
+		"enabled": chatConfigBool(rule["enabled"], true),
 	}
 }
 
@@ -94,6 +143,8 @@ func (d Deps) handleChatUpdateTalkFrequency(w http.ResponseWriter, r *http.Reque
 		PreviousTime *string  `json:"previous_time"`
 		Time         string   `json:"time"`
 		Value        *float64 `json:"value"`
+		Enabled      *bool    `json:"enabled"`
+		ActiveGroup  *string  `json:"active_group"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeChatFailure(w, http.StatusUnprocessableEntity, "请求格式错误")
@@ -142,11 +193,28 @@ func (d Deps) handleChatUpdateTalkFrequency(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	_ = tablePath
+	groups := chatTalkRuleGroups(replyTiming)
+	if body.ActiveGroup != nil && chatConfigString(groups["active_group"]) != strings.TrimSpace(*body.ActiveGroup) {
+		writeChatFailure(w, http.StatusConflict, "当前发言频率规则组已切换，请刷新后重试")
+		return
+	}
+	activeGroup := chatActiveTalkGroup(groups)
+	if activeGroup == nil {
+		writeChatFailure(w, http.StatusBadRequest, "配置文件缺少动态发言规则组")
+		return
+	}
 	rules := make([]map[string]any, 0)
-	for _, rule := range chatConfigRules(replyTiming["talk_value_rules"]) {
+	for _, rule := range chatConfigRules(activeGroup["rules"]) {
 		rules = append(rules, chatTalkRuleConfig(rule))
 	}
-	nextRule := map[string]any{"platform": platform, "item_id": itemID, "rule_type": chatTypeOf(record), "time": normalizedTime, "value": value}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	nextRule := map[string]any{
+		"platform": platform, "item_id": itemID, "rule_type": chatTypeOf(record),
+		"time": normalizedTime, "value": value, "enabled": enabled,
+	}
 	replaceIndex, fallbackIndex := -1, -1
 	for index, rule := range rules {
 		if !chatTalkRuleMatches(rule, record) {
@@ -167,13 +235,12 @@ func (d Deps) handleChatUpdateTalkFrequency(w http.ResponseWriter, r *http.Reque
 	if targetIndex < 0 {
 		rules = append(rules, nextRule)
 	} else {
+		if body.Enabled == nil {
+			nextRule["enabled"] = chatConfigBool(rules[targetIndex]["enabled"], true)
+		}
 		rules[targetIndex] = nextRule
 	}
-	talkRules := make([]any, len(rules))
-	for index, rule := range rules {
-		talkRules[index] = rule
-	}
-	replyTiming["talk_value_rules"] = talkRules
+	chatSetActiveTalkGroupRules(groups, rules)
 	if !writeChatConfig(w, path, doc) {
 		return
 	}
@@ -208,9 +275,20 @@ func (d Deps) handleChatDeleteTalkFrequency(w http.ResponseWriter, r *http.Reque
 		writeChatFailure(w, http.StatusBadRequest, "配置文件缺少 [chat.reply_timing] 配置节")
 		return
 	}
+	groups := chatTalkRuleGroups(replyTiming)
+	if activeGroup := strings.TrimSpace(r.URL.Query().Get("active_group")); activeGroup != "" &&
+		chatConfigString(groups["active_group"]) != activeGroup {
+		writeChatFailure(w, http.StatusConflict, "当前发言频率规则组已切换，请刷新后重试")
+		return
+	}
+	group := chatActiveTalkGroup(groups)
+	if group == nil {
+		writeChatFailure(w, http.StatusBadRequest, "配置文件缺少动态发言规则组")
+		return
+	}
 	rules := make([]map[string]any, 0)
 	removed := false
-	for _, rule := range chatConfigRules(replyTiming["talk_value_rules"]) {
+	for _, rule := range chatConfigRules(group["rules"]) {
 		normalized := chatTalkRuleConfig(rule)
 		if chatTalkRuleMatches(normalized, record) && chatConfigString(normalized["time"]) == normalizedTime {
 			removed = true
@@ -222,11 +300,7 @@ func (d Deps) handleChatDeleteTalkFrequency(w http.ResponseWriter, r *http.Reque
 		writeChatFailure(w, http.StatusNotFound, "未找到可删除的当前聊天流发言频率规则")
 		return
 	}
-	nextRules := make([]any, len(rules))
-	for index, rule := range rules {
-		nextRules[index] = rule
-	}
-	replyTiming["talk_value_rules"] = nextRules
+	chatSetActiveTalkGroupRules(groups, rules)
 	if !writeChatConfig(w, path, doc) {
 		return
 	}

@@ -14,85 +14,85 @@ var modelPriceTimePattern = regexp.MustCompile(`^(?:[01][0-9]|2[0-3]):[0-5][0-9]
 
 // ValidateModelConfig 对齐 MaiBot ModelConfig.model_post_init（ApplyUpgrades 之后调用）
 //
-// 硬错误直接返回；其余问题在 log 非 nil 或全局 logger 可用时仅告警
+// 只保留会破坏结构唯一性的硬错误；不完整配置在启动和 WebUI 中仅告警，调用时再拒绝
 func ValidateModelConfig(file ModelConfigFile, log *zap.Logger) error {
-	if len(file.Models) == 0 {
-		return fmt.Errorf("model_config.models 不能为空")
-	}
-	if len(file.ApiProviders) == 0 {
-		return fmt.Errorf("model_config.api_providers 不能为空")
+	for _, msg := range ModelConfigWarnings(file) {
+		validationWarn(log, msg)
 	}
 
 	providers := make(map[string]APIProvider, len(file.ApiProviders))
-	for i, p := range file.ApiProviders {
+	for _, p := range file.ApiProviders {
 		name := strings.TrimSpace(p.Name)
-		if name == "" {
-			return fmt.Errorf("api_providers[%d] 缺少 name", i)
-		}
 		if _, dup := providers[name]; dup {
 			return fmt.Errorf("api_providers 名称重复: %q", name)
 		}
 		providers[name] = p
-		if err := validateAPIProvider(name, p); err != nil {
-			return err
-		}
 	}
 
 	modelNames := make(map[string]struct{}, len(file.Models))
-	for i, m := range file.Models {
+	for _, m := range file.Models {
 		name := strings.TrimSpace(m.Name)
-		if name == "" {
-			return fmt.Errorf("models[%d] 缺少 name", i)
-		}
 		if _, dup := modelNames[name]; dup {
 			return fmt.Errorf("models 名称重复: %q", name)
 		}
 		modelNames[name] = struct{}{}
-
-		identifier := strings.TrimSpace(m.ModelIdentifier)
-		if identifier == "" {
+		if strings.TrimSpace(m.ModelIdentifier) == "" {
 			return fmt.Errorf("模型 %q 缺少 model_identifier", name)
-		}
-		providerName := strings.TrimSpace(m.ApiProvider)
-		if providerName == "" {
-			return fmt.Errorf("模型 %q 未配置 api_provider", name)
-		}
-		if _, ok := providers[providerName]; !ok {
-			return fmt.Errorf("模型 %q 引用的 api_provider %q 未定义", name, providerName)
 		}
 		if err := validateModelInfo(name, m); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+// ModelConfigWarnings 收集不完整但允许启动的模型配置问题
+func ModelConfigWarnings(file ModelConfigFile) []string {
+	warnings := make([]string, 0)
+	if len(file.Models) == 0 {
+		warnings = append(warnings, "模型列表为空，请在 WebUI 添加模型")
+	}
+	if len(file.ApiProviders) == 0 {
+		warnings = append(warnings, "供应商列表为空，请在 WebUI 添加供应商")
+	}
+	providers := make(map[string]struct{}, len(file.ApiProviders))
+	for _, p := range file.ApiProviders {
+		name := strings.TrimSpace(p.Name)
+		providers[name] = struct{}{}
+		warnings = append(warnings, ProviderConfigurationErrors(name, p)...)
+	}
+	modelNames := make(map[string]struct{}, len(file.Models))
+	for _, m := range file.Models {
+		name := strings.TrimSpace(m.Name)
+		modelNames[name] = struct{}{}
+		providerName := strings.TrimSpace(m.ApiProvider)
+		if providerName == "" {
+			warnings = append(warnings, fmt.Sprintf("模型 %q 未配置 api_provider", name))
+		} else if _, ok := providers[providerName]; !ok {
+			warnings = append(warnings, fmt.Sprintf("模型 %q 引用的 api_provider %q 未定义", name, providerName))
+		}
+	}
 	for _, entry := range taskModelListEntries(file.ModelTaskConfig) {
 		for _, raw := range entry.list {
 			modelName := strings.TrimSpace(raw)
 			if modelName == "" {
 				continue
 			}
-			if _, ok := modelNames[modelName]; ok {
-				continue
+			if _, ok := modelNames[modelName]; !ok {
+				warnings = append(warnings, fmt.Sprintf("model_task_config.%s.model_list 引用了未定义的模型 %q", entry.task, modelName))
 			}
-			msg := fmt.Sprintf("model_task_config.%s.model_list 引用了未定义的模型 %q", entry.task, modelName)
-			if entry.hardUnknown {
-				return fmt.Errorf("%s", msg)
-			}
-			validationWarn(log, msg)
 		}
 	}
-
 	if !taskHasModelList(file.ModelTaskConfig.Vlm.ModelList) {
-		validationWarn(log, "未配置视觉识图模型，部分图片理解可能受限，请在webui或model_config中配置")
+		warnings = append(warnings, "未配置视觉识图模型，部分图片理解可能受限，请在webui或model_config中配置")
 	}
-
-	return nil
+	sort.Strings(warnings)
+	return warnings
 }
 
 type taskModelListEntry struct {
-	task        string
-	list        []string
-	hardUnknown bool
+	task string
+	list []string
 }
 
 func taskModelListEntries(mtc ModelTaskConfig) []taskModelListEntry {
@@ -107,7 +107,7 @@ func taskModelListEntries(mtc ModelTaskConfig) []taskModelListEntry {
 		{task: "emoji", list: mtc.Emoji.ModelList},
 		{task: "vlm", list: mtc.Vlm.ModelList},
 		{task: "voice", list: mtc.Voice.ModelList},
-		{task: "embedding", list: mtc.Embedding.ModelList, hardUnknown: true},
+		{task: "embedding", list: mtc.Embedding.ModelList},
 		{task: "image_embedding", list: mtc.ImageEmbedding.ModelList},
 	}
 }
@@ -121,7 +121,7 @@ func taskHasModelList(list []string) bool {
 	return false
 }
 
-func validateAPIProvider(name string, p APIProvider) error {
+func ProviderConfigurationErrors(name string, p APIProvider) []string {
 	authType := strings.TrimSpace(strings.ToLower(p.AuthType))
 	if authType == "" {
 		authType = "bearer"
@@ -130,16 +130,25 @@ func validateAPIProvider(name string, p APIProvider) error {
 	if clientType == "" {
 		clientType = "openai"
 	}
+	errors := make([]string, 0)
 	if strings.TrimSpace(p.BaseUrl) == "" && clientType != "gemini" {
-		return fmt.Errorf("api_provider %q 未配置 base_url", name)
+		errors = append(errors, fmt.Sprintf("api_provider %q 未配置 base_url", name))
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		errors = append(errors, "api_provider 名称不能为空")
+	}
+	switch authType {
+	case "bearer", "header", "query", "none":
+	default:
+		errors = append(errors, fmt.Sprintf("api_provider %q 不支持的 auth_type：%s", name, p.AuthType))
 	}
 	if authType == "header" && strings.TrimSpace(p.AuthHeaderName) == "" {
-		return fmt.Errorf("api_provider %q：auth_type=header 时 auth_header_name 不能为空", name)
+		errors = append(errors, fmt.Sprintf("api_provider %q：auth_type=header 时 auth_header_name 不能为空", name))
 	}
 	if authType == "query" && strings.TrimSpace(p.AuthQueryName) == "" {
-		return fmt.Errorf("api_provider %q：auth_type=query 时 auth_query_name 不能为空", name)
+		errors = append(errors, fmt.Sprintf("api_provider %q：auth_type=query 时 auth_query_name 不能为空", name))
 	}
-	return nil
+	return errors
 }
 
 // validateModelInfo 对齐 ModelInfo.model_post_init：标识、价格时段格式与跨午夜重叠

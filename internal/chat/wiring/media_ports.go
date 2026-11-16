@@ -48,6 +48,7 @@ func (p *ImagePort) DescribeImage(ctx context.Context, ref messagereceive.ImageR
 // EmojiDescriptionSource 表情描述查询端口，emojisystem.Registry 实现该接口
 type EmojiDescriptionSource interface {
 	GetEmojiDescription(ctx context.Context, content []byte, hash string, wait bool) (emojisystem.EmojiDescription, bool, error)
+	GetEmojiDescriptionForSession(ctx context.Context, content []byte, hash string, wait bool, sessionID string) (emojisystem.EmojiDescription, bool, error)
 }
 
 // EmojiPort 接图片缓存与表情系统的描述能力
@@ -73,7 +74,7 @@ func (p *EmojiPort) DescribeEmoji(ctx context.Context, sessionID string, ref mes
 	if hash == "" {
 		return "", errors.New("表情缺少 hash，无法查询描述")
 	}
-	description, _, err := p.Registry.GetEmojiDescription(ctx, nil, hash, wait)
+	description, _, err := p.Registry.GetEmojiDescriptionForSession(ctx, ref.Binary, hash, wait, sessionID)
 	if err != nil {
 		return "", fmt.Errorf("生成表情描述失败: %w", err)
 	}

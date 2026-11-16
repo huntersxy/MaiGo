@@ -173,6 +173,10 @@ func (r *Registry) RunMaintenanceOnce(ctx context.Context, opts MaintenanceOptio
 			result.Skipped++
 			continue
 		}
+		if !emojiMaintenanceAllowed(ctx, entry.Name(), info.Size()) {
+			result.Skipped++
+			continue
+		}
 		status, err := r.registerEmojiByFilename(ctx, filepath.Join(stickerDir, entry.Name()), opts)
 		if err != nil {
 			zap.L().Warn("表情包注册失败", zap.String("file", entry.Name()), zap.Error(err))

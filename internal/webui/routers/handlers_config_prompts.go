@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"MaiGo/internal/prompt"
+
 	"github.com/bytedance/sonic"
 )
 
@@ -114,7 +116,8 @@ func (d Deps) loadPromptFile(language, filename string) (*promptFilePayload, int
 		return nil, http.StatusBadRequest, err
 	}
 	customRoot, _ := d.customPromptsRoot()
-	resourcePath := path.Join(strings.TrimSpace(language), strings.TrimSpace(filename))
+	builtinFilename := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt")) + ".prompt"
+	resourcePath := path.Join(strings.TrimSpace(language), builtinFilename)
 	defaultRaw, err := fs.ReadFile(d.promptResource(), resourcePath)
 	if err != nil {
 		return nil, http.StatusNotFound, errors.New("Prompt 文件不存在")
@@ -204,7 +207,8 @@ func (d Deps) handleConfigPromptVersions(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
 	}
-	if _, err := fs.Stat(d.promptResource(), path.Join(strings.TrimSpace(language), strings.TrimSpace(filename))); err != nil {
+	builtinFilename := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt")) + ".prompt"
+	if _, err := fs.Stat(d.promptResource(), path.Join(strings.TrimSpace(language), builtinFilename)); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "Prompt 文件不存在"})
 		return
 	}

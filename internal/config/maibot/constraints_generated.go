@@ -150,7 +150,7 @@ var botConfigConstraints = []configConstraint{
 	{Path: "chat.reply_timing.private_reply_pause_rules[].item_id", Kind: "string", MinLength: integer(1)},
 	{Path: "chat.reply_timing.private_reply_pause_rules[].platform", Kind: "string", MinLength: integer(1)},
 	{Path: "chat.reply_timing.talk_value", Kind: "float", Ge: num(0.0), Le: num(1.0)},
-	{Path: "chat.reply_timing.talk_value_rules[].rule_type", Kind: "string", Enum: []string{"group", "private"}},
+	{Path: "chat.reply_timing.talk_rule_groups.groups[].rules[].rule_type", Kind: "string", Enum: []string{"group", "private"}},
 	{Path: "chinese_typo.correction_quote_probability", Kind: "float", Ge: num(0.0), Le: num(1.0)},
 	{Path: "chinese_typo.error_rate", Kind: "float", Ge: num(0.0), Le: num(1.0)},
 	{Path: "chinese_typo.tone_error_rate", Kind: "float", Ge: num(0.0), Le: num(1.0)},

@@ -71,7 +71,9 @@ func safePromptPath(root, language, filename string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(resolvedRoot, strings.TrimSpace(language), strings.TrimSpace(filename))
+	storageName := strings.TrimSuffix(strings.TrimSpace(filename), ".prompt")
+	storageName = prompt.CustomPromptStorageName(storageName) + ".prompt"
+	path := filepath.Join(resolvedRoot, strings.TrimSpace(language), storageName)
 	rel, err := filepath.Rel(resolvedRoot, path)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", fmt.Errorf("Prompt 路径越界")

@@ -54,25 +54,9 @@ var creativeTextTranslations = map[string][2]string{
 		"Теперь вы говорите:",
 		"Maintenant, vous dites :",
 	},
-	"你正在群里聊天,现在请你读读之前的聊天记录，然后给出日常且口语化的回复，": {
-		"Вы общаетесь в группе. Прочитайте предыдущие сообщения и ответьте в повседневной разговорной манере,",
-		"Vous discutez dans un groupe. Lisez les échanges précédents, puis répondez de manière quotidienne et familière,",
-	},
-	"尽量简短一些。{keywords_reaction_prompt}": {
-		"постарайтесь быть краткими.{keywords_reaction_prompt}",
-		"essayez de rester bref.{keywords_reaction_prompt}",
-	},
-	"请注意把握聊天内容，不要回复的太有条理。": {
-		"Учитывайте содержание разговора и не делайте ответ слишком упорядоченным.",
-		"Tenez compte du contenu de la conversation sans donner une réponse trop structurée.",
-	},
 	"你正在和{sender_name}聊天，这是你们之前聊的内容:": {
 		"Вы общаетесь с {sender_name}. Вот ваш предыдущий разговор:",
 		"Vous discutez avec {sender_name}. Voici vos échanges précédents :",
-	},
-	"你正在和{sender_name}聊天,现在请你读读之前的聊天记录，然后给出日常且口语化的回复，平淡一些，": {
-		"Вы общаетесь с {sender_name}. Прочитайте предыдущие сообщения и ответьте просто, непринуждённо и разговорно,",
-		"Vous discutez avec {sender_name}. Lisez les échanges précédents, puis répondez de façon quotidienne, familière et simple,",
 	},
 	"尽量简短一些。{keywords_reaction_prompt}请注意把握聊天内容，不要回复的太有条理。": {
 		"постарайтесь быть краткими.{keywords_reaction_prompt}Учитывайте содержание разговора и не делайте ответ слишком упорядоченным.",
@@ -129,6 +113,22 @@ var creativeTextTranslations = map[string][2]string{
 	"不要在正文中重复输出 @ 名称、附件序号、媒体索引、图片或表情包 URL，也不要照抄表情包描述。": {
 		"Не повторяйте в тексте имена после @, номера вложений, индексы медиа, URL изображений или стикеров и не копируйте описания стикеров.",
 		"Ne répétez pas dans le texte les noms après @, les numéros des pièces jointes, les indices des médias, les URL d’images ou d’autocollants, ni leurs descriptions.",
+	},
+	"你正在群里聊天,现在请你读读之前的聊天记录，把握当前的话题，然后用日常口语回复。": {
+		"Вы общаетесь в группе. Прочитайте предыдущие сообщения, уловите текущую тему и ответьте разговорным языком.",
+		"Vous discutez dans un groupe. Lisez les échanges précédents, saisissez le sujet actuel et répondez dans un style conversationnel.",
+	},
+	"你正在和{sender_name}聊天,现在请你读读之前的聊天记录，然后给出日常且口语化的回复，平淡一些。": {
+		"Вы общаетесь с {sender_name}. Прочитайте предыдущие сообщения и ответьте просто, непринуждённо и разговорно.",
+		"Vous discutez avec {sender_name}. Lisez les échanges précédents et répondez sur un ton simple et familier.",
+	},
+	"{keywords_reaction_prompt}请注意把握聊天内容，不要回复的太有条理。": {
+		"{keywords_reaction_prompt}Учитывайте содержание разговора и не делайте ответ слишком упорядоченным.",
+		"{keywords_reaction_prompt}Tenez compte du contenu de la conversation sans donner une réponse trop structurée.",
+	},
+	"{keywords_reaction_prompt}请注意把握聊天内容，不要回复的太有条理，可以有个性。": {
+		"{keywords_reaction_prompt}Учитывайте содержание разговора, не делайте ответ слишком упорядоченным; можно проявить индивидуальность.",
+		"{keywords_reaction_prompt}Tenez compte du contenu de la conversation sans trop structurer votre réponse ; vous pouvez montrer votre personnalité.",
 	},
 }
 

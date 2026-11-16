@@ -50,15 +50,50 @@ func PrivateDebounceMode(rt ChatReplyTimingConfig) string {
 	return mode
 }
 
+// ActiveRules 返回当前生效规则组内的规则
+func (groups TalkRuleGroups) ActiveRules() []TalkRulesItem {
+	active := strings.TrimSpace(groups.ActiveGroup)
+	for _, group := range groups.Groups {
+		if strings.TrimSpace(group.Name) == active {
+			return group.Rules
+		}
+	}
+	if len(groups.Groups) > 0 {
+		return groups.Groups[0].Rules
+	}
+	return nil
+}
+
+// EnsureTalkRuleGroups 为旧配置补齐默认规则组
+func (rt *ChatReplyTimingConfig) EnsureTalkRuleGroups() {
+	if rt == nil {
+		return
+	}
+	if len(rt.TalkRuleGroups.Groups) == 0 {
+		name := DefaultTalkRuleGroupName
+		groups := []TalkRuleGroup{}
+		if len(rt.TalkValueRules) > 0 {
+			groups = append(groups, TalkRuleGroup{Name: name, Rules: rt.TalkValueRules})
+		}
+		rt.TalkRuleGroups = TalkRuleGroups{ActiveGroup: name, Groups: groups}
+		return
+	}
+	if strings.TrimSpace(rt.TalkRuleGroups.ActiveGroup) == "" {
+		rt.TalkRuleGroups.ActiveGroup = strings.TrimSpace(rt.TalkRuleGroups.Groups[0].Name)
+	}
+}
+
 // GroupTalkFrequency 群聊 talk_value，含时段规则（对齐 ChatConfigUtils.get_talk_value 群聊分支）
 func GroupTalkFrequency(rt ChatReplyTimingConfig, platform string, groupID int64) float64 {
+	rt.EnsureTalkRuleGroups()
 	base := rt.TalkValue
-	if len(rt.TalkValueRules) == 0 {
+	rules := rt.TalkRuleGroups.ActiveRules()
+	if len(rules) == 0 {
 		return base
 	}
 	nowMin := time.Now().Hour()*60 + time.Now().Minute()
 	groupStr := strconv.FormatInt(groupID, 10)
-	if matched, ok := selectTalkRuleValue(rt.TalkValueRules, platform, groupStr, true, nowMin); ok {
+	if matched, ok := selectTalkRuleValue(rules, platform, groupStr, true, nowMin); ok {
 		return matched
 	}
 	return base
@@ -98,6 +133,9 @@ func selectTalkRuleValue(rules []TalkRulesItem, platform, itemID string, isGroup
 	var selectedValue float64
 	found := false
 	for _, rule := range rules {
+		if !rule.RuleEnabled() {
+			continue
+		}
 		ruleType := strings.TrimSpace(rule.RuleType)
 		if isGroup && ruleType != "group" {
 			continue

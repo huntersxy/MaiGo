@@ -45,6 +45,9 @@ func ModelConfigFromMaiBotFile(file maibot.ModelConfigFile, modelName string) (M
 	if !ok {
 		return ModelConfig{}, fmt.Errorf("未找到 api_provider %q", providerName)
 	}
+	if errors := maibot.ProviderConfigurationErrors(providerName, provider); len(errors) > 0 {
+		return ModelConfig{}, fmt.Errorf("供应商 %s 配置无效：%s", providerName, strings.Join(errors, "；"))
+	}
 	clientType := normalizeClientType(provider.ClientType)
 	if !supportedMaiBotClientTypes[clientType] && !pluginProviderAvailable(clientType) {
 		return ModelConfig{}, fmt.Errorf("client_type %q 未注册（既非内置类型，也没有插件 Provider 声明）", provider.ClientType)
@@ -57,13 +60,6 @@ func ModelConfigFromMaiBotFile(file maibot.ModelConfigFile, modelName string) (M
 		authType = authTypeBearer
 	}
 	if modelID == "" {
-		return ModelConfig{}, fmt.Errorf("模型 %q 的 Provider 配置不完整", modelName)
-	}
-	// 对齐 MaiBot APIProvider.model_post_init：仅 auth_type=none 允许空密钥
-	if apiKey == "" && authType != authTypeNone {
-		return ModelConfig{}, fmt.Errorf("模型 %q 的 Provider 配置不完整", modelName)
-	}
-	if !isGeminiClientType(clientType) && baseURL == "" {
 		return ModelConfig{}, fmt.Errorf("模型 %q 的 Provider 配置不完整", modelName)
 	}
 	maxRetry := provider.MaxRetry
@@ -136,7 +132,8 @@ func providerAuthHeaderPrefixValue(prefix string, set bool) string {
 	return providerAuthHeaderPrefix(prefix)
 }
 
-func secondsOrDefault(seconds int, fallback time.Duration) time.Duration {	if seconds <= 0 {
+func secondsOrDefault(seconds int, fallback time.Duration) time.Duration {
+	if seconds <= 0 {
 		return fallback
 	}
 	return time.Duration(seconds) * time.Second

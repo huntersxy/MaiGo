@@ -271,6 +271,7 @@ func chatTalkRuleDetail(rule map[string]any, rec *chatsession.Record, nowMin int
 		"type":              ruleType,
 		"time":              ruleTime,
 		"value":             value,
+		"enabled":           chatConfigBool(rule["enabled"], true),
 		"value_label":       formatChatFrequency(value),
 		"target_priority":   targetPriority,
 		"time_priority":     timePriority,
@@ -296,12 +297,17 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 		return map[string]any{
 			"base_value": value, "base_value_label": label,
 			"effective_value": value, "effective_value_label": label,
-			"current_time": currentTime, "matched_rules": []any{},
+			"current_time": currentTime, "active_group": nil, "matched_rules": []any{},
 		}
 	}
 	baseValue := chatConfigFloat(replyTiming["talk_value"], 1.0)
 	effectiveValue := baseValue
-	rules := chatConfigRules(replyTiming["talk_value_rules"])
+	groups := chatTalkRuleGroups(replyTiming)
+	activeGroupName := chatConfigString(groups["active_group"])
+	rules := []map[string]any{}
+	if group := chatActiveTalkGroup(groups); group != nil {
+		rules = chatConfigRules(group["rules"])
+	}
 	details := make([]map[string]any, 0, len(rules))
 	selectedIndex := -1
 	selectedPriority := [2]int{0, 0}
@@ -311,7 +317,7 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 		if !ok {
 			continue
 		}
-		if detail["time_active"].(bool) {
+		if detail["time_active"].(bool) && detail["enabled"].(bool) {
 			priority := [2]int{detail["target_priority"].(int), detail["time_priority"].(int)}
 			if priority[0] > selectedPriority[0] || (priority[0] == selectedPriority[0] && priority[1] > selectedPriority[1]) {
 				selectedPriority = priority
@@ -340,7 +346,7 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 	return map[string]any{
 		"base_value": baseValue, "base_value_label": formatChatFrequency(baseValue),
 		"effective_value": effectiveValue, "effective_value_label": formatChatFrequency(effectiveValue),
-		"current_time": currentTime, "matched_rules": details,
+		"current_time": currentTime, "active_group": activeGroupName, "matched_rules": details,
 	}
 }
 

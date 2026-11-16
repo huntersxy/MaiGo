@@ -219,7 +219,7 @@ func savePromptFiles(root, locale string, prompts map[string]*Prompt, saveLocale
 		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			return fmt.Errorf("创建 custom prompt 目录 %q: %w", targetDir, err)
 		}
-		filePath := filepath.Join(targetDir, name+".prompt")
+		filePath := filepath.Join(targetDir, CustomPromptStorageName(name)+".prompt")
 		if err := os.WriteFile(filePath, []byte(p.Template()), 0o644); err != nil {
 			return fmt.Errorf("写入 custom prompt %q: %w", filePath, err)
 		}

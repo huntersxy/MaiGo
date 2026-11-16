@@ -414,8 +414,10 @@ type ChatReplyTimingConfig struct {
 	NoActionBackoffStartCount         int                     `toml:"no_action_backoff_start_count,omitempty"`
 	NoActionBackoffBypassPendingCount int                     `toml:"no_action_backoff_bypass_pending_count,omitempty"`
 	// EnableTalkValueRules 8.16.11 前；规则开关移除后由升级链消费
-	EnableTalkValueRules *bool           `toml:"enable_talk_value_rules,omitempty"`
-	TalkValueRules       []TalkRulesItem `toml:"talk_value_rules,omitempty"`
+	EnableTalkValueRules *bool `toml:"enable_talk_value_rules,omitempty"`
+	// TalkValueRules 8.16.18 前；升级链迁入 TalkRuleGroups
+	TalkValueRules []TalkRulesItem `toml:"talk_value_rules,omitempty"`
+	TalkRuleGroups TalkRuleGroups  `toml:"talk_rule_groups,omitempty"`
 }
 
 type ChatStreamGroup struct {
@@ -797,11 +799,27 @@ type ResponseSplitterConfig struct {
 }
 
 type TalkRulesItem struct {
+	Enabled  *bool   `toml:"enabled,omitempty"`
 	Platform string  `toml:"platform,omitempty"`
 	ItemId   string  `toml:"item_id,omitempty"`
 	RuleType string  `toml:"rule_type,omitempty"`
 	Time     string  `toml:"time,omitempty"`
 	Value    float64 `toml:"value,omitempty"`
+}
+
+// RuleEnabled 未显式关闭时规则生效
+func (r TalkRulesItem) RuleEnabled() bool { return r.Enabled == nil || *r.Enabled }
+
+const DefaultTalkRuleGroupName = "默认"
+
+type TalkRuleGroup struct {
+	Name  string          `toml:"name,omitempty"`
+	Rules []TalkRulesItem `toml:"rules,omitempty"`
+}
+
+type TalkRuleGroups struct {
+	ActiveGroup string          `toml:"active_group,omitempty"`
+	Groups      []TalkRuleGroup `toml:"groups,omitempty"`
 }
 
 type TargetItem struct {
