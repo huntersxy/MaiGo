@@ -38,9 +38,6 @@ const ReferenceContextRestoreType = "context_restore"
 // PendingImagePlaceholder 图片尚未完成识别时的占位文本，对齐 Python 常量
 const PendingImagePlaceholder = "[图片，识别中.....]"
 
-// EmojiCandidateSource 表情候选快照消息的来源标记，对齐 Python EmojiCandidateMessage.source
-const EmojiCandidateSource = "emoji_candidates"
-
 // ToolResultMediaKind 工具结果媒体消息的 metadata.kind 标记，对齐 Python ToolResultMediaMessage
 const ToolResultMediaKind = "tool_result_media"
 
@@ -260,8 +257,6 @@ type ContextItem struct {
 	Emojis     []ImageComponent
 	// Visual 本次请求允许携带可内联的图片/表情，投影为多模态内容块
 	Visual bool
-	// PreserveImages 图片不占普通图片配额，对齐 Python preserved_item_ids
-	PreserveImages bool
 }
 
 // ChatResponse 一次模型请求的响应

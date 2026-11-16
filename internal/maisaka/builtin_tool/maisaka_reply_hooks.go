@@ -14,6 +14,13 @@ import (
 
 const hookMaisakaReplyBeforePostProcess = "maisaka.reply.before_post_process"
 
+func toolStreamID(ctx context.Context) string {
+	if tc := GetToolContext(ctx); tc != nil {
+		return tc.SessionID
+	}
+	return ""
+}
+
 // emitReplyBeforePostProcess 对齐 MaiBot maisaka/builtin_tool/reply.py:81-110：
 // 在最终可见回复执行文本后处理前触发 Hook，并读回 response 与三项后处理开关。
 func emitReplyBeforePostProcess(ctx context.Context, content string, replyTo int64, input *ReplyInput) (string, replyer.PostProcessOptions, error) {

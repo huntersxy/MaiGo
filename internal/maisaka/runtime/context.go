@@ -95,10 +95,15 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 		MemoryReadVersions:      map[uint]uint64{},
 		EffectiveReplyTo:        &effectiveReplyTo,
 		EnableReplyAt:           kind == memory.ConversationKindGroup && a.replyAtEnabled(),
-		UseNewSendLogic:         instance != nil && instance.Bot.Emoji.UseNewSendLogic,
 		MemoryQueryDefaultLimit: memoryQueryDefaultLimit,
 		ResolvePicture: func(msgID string, index int) (string, string, error) {
 			return resolveSessionPicture(session, msgID, index)
+		},
+		ResolveEmojiAttachment: func(callCtx context.Context, reference any) (tools.EmojiAttachment, error) {
+			return a.resolveEmojiAttachment(callCtx, session, sessionID, reference)
+		},
+		SendEmojiAttachment: func(callCtx context.Context, target int64, attachment tools.EmojiAttachment) error {
+			return a.sendEmojiAttachment(callCtx, kind, target, attachment)
 		},
 		SpeakCallback: func(callCtx context.Context, gid int64, content string, replyTo int64, mentions []int64) error {
 			if kind == memory.ConversationKindPrivate {

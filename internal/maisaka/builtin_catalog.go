@@ -11,8 +11,6 @@ const (
 	ToolQueryMemory        BuiltinToolName = "query_memory"
 	ToolQueryImageMemory   BuiltinToolName = "query_image_memory"
 	ToolQueryPersonProfile BuiltinToolName = "query_person_profile"
-	ToolSendEmoji          BuiltinToolName = "send_emoji"
-	ToolShowEmojiList      BuiltinToolName = "show_emoji_list"
 	ToolSaveEmoji          BuiltinToolName = "save_emoji"
 	ToolToolSearch         BuiltinToolName = "tool_search"
 	ToolSubagent           BuiltinToolName = "subagent"
@@ -29,8 +27,6 @@ var GoToolMapping = map[BuiltinToolName]string{
 	ToolQueryMemory:        "query_memory → memorix Host Search（Bridge）；mode=episode 为话题/knowledge 替身；aggregate/纯 time 未迁移",
 	ToolQueryImageMemory:   "query_image_memory → memory.SearchStickerPage 关键词（无 A_Memorix 同图向量）",
 	ToolQueryPersonProfile: "query_person_profile → personinfo.GetProfile",
-	ToolSendEmoji:          "send_emoji → emojisystem + sendSticker",
-	ToolShowEmojiList:      "show_emoji_list → SampleCandidates 结构化列表（无视觉拼图）",
 	ToolSaveEmoji:          "save_emoji → 会话 hash/URL + media.Ensure + MAIBOT_STICKER_DIR + images 表（EMOJI）；可选 VLM 打标",
 	ToolViewForwardMessage: "view_forward_message → readForward",
 	ToolToolSearch:         "tool_search → deferred 工具关键词检索，发现后按模型轮次动态暴露",

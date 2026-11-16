@@ -47,6 +47,20 @@ type SendStickerCallback func(ctx context.Context, targetID int64, fileName stri
 type SendImageURLCallback func(ctx context.Context, imageURL string) error
 type GetNewMessagesCallback func(ctx context.Context) (any, error)
 
+// EmojiAttachment 已解析的表情包附件；Path/Binary 至少一个可用
+type EmojiAttachment struct {
+	Hash    string
+	Path    string
+	Content string
+	Binary  []byte
+}
+
+// ResolveEmojiAttachmentCallback 解析 attach_emoji 的语义描述或上下文引用
+type ResolveEmojiAttachmentCallback func(ctx context.Context, reference any) (EmojiAttachment, error)
+
+// SendEmojiAttachmentCallback 发送已解析的表情包附件
+type SendEmojiAttachmentCallback func(ctx context.Context, targetID int64, attachment EmojiAttachment) error
+
 // ReplyerCallbackResult Replyer 正文及监控信息
 type ReplyerCallbackResult struct {
 	Text          string
@@ -95,7 +109,6 @@ type ToolContext struct {
 	RecordReplyTarget func(msgID string, content string)
 	EnableReplyAt     bool
 
-	UseNewSendLogic bool
 	// MemoryQueryDefaultLimit 对齐 memory_query_default_limit，零值由 query_memory 兜底 5
 	MemoryQueryDefaultLimit int
 	// ResolvePicture 按 msg_id 或 media_index 与图片序号解析上下文图片，失败原因逐字沿用 Python 文案
@@ -104,8 +117,10 @@ type ToolContext struct {
 	SourceImages func() map[string][]media.Ref
 	// ImageMemorySearch 按消息与组件路径查询 A_Memorix 图片记忆
 	ImageMemorySearch func(ctx context.Context, messageID string, componentPath string, limit int) (map[string]any, error)
-	// EmojiCandidates 保存 show_emoji_list 返回的拼图序号到表情包 ID
-	EmojiCandidates        map[int]uint
+	// ResolveEmojiAttachment 解析 reply.attach_emoji 的上下文引用或语义描述
+	ResolveEmojiAttachment ResolveEmojiAttachmentCallback
+	// SendEmojiAttachment 在文字回复后发送已解析的表情包附件
+	SendEmojiAttachment    SendEmojiAttachmentCallback
 	SessionMessageCallback SessionMessageCallback
 	InternalTaskCallback   InternalTaskCallback
 	ReadForwardCallback    func(ctx context.Context, id string, index int) (any, error)

@@ -159,6 +159,17 @@ func (r *Router) NewEmbeddingClientForTask(ctx context.Context, task TaskName) (
 	})
 }
 
+// NewEmbeddingClientForTaskRequest 按任务路由嵌入客户端并指定统计用的 request_type/session_id
+func (r *Router) NewEmbeddingClientForTaskRequest(
+	ctx context.Context, task TaskName, requestType, sessionID string,
+) (ResolvedRoute, EmbeddingClient, error) {
+	return r.newEmbeddingClientForTask(ctx, task, embeddingRequestMetadata{
+		taskName:    task,
+		requestType: requestType,
+		sessionID:   sessionID,
+	})
+}
+
 // applyRouteTaskMetadata 把任务名写入配置，供失败快照与缓存统计使用
 func applyRouteTaskMetadata(resolved *ResolvedRoute, task TaskName) {
 	if resolved == nil {

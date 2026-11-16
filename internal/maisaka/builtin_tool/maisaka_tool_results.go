@@ -34,10 +34,6 @@ func convertMaisakaToolResult(ctx context.Context, toolName, raw string) (Struct
 		return convertQueryImageMemoryResult(output), nil
 	case "query_person_profile":
 		return convertQueryPersonProfileResult(output), nil
-	case "send_emoji":
-		return convertSendEmojiResult(output), nil
-	case "show_emoji_list":
-		return convertShowEmojiListResult(output), nil
 	case "subagent", "subagent_status", "subagent_stop":
 		return convertSubagentResult(toolName, output), nil
 	case "reply":
@@ -190,48 +186,6 @@ func queryPersonProfileStructured(output map[string]any) map[string]any {
 		"from_cache":          maisakaBoolValue(output["from_cache"]),
 		"limit":               maisakaIntValue(output["limit"]),
 	}
-}
-
-func convertSendEmojiResult(output map[string]any) StructuredToolResult {
-	success := maisakaBoolValue(output["success"])
-	message := strings.TrimSpace(maisakaStringValue(output["message"]))
-	reason := maisakaStringValue(output["reason"])
-	// Python structured_result 初始化即固定六键；成功时后三者保持空值但键必须存在
-	structured := map[string]any{
-		"success":         success,
-		"message":         message,
-		"description":     maisakaStringValue(output["description"]),
-		"emotion":         maisakaStringSlice(output["emotion"]),
-		"matched_emotion": maisakaStringValue(output["matched_emotion"]),
-		"reason":          reason,
-	}
-	// metadata 由选择器与发送结果在工具内组装，对齐 send_emoji.py:_build_send_emoji_monitor_metadata
-	metadata := maisakaMapValue(output["selection_metadata"])
-	if !success {
-		return StructuredToolResult{
-			Success:           false,
-			ErrorMessage:      maisakaFirstNonEmpty(message, "发送表情包失败。"),
-			StructuredContent: structured,
-			Metadata:          metadata,
-		}
-	}
-	if message == "" {
-		message = "表情包发送成功"
-		structured["message"] = message
-	}
-	return StructuredToolResult{
-		Success:           true,
-		Content:           maisakaFirstNonEmpty(reason, "表情包发送成功"),
-		StructuredContent: structured,
-		Metadata:          metadata,
-	}
-}
-
-func convertShowEmojiListResult(output map[string]any) StructuredToolResult {
-	if success, ok := output["success"].(bool); ok && !success {
-		return StructuredToolResult{Success: false, ErrorMessage: maisakaFirstNonEmpty(maisakaStringValue(output["message"]), "当前表情包库中没有可用表情。")}
-	}
-	return StructuredToolResult{Success: true, Content: maisakaStringValue(output["message"])}
 }
 
 func convertSubagentResult(toolName string, output map[string]any) StructuredToolResult {

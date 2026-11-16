@@ -29,8 +29,6 @@ var subagentRunnerForbidden = map[string]struct{}{
 	"subagent_stop":   {},
 	"react_message":   {},
 	"reply":           {},
-	"send_emoji":      {},
-	"show_emoji_list": {},
 	"tool_search":     {},
 	"wait":            {},
 	"stop":            {},

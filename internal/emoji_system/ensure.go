@@ -166,7 +166,7 @@ func (r *Registry) RegisterEmoji(ctx context.Context, emoji *Emoji, description 
 	if desc := strings.TrimSpace(description); desc != "" {
 		emoji.Description = desc
 	}
-	return mgr.mem.RegisterEmojiToDB(ctx, memory.EmojiRecordInput{
+	status, err := mgr.mem.RegisterEmojiToDB(ctx, memory.EmojiRecordInput{
 		ImageHash:    emoji.FileHash,
 		FullPath:     fullPath,
 		Description:  emoji.Description,
@@ -174,6 +174,10 @@ func (r *Registry) RegisterEmoji(ctx context.Context, emoji *Emoji, description 
 		RegisterTime: emoji.RegisterTime,
 		LastUsedTime: emoji.LastUsedTime,
 	})
+	if err == nil && status == memory.EmojiRegisterRegistered {
+		ScheduleEmojiIndex(emoji.FileHash)
+	}
+	return status, err
 }
 
 // SetEmojiDescription 直接写入表情包描述，描述为空时不做变更

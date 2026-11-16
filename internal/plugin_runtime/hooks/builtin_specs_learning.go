@@ -6,46 +6,6 @@ package hooks
 func emojiHookSpecs() []HookSpec {
 	return []HookSpec{
 		{
-			Name:        "emoji.maisaka.before_select",
-			Description: "Maisaka 表情发送工具选择表情前触发，可改写情绪、上下文和采样参数，或中止本次选择。",
-			ParametersSchema: hookSchema(map[string]any{
-				"stream_id":         map[string]any{"type": "string", "description": "目标会话 ID。"},
-				"requested_emotion": map[string]any{"type": "string", "description": "请求的目标情绪标签。"},
-				"reasoning":         map[string]any{"type": "string", "description": "本次发送表情的推理理由。"},
-				"context_texts": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "最近聊天上下文文本列表。",
-				},
-				"sample_size":   map[string]any{"type": "integer", "description": "候选表情采样数量。"},
-				"abort_message": map[string]any{"type": "string", "description": "当 Hook 主动中止时可附带的失败提示。"},
-			}, "stream_id", "requested_emotion", "reasoning", "context_texts", "sample_size"),
-			DefaultTimeoutMS: 5000,
-		},
-		{
-			Name:        "emoji.maisaka.after_select",
-			Description: "Maisaka 已选出表情后触发，可替换选中的表情哈希、补充匹配情绪，或中止发送。",
-			ParametersSchema: hookSchema(map[string]any{
-				"stream_id":         map[string]any{"type": "string", "description": "目标会话 ID。"},
-				"requested_emotion": map[string]any{"type": "string", "description": "请求的目标情绪标签。"},
-				"reasoning":         map[string]any{"type": "string", "description": "本次发送表情的推理理由。"},
-				"context_texts": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "最近聊天上下文文本列表。",
-				},
-				"sample_size": map[string]any{"type": "integer", "description": "候选表情采样数量。"},
-				"selected_emoji": map[string]any{
-					"type":        "object",
-					"description": "当前表情包的序列化信息，主要包含 file_hash、description、emotions 等字段。",
-				},
-				"selected_emoji_hash": map[string]any{"type": "string", "description": "选中的表情哈希。"},
-				"matched_emotion":     map[string]any{"type": "string", "description": "最终命中的情绪标签。"},
-				"abort_message":       map[string]any{"type": "string", "description": "当 Hook 主动中止时可附带的失败提示。"},
-			}, "stream_id", "requested_emotion", "reasoning", "context_texts", "sample_size", "matched_emotion"),
-			DefaultTimeoutMS: 5000,
-		},
-		{
 			Name:        "emoji.register.after_build_description",
 			Description: "表情包描述生成并通过内容审查后触发，可改写描述文本或拒绝本次注册。",
 			ParametersSchema: hookSchema(map[string]any{

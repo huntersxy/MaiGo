@@ -53,6 +53,7 @@ func (r *Registry) RunMaintenance(ctx context.Context, opts MaintenanceOptions) 
 	}
 	// 缓存清理独立周期，对齐 main.py 单独启动的 periodic_emoji_cache_cleanup
 	r.cacheLoopOnce.Do(func() { go r.RunCacheCleanupLoop(ctx) })
+	BackfillEmojiIndex()
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
 	for {
@@ -96,6 +97,7 @@ func (r *Registry) RunMaintenance(ctx context.Context, opts MaintenanceOptions) 
 		if interval < 0 {
 			interval = 0
 		}
+		BackfillEmojiIndex()
 		timer.Reset(interval)
 	}
 }

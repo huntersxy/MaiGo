@@ -22,9 +22,7 @@ type EmojiCacheCleanupSettings struct {
 
 // EmojiSettings 对齐 MaiBot global_config.emoji 中运行期需要的字段
 type EmojiSettings struct {
-	StealEmoji bool
-	// EmojiSendNum 对齐 emoji.emoji_send_num：单次候选数量，对应 Python Field(default=25, ge=1, le=64)
-	EmojiSendNum      int
+	StealEmoji        bool
 	MaxRegNum         int
 	DoReplace         bool
 	CheckInterval     time.Duration
@@ -37,7 +35,6 @@ type EmojiSettings struct {
 func DefaultEmojiSettings() EmojiSettings {
 	return EmojiSettings{
 		StealEmoji:        true,
-		EmojiSendNum:      25,
 		MaxRegNum:         64,
 		DoReplace:         true,
 		CheckInterval:     10 * time.Minute,
@@ -57,12 +54,6 @@ func (s EmojiSettings) Normalize() EmojiSettings {
 	def := DefaultEmojiSettings()
 	if s.MaxRegNum <= 0 {
 		s.MaxRegNum = def.MaxRegNum
-	}
-	if s.EmojiSendNum <= 0 {
-		s.EmojiSendNum = def.EmojiSendNum
-	}
-	if s.EmojiSendNum > 64 {
-		s.EmojiSendNum = 64
 	}
 	if s.CheckInterval <= 0 {
 		s.CheckInterval = def.CheckInterval
@@ -146,7 +137,6 @@ func loadEmojiSettingsFile(path string) EmojiSettings {
 	settings.DoReplace = probeBool(section, "do_replace", settings.DoReplace)
 	settings.ContentFiltration = probeBool(section, "content_filtration", settings.ContentFiltration)
 	settings.MaxRegNum = probeInt(section, "max_reg_num", settings.MaxRegNum)
-	settings.EmojiSendNum = probeInt(section, "emoji_send_num", settings.EmojiSendNum)
 	if minutes := probeInt(section, "check_interval", int(settings.CheckInterval/time.Minute)); minutes > 0 {
 		settings.CheckInterval = time.Duration(minutes) * time.Minute
 	}

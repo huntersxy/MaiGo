@@ -15,8 +15,6 @@ func MaisakaCompatToolBuilders() []func() (tool.BaseTool, error) {
 		func() (tool.BaseTool, error) { return NewQueryMemoryTool() },
 		maisakaSpecBuilder("query_image_memory", NewQueryImageMemoryTool),
 		maisakaSpecBuilder("query_person_profile", NewQueryPersonProfileTool),
-		maisakaSpecBuilder("send_emoji", NewSendEmojiTool),
-		maisakaSpecBuilder("show_emoji_list", NewShowEmojiListTool),
 		maisakaSpecBuilder("tool_search", NewToolSearchTool),
 		maisakaSpecBuilder("subagent", NewSubagentTool),
 		maisakaSpecBuilder("subagent_status", NewSubagentStatusTool),

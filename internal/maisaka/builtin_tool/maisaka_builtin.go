@@ -110,7 +110,7 @@ type ReplyInput struct {
 	ReplyTo          int64                `json:"reply_to,omitempty" jsonschema:"description=内部桥接字段，模型不要填写；引用目标由 msg_id 解析"`
 	AttachAt         []string             `json:"attach_at,omitempty" jsonschema:"description=可选；随回复 at 的目标消息 msg_id 列表"`
 	AttachPic        []ReplyAttachPicture `json:"attach_pic,omitempty" jsonschema:"description=可选；随回复发送的图片列表"`
-	AttachEmoji      int                  `json:"attach_emoji,omitempty" jsonschema:"description=可选；show_emoji_list 返回的拼图序号，0 表示不发送"`
+	AttachEmoji      any                  `json:"attach_emoji,omitempty" jsonschema:"description=可选；上下文表情引用或按情绪、画面内容匹配的表情"`
 }
 
 // ReplyOutput reply 工具的输出，字段对齐 Python reply 的 content 与 structured_content
@@ -225,26 +225,30 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			Message: "回复时 @ 用户已关闭，不能使用 attach_at。",
 		}, nil
 	}
-	if input.AttachEmoji < 0 {
-		return &maisakaStubOutput{Success: false, Message: "attach_emoji 必须填写 show_emoji_list 拼图中的正整数序号。"}, nil
+	var emojiAttachment *EmojiAttachment
+	switch value := input.AttachEmoji.(type) {
+	case float64:
+		if value == 0 {
+			input.AttachEmoji = nil
+		}
+	case int:
+		if value == 0 {
+			input.AttachEmoji = nil
+		}
 	}
-	if input.AttachEmoji > 0 && (tc == nil || !tc.UseNewSendLogic) {
-		return &maisakaStubOutput{Success: false, Message: "新表情包发送逻辑未开启，请使用 send_emoji 工具。"}, nil
+	if input.AttachEmoji != nil {
+		if tc == nil || tc.ResolveEmojiAttachment == nil {
+			zap.L().Warn("attach_emoji resolution=failed source=unknown error=resolver unavailable")
+		} else if resolved, resolveErr := tc.ResolveEmojiAttachment(ctx, input.AttachEmoji); resolveErr != nil {
+			zap.L().Warn("attach_emoji resolution=failed", zap.Error(resolveErr))
+		} else {
+			emojiAttachment = &resolved
+			zap.L().Info("attach_emoji resolution=resolved")
+		}
 	}
 	pictures, err := resolveReplyPictures(tc, input.AttachPic)
 	if err != nil {
 		return &maisakaStubOutput{Success: false, Message: err.Error()}, nil
-	}
-	var emojiID uint
-	if input.AttachEmoji > 0 {
-		resolved, ok := resolveAttachEmojiID(ctx, input.AttachEmoji)
-		if !ok {
-			return &maisakaStubOutput{
-				Success: false,
-				Message: fmt.Sprintf("表情包序号 %d 不在当前历史中，请先调用 show_emoji_list。", input.AttachEmoji),
-			}, nil
-		}
-		emojiID = resolved
 	}
 	var generatedMonitorDetail map[string]any
 	var generatedPromptHTMLURI string
@@ -338,10 +342,12 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			}
 		}
 	}
-	if emojiID > 0 {
-		emojiOutput := sendEmojiCore(ctx, "", emojiID)
-		if !emojiOutput.Success {
-			return nil, fmt.Errorf("发送回复表情失败: %s", maisakaFirstNonEmpty(emojiOutput.Message, "未知错误"))
+	if emojiAttachment != nil {
+		if tc == nil || tc.SendEmojiAttachment == nil {
+			return nil, fmt.Errorf("发送回复表情失败: 表情发送端口未接入")
+		}
+		if err := tc.SendEmojiAttachment(ctx, tc.TargetID, *emojiAttachment); err != nil {
+			return nil, fmt.Errorf("发送回复表情失败: %w", err)
 		}
 	}
 	out.AfterReply = afterReply
@@ -461,7 +467,7 @@ func replyToolArguments(input *ReplyInput) map[string]any {
 	if len(input.AttachAt) > 0 {
 		args["attach_at"] = append([]string(nil), input.AttachAt...)
 	}
-	if input.AttachEmoji > 0 {
+	if input.AttachEmoji != nil {
 		args["attach_emoji"] = input.AttachEmoji
 	}
 	if len(input.AttachPic) > 0 {
@@ -633,7 +639,7 @@ func queryImageMemoryFunc(ctx context.Context, input *QueryImageMemoryInput) (*Q
 		return &QueryImageMemoryOutput{
 			Success: true,
 			Keyword: keyword,
-			Message: "没有找到匹配描述的表情包；若库中图片尚无 VLM 描述，请先 describe_emoji 或 send_emoji 触发打标",
+			Message: "没有找到匹配描述的表情包；若库中图片尚无 VLM 描述，请先调用 describe_emoji 生成描述",
 			Note:    note,
 		}, nil
 	}

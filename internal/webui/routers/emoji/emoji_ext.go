@@ -1,9 +1,9 @@
 package emoji
 
 import (
+	"MaiGo/internal/webui/httputil"
 	"errors"
 	"fmt"
-	"MaiGo/internal/webui/httputil"
 	"mime"
 	"net/http"
 	"os"
@@ -142,7 +142,15 @@ func (d Deps) handleEmojiDetail(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteAPIError(w, http.StatusInternalServerError, "获取表情包详情失败: "+err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"success": true, "data": emojiToWebUI(item)})
+	response := map[string]any{
+		"success": true, "data": emojiToWebUI(item),
+		"emotion_tags": nil, "content_tags": nil,
+	}
+	if tags, ok := emojisystem.GetEmojiTags(item.Hash); ok {
+		response["emotion_tags"] = tags.EmotionTags
+		response["content_tags"] = tags.ContentTags
+	}
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 func (d Deps) handleEmojiUpdate(w http.ResponseWriter, r *http.Request) {

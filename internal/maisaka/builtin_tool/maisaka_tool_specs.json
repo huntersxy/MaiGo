@@ -91,9 +91,51 @@
     "parameters_schema": {
       "properties": {
         "attach_emoji": {
-          "description": "可选。从 show_emoji_list 的拼图选择一个表情包，填写图片序号，在文字后发送；0 或不填表示不发送表情包。",
-          "minimum": 0,
-          "type": "integer"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "只填一项就按该项匹配，两项都填就合并分数。",
+              "minProperties": 1,
+              "properties": {
+                "content": {
+                  "description": "期望图中出现的人物、物体、动作或文字。",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "emotion": {
+                  "description": "想表达的情绪或语气。",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "description": "想表达的情绪或意图，例如轻松地自嘲。",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "index": {
+                  "description": "该消息中第几张表情包，从 0 开始。",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "msg_id": {
+                  "description": "含表情包的上下文消息编号。",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "msg_id"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "可选。在文字后发送一张表情包。可引用上下文表情，或按情绪、画面内容匹配。省略表示不发送表情包。"
         },
         "attach_pic": {
           "default": [],
@@ -179,31 +221,6 @@
         "msg_id",
         "reply_reference"
       ],
-      "type": "object"
-    },
-    "provider_name": "maisaka_builtin",
-    "provider_type": "builtin"
-  },
-  "send_emoji": {
-    "description": "发送一个表情包来表达情绪，参与聊天。",
-    "name": "send_emoji",
-    "parameters_schema": {
-      "properties": {
-        "msg_id": {
-          "description": "要回复的消息编号；小黑盒发评论时必须指定主帖或评论消息。",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "provider_name": "maisaka_builtin",
-    "provider_type": "builtin"
-  },
-  "show_emoji_list": {
-    "description": "查看随机抽取的表情包选择拼图。图片会进入你的上下文，不会发送给聊天对象。调用 reply 时将选中图片的序号填入 attach_emoji；历史拼图的序号也可使用。",
-    "name": "show_emoji_list",
-    "parameters_schema": {
-      "properties": {},
       "type": "object"
     },
     "provider_name": "maisaka_builtin",

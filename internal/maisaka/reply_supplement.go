@@ -27,6 +27,14 @@ type SupplementPart struct {
 	MsgID  string
 	Source string
 	Index  int
+	// Emoji 节点的语义或上下文引用
+	HasIndex       bool
+	Description    string
+	HasDescription bool
+	Emotion        string
+	HasEmotion     bool
+	Content        string
+	HasContent     bool
 }
 
 // ReplySupplementPlan 一份发送编排；reply 只能出现一次，不能携带或改写正文
@@ -117,14 +125,56 @@ func parseSupplementPart(payload map[string]any) (SupplementPart, error) {
 		part.Source = source
 		part.Index = int(index)
 	case SupplementNodeEmoji:
-		if err := rejectUnknownKeys(payload, "type", "index"); err != nil {
+		if err := rejectUnknownKeys(payload, "type", "index", "source", "description", "emotion", "content"); err != nil {
 			return SupplementPart{}, err
 		}
-		index, ok := payload["index"].(float64)
-		if !ok || index < 1 {
-			return SupplementPart{}, errors.New("回复补充编排的表情编号必须是从 1 开始的整数")
+		if rawIndex, ok := payload["index"]; ok && rawIndex != nil {
+			index, ok := rawIndex.(float64)
+			if !ok || index < 0 || index != float64(int(index)) {
+				return SupplementPart{}, errors.New("回复补充编排的表情编号必须是非负整数")
+			}
+			part.Index = int(index)
+			part.HasIndex = true
 		}
-		part.Index = int(index)
+		stringFields := []struct {
+			key   string
+			value *string
+			set   *bool
+		}{
+			{"source", &part.Source, nil},
+			{"description", &part.Description, &part.HasDescription},
+			{"emotion", &part.Emotion, &part.HasEmotion},
+			{"content", &part.Content, &part.HasContent},
+		}
+		for _, field := range stringFields {
+			raw, present := payload[field.key]
+			if !present || raw == nil {
+				continue
+			}
+			text, ok := raw.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return SupplementPart{}, fmt.Errorf("表情语义查询文本不能为空")
+			}
+			*field.value = text
+			if field.set != nil {
+				*field.set = true
+			}
+		}
+		hasSource := false
+		if raw, present := payload["source"]; present && raw != nil {
+			hasSource = true
+		}
+		semantic := part.HasDescription || part.HasEmotion || part.HasContent
+		if semantic {
+			if hasSource || part.HasIndex {
+				return SupplementPart{}, errors.New("情绪描述不能与表情来源或编号同时填写。")
+			}
+			if part.HasDescription && (part.HasEmotion || part.HasContent) {
+				return SupplementPart{}, errors.New("旧版 description 不能与 emotion 或 content 同时填写。")
+			}
+		} else if !hasSource {
+			return SupplementPart{}, errors.New("上下文表情需要消息来源。")
+		}
 	default:
 		return SupplementPart{}, fmt.Errorf("回复补充编排包含未知节点类型：%s", rawType)
 	}
@@ -151,32 +201,31 @@ func rejectUnknownKeys(payload map[string]any, allowed ...string) error {
 type SupplementResourceOptions struct {
 	IsGroup               bool
 	EnableReplyAt         bool
-	UseNewSendLogic       bool
 	GroupQuoteFrequency   string
 	PrivateQuoteFrequency string
 }
 
 // SupplementResources 只允许引用本轮 Planner 已看到的资源，不受生成期间新消息影响
 type SupplementResources struct {
-	Messages   map[string]ContextMessage
-	Pictures   map[string][]ImageComponent
-	Emojis     map[int]string
-	AllowAt    bool
-	AllowEmoji bool
-	AllowQuote bool
+	Messages      map[string]ContextMessage
+	Pictures      map[string][]ImageComponent
+	AllowAt       bool
+	AllowQuote    bool
+	ContextEmojis map[string][]ImageComponent
+	SessionID     string
 }
 
 // CaptureSupplementResources 从 Planner 上下文历史中采集可引用资源
 //
 // 对齐 Python SupplementResources.capture：
 //   - messages 只收真实收发消息（SessionBackedMessage），按 session_id 精确过滤并排除 notify；
-//   - pictures 收任意带 message_id 且含图片的内容消息，不受 session_id 限制；
-//   - emojis 收表情候选快照的序号映射。
+//   - pictures/context_emojis 收任意带编号的内容消息，不受 session_id 限制。
 func CaptureSupplementResources(history []ContextMessage, sessionID string, options SupplementResourceOptions) SupplementResources {
 	resources := SupplementResources{
-		Messages: map[string]ContextMessage{},
-		Pictures: map[string][]ImageComponent{},
-		Emojis:   map[int]string{},
+		Messages:      map[string]ContextMessage{},
+		Pictures:      map[string][]ImageComponent{},
+		ContextEmojis: map[string][]ImageComponent{},
+		SessionID:     sessionID,
 	}
 	for _, message := range history {
 		// SessionBackedMessage 语义：真实收发的 IM 消息（user / guided_reply），排除工具结果、参考与内部上下文
@@ -189,23 +238,8 @@ func CaptureSupplementResources(history []ContextMessage, sessionID string, opti
 		if message.MessageID != "" && len(message.Images) > 0 && !message.MetadataBool("is_notify") {
 			resources.Pictures[message.MessageID] = message.Images
 		}
-		if rawHashes, ok := message.Metadata["emoji_hashes"]; ok {
-			switch hashes := rawHashes.(type) {
-			case map[int]string:
-				for index, hash := range hashes {
-					resources.Emojis[index] = hash
-				}
-			case map[string]any:
-				for rawIndex, item := range hashes {
-					var index int
-					if _, err := fmt.Sscanf(rawIndex, "%d", &index); err != nil {
-						continue
-					}
-					if hash, ok := item.(string); ok {
-						resources.Emojis[index] = hash
-					}
-				}
-			}
+		if message.MessageID != "" && len(message.Emojis) > 0 && !message.MetadataBool("is_notify") {
+			resources.ContextEmojis[message.MessageID] = message.Emojis
 		}
 	}
 	quoteFrequency := options.PrivateQuoteFrequency
@@ -213,7 +247,6 @@ func CaptureSupplementResources(history []ContextMessage, sessionID string, opti
 		quoteFrequency = options.GroupQuoteFrequency
 	}
 	resources.AllowAt = options.IsGroup && options.EnableReplyAt
-	resources.AllowEmoji = options.UseNewSendLogic
 	resources.AllowQuote = quoteFrequency != "" && quoteFrequency != "never"
 	return resources
 }
@@ -255,19 +288,27 @@ func (r SupplementResources) Inventory() map[string]any {
 		}
 		pictures = append(pictures, map[string]any{"source": source, "indices": indices})
 	}
-	emojiIndices := make([]int, 0, len(r.Emojis))
-	if r.AllowEmoji {
-		for index := range r.Emojis {
-			emojiIndices = append(emojiIndices, index)
+	contextEmojiKeys := make([]string, 0, len(r.ContextEmojis))
+	for key := range r.ContextEmojis {
+		contextEmojiKeys = append(contextEmojiKeys, key)
+	}
+	sort.Strings(contextEmojiKeys)
+	contextEmojis := make([]map[string]any, 0, len(contextEmojiKeys))
+	for _, key := range contextEmojiKeys {
+		indices := make([]int, len(r.ContextEmojis[key]))
+		for index := range r.ContextEmojis[key] {
+			indices[index] = index
 		}
-		sort.Ints(emojiIndices)
+		contextEmojis = append(contextEmojis, map[string]any{
+			"source": ToDisplayMessageID(key), "indices": indices,
+		})
 	}
 	return map[string]any{
-		"message_ids":   messageIDs,
-		"pictures":      pictures,
-		"emoji_indices": emojiIndices,
-		"allow_at":      r.AllowAt,
-		"allow_quote":   r.AllowQuote,
+		"message_ids":    messageIDs,
+		"pictures":       pictures,
+		"context_emojis": contextEmojis,
+		"allow_at":       r.AllowAt,
+		"allow_quote":    r.AllowQuote,
 	}
 }
 

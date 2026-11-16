@@ -21,8 +21,10 @@ type SupplementComponent struct {
 	MessageID  string
 	Image      *ImageComponent
 	ImageIndex int
-	EmojiHash  string
-	EmojiIndex int
+	// EmojiReference 语义描述或上下文引用，交给运行时解析
+	EmojiReference map[string]any
+	// EmojiError 计划阶段就能确定的引用错误；运行时记日志并跳过
+	EmojiError string
 }
 
 // NewTextComponent 构造文本组件
@@ -135,11 +137,36 @@ func ResolveSupplement(plan ReplySupplementPlan, resources SupplementResources, 
 			image := images[part.Index]
 			components = append(components, &SupplementComponent{Kind: "image", MessageID: key, ImageIndex: part.Index, Image: &image})
 		case SupplementNodeEmoji:
-			hash, ok := resources.Emojis[part.Index]
-			if !resources.AllowEmoji || !ok {
-				return ReplySupplement{}, fmt.Errorf("回复补充器表情编号不可用：%d", part.Index)
+			component := &SupplementComponent{Kind: "emoji"}
+			if part.HasDescription || part.HasEmotion || part.HasContent {
+				reference := map[string]any{}
+				if part.HasDescription {
+					reference["emotion"] = part.Description
+				}
+				if part.HasEmotion {
+					reference["emotion"] = part.Emotion
+				}
+				if part.HasContent {
+					reference["content"] = part.Content
+				}
+				component.EmojiReference = reference
+			} else {
+				source, err := ResolveSupplementID(part.Source, sortedMessageKeys(resources.ContextEmojis))
+				if err != nil {
+					component.EmojiError = err.Error()
+				} else {
+					index := 0
+					if part.HasIndex {
+						index = part.Index
+					}
+					if index < 0 || index >= len(resources.ContextEmojis[source]) {
+						component.EmojiError = fmt.Sprintf("上下文表情包序号无效，该消息共有 %d 张表情包", len(resources.ContextEmojis[source]))
+					} else {
+						component.EmojiReference = map[string]any{"msg_id": source, "index": index}
+					}
+				}
 			}
-			components = append(components, &SupplementComponent{Kind: "emoji", EmojiIndex: part.Index, EmojiHash: hash})
+			components = append(components, component)
 		default:
 			return ReplySupplement{}, fmt.Errorf("回复补充器不支持的节点类型：%s", part.Type)
 		}
@@ -199,10 +226,14 @@ func BuildReplySupplementSchema(allowAt bool) map[string]any {
 		"EmojiNode": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"type":  map[string]any{"const": "emoji"},
-				"index": map[string]any{"type": "integer", "minimum": 1},
+				"type":        map[string]any{"const": "emoji"},
+				"index":       map[string]any{"type": "integer", "minimum": 0},
+				"source":      map[string]any{"type": "string", "minLength": 1},
+				"description": map[string]any{"type": "string", "minLength": 1},
+				"emotion":     map[string]any{"type": "string", "minLength": 1},
+				"content":     map[string]any{"type": "string", "minLength": 1},
 			},
-			"required": []any{"type", "index"},
+			"required": []any{"type"},
 		},
 	}
 	oneOf := []any{

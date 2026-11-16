@@ -245,8 +245,10 @@ type AgentReplyExecutor struct {
 	Supplement func(ctx context.Context, guidance string, target *maisaka.ContextMessage) (*maisaka.ReplySupplement, error)
 	// ReplyTool 按 reply 工具参数发送已生成正文与补充附件
 	ReplyTool func(ctx context.Context, arguments map[string]any) maisaka.ToolExecutionResult
-	// SendEmojiHash 按表情哈希发送补充编排中的额外表情
-	SendEmojiHash func(ctx context.Context, hash string) error
+	// ResolveEmoji 解析补充编排中的上下文或语义表情引用
+	ResolveEmoji func(ctx context.Context, reference map[string]any) (tools.EmojiAttachment, error)
+	// SendEmojiAttachment 在正文发送后发送补充编排中的表情
+	SendEmojiAttachment func(ctx context.Context, attachment tools.EmojiAttachment) error
 	// History 返回当前会话历史，供 Replyer 渲染
 	History func() []maisaka.ContextMessage
 	// PreviousReply 返回最近一次回复同一目标消息的正文，用于重复回复提醒
@@ -305,16 +307,16 @@ func (e *AgentReplyExecutor) ReplyFromContent(ctx context.Context, content strin
 		if e.ReplyTool == nil {
 			return maisaka.ToolExecutionResult{Success: false, Message: "缺少 reply 工具发送端口"}
 		}
-		arguments, emojis := buildReplySupplementArguments(activeArgs, replyText, supplement)
-		if len(emojis) > 0 && e.SendEmojiHash == nil {
+		arguments, emojis := buildReplySupplementArguments(ctx, activeArgs, replyText, supplement, e.ResolveEmoji)
+		if len(emojis) > 0 && e.SendEmojiAttachment == nil {
 			return maisaka.ToolExecutionResult{Success: false, Message: "缺少表情发送端口"}
 		}
 		result := e.ReplyTool(ctx, arguments)
 		if !result.Success {
 			return result
 		}
-		for _, hash := range emojis {
-			if err := e.SendEmojiHash(ctx, hash); err != nil {
+		for _, attachment := range emojis {
+			if err := e.SendEmojiAttachment(ctx, attachment); err != nil {
 				return maisaka.ToolExecutionResult{Success: false, Message: fmt.Sprintf("发送补充表情失败: %v", err)}
 			}
 		}
@@ -800,7 +802,6 @@ func maisakaBuiltinConfig(bot *maibotcfg.BotConfigFile, model *maibotcfg.ModelCo
 		webSearchEnabled = len(model.ModelTaskConfig.WebSearch.ModelList) > 0
 	}
 	return maisaka.BuiltinToolConfig{
-		UseNewSendLogic:      bot.Emoji.UseNewSendLogic,
 		PlannerSubagent:      bot.Capabilities.PlannerSubagent,
 		ToolResultCondense:   bot.Capabilities.ToolResultCondense,
 		WebSearchEnabled:     webSearchEnabled,
@@ -1016,9 +1017,8 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 				return nil, fmt.Errorf("缺少本轮 Planner 请求快照，无法生成回复补充内容")
 			}
 			options := maisaka.SupplementResourceOptions{
-				IsGroup:         isGroup,
-				EnableReplyAt:   a.replyAtEnabled(),
-				UseNewSendLogic: bot != nil && bot.Emoji.UseNewSendLogic,
+				IsGroup:       isGroup,
+				EnableReplyAt: a.replyAtEnabled(),
 			}
 			if bot != nil {
 				options.GroupQuoteFrequency = bot.Chat.ReplyStyle.GroupQuoteFrequency
@@ -1050,8 +1050,11 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			}
 			return result
 		},
-		SendEmojiHash: func(callCtx context.Context, hash string) error {
-			return a.sendEmojiByHash(callCtx, kind, targetID, hash)
+		ResolveEmoji: func(callCtx context.Context, reference map[string]any) (tools.EmojiAttachment, error) {
+			return a.resolveEmojiAttachment(callCtx, session, sessionID, reference)
+		},
+		SendEmojiAttachment: func(callCtx context.Context, attachment tools.EmojiAttachment) error {
+			return a.sendEmojiAttachment(callCtx, kind, targetID, attachment)
 		},
 	}
 	if built != nil {

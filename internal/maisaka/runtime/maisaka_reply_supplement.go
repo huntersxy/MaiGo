@@ -3,11 +3,13 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
+
+	"go.uber.org/zap"
 )
 
 // agentReplySupplementGenerator 复用 Planner 模型与请求前缀生成回复补充编排
@@ -77,8 +79,11 @@ func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.Plan
 	}, nil
 }
 
-// buildReplySupplementArguments 把补充编排映射为 reply 工具参数；表情由独立发送端口处理
-func buildReplySupplementArguments(base map[string]any, content string, supplement *maisaka.ReplySupplement) (map[string]any, []string) {
+// buildReplySupplementArguments 把补充编排映射为 reply 工具参数并解析表情附件
+func buildReplySupplementArguments(
+	ctx context.Context, base map[string]any, content string, supplement *maisaka.ReplySupplement,
+	resolveEmoji func(context.Context, map[string]any) (tools.EmojiAttachment, error),
+) (map[string]any, []tools.EmojiAttachment) {
 	arguments := make(map[string]any, len(base)+8)
 	for key, value := range base {
 		arguments[key] = value
@@ -86,6 +91,9 @@ func buildReplySupplementArguments(base map[string]any, content string, suppleme
 	arguments["content"] = content
 	arguments["_replyer_generated"] = true
 	arguments["reply_reference"] = content
+	delete(arguments, "attach_emoji")
+	delete(arguments, "attach_at")
+	delete(arguments, "attach_pic")
 	if supplement == nil {
 		return arguments, nil
 	}
@@ -103,7 +111,7 @@ func buildReplySupplementArguments(base map[string]any, content string, suppleme
 	}
 	attachAt := make([]string, 0, 2)
 	attachPic := make([]any, 0, 2)
-	emojis := make([]string, 0, 2)
+	emojis := make([]tools.EmojiAttachment, 0, 2)
 	for _, component := range supplement.Components {
 		if component == nil {
 			continue
@@ -118,9 +126,21 @@ func buildReplySupplementArguments(base map[string]any, content string, suppleme
 				attachPic = append(attachPic, map[string]any{"msg_id": messageID, "index": component.ImageIndex})
 			}
 		case "emoji":
-			if hash := strings.TrimSpace(component.EmojiHash); hash != "" {
-				emojis = append(emojis, hash)
+			if component.EmojiError != "" {
+				zap.L().Warn("attach_emoji resolution=failed source=context path=supplement", zap.String("error", component.EmojiError))
+				continue
 			}
+			if resolveEmoji == nil || component.EmojiReference == nil {
+				zap.L().Warn("attach_emoji resolution=failed path=supplement error=resolver unavailable")
+				continue
+			}
+			attachment, err := resolveEmoji(ctx, component.EmojiReference)
+			if err != nil {
+				zap.L().Warn("attach_emoji resolution=failed path=supplement", zap.Error(err))
+				continue
+			}
+			emojis = append(emojis, attachment)
+			zap.L().Info("attach_emoji resolution=resolved path=supplement")
 		}
 	}
 	if len(attachAt) > 0 {
@@ -145,23 +165,4 @@ func replyerGeneratedArgument(arguments map[string]any) bool {
 	default:
 		return false
 	}
-}
-
-// sendEmojiByHash 按收藏表情哈希找到文件并发送，补齐补充编排的多表情语义
-func (a *Agent) sendEmojiByHash(ctx context.Context, kind string, targetID int64, hash string) error {
-	if a == nil || a.memory == nil {
-		return fmt.Errorf("表情发送缺少记忆库")
-	}
-	sticker, err := a.memory.GetEmojiRecordByHash(ctx, strings.TrimSpace(hash))
-	if err != nil {
-		return fmt.Errorf("查找表情包失败: %w", err)
-	}
-	if sticker == nil {
-		return fmt.Errorf("查找表情包失败: 未找到 %s", hash)
-	}
-	fileName := filepath.Base(filepath.FromSlash(sticker.FullPath))
-	if kind == "group" {
-		return a.doSendSticker(ctx, targetID, fileName, sticker.Description)
-	}
-	return a.doPrivateSticker(ctx, targetID, fileName, sticker.Description)
 }

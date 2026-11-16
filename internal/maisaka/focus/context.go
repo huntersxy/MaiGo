@@ -28,9 +28,6 @@ func IsSummaryMessage(message maisaka.ContextMessage) bool {
 	return message.Source == CheckpointSourceCompaction
 }
 
-// EmojiCandidateSource 表情候选快照消息的 source 标记
-const EmojiCandidateSource = maisaka.EmojiCandidateSource
-
 // toolResultMediaKind 工具结果媒体消息的 metadata.kind 标记
 const toolResultMediaKind = maisaka.ToolResultMediaKind
 
@@ -159,7 +156,6 @@ type record struct {
 	Content       string              `json:"content,omitempty"`
 	Prefix        string              `json:"prefix,omitempty"`
 	ReferenceType string              `json:"reference_type,omitempty"`
-	EmojiHashes   map[string]string   `json:"emoji_hashes,omitempty"`
 }
 
 // focusKind 判定检查点消息类别，显式标记优先
@@ -174,8 +170,6 @@ func focusKind(message maisaka.ContextMessage) string {
 		return "tool"
 	case message.MetadataString("kind") == toolResultMediaKind:
 		return "media"
-	case message.Source == EmojiCandidateSource:
-		return "emoji"
 	case message.Source == maisaka.SourceReference || IsSummaryMessage(message):
 		// 上下文摘要按 Python 语义同属 ReferenceMessage，靠 source 区分
 		return "reference"
@@ -228,40 +222,7 @@ func SerializeMessage(message maisaka.ContextMessage) record {
 		rec.MessageID = message.MessageID
 		rec.SessionID = message.SessionID
 	}
-	if rec.Kind == "emoji" {
-		rec.EmojiHashes = emojiHashesRecord(message)
-		rec.SessionID = message.SessionID
-	}
 	return rec
-}
-
-// emojiHashesRecord 把表情候选的序号映射转成检查点可序列化的字符串键字典
-func emojiHashesRecord(message maisaka.ContextMessage) map[string]string {
-	if message.Metadata == nil {
-		return nil
-	}
-	raw, ok := message.Metadata["emoji_hashes"]
-	if !ok || raw == nil {
-		return nil
-	}
-	switch value := raw.(type) {
-	case map[string]any:
-		out := make(map[string]string, len(value))
-		for key, item := range value {
-			if hash, ok := item.(string); ok {
-				out[key] = hash
-			}
-		}
-		return out
-	case map[string]string:
-		out := make(map[string]string, len(value))
-		for key, item := range value {
-			out[key] = item
-		}
-		return out
-	default:
-		return nil
-	}
 }
 
 // DeserializeMessage 从检查点记录恢复消息
@@ -308,10 +269,6 @@ func DeserializeMessage(rec record) maisaka.ContextMessage {
 		message.SessionID = rec.SessionID
 		message.Metadata["kind"] = toolResultMediaKind
 		message.Metadata["tool_call_id"] = rec.ToolCallID
-	}
-	if rec.Kind == "emoji" {
-		message.Source = EmojiCandidateSource
-		message.Metadata["emoji_hashes"] = rec.EmojiHashes
 	}
 	message.Metadata["focus_kind"] = rec.Kind
 	if rec.Timestamp != "" {
@@ -617,6 +574,10 @@ func DecodeCheckpointEntries(payload *Checkpoint) []*Entry {
 		entry.Watermarks = recorded.Watermarks
 		entry.Inputs = recorded.Inputs
 		for _, rec := range recorded.Messages {
+			if rec.Kind == "emoji" {
+				// 旧检查点里的表情候选快照不再进入上下文
+				continue
+			}
 			entry.Messages = append(entry.Messages, DeserializeMessage(rec))
 		}
 		entries = append(entries, entry)

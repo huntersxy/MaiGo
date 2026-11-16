@@ -95,6 +95,34 @@ func (r *Registry) Describe(ctx context.Context, hash string) (DescribeResult, e
 	return result, nil
 }
 
+// AnalyzeEmojiImage 用 VLM 分析表情图片，返回指定 prompt 的原始文本
+// 描述与分组标签共用静态图/GIF 抽帧流程
+func (r *Registry) AnalyzeEmojiImage(ctx context.Context, emoji *Emoji, promptName string) (string, error) {
+	if r == nil || emoji == nil {
+		return "", errStickerFileMissing
+	}
+	mgr, _, prompts, router, err := r.describeDeps()
+	if err != nil {
+		return "", err
+	}
+	path := mgr.EmojiFilePath(emoji)
+	if path == "" {
+		return "", errStickerFileMissing
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", errStickerFileMissing
+		}
+		return "", fmt.Errorf("emojisystem: 读取表情文件失败: %w", err)
+	}
+	b64, mime, imageType, err := prepareVLMPayload(raw, path)
+	if err != nil {
+		return "", err
+	}
+	return generateEmojiVLM(ctx, router, prompts, promptName, map[string]string{"image_type": imageType}, b64, mime)
+}
+
 // TryDescribeIfEmpty 描述为空且本地有文件时 best-effort 调用 Describe，失败不阻断主流程
 func TryDescribeIfEmpty(ctx context.Context, hash string) {
 	hash = stringsTrim(hash)
@@ -114,7 +142,7 @@ func TryDescribeIfEmpty(ctx context.Context, hash string) {
 		return
 	}
 	if _, err := Describe(ctx, hash); err != nil && !errors.Is(err, errVLMNotConfigured) {
-		zap.L().Debug("send_emoji 自动 VLM 描述跳过", zap.String("hash", hash), zap.Error(err))
+		zap.L().Debug("表情包自动 VLM 描述跳过", zap.String("hash", hash), zap.Error(err))
 	}
 }
 

@@ -156,6 +156,7 @@ func (r *Registry) registerEmojiByFilename(ctx context.Context, filename string,
 		}
 		if status == emojiRegisterRegistered {
 			zap.L().Info("表情包替换完成", zap.String("old", replacement.FileName), zap.String("new", fileName))
+			ScheduleEmojiIndex(hash)
 		}
 		return status, nil
 	}
@@ -171,6 +172,7 @@ func (r *Registry) registerEmojiByFilename(ctx context.Context, filename string,
 	}
 	if status == emojiRegisterRegistered {
 		zap.L().Info("表情包注册成功", zap.String("file", fileName), zap.String("hash", hash))
+		ScheduleEmojiIndex(hash)
 	}
 	return status, nil
 }

@@ -11,8 +11,8 @@ const ImageLimitPlaceholder = "[图片]"
 
 // LimitLatestImagesInMessages 限制 prompt 中的图片数量，只保留最新的图片
 //
-// 对齐 Python limit_latest_images_in_messages：表情候选拼图等标记 PreserveImages 的条目
-// 既不占普通图片配额，也不被改写，保证历史前缀与选择编号稳定。
+// 对齐 Python limit_latest_images_in_messages：preservedItemIDs 中的工具结果图不占普通图片配额，
+// 也不被改写，保证历史前缀稳定。
 func LimitLatestImagesInMessages(messages []maisaka.ContextItem, maxImageNum int, placeholder string, preservedItemIDs map[string]struct{}) []maisaka.ContextItem {
 	if placeholder == "" {
 		placeholder = ImageLimitPlaceholder
@@ -75,9 +75,6 @@ func LimitLatestImagesInMessages(messages []maisaka.ContextItem, maxImageNum int
 }
 
 func isPreservedMessage(message maisaka.ContextItem, preservedItemIDs map[string]struct{}) bool {
-	if message.PreserveImages {
-		return true
-	}
 	if message.ToolCallID == "" {
 		return false
 	}

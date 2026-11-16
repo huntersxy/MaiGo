@@ -8,10 +8,7 @@ import (
 
 	"MaiGo/internal/A_memorix"
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/emoji_system"
 	"MaiGo/internal/person_info"
-
-	"go.uber.org/zap"
 )
 
 func memorixHostReady(ctx context.Context) (memorix.Host, bool) {
@@ -175,24 +172,4 @@ func tokenizeMemoryQuery(query string) []string {
 		return []string{query}
 	}
 	return fields
-}
-
-func defaultEmojiCandidateCount() int {
-	return 12
-}
-
-// emojiManagerForTool 返回表情包管理器，内存池为空时先尝试刷新一次
-// 空库不当作错误，由调用方按 Python 文案返回“当前表情包库中没有可用表情。”
-func emojiManagerForTool(ctx context.Context) (*emojisystem.Manager, error) {
-	reg := emojisystem.DefaultRegistry()
-	mgr := reg.Manager()
-	if mgr == nil {
-		return nil, fmt.Errorf("表情包子系统未初始化")
-	}
-	if mgr.Count() == 0 {
-		if err := reg.Reload(ctx); err != nil {
-			zap.L().Debug("表情包池刷新失败，按空库处理", zap.Error(err))
-		}
-	}
-	return mgr, nil
 }

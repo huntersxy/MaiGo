@@ -398,8 +398,6 @@ ban_msgs_regex = []
 enable_asr = false
 
 [emoji]
-use_new_send_logic = false
-emoji_send_num = 25
 max_reg_num = 64
 do_replace = true
 check_interval = 10

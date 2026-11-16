@@ -199,7 +199,7 @@ func (m *Manager) EmojiFilePath(emoji *Emoji) string {
 	return stickerFilePath(m.stickerDirectory(), emoji.FileName)
 }
 
-// ReadEmojiBytes 读取表情文件字节，供拼图等需要原始数据的场景使用
+// ReadEmojiBytes 读取表情文件字节
 func (m *Manager) ReadEmojiBytes(emoji *Emoji) ([]byte, error) {
 	path := m.EmojiFilePath(emoji)
 	if path == "" {
@@ -327,23 +327,6 @@ func (m *Manager) SelectForEmotion(emotionLabel string) (*Emoji, string, error) 
 
 func stringsTrim(s string) string {
 	return strings.TrimSpace(s)
-}
-
-// SampleCandidates 对齐 show_emoji_list / send_emoji 候选采样
-func (m *Manager) SampleCandidates(limit int) []Emoji {
-	pool := m.pool()
-	if len(pool) == 0 || limit <= 0 {
-		return nil
-	}
-	if limit >= len(pool) {
-		return append([]Emoji(nil), pool...)
-	}
-	indices := rand.Perm(len(pool))[:limit]
-	out := make([]Emoji, 0, limit)
-	for _, idx := range indices {
-		out = append(out, pool[idx])
-	}
-	return out
 }
 
 // Search 关键词分页，桥接 memory.SearchEmojiPage

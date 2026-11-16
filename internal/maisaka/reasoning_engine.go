@@ -987,8 +987,6 @@ func (e *ReasoningEngine) appendToolResultMediaMessages(call ToolCall, result To
 				}}
 			}
 		}
-		// 表情候选拼图需要把序号到哈希的映射带进上下文，供 reply.attach_emoji 解析
-		mergeToolResultMediaMetadata(message.Metadata, item.Metadata)
 		if len(message.Images) > 0 {
 			e.runtime.ScheduleToolResultMediaImageRecognition(message.Images, mediaIndex)
 		}
@@ -1092,24 +1090,6 @@ func buildToolResultHistoryContent(call ToolCall, result ToolExecutionResult, co
 		return trimmed + "\n\n" + block
 	}
 	return block
-}
-
-// toolResultMediaMetadataKeys 允许从工具结果透传到上下文消息的元数据键
-// 固定四键 kind/tool_call_id/tool_name/media_type 由引擎写入，不允许被工具覆盖
-var toolResultMediaMetadataKeys = []string{"emoji_hashes", "emoji_indices"}
-
-// mergeToolResultMediaMetadata 把白名单元数据键合并进上下文消息
-func mergeToolResultMediaMetadata(target map[string]any, source map[string]any) {
-	if len(source) == 0 || target == nil {
-		return
-	}
-	for _, key := range toolResultMediaMetadataKeys {
-		value, ok := source[key]
-		if !ok || value == nil {
-			continue
-		}
-		target[key] = value
-	}
 }
 
 // buildToolResultMediaVisibleText 构造工具媒体消息的可读正文

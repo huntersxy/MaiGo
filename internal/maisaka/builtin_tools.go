@@ -50,8 +50,6 @@ var BuiltinToolEntries = []BuiltinToolEntry{
 	{Name: ToolQueryMemory, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolQueryImageMemory, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolQueryPersonProfile, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
-	{Name: ToolSendEmoji, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
-	{Name: ToolShowEmojiList, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolToolSearch, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolSubagent, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolSubagentStatus, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
@@ -124,7 +122,6 @@ func IsBuiltinToolInActionStage(spec ToolSpec, passiveReplyer bool) bool {
 
 // BuiltinToolConfig 内置工具按配置启停所需的开关
 type BuiltinToolConfig struct {
-	UseNewSendLogic      bool
 	PlannerSubagent      bool
 	ToolResultCondense   bool
 	WebSearchEnabled     bool
@@ -136,10 +133,6 @@ type BuiltinToolConfig struct {
 // BuiltinToolEnabledByConfig 根据全局配置判断内置工具是否应暴露
 func BuiltinToolEnabledByConfig(name string, cfg BuiltinToolConfig) bool {
 	switch name {
-	case string(ToolShowEmojiList):
-		return cfg.UseNewSendLogic
-	case string(ToolSendEmoji):
-		return !cfg.UseNewSendLogic
 	case string(ToolSubagent), string(ToolSubagentStatus), string(ToolSubagentStop):
 		return cfg.PlannerSubagent
 	case string(ToolReadToolResult):

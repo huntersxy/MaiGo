@@ -45,7 +45,9 @@ func (s *PlatformSender) SendMessage(ctx context.Context, message *messagereceiv
 	}
 	batch := s.Manager.SendMessage(ctx, outbound, route)
 	if batch.HasSuccess() {
-		s.recordSentEmojiUsage(ctx, message)
+		if messageHasEmojiComponent(message) {
+			s.recordSentEmojiUsage(ctx, message)
+		}
 		return true, nil
 	}
 	failed := batch.FailedReceipts()
@@ -61,6 +63,18 @@ func (s *PlatformSender) SendMessage(ctx context.Context, message *messagereceiv
 		reasons = append(reasons, reason)
 	}
 	return false, fmt.Errorf("平台发送失败: %s", strings.Join(reasons, "; "))
+}
+
+func messageHasEmojiComponent(message *messagereceive.SessionMessage) bool {
+	if message == nil || message.RawMessage == nil {
+		return false
+	}
+	for _, component := range message.RawMessage.Components {
+		if _, ok := component.(messagecomponent.EmojiComponent); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // recordSentEmojiUsage 发送成功后记录顶层表情包使用次数，对齐 _record_sent_emoji_usage

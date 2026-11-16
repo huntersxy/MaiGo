@@ -164,9 +164,6 @@ func replySpecSchemaForContext(base map[string]any, ctx context.Context) map[str
 	if !tc.UseVectorExpression {
 		delete(properties, "expression_intent")
 	}
-	if !tc.UseNewSendLogic {
-		delete(properties, "attach_emoji")
-	}
 	if tc.EnableReplyAt && tc.ConversationKind == "group" {
 		properties["attach_at"] = map[string]any{
 			"type":        "array",

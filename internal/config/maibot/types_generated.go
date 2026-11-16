@@ -481,8 +481,6 @@ type EmojiCacheCleanupConfig struct {
 }
 
 type EmojiConfig struct {
-	UseNewSendLogic   bool                    `toml:"use_new_send_logic,omitempty"`
-	EmojiSendNum      int                     `toml:"emoji_send_num,omitempty"`
 	MaxRegNum         int                     `toml:"max_reg_num,omitempty"`
 	DoReplace         bool                    `toml:"do_replace,omitempty"`
 	CheckInterval     int                     `toml:"check_interval,omitempty"`

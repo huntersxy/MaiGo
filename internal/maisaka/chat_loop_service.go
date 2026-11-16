@@ -24,7 +24,6 @@ const (
 
 // RequestTypeByRequestKind LLM 统计口径
 var RequestTypeByRequestKind = map[string]string{
-	"emotion":              "emoji.selector",
 	"expression_selector":  "expression.selector",
 	"planner":              "maisaka.planner",
 	"sub_agent":            "maisaka.sub_agent",
@@ -36,7 +35,6 @@ var RequestTypeByRequestKind = map[string]string{
 var PromptPreviewCategoryByRequestKind = map[string]string{
 	"planner":             "planner",
 	"expression_selector": "expression_selector",
-	"emotion":             "emotion",
 	"sub_agent":           "sub_agent",
 	"reply_supplement":    "reply_supplement",
 }
@@ -786,21 +784,6 @@ func ResolveEnableVisualMessage(requestKind string) bool {
 	}
 }
 
-// isEmojiCandidateHistoryMessage 判断历史条目是否是表情候选快照
-//
-// Go 侧 show_emoji_list 的拼图以工具结果媒体消息进入历史，靠 emoji_hashes 标记；
-// 两种形态都不占普通图片配额，对齐 Python preserved_item_ids。
-func isEmojiCandidateHistoryMessage(message ContextMessage) bool {
-	if message.Source == EmojiCandidateSource {
-		return true
-	}
-	if message.Metadata == nil {
-		return false
-	}
-	_, hasHashes := message.Metadata["emoji_hashes"]
-	return hasHashes
-}
-
 // requestRoleOf 返回请求侧角色。参考消息在 Python 里 role 即为 user，
 // 内部仍保留 RoleReference 供历史选择与一次性消费使用。
 func requestRoleOf(message ContextMessage) ContextRole {
@@ -818,8 +801,6 @@ func BuildContextItemsFromHistoryEntry(message ContextMessage, enableVisual bool
 		ToolCallID: message.ToolCallID,
 		ToolName:   message.ToolName,
 		Visual:     enableVisual,
-		// 表情候选拼图不占普通图片配额，对齐 Python preserved_item_ids
-		PreserveImages: isEmojiCandidateHistoryMessage(message),
 	}
 	text := message.Content
 	if text == "" && len(message.ToolCalls) == 0 && len(message.Images) == 0 && len(message.Emojis) == 0 {

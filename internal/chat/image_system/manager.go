@@ -243,7 +243,16 @@ func (m *Manager) finalizeDescriptionBuild(image *ManagedImage) {
 
 // GetImageFromDB 按哈希读取图片，no_file_flag 记录返回 nil
 func (m *Manager) GetImageFromDB(ctx context.Context, imageHash string) (*ManagedImage, error) {
-	record, err := m.store.GetByHash(ctx, strings.TrimSpace(imageHash), ImageTypeImage)
+	return m.getFromDB(ctx, imageHash, ImageTypeImage)
+}
+
+// GetEmojiFromDB 按哈希读取表情图片，no_file_flag 记录返回 nil
+func (m *Manager) GetEmojiFromDB(ctx context.Context, imageHash string) (*ManagedImage, error) {
+	return m.getFromDB(ctx, imageHash, ImageTypeEmoji)
+}
+
+func (m *Manager) getFromDB(ctx context.Context, imageHash string, imageType string) (*ManagedImage, error) {
+	record, err := m.store.GetByHash(ctx, strings.TrimSpace(imageHash), imageType)
 	if err != nil {
 		return nil, err
 	}

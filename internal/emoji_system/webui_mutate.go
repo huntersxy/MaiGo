@@ -126,7 +126,17 @@ func (s *WebUIService) Update(ctx context.Context, id uint, update WebUIEmojiUpd
 			mgr.RemoveFromPool(current.ImageHash)
 		}
 	}
+	if update.Description != nil || update.IsRegistered != nil || update.IsBanned != nil {
+		scheduleWebUIIndexIfUsable(*current)
+	}
 	return s.toWebUI(*current), fieldCount, nil
+}
+
+func scheduleWebUIIndexIfUsable(row memory.EmojiRecord) {
+	if !row.IsRegistered || row.IsBanned || row.NoFileFlag {
+		return
+	}
+	ScheduleEmojiIndex(row.ImageHash)
 }
 
 // Register 注册表情包
@@ -160,6 +170,7 @@ func (s *WebUIService) Register(ctx context.Context, id uint) (WebUIEmoji, strin
 	row.IsBanned = false
 	row.RegisterTime = &now
 	s.registry.reloadQuietly(ctx)
+	scheduleWebUIIndexIfUsable(row)
 	return s.toWebUI(row), "表情包注册成功", nil
 }
 
@@ -290,6 +301,7 @@ func (s *WebUIService) Upload(ctx context.Context, upload WebUIEmojiUpload) (Web
 			return WebUIEmoji{}, "", false, loadErr
 		}
 		s.registry.reloadQuietly(ctx)
+		scheduleWebUIIndexIfUsable(*current)
 		return s.toWebUI(*current), "表情包已存在，已标记为据为己用", true, nil
 	}
 	storedPath, err := s.saveUploadedFile(upload.Content, hash, format)
@@ -312,6 +324,7 @@ func (s *WebUIService) Upload(ctx context.Context, upload WebUIEmojiUpload) (Web
 		return WebUIEmoji{}, "", false, err
 	}
 	s.registry.reloadQuietly(ctx)
+	scheduleWebUIIndexIfUsable(row)
 	return s.toWebUI(row), "表情包上传成功并已注册", false, nil
 }
 

@@ -450,7 +450,7 @@ func (g *GroupRuntime) executeTools(ctx context.Context, response maisaka.ChatRe
 				g.mu.Unlock()
 			}
 		}
-		// 对齐 Python _execute_tools：工具的 post_history_messages（如表情候选拼图）
+		// 对齐 Python _execute_tools：工具的 post_history_messages
 		// 也要进共享历史，并在媒体消息之后追加，保持 function call/result 原子段完整。
 		if len(result.AppendPostHistory) > 0 {
 			g.mu.Lock()
