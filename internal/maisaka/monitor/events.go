@@ -205,6 +205,8 @@ func SerializeToolResults(tools []map[string]any) []map[string]any {
 			"stop_after_execution":   payloadBoolValue(tool["stop_after_execution"]),
 			"duration_ms":            payloadFloatValue(tool["duration_ms"]),
 			"summary":                monitorString(tool["summary"]),
+			"reply_schedule":         NormalizePayloadValue(tool["reply_schedule"]),
+			"reply_supplement":       NormalizePayloadValue(tool["reply_supplement"]),
 		}
 		if sessionID := monitorString(tool["session_id"]); sessionID != "" {
 			entry["session_id"] = sessionID

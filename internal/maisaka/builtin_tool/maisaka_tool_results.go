@@ -361,6 +361,14 @@ func maisakaReplyMetadata(output map[string]any) map[string]any {
 	if detail, ok := output["monitor_detail"].(map[string]any); ok && len(detail) > 0 {
 		metadata["monitor_detail"] = detail
 	}
+	if supplement, ok := output["reply_supplement"].(map[string]any); ok && len(supplement) > 0 {
+		if detail, ok := metadata["monitor_detail"].(map[string]any); ok {
+			detail["reply_supplement"] = supplement
+		}
+	}
+	if schedule, exists := output["reply_schedule"]; exists {
+		metadata["reply_schedule"] = schedule
+	}
 	if extensions, ok := output["reply_extensions"].(map[string]any); ok && len(extensions) > 0 {
 		metadata["reply_extensions"] = extensions
 	}

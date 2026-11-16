@@ -60,6 +60,12 @@ func projectTools(tools []any) []any {
 			}
 			trimmed[key] = value
 		}
+		// 回复正文属于展示内容，裁掉完整详情时仍需保留
+		if name, _ := trimmed["tool_name"].(string); name == "reply" {
+			if detail, ok := tool["detail"].(map[string]any); ok {
+				trimmed["reply_text"] = detail["output_text"]
+			}
+		}
 		projected = append(projected, trimmed)
 	}
 	return projected
