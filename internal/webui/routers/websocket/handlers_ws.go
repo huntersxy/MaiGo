@@ -1,10 +1,10 @@
 package websocket
 
 import (
-	"context"
-	"fmt"
 	webuichat "MaiGo/internal/webui/routers/chat"
 	webuiplugin "MaiGo/internal/webui/routers/plugin"
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -305,9 +305,9 @@ func (s *unifiedWSSession) handleSubscribe(requestID any, message map[string]any
 	topic := strings.TrimSpace(wsAnyString(message["topic"]))
 	data, _ := message["data"].(map[string]any)
 	if domain == "logs" && topic == "main" {
-		replay := 100
+		replay := 1000
 		if data != nil {
-			replay = coerceReplayLimit(data["replay"], 100)
+			replay = coerceLogReplayLimit(data["replay"], 1000)
 		}
 		s.subs[s.subKey(domain, topic)] = struct{}{}
 		if err := s.sendResponse(requestID, true, map[string]any{
@@ -574,6 +574,16 @@ func (s *unifiedWSSession) ensureMonitorStream() {
 //
 // planner.progress/finalized 首次发送完整快照，之后只发送变化字段；编码与写出在同一
 // 临界区内完成，保证基准顺序与实际下发顺序一致。
+func (s *unifiedWSSession) sendMonitorReplayEvent(ev monitor.Event) error {
+	data := make(map[string]any, len(ev.Data)+1)
+	for key, value := range ev.Data {
+		data[key] = value
+	}
+	data["replayed"] = true
+	ev.Data = data
+	return s.sendMonitorEvent(ev)
+}
+
 func (s *unifiedWSSession) sendMonitorEvent(ev monitor.Event) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -649,6 +659,29 @@ func coerceReplayLimit(value any, defaultLimit int) int {
 		}
 	}
 	return clampReplay(defaultLimit, defaultLimit)
+}
+
+func coerceLogReplayLimit(value any, defaultLimit int) int {
+	limit := defaultLimit
+	switch v := value.(type) {
+	case float64:
+		limit = int(v)
+	case int:
+		limit = v
+	case int64:
+		limit = int(v)
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			limit = parsed
+		}
+	}
+	if limit < 0 {
+		return 0
+	}
+	if limit > 5000 {
+		return 5000
+	}
+	return limit
 }
 
 func clampReplay(limit, defaultLimit int) int {

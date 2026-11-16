@@ -55,7 +55,7 @@ func (s *unifiedWSSession) subscribeMonitor(requestID any, data map[string]any) 
 			zap.L().Warn("回放麦麦观察事件失败", zap.Error(err))
 		} else {
 			for _, event := range events {
-				if err := s.sendMonitorEvent(event); err != nil {
+				if err := s.sendMonitorReplayEvent(event); err != nil {
 					return err
 				}
 			}
@@ -122,7 +122,12 @@ func (s *unifiedWSSession) handleMonitorCall(requestID any, message map[string]a
 		}
 	}
 	for _, event := range page.Events {
-		if err := s.sendEvent(monitor.Domain, event.Event, monitor.Topic, event.Data); err != nil {
+		data := make(map[string]any, len(event.Data)+1)
+		for key, value := range event.Data {
+			data[key] = value
+		}
+		data["replayed"] = true
+		if err := s.sendEvent(monitor.Domain, event.Event, monitor.Topic, data); err != nil {
 			return err
 		}
 	}
