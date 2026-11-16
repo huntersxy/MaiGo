@@ -222,3 +222,28 @@ description = "外部 Planner 中断復帰。"
 display_name = "外部 Planner 継続実行"
 advanced = true
 description = "外部 Planner 継続実行。"
+
+[webui_help_skill_setup]
+display_name = "セットアップ手順"
+advanced = true
+description = "設定箇所を特定し、現在値を確認して、検証可能な手順を示します。"
+
+[webui_help_skill_troubleshoot]
+display_name = "トラブルシュート手順"
+advanced = true
+description = "エラーと実際の設定から原因範囲を絞り、次の確認項目を示します。"
+
+[webui_help_skill_plugin]
+display_name = "プラグイン選定手順"
+advanced = true
+description = "実際の要件に合わせて互換性を確認し、対応ツールで導入と設定を行います。"
+
+[webui_help_skill_develop]
+display_name = "プラグイン開発ガイド"
+advanced = true
+description = "SDK ドキュメントに基づき、最小実装・入口・検証手順を示します。"
+
+[webui_ai_search_input]
+display_name = "WebUI 質問セッション入力"
+advanced = true
+description = "現在の質問と過去のやり取りを WebUI 質問 Agent 用に整形します。"

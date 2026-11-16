@@ -619,7 +619,7 @@ func geminiImagePart(image *schema.UserInputImage) (map[string]any, error) {
 		}, nil
 	}
 	if image.URL != "" {
-		// MaiBot 1.3.19 无 URL 图片投影路径；保留占位文本而不是伪造 inlineData
+		// MaiBot 1.4.0 无 URL 图片投影路径；保留占位文本而不是伪造 inlineData
 		return map[string]any{"text": fmt.Sprintf("[Gemini 客户端暂不支持 URL 图片: %s]", image.URL)}, nil
 	}
 	return nil, nil

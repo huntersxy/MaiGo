@@ -10,7 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// 由 scripts/gen_maibot_config_types.py 的同类思路从 MaiBot 1.3.19
+// 由 scripts/gen_maibot_config_types.py 的同类思路从 MaiBot 1.4.0
 // src/config/config.py + official_configs.py 提取的 Pydantic 默认值
 // 仅包含显式声明了 default/default_factory 的字段，required 字段保持缺省
 //

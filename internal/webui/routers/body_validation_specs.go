@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// bodySpecsJSON 由 agents 侧生成脚本从 MaiBot 1.3.19 真实 FastAPI 路由导出
+// bodySpecsJSON 由 agents 侧生成脚本从 MaiBot 1.4.0 真实 FastAPI 路由导出
 //
 //go:embed data/body_specs/body_specs.json
 var bodySpecsJSON []byte

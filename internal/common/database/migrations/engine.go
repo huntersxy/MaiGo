@@ -245,6 +245,7 @@ var latestTables = []string{
 	"high_frequency_terms", "file_assets", "file_bindings", "file_parses",
 	"maisaka_monitor_events", "one_time_maintenance_tasks", "tool_records",
 	"llm_usage", "maisaka_reply_effects", "bot_platform_accounts", "model_task_usage",
+	"webui_help_sessions", "webui_help_turns",
 }
 
 type columnRef struct{ table, name string }

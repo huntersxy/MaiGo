@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	// requiredWebUIVersion 对齐 MaiBot 1.3.19 pyproject.toml:32 "maibot-dashboard==1.9.13"
+	// requiredWebUIVersion 对齐 MaiBot 1.4.0 pyproject.toml:32 "maibot-dashboard==1.10.0"
 	requiredWebUIVersion = appversion.RequiredWebUIVersion
 	// fallbackMainProgramVersion 是 Python read_project_version 在 pyproject.toml:7 读取的目标基线版本
 	// 唯一定义在 internal/version.Baseline，Dockerfile:35 可通过 -X MaiGo/internal/version.Build=<version> 覆盖真实构建版本

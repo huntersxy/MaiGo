@@ -12,7 +12,7 @@ import (
 // LatestSchemaVersion 返回当前程序支持的数据结构版本。
 func LatestSchemaVersion() int { return latestSchemaVersion }
 
-// RunMigrations 初始化空库，或把 v17..v54 的库升级到最新版本
+// RunMigrations 初始化空库，或把 v17..v55 的库升级到最新版本
 //
 // 旧库不是一律拒绝：完整 v17 结构会补写版本记录，更高版本会按步骤推进
 // 无法识别的旧库返回 LegacySchemaError，宿主可先调用 GuardSchema 决定处理方式

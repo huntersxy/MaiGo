@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	lookupHelpToolName         = "lookup_help"
 	searchOfficialDocsToolName = "search_official_docs"
 	readOfficialDocsToolName   = "read_official_docs"
 	readLocalConfigToolName    = "read_local_config"
@@ -22,10 +23,12 @@ const (
 	searchToolMaxTitles        = 6
 )
 
-// LLMRunnerOptions 允许注入官方文档仓库与实例配置读取器
+// LLMRunnerOptions 允许注入官方文档仓库、实例配置读取器与插件工具端口
 type LLMRunnerOptions struct {
 	DocumentStore     *tools.AISearchDocumentStore
 	LocalConfigReader *tools.LocalConfigReader
+	InstanceDir       string
+	PluginTools       *PluginToolset
 }
 
 // NewLLMRunnerWithOptions 构造带显式依赖的执行器；未填写的依赖使用默认实现
@@ -40,13 +43,21 @@ func NewLLMRunnerWithOptions(router func() *llm.Router, options LLMRunnerOptions
 		router:            router,
 		documentStore:     options.DocumentStore,
 		localConfigReader: options.LocalConfigReader,
+		instanceDir:       strings.TrimSpace(options.InstanceDir),
+		pluginTools:       options.PluginTools,
 	}
 }
 
-// NewLLMRunnerForInstance 用实例目录构造本地配置读取器，供 main/integrator 接线
-func NewLLMRunnerForInstance(router func() *llm.Router, instanceDir string) *LLMRunner {
+// NewLLMRunnerForInstance 用实例目录构造本地配置读取器与诊断路径
+func NewLLMRunnerForInstance(router func() *llm.Router, instanceDir string, pluginTools ...*PluginToolset) *LLMRunner {
+	var toolset *PluginToolset
+	if len(pluginTools) > 0 {
+		toolset = pluginTools[0]
+	}
 	return NewLLMRunnerWithOptions(router, LLMRunnerOptions{
 		LocalConfigReader: tools.NewLocalConfigReader(instanceDir),
+		InstanceDir:       instanceDir,
+		PluginTools:       toolset,
 	})
 }
 
@@ -66,10 +77,20 @@ func (r *LLMRunner) instanceConfigReader() *tools.LocalConfigReader {
 
 func buildSearchToolInfos() []*schema.ToolInfo {
 	return []*schema.ToolInfo{
+		buildToolInfo(
+			lookupHelpToolName,
+			"Find WebUI destinations and read the top two official documentation matches at their relevant "+
+				"offsets in one call. Prefer this for an initial product question. Use narrow search or read tools "+
+				"for follow-up evidence when needed.",
+			map[string]any{
+				"query": map[string]any{"type": "string", "minLength": 1, "maxLength": 200, "description": "用空格分隔的简短检索词"},
+			},
+			[]any{"query"},
+		),
 		buildSearchIndexTool(),
 		buildToolInfo(
 			searchOfficialDocsToolName,
-			"搜索 docs.mai-mai.org 上的 MaiBot 官方文档，返回文档路径、标题和相关片段。",
+			"搜索 docs.maibot.chat 上的 MaiBot 官方文档，返回文档路径、标题和相关片段。",
 			map[string]any{
 				"query": map[string]any{"type": "string", "description": "一个或多个简短检索词，用空格分隔"},
 				"limit": map[string]any{"type": "integer", "description": fmt.Sprintf("返回数量，范围 1 到 %d", tools.OfficialDocsSearchMaxLimit)},
@@ -78,7 +99,7 @@ func buildSearchToolInfos() []*schema.ToolInfo {
 		),
 		buildToolInfo(
 			readOfficialDocsToolName,
-			"按路径读取 docs.mai-mai.org 官方文档正文。回答文档问题前应先调用此工具。单次返回的正文有长度上限，结果带有 next_offset 时说明文档还有后续内容。",
+			"按路径读取 docs.maibot.chat 官方文档正文。回答文档问题前应先调用此工具。单次返回的正文有长度上限，结果带有 next_offset 时说明文档还有后续内容。",
 			map[string]any{
 				"paths": map[string]any{
 					"type": "array", "items": map[string]any{"type": "string"},

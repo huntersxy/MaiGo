@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 )
 
 const (
@@ -51,6 +52,11 @@ type Request struct {
 	Query      string      `json:"query"`
 	Language   string      `json:"language"`
 	Candidates []Candidate `json:"candidates"`
+	// HelpSessionID 为 "new" 或既有答疑会话 UUID；空表示无会话的一次性搜索
+	HelpSessionID          *string `json:"help_session_id"`
+	AllowPluginConfigWrite bool    `json:"allow_plugin_config_write"`
+	// History 答疑会话续聊上下文，仅内部传递，不进入缓存键与请求体
+	History []HelpHistoryPair `json:"-"`
 }
 
 // ModelResult 模型选择的单个候选
@@ -59,10 +65,61 @@ type ModelResult struct {
 	Reason string `json:"reason"`
 }
 
-// Source Agent 阅读并引用的官方文档
+// Source Agent 实际查询并引用的文档或插件资料
 type Source struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
+}
+
+// HelpArtifact 可在答疑中发布的结构化成果
+type HelpArtifact struct {
+	Kind    string `json:"kind"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// PluginInfo 由市场服务查询结果生成的插件卡片
+type PluginInfo struct {
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	Version            string   `json:"version"`
+	Compatibility      string   `json:"compatibility"`
+	RecommendedVersion *string  `json:"recommended_version"`
+	Reasons            []string `json:"reasons"`
+}
+
+// InstallRequest 仅供界面展示和手动确认的安装请求
+type InstallRequest struct {
+	ID            string `json:"id"`
+	PluginID      string `json:"plugin_id"`
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	RepositoryURL string `json:"repository_url"`
+	Branch        string `json:"branch"`
+	Mode          string `json:"mode"`
+}
+
+// ConfigChange 一项插件配置改动
+type ConfigChange struct {
+	Path   []string `json:"path"`
+	Before any      `json:"before"`
+	After  any      `json:"after"`
+}
+
+// ConfigUpdate 已提交到插件配置服务的实际改动记录
+type ConfigUpdate struct {
+	ID       string         `json:"id"`
+	PluginID string         `json:"plugin_id"`
+	Name     string         `json:"name"`
+	Changes  []ConfigChange `json:"changes"`
+	Message  string         `json:"message"`
+}
+
+// PlanStep 答疑工作计划中的一步
+type PlanStep struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
 }
 
 // ModelOutput 模型必须返回的结构化搜索结果
@@ -72,34 +129,44 @@ type ModelOutput struct {
 	SourceIDs     []string      `json:"source_ids"`
 	ExpandedTerms []string      `json:"expanded_terms"`
 	Results       []ModelResult `json:"results"`
+	PluginIDs     []string      `json:"plugin_ids"`
 }
 
-// Response 经过候选 ID 校验后的 AI 搜索响应
+// Response 经过候选 ID、插件 ID 与引用来源校验后的 AI 搜索响应
 type Response struct {
-	Cached          bool          `json:"cached"`
-	ModelName       string        `json:"model_name"`
-	Answer          string        `json:"answer"`
-	Suggestions     []string      `json:"suggestions"`
-	Sources         []Source      `json:"sources"`
-	ExpandedTerms   []string      `json:"expanded_terms"`
-	Results         []ModelResult `json:"results"`
-	TotalTokens     int           `json:"total_tokens"`
-	GroundingError  string        `json:"grounding_error"`
-	UsedLocalConfig bool          `json:"used_local_config"`
+	Cached           bool             `json:"cached"`
+	ModelName        string           `json:"model_name"`
+	Answer           string           `json:"answer"`
+	Suggestions      []string         `json:"suggestions"`
+	Sources          []Source         `json:"sources"`
+	ExpandedTerms    []string         `json:"expanded_terms"`
+	Results          []ModelResult    `json:"results"`
+	Plugins          []PluginInfo     `json:"plugins"`
+	InstallRequests  []InstallRequest `json:"install_requests"`
+	ConfigUpdates    []ConfigUpdate   `json:"config_updates"`
+	Artifacts        []HelpArtifact   `json:"artifacts"`
+	TotalTokens      int              `json:"total_tokens"`
+	GroundingError   string           `json:"grounding_error"`
+	UsedLocalConfig  bool             `json:"used_local_config"`
+	UsedPluginMarket bool             `json:"used_plugin_market"`
 }
 
 // ProgressEvent AI 搜索流式返回的可核验过程事件
 type ProgressEvent struct {
-	Type    string   `json:"type"`
-	Stage   string   `json:"stage"`
-	Status  any      `json:"status"`
-	Round   *int     `json:"round"`
-	Tool    string   `json:"tool"`
-	Query   string   `json:"query"`
-	Targets []string `json:"targets"`
-	Titles  []string `json:"titles"`
-	Count   *int     `json:"count"`
-	Error   string   `json:"error"`
+	Type           string          `json:"type"`
+	Stage          string          `json:"stage"`
+	Status         any             `json:"status"`
+	Round          *int            `json:"round"`
+	Skill          string          `json:"skill,omitempty"`
+	Plan           []PlanStep      `json:"plan,omitempty"`
+	Tool           string          `json:"tool"`
+	Query          string          `json:"query"`
+	Targets        []string        `json:"targets"`
+	Titles         []string        `json:"titles"`
+	Count          *int            `json:"count"`
+	Error          string          `json:"error"`
+	InstallRequest *InstallRequest `json:"install_request,omitempty"`
+	ConfigUpdate   *ConfigUpdate   `json:"config_update,omitempty"`
 }
 
 // NewProgressEvent 构造默认进度事件，空字段与 Python model_dump 对齐
@@ -138,6 +205,11 @@ func ValidateRequest(request Request) error {
 	}
 	if len([]rune(request.Language)) > MaxLanguageLength {
 		return &ValidationError{Message: fmt.Sprintf("language 长度不能超过 %d", MaxLanguageLength)}
+	}
+	if request.HelpSessionID != nil && strings.TrimSpace(*request.HelpSessionID) != "new" {
+		if _, err := uuid.Parse(strings.TrimSpace(*request.HelpSessionID)); err != nil {
+			return &ValidationError{Message: "help_session_id 必须是 UUID 或 new"}
+		}
 	}
 	if len(request.Candidates) == 0 {
 		return &ValidationError{Message: "candidates 不能为空"}
@@ -194,6 +266,7 @@ func NormalizeOutput(output ModelOutput, candidates []Candidate) ModelOutput {
 		SourceIDs:     dedupeStrings(output.SourceIDs),
 		ExpandedTerms: dedupeStrings(output.ExpandedTerms),
 		Results:       results,
+		PluginIDs:     dedupeStrings(output.PluginIDs),
 	}
 }
 

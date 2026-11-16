@@ -54,8 +54,8 @@ WebUI 在 `http://<host>:7468`。`.env` 必须设置 `MAIBOT_SECRET_KEY`（`open
 
 ### 非 Docker
 
-Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.9.13` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
-装好 `maibot==1.3.19` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
+Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.0` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
+装好 `maibot==1.4.0` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 
 ## 贡献
 

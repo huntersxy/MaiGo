@@ -12,7 +12,7 @@ import (
 )
 
 // bodySchemaValidator 实现 Pydantic 2.x JSON Schema 的必要子集
-// 只覆盖 MaiBot 1.3.19 路由真实使用的类型、约束与错误形状
+// 只覆盖 MaiBot 1.4.0 路由真实使用的类型、约束与错误形状
 type bodySchemaValidator struct {
 	root map[string]any
 }

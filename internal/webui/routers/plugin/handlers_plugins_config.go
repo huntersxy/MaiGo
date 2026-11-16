@@ -248,6 +248,7 @@ func (d Deps) handlePluginConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "配置已保存",
 		"note":    "配置更改将自动热更新到对应插件",
+		"config":  configData,
 	})
 }
 

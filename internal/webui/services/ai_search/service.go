@@ -45,17 +45,21 @@ func (s *Service) Execute(ctx context.Context, request Request, emit Emit) (Resp
 	if emit == nil {
 		emit = func(ProgressEvent) {}
 	}
-	key := Key(request)
-	if cached, ok := s.cache.Get(key); ok {
-		emit(NewProgressEvent("cache_hit"))
-		return cached, nil
+	cacheable := request.HelpSessionID == nil && !request.AllowPluginConfigWrite
+	key := ""
+	if cacheable {
+		key = Key(request)
+		if cached, ok := s.cache.Get(key); ok {
+			emit(NewProgressEvent("cache_hit"))
+			return cached, nil
+		}
 	}
 	response, err := s.runner.Run(ctx, request, emit)
 	if err != nil {
 		return Response{}, err
 	}
 	response = normalizeResponse(response)
-	if !response.UsedLocalConfig && response.GroundingError == "" {
+	if cacheable && !response.UsedLocalConfig && !response.UsedPluginMarket && response.GroundingError == "" {
 		s.cache.Set(key, response)
 	}
 	return response, nil
@@ -73,6 +77,18 @@ func normalizeResponse(response Response) Response {
 	}
 	if response.Results == nil {
 		response.Results = []ModelResult{}
+	}
+	if response.Plugins == nil {
+		response.Plugins = []PluginInfo{}
+	}
+	if response.InstallRequests == nil {
+		response.InstallRequests = []InstallRequest{}
+	}
+	if response.ConfigUpdates == nil {
+		response.ConfigUpdates = []ConfigUpdate{}
+	}
+	if response.Artifacts == nil {
+		response.Artifacts = []HelpArtifact{}
 	}
 	response.Answer = strings.TrimSpace(response.Answer)
 	return response

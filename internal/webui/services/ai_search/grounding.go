@@ -21,13 +21,15 @@ type GroundingError struct{ Message string }
 func (e *GroundingError) Error() string { return e.Message }
 
 var (
-	backtickTechnicalPattern = regexp.MustCompile(`[_./\[\]=]|\d|^--`)
-	snakeCasePattern         = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b`)
-	tomlPathPattern          = regexp.MustCompile(`(?i)\b([\w.-]+\.toml)\b`)
-	escapedQuotePattern      = regexp.MustCompile(`\\(["'])`)
-	assignmentPattern        = regexp.MustCompile(`^(.+?)\s*=\s*(.+)$`)
-	httpClaimPattern         = regexp.MustCompile(`(?i)^(get|post|put|patch|delete)\s+(\S+)$`)
-	sectionFieldPattern      = regexp.MustCompile(`^\[([\w.-]+)\]\s*([\w.-]+)$`)
+	backtickTechnicalPattern  = regexp.MustCompile(`[_./\[\]=]|\d|^--`)
+	snakeCasePattern          = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b`)
+	tomlPathPattern           = regexp.MustCompile(`(?i)\b([\w.-]+\.toml)\b`)
+	escapedQuotePattern       = regexp.MustCompile(`\\(["'])`)
+	assignmentPattern         = regexp.MustCompile(`^(.+?)\s*=\s*(.+)$`)
+	httpClaimPattern          = regexp.MustCompile(`(?i)^(get|post|put|patch|delete)\s+(\S+)$`)
+	sectionFieldPattern       = regexp.MustCompile(`^\[([\w.-]+)\]\s*([\w.-]+)$`)
+	packageRequirementPattern = regexp.MustCompile(`^([a-z0-9_.-]+)\s*((?:===|==|~=|!=|<=|>=|<|>)\s*\d[\w.*+,!<>=~\s-]*)$`)
+	packageEvidencePattern    = regexp.MustCompile(`"name"\s*:\s*"([a-z0-9_.-]+)"\s*,\s*"version_spec"\s*:\s*"([^"]+)"`)
 )
 
 // ValidateOutputEvidence 与 Python ai_search_grounding.validate_model_output_evidence 对齐
@@ -134,12 +136,25 @@ func normalizeVerifiableClaim(claim string) string {
 	return normalized
 }
 
+func compactWhitespace(value string) string {
+	return strings.Join(strings.Fields(value), "")
+}
+
 func isClaimSupportedByEvidence(claim, evidence string) bool {
 	if strings.Contains(evidence, claim) {
 		return true
 	}
 	if strings.HasSuffix(claim, "*") && strings.Count(claim, "*") == 1 {
 		return strings.Contains(evidence, strings.TrimSuffix(claim, "*"))
+	}
+	if match := packageRequirementPattern.FindStringSubmatch(claim); match != nil {
+		name := match[1]
+		specifier := compactWhitespace(match[2])
+		for _, evidenceMatch := range packageEvidencePattern.FindAllStringSubmatch(evidence, -1) {
+			if evidenceMatch[1] == name && compactWhitespace(evidenceMatch[2]) == specifier {
+				return true
+			}
+		}
 	}
 	if match := assignmentPattern.FindStringSubmatch(claim); match != nil {
 		fieldName := strings.TrimSpace(match[1])

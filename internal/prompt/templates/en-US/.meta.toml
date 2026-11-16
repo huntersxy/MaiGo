@@ -222,3 +222,28 @@ description = "External planner recovery。"
 display_name = "External planner continuation"
 advanced = true
 description = "External planner continuation。"
+
+[webui_help_skill_setup]
+display_name = "Setup Workflow"
+advanced = true
+description = "Locate configuration entry points, verify current values, and provide verifiable steps."
+
+[webui_help_skill_troubleshoot]
+display_name = "Troubleshooting Workflow"
+advanced = true
+description = "Narrow the failure using errors and actual settings, then give the next check."
+
+[webui_help_skill_plugin]
+display_name = "Plugin Selection Workflow"
+advanced = true
+description = "Verify compatibility for the real need and use the matching tools for install and config."
+
+[webui_help_skill_develop]
+display_name = "Plugin Development Workflow"
+advanced = true
+description = "Provide a minimal implementation, entry points, and validation steps from the SDK docs."
+
+[webui_ai_search_input]
+display_name = "WebUI Help Session Input"
+advanced = true
+description = "Format the current question and prior turns for the WebUI help agent."

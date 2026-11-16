@@ -41,4 +41,5 @@ var migrationSteps = []migrationStep{
 	{52, "file_assets_v52_python_types", "files 三表列类型与列集对齐 Python 运行模型", migrateV52},
 	{53, "person_info_v53_python_types", "person_info 列类型对齐 Python 运行模型", migrateV53},
 	{54, "emoji_images_unify", "表情收敛到 Python 的 images 单表", migrateV54},
+	{55, "webui_help_history", "建立 WebUI 答疑会话与问答记录表", migrateV55},
 }

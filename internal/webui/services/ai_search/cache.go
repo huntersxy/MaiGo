@@ -91,5 +91,9 @@ func cloneResponse(response Response) Response {
 	cloned.Sources = append([]Source(nil), response.Sources...)
 	cloned.ExpandedTerms = append([]string(nil), response.ExpandedTerms...)
 	cloned.Results = append([]ModelResult(nil), response.Results...)
+	cloned.Plugins = append([]PluginInfo(nil), response.Plugins...)
+	cloned.InstallRequests = append([]InstallRequest(nil), response.InstallRequests...)
+	cloned.ConfigUpdates = append([]ConfigUpdate(nil), response.ConfigUpdates...)
+	cloned.Artifacts = append([]HelpArtifact(nil), response.Artifacts...)
 	return cloned
 }

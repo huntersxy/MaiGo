@@ -30,7 +30,7 @@ func marketBaseURL() string {
 
 // DefaultMaibotVersion 对齐 MMC_VERSION，用于市场兼容查询参数
 // Python src/config/config.py:76 的 MMC_VERSION 来自 pyproject.toml:7 的 project.version
-// 未显式覆盖时回退构建版本，开发构建回退 1.3.19，不再使用无意义的 dev
+// 未显式覆盖时回退构建版本，开发构建回退 1.4.0，不再使用无意义的 dev
 func DefaultMaibotVersion() string {
 	if value := strings.TrimSpace(os.Getenv("MAIBOT_VERSION")); value != "" {
 		return value

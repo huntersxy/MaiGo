@@ -2,7 +2,7 @@
 
 # 原版 Dashboard 以 PyPI 包发布；构建期取静态 dist，运行镜像不需要 Python
 FROM --platform=$BUILDPLATFORM python:3.13-alpine AS dashboard
-RUN pip install --no-cache-dir --no-deps --target /out maibot-dashboard==1.9.13
+RUN pip install --no-cache-dir --no-deps --target /out maibot-dashboard==1.10.0
 
 # 插件 Runner 复用 MaiBot 原版 Python 实现，只装 runner 真正需要的依赖
 # （maibot wheel 提供 src.plugin_runtime.runner，--no-deps 避免拉入 faiss/playwright 等）
@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir --no-deps --target /out maibot-dashboard==1.9.13
 FROM --platform=$TARGETPLATFORM alpine:3.23 AS plugin-runtime
 RUN apk add --no-cache python3 py3-pip && \
     python3 -m venv /runner && \
-    /runner/bin/pip install --no-cache-dir --no-input --no-deps "maibot==1.3.19" && \
+    /runner/bin/pip install --no-cache-dir --no-input --no-deps "maibot==1.4.0" && \
     /runner/bin/pip install --no-cache-dir --no-input \
         pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk
 

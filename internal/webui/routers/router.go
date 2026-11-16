@@ -41,6 +41,9 @@ func Mount(r chi.Router, d Deps) {
 		api.Route("/search", func(sr chi.Router) {
 			sr.Use(d.requireAuthMiddleware)
 			sr.Post("/ai/stream", d.handleSearchAIStream)
+			sr.Get("/help/sessions", d.handleHelpSessions)
+			sr.Get("/help/sessions/{session_id}", d.handleHelpSessionDetail)
+			sr.Delete("/help/sessions/{session_id}", d.handleHelpSessionDelete)
 		})
 
 		api.Route("/system", func(sr chi.Router) {

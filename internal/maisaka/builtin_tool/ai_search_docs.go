@@ -18,8 +18,8 @@ import (
 
 // 官方文档搜索与读取对齐 MaiBot src/webui/services/ai_search_documents.py
 const (
-	officialDocsBundleURL       = "https://docs.mai-mai.org/llms-full.txt"
-	officialDocsBaseURL         = "https://docs.mai-mai.org"
+	officialDocsBaseURL         = "https://docs.maibot.chat"
+	officialDocsBundleURL       = officialDocsBaseURL + "/llms-full.txt"
 	officialDocsCacheTTL        = 600 * time.Second
 	officialDocsMaxBundleSize   = 2_000_000
 	officialDocsMaxReadSize     = 8_000
@@ -302,18 +302,6 @@ func (s *AISearchDocumentStore) BuildSources(sourceIDs []string) []OfficialDocSo
 	return sources
 }
 
-// PrewarmOfficialDocs 在后台提前下载或刷新官方文档包，不等待结果
-func (s *AISearchDocumentStore) PrewarmOfficialDocs() {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	if !s.cacheFreshLocked() {
-		s.ensureRefreshLocked()
-	}
-	s.mu.Unlock()
-}
-
 // CachedOfficialDocuments 返回当前缓存快照，主要用于来源构建与测试
 func (s *AISearchDocumentStore) CachedOfficialDocuments() []OfficialDocument {
 	if s == nil {
@@ -406,6 +394,10 @@ func (s *AISearchDocumentStore) downloadOfficialDocs() ([]OfficialDocument, erro
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("官方文档包下载失败: HTTP %d", response.StatusCode)
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
+	if mediaType == "text/html" || mediaType == "application/xhtml+xml" {
+		return nil, fmt.Errorf("官方文档包端点返回了网页")
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, officialDocsMaxBundleSize+1))
 	if err != nil {

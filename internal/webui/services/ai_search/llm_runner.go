@@ -28,6 +28,8 @@ type LLMRunner struct {
 	router            func() *llm.Router
 	documentStore     *tools.AISearchDocumentStore
 	localConfigReader *tools.LocalConfigReader
+	instanceDir       string
+	pluginTools       *PluginToolset
 }
 
 // NewLLMRunner 构造真实模型执行器；router 在每次执行时读取，支持热更新
@@ -51,24 +53,38 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 	if emit == nil {
 		emit = func(ProgressEvent) {}
 	}
-	r.officialDocsStore().PrewarmOfficialDocs()
+	locale := NormalizeLanguage(request.Language)
+	harness := NewHelpHarness(locale)
+	artifacts := &HelpArtifactStore{}
+	market := NewMarketStore(r.pluginTools)
+	diagnosticsEnabled := request.HelpSessionID != nil
 	emit(NewProgressEvent("start"))
-	toolInfos := buildSearchToolInfos()
-	// 对齐 Python：单条 user 提示词由 webui_ai_search 模板渲染
-	messages := []*schema.AgenticMessage{
-		schema.UserAgenticMessage(buildSearchUserPrompt(request)),
-	}
+	messages := buildInitialSearchMessages(request, locale)
 	totalTokens := 0
 	groundingParts := []string{}
-	readSourceIDs := make(map[string]struct{})
+	readSourceIDs := map[string]struct{}{}
+	matchedCandidateIDs := map[string]struct{}{}
 	usedLocalConfig := false
-	var answer string
-	for round := 1; round <= searchMaxRounds; round++ {
+	directReferences := MatchHelpReferences(request.Query)
+	if len(directReferences) > 0 {
+		encoded, _ := json.Marshal(directReferences)
+		groundingParts = append(groundingParts, string(encoded))
+		for _, reference := range directReferences {
+			readSourceIDs[reference["source_id"]] = struct{}{}
+		}
+		messages = append(messages, schema.UserAgenticMessage(aiSearchPromptText(
+			"webui_ai_search_evidence", locale, map[string]string{
+				"tool_name": "preloaded_help_references", "tool_output": string(encoded),
+			})))
+	}
+	answer := ""
+	for round := 1; round <= 6; round++ {
 		roundValue := round
 		event := NewProgressEvent("planning")
 		event.Round = &roundValue
 		emit(event)
-		response, err := client.Generate(ctx, messages, model.WithTools(toolInfos), model.WithMaxTokens(2048), model.WithTemperature(0.2))
+		tools := r.toolInfos(request, harness, market, diagnosticsEnabled)
+		response, err := client.Generate(ctx, messages, model.WithTools(tools), model.WithMaxTokens(2048), model.WithTemperature(0.2))
 		if err != nil {
 			return Response{}, fmt.Errorf("AI 搜索调用失败: %w", err)
 		}
@@ -76,6 +92,7 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 		answer = MessageText(response)
 		calls := toolCalls(response)
 		if len(calls) == 0 {
+			messages = append(messages, response)
 			break
 		}
 		if len(calls) > MaxToolCallsPerRound {
@@ -83,49 +100,35 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 		}
 		messages = append(messages, assistantToolMessage(calls))
 		for _, call := range calls {
-			started := NewProgressEvent("tool")
-			started.Status = "started"
-			started.Tool = call.Name
-			started.Query = call.Query
-			started.Targets = searchToolTargets(call.Paths)
-			emit(started)
-			execution := r.executeSearchTool(ctx, call, request.Candidates)
+			emitToolProgress(emit, call, "started", agentToolExecution{})
+			execution := r.executeAgentTool(ctx, call, request, harness, artifacts, market, diagnosticsEnabled)
 			if execution.Fatal != nil {
 				return Response{}, execution.Fatal
 			}
+			if execution.Progress != nil {
+				emit(*execution.Progress)
+			}
 			encoded, _ := json.Marshal(execution.Payload)
+			messages = append(messages, toolResultMessage(call, string(encoded)))
 			if execution.Error == "" {
 				groundingParts = append(groundingParts, string(encoded))
-			}
-			messages = append(messages, toolResultMessage(call, string(encoded)))
-			for _, sourceID := range execution.SourceIDs {
-				readSourceIDs[sourceID] = struct{}{}
+				for _, sourceID := range execution.SourceIDs {
+					readSourceIDs[sourceID] = struct{}{}
+				}
+				for _, candidateID := range execution.CandidateIDs {
+					matchedCandidateIDs[candidateID] = struct{}{}
+				}
 			}
 			usedLocalConfig = usedLocalConfig || call.Name == readLocalConfigToolName
-			completed := NewProgressEvent("tool")
-			completed.Status = "completed"
-			completed.Tool = call.Name
-			completed.Query = call.Query
-			completed.Targets = execution.Targets
-			if execution.Error != "" {
-				completed.Status = "failed"
-				completed.Error = execution.Error
-			}
-			if execution.HasCount {
-				count := execution.Count
-				completed.Count = &count
-			}
-			completed.Titles = append(completed.Titles, execution.Titles...)
-			emit(completed)
+			emitToolProgress(emit, call, completionStatus(execution), execution)
 		}
 	}
 	output, err := parseModelOutput(answer)
-	// 对齐 Python：定稿与纠错请求都不带工具，改用证据消息承载已读资料
-	evidenceMessages := buildEvidenceMessages(messages, NormalizeLanguage(request.Language))
+	evidenceMessages := buildEvidenceMessages(messages, harness)
 	if err != nil {
 		emit(NewProgressEvent("finalizing"))
 		finalMessages := append(append([]*schema.AgenticMessage{}, evidenceMessages...),
-			schema.UserAgenticMessage(aiSearchPromptText("webui_ai_search_final", NormalizeLanguage(request.Language), nil)))
+			schema.UserAgenticMessage(aiSearchPromptText("webui_ai_search_final", locale, nil)))
 		response, finalErr := client.Generate(ctx, finalMessages, model.WithMaxTokens(2048), model.WithTemperature(0.2))
 		if finalErr != nil {
 			return Response{}, fmt.Errorf("AI 搜索调用失败: %w", finalErr)
@@ -137,15 +140,19 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 		}
 	}
 	normalized := NormalizeOutput(output, request.Candidates)
+	filtered := make([]ModelResult, 0, len(normalized.Results))
+	for _, result := range normalized.Results {
+		if _, ok := matchedCandidateIDs[result.ID]; ok {
+			filtered = append(filtered, result)
+		}
+	}
+	normalized.Results = filtered
 	groundingError := ""
 	evidence := strings.Join(append([]string{request.Query}, groundingParts...), "\n")
 	if groundingErr := ValidateOutputEvidence(normalized, evidence); groundingErr != nil {
-		started := NewProgressEvent("correcting")
-		started.Status = "started"
-		started.Error = groundingErr.Error()
-		emit(started)
+		emitCorrection(emit, groundingErr, "started")
 		correctionMessages := append(append([]*schema.AgenticMessage{}, evidenceMessages...),
-			schema.UserAgenticMessage(aiSearchPromptText("webui_ai_search_correction", NormalizeLanguage(request.Language),
+			schema.UserAgenticMessage(aiSearchPromptText("webui_ai_search_correction", locale,
 				map[string]string{"error": groundingErr.Error()})))
 		correctionResponse, correctionErr := client.Generate(ctx, correctionMessages, model.WithMaxTokens(2048), model.WithTemperature(0.2))
 		if correctionErr != nil {
@@ -159,15 +166,38 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 		normalized = NormalizeOutput(corrected, request.Candidates)
 		if secondErr := ValidateOutputEvidence(normalized, evidence); secondErr != nil {
 			groundingError = "AI 回答证据校验失败: " + secondErr.Error()
-			failed := NewProgressEvent("correcting")
-			failed.Status = "failed"
-			failed.Error = secondErr.Error()
-			emit(failed)
+			emitCorrection(emit, secondErr, "failed")
 			normalized.Answer = ""
 			normalized.Suggestions = []string{}
 			normalized.SourceIDs = []string{}
 		}
 	}
+	for sourceID := range market.Sources {
+		readSourceIDs[sourceID] = struct{}{}
+	}
+	allowedSources := filterSourceIDs(normalized.SourceIDs, readSourceIDs)
+	officialIDs := make([]string, 0, len(allowedSources))
+	references := make([]Source, 0, len(allowedSources))
+	marketSources := make([]Source, 0, len(allowedSources))
+	seenSources := map[string]struct{}{}
+	for _, sourceID := range allowedSources {
+		if _, duplicate := seenSources[sourceID]; duplicate {
+			continue
+		}
+		seenSources[sourceID] = struct{}{}
+		if source, ok := GetHelpReference(sourceID); ok {
+			references = append(references, source)
+			continue
+		}
+		if source, ok := market.Sources[sourceID]; ok {
+			marketSources = append(marketSources, source)
+			continue
+		}
+		officialIDs = append(officialIDs, sourceID)
+	}
+	sources := append([]Source{}, r.responseSources(officialIDs)...)
+	sources = append(sources, references...)
+	sources = append(sources, marketSources...)
 	modelName := route.MaiBotModel
 	if strings.TrimSpace(modelName) == "" {
 		modelName = route.Profile.Name
@@ -175,12 +205,290 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 	if strings.TrimSpace(modelName) == "" {
 		modelName = route.Config.Model
 	}
-	normalized.SourceIDs = filterSourceIDs(normalized.SourceIDs, readSourceIDs)
 	return Response{
 		ModelName: modelName, Answer: normalized.Answer, Suggestions: normalized.Suggestions,
-		Sources: r.responseSources(normalized.SourceIDs), ExpandedTerms: normalized.ExpandedTerms, Results: normalized.Results,
-		TotalTokens: totalTokens, GroundingError: groundingError, UsedLocalConfig: usedLocalConfig,
+		Sources: sources, ExpandedTerms: normalized.ExpandedTerms, Results: normalized.Results,
+		Plugins:         market.SelectPlugins(normalized.PluginIDs),
+		InstallRequests: market.InstallRequestList(),
+		ConfigUpdates:   market.Updates,
+		Artifacts:       artifacts.Artifacts,
+		TotalTokens:     totalTokens, GroundingError: groundingError,
+		UsedLocalConfig: usedLocalConfig, UsedPluginMarket: market.Used,
 	}, nil
+}
+
+type agentToolExecution struct {
+	Payload      any
+	Error        string
+	Targets      []string
+	Titles       []string
+	Count        *int
+	SourceIDs    []string
+	CandidateIDs []string
+	Fatal        error
+	Progress     *ProgressEvent
+}
+
+func (r *LLMRunner) toolInfos(request Request, harness *HelpHarness, market *MarketStore, diagnosticsEnabled bool) []*schema.ToolInfo {
+	tools := append([]*schema.ToolInfo{}, buildSearchToolInfos()...)
+	tools = append(tools, buildHarnessToolInfos()...)
+	if request.HelpSessionID != nil {
+		tools = append(tools, buildHelpArtifactToolInfo())
+		if _, ok := harness.ActiveSkills["troubleshoot"]; ok {
+			tools = append(tools, buildDiagnosticToolInfos()...)
+		}
+	}
+	if _, ok := harness.ActiveSkills["plugin"]; ok && market.Enabled() {
+		tools = append(tools, buildMarketToolInfos(request.AllowPluginConfigWrite)...)
+	}
+	return tools
+}
+
+func (r *LLMRunner) executeAgentTool(
+	ctx context.Context, call searchToolCall, request Request, harness *HelpHarness,
+	artifacts *HelpArtifactStore, market *MarketStore, diagnosticsEnabled bool,
+) agentToolExecution {
+	name := call.Name
+	switch {
+	case isHarnessTool(name):
+		payload, event := harness.Execute(name, call.ArgumentsMap)
+		return agentToolExecution{Payload: payload, Progress: event}
+	case isDiagnosticTool(name):
+		if !diagnosticsEnabled || !harnessHasSkill(harness, "troubleshoot") {
+			return agentToolExecution{Payload: map[string]any{"error": "仅在独立答疑会话加载 troubleshoot 技能后可读取诊断数据"}}
+		}
+		if name == diagnosticReadReasoningTool {
+			if recordPath, _ := call.ArgumentsMap["record_path"].(string); strings.TrimSpace(recordPath) != "" &&
+				!strings.Contains(request.Query, strings.TrimSpace(recordPath)) {
+				return agentToolExecution{Payload: map[string]any{"error": "推理文件路径必须由用户在本轮明确提供"}}
+			}
+		}
+		return agentToolExecution{Payload: ExecuteDiagnosticTool(r.instanceDir, name, call.ArgumentsMap)}
+	case name == publishHelpArtifactTool:
+		if !diagnosticsEnabled {
+			return agentToolExecution{Payload: map[string]any{"error": "本步未提供该工具"}}
+		}
+		if kind, _ := call.ArgumentsMap["kind"].(string); kind == "image" {
+			content, _ := call.ArgumentsMap["content"].(string)
+			if !strings.Contains(request.Query, strings.TrimSpace(content)) {
+				return agentToolExecution{Payload: map[string]any{"error": "图片地址必须来自本轮用户输入"}}
+			}
+		}
+		artifact, err := artifacts.Publish(call.ArgumentsMap)
+		if err != nil {
+			return agentToolExecution{Payload: map[string]any{"error": err.Error()}}
+		}
+		return agentToolExecution{Payload: map[string]any{"published": artifact.Kind}}
+	case isPluginMarketTool(name):
+		if !market.Enabled() || !harnessHasSkill(harness, "plugin") {
+			return agentToolExecution{Payload: map[string]any{"error": "本步未提供该工具"}}
+		}
+		if name == "update_plugin_config" && !request.AllowPluginConfigWrite {
+			return agentToolExecution{Payload: map[string]any{"error": "本轮未启用插件配置写入权限"}}
+		}
+		return agentToolExecution{Payload: market.Execute(ctx, name, call.ArgumentsMap)}
+	case name == lookupHelpToolName:
+		return r.lookupHelp(ctx, call, request.Candidates)
+	default:
+		execution := r.executeSearchTool(ctx, call, request.Candidates)
+		if execution.Fatal != nil {
+			return agentToolExecution{Fatal: execution.Fatal}
+		}
+		result := agentToolExecution{
+			Payload: execution.Payload, Error: execution.Error, Targets: execution.Targets,
+			Titles: execution.Titles, SourceIDs: execution.SourceIDs,
+		}
+		if execution.HasCount {
+			count := execution.Count
+			result.Count = &count
+		}
+		if name == searchIndexToolName {
+			if payload, ok := execution.Payload.(searchToolPayload); ok {
+				for _, document := range payload.Documents {
+					result.CandidateIDs = append(result.CandidateIDs, document.ID)
+				}
+			}
+		}
+		return result
+	}
+}
+
+func isHarnessTool(name string) bool {
+	_, ok := helpHarnessToolNames[name]
+	return ok
+}
+
+func isDiagnosticTool(name string) bool {
+	_, ok := diagnosticToolNames[name]
+	return ok
+}
+
+func isPluginMarketTool(name string) bool {
+	_, ok := pluginMarketToolNames[name]
+	return ok
+}
+
+func harnessHasSkill(harness *HelpHarness, skill string) bool {
+	if harness == nil {
+		return false
+	}
+	_, ok := harness.ActiveSkills[skill]
+	return ok
+}
+
+func completionStatus(execution agentToolExecution) string {
+	if execution.Error != "" {
+		return "failed"
+	}
+	return "completed"
+}
+
+func emitToolProgress(emit Emit, call searchToolCall, status string, execution agentToolExecution) {
+	event := NewProgressEvent("tool")
+	event.Status = status
+	event.Tool = call.Name
+	event.Query = call.Query
+	event.Targets = searchToolTargets(call.Paths)
+	if execution.Targets != nil {
+		event.Targets = execution.Targets
+	}
+	if execution.Error != "" {
+		event.Status = "failed"
+		event.Error = execution.Error
+	}
+	event.Titles = append(event.Titles, execution.Titles...)
+	event.Count = execution.Count
+	if payload, ok := execution.Payload.(map[string]any); ok {
+		if documents := mapSliceValue(payload["documents"]); len(documents) > 0 {
+			titles := make([]string, 0, len(documents))
+			for _, document := range documents {
+				if title := stringValue(document["title"]); title != "" {
+					titles = append(titles, title)
+				}
+			}
+			if event.Count == nil {
+				count := len(documents)
+				event.Count = &count
+			}
+			if len(event.Titles) == 0 {
+				event.Titles = limitSearchToolTitles(titles)
+			}
+		}
+		if plugins := mapSliceValue(payload["plugins"]); len(plugins) > 0 {
+			titles := make([]string, 0, len(plugins))
+			for _, plugin := range plugins {
+				if name := stringValue(plugin["name"]); name != "" {
+					titles = append(titles, name)
+				}
+			}
+			if event.Count == nil {
+				count := len(plugins)
+				event.Count = &count
+			}
+			if len(event.Titles) == 0 {
+				event.Titles = limitSearchToolTitles(titles)
+			}
+		}
+		if install, ok := payload["install_request"].(map[string]any); ok {
+			encoded, _ := json.Marshal(install)
+			var request InstallRequest
+			if json.Unmarshal(encoded, &request) == nil {
+				event.InstallRequest = &request
+				event.Targets = []string{request.PluginID}
+			}
+		}
+		if update, ok := payload["config_update"].(map[string]any); ok {
+			encoded, _ := json.Marshal(update)
+			var configUpdate ConfigUpdate
+			if json.Unmarshal(encoded, &configUpdate) == nil {
+				event.ConfigUpdate = &configUpdate
+				event.Targets = []string{configUpdate.PluginID}
+			}
+		}
+	}
+	emit(event)
+}
+
+func emitCorrection(emit Emit, err error, status string) {
+	event := NewProgressEvent("correcting")
+	event.Status = status
+	event.Error = err.Error()
+	emit(event)
+}
+
+// lookupHelp 一次完成索引扫描与命中位置的正文读取
+func (r *LLMRunner) lookupHelp(ctx context.Context, call searchToolCall, candidates []Candidate) agentToolExecution {
+	query := strings.TrimSpace(call.Query)
+	navigation := searchCandidates(query, candidates, 4)
+	documents := make([]any, 0)
+	for _, reference := range MatchHelpReferences(query) {
+		documents = append(documents, reference)
+	}
+	docsError := ""
+	hits, err := r.officialDocsStore().SearchOfficialDocs(ctx, query, 2)
+	if err != nil {
+		docsError = "暂时无法读取官方文档"
+	} else {
+		paths := make([]string, 0, len(hits))
+		offsets := map[string]int{}
+		for _, hit := range hits {
+			paths = append(paths, hit.Path)
+			offsets[hit.URL] = hit.SnippetOffset
+		}
+		read, readErr := r.officialDocsStore().ReadOfficialDocs(ctx, paths, 0)
+		if readErr != nil {
+			docsError = "暂时无法读取官方文档"
+		} else {
+			for _, document := range read {
+				content := document.Content
+				runes := []rune(content)
+				if len(runes) > 3000 {
+					content = string(runes[:3000])
+				}
+				payload := map[string]any{
+					"source_id": document.SourceID, "title": document.Title, "url": document.URL,
+					"offset": document.Offset, "length": document.Length, "content": content,
+				}
+				if document.NextOffset != nil {
+					payload["next_offset"] = document.NextOffset
+				} else if len(runes) > 3000 {
+					payload["next_offset"] = document.Offset + 3000
+				}
+				if offset, ok := offsets[document.URL]; ok && offset > 0 {
+					payload["snippet_offset"] = offset
+				}
+				documents = append(documents, payload)
+			}
+		}
+	}
+	payload := map[string]any{"navigation": navigation, "documents": documents}
+	if docsError != "" {
+		payload["docs_error"] = docsError
+	}
+	sourceIDs := make([]string, 0)
+	candidateIDs := make([]string, 0)
+	for _, document := range navigation {
+		candidateIDs = append(candidateIDs, document.ID)
+	}
+	for _, raw := range documents {
+		if item, ok := raw.(map[string]any); ok {
+			if id, ok := item["source_id"].(string); ok && id != "" {
+				sourceIDs = append(sourceIDs, id)
+			}
+		}
+	}
+	return agentToolExecution{
+		Payload: payload, Targets: searchToolTargets(call.Paths), Titles: limitSearchToolTitles(documentTitles(navigation)),
+		SourceIDs: sourceIDs, CandidateIDs: candidateIDs,
+	}
+}
+
+func documentTitles(documents []searchDocument) []string {
+	titles := make([]string, 0, len(documents))
+	for _, document := range documents {
+		titles = append(titles, document.Title)
+	}
+	return titles
 }
 
 type searchToolCall struct {
@@ -192,6 +500,8 @@ type searchToolCall struct {
 	Paths     []string
 	Offset    int
 	Arguments string
+	// ArgumentsMap 原始参数，供技能、插件、诊断与成果工具使用
+	ArgumentsMap map[string]any
 }
 
 type searchDocument struct {
@@ -210,23 +520,41 @@ type searchToolPayload struct {
 	Documents []searchDocument `json:"documents"`
 }
 
-// buildSearchUserPrompt 渲染 webui_ai_search 模板，对齐 _build_ai_search_prompt
-func buildSearchUserPrompt(request Request) string {
-	locale := NormalizeLanguage(request.Language)
-	queryJSON, err := json.Marshal(strings.TrimSpace(request.Query))
-	if err != nil {
-		queryJSON = []byte(`""`)
+// buildInitialSearchMessages 把可信规则和不可信的当前问题、历史记录分开投影
+func buildInitialSearchMessages(request Request, locale string) []*schema.AgenticMessage {
+	queryJSON, _ := json.Marshal(strings.TrimSpace(request.Query))
+	history := make([]map[string]string, 0, len(request.History))
+	for _, pair := range request.History {
+		history = append(history, map[string]string{"question": pair.Question, "answer": pair.Answer})
 	}
-	return aiSearchPromptText("webui_ai_search", locale, map[string]string{
-		"query_json":      string(queryJSON),
+	historyJSON, _ := json.Marshal(history)
+	policy := aiSearchPromptText("webui_ai_search", locale, map[string]string{
 		"candidate_count": strconv.Itoa(len(request.Candidates)),
+	})
+	input := aiSearchPromptText("webui_ai_search_input", locale, map[string]string{
+		"query_json": string(queryJSON), "history_json": string(historyJSON),
+	})
+	return []*schema.AgenticMessage{
+		schema.SystemAgenticMessage(policy),
+		schema.UserAgenticMessage(input),
+	}
+}
+
+// buildSearchUserPrompt 保留旧调用，渲染包含当前问题的单条提示词
+func buildSearchUserPrompt(request Request) string {
+	return aiSearchPromptText("webui_ai_search_input", NormalizeLanguage(request.Language), map[string]string{
+		"query_json": strconv.Quote(strings.TrimSpace(request.Query)), "history_json": "[]",
 	})
 }
 
 // buildEvidenceMessages 把工具结果转换为普通证据消息，对齐 _build_evidence_messages
 //
 // 工具轮次（含 FunctionCall）整体丢弃，只保留工具结果渲染出的证据文本与原始对话消息。
-func buildEvidenceMessages(messages []*schema.AgenticMessage, locale string) []*schema.AgenticMessage {
+func buildEvidenceMessages(messages []*schema.AgenticMessage, harness *HelpHarness) []*schema.AgenticMessage {
+	locale := "zh-CN"
+	if harness != nil && harness.Locale != "" {
+		locale = harness.Locale
+	}
 	toolTurn := make(map[string]struct{})
 	for _, message := range messages {
 		if message == nil {
@@ -265,17 +593,33 @@ func buildEvidenceMessages(messages []*schema.AgenticMessage, locale string) []*
 					converted = append(converted, block)
 					continue
 				}
+				toolName := block.FunctionToolResult.Name
+				if isHarnessTool(toolName) || toolName == publishHelpArtifactTool {
+					continue
+				}
 				text := functionToolResultText(block.FunctionToolResult)
 				converted = append(converted, schema.NewContentBlock(&schema.UserInputText{Text: aiSearchPromptText(
 					"webui_ai_search_evidence", locale, map[string]string{
-						"tool_name":   block.FunctionToolResult.Name,
+						"tool_name":   toolName,
 						"tool_output": text,
 					})}))
 			}
-			evidence = append(evidence, &schema.AgenticMessage{Role: message.Role, ContentBlocks: converted})
+			if len(converted) > 0 {
+				evidence = append(evidence, &schema.AgenticMessage{Role: message.Role, ContentBlocks: converted})
+			}
 			continue
 		}
 		evidence = append(evidence, message)
+	}
+	if harness != nil && len(harness.ActiveSkills) > 0 && len(evidence) > 0 {
+		skills := make([]string, 0, len(harness.ActiveSkills))
+		for _, instructions := range harness.ActiveSkills {
+			skills = append(skills, instructions)
+		}
+		first := evidence[0]
+		policy := MessageText(first)
+		policy = strings.TrimSpace(policy + "\n\n" + strings.Join(skills, "\n\n"))
+		evidence[0] = schema.SystemAgenticMessage(policy)
 	}
 	return evidence
 }
@@ -331,7 +675,7 @@ func toolCalls(message *schema.AgenticMessage) []searchToolCall {
 			CallID: call.CallID, Name: call.Name,
 			Query: resolveSearchToolQuery(arguments["query"]), Limit: limit, LimitSet: limitSet,
 			Paths: searchToolPaths(arguments), Offset: searchToolOffset(arguments),
-			Arguments: call.Arguments,
+			Arguments: call.Arguments, ArgumentsMap: arguments,
 		})
 	}
 	return calls
