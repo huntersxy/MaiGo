@@ -423,7 +423,6 @@ func (c *AgentHistoryCompactor) Summarize(ctx context.Context, input maisaka.His
 		Recent:        input.Recent,
 		Previous:      input.Previous,
 		SessionID:     sessionID,
-		MaxChars:      input.MaxChars,
 		Timestamp:     timestamp,
 		Focus:         input.Focus,
 		DisplayPrefix: input.DisplayPrefix,

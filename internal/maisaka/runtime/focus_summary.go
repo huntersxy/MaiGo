@@ -25,7 +25,6 @@ func (a *Agent) buildFocusSummary(ctx context.Context, input focus.SummaryInput)
 		Previous:      input.Previous,
 		SourceContext: input.SourceContext,
 		SessionID:     input.SessionID,
-		MaxChars:      input.MaxChars,
 		Timestamp:     timestamp,
 		Focus:         true,
 	})

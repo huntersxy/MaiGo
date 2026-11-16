@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"MaiGo/internal/common/llmjson"
 )
 
 // ContextSummarySource 上下文压缩摘要消息的 source 标记
@@ -89,7 +91,7 @@ func (s *ConversationState) Render() string {
 // ParseConversationState 解析模型返回的摘要 JSON；字段缺失、未知字段和类型错误都拒绝提交
 func ParseConversationState(raw string) (*ConversationState, error) {
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+	if err := json.Unmarshal([]byte(llmjson.Normalize(raw)), &fields); err != nil {
 		return nil, err
 	}
 	if fields == nil {
@@ -276,9 +278,4 @@ func BuildSummaryMessage(content string, timestamp time.Time, prefix string) Con
 			"remaining_uses": nil,
 		},
 	}
-}
-
-// FormatContextSummaryBudgetError 压缩摘要为空或超预算的错误文案
-func FormatContextSummaryBudgetError(rendered string, maxChars int) error {
-	return fmt.Errorf("状态摘要为空或超过字符预算: %d/%d", len([]rune(rendered)), maxChars)
 }

@@ -98,7 +98,6 @@ type SummaryInput struct {
 	Recent        []maisaka.ContextMessage
 	SourceContext string
 	SessionID     string
-	MaxChars      int
 	// Snapshot 本轮 Planner 请求快照；为空时不生成摘要
 	Snapshot *maisaka.PlannerRequestSnapshot
 }
@@ -130,7 +129,6 @@ type GroupOptions struct {
 	Planner         PlannerStep
 	Summary         SummaryBuilder
 	Emitter         FocusEmitter
-	MaxSummaryChars func() int
 	MaxContextSize  func() int
 	StoreRoot       string
 	// Prompts 提示词来源，用于连续等待提醒

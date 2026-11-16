@@ -695,7 +695,6 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 	options := focus.GroupOptions{
 		MaxContextSize:  func() int { return a.maisakaMaxContextSize(true) },
 		Summary:         a.buildFocusSummary,
-		MaxSummaryChars: a.contextCompactionSummaryMaxChars,
 		StoreRoot:       focus.DefaultCheckpointRoot,
 		Prompts:         a.newMaisakaPromptSource(),
 		Planner: func(ctx context.Context, request focus.PlannerRequest) (maisaka.ChatResponse, error) {

@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +18,6 @@ type contextSummaryInput struct {
 	Previous      *maisaka.ContextMessage
 	SourceContext string
 	SessionID     string
-	MaxChars      int
 	Timestamp     time.Time
 	Focus         bool
 	DisplayPrefix string
@@ -36,13 +34,6 @@ func (a *Agent) buildContextSummary(ctx context.Context, input contextSummaryInp
 	if input.Snapshot == nil || len(input.Snapshot.Items) == 0 {
 		return nil, fmt.Errorf("缺少 Planner 请求快照，无法生成状态摘要")
 	}
-	maxChars := input.MaxChars
-	if maxChars <= 0 {
-		maxChars = a.contextCompactionSummaryMaxChars()
-	}
-	if maxChars <= 0 {
-		maxChars = 6000
-	}
 	generation := a.acquireGeneration()
 	if generation == nil {
 		return nil, fmt.Errorf("上下文压缩缺少可用的 Planner 模型")
@@ -57,7 +48,7 @@ func (a *Agent) buildContextSummary(ctx context.Context, input contextSummaryInp
 	if selectedModel == nil {
 		return nil, fmt.Errorf("上下文压缩缺少可用的 Planner 模型")
 	}
-	instruction, err := a.contextCompactionInstruction(input.Focus, maxChars)
+	instruction, err := a.contextCompactionInstruction(input.Focus)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +75,8 @@ func (a *Agent) buildContextSummary(ctx context.Context, input contextSummaryInp
 		return nil, fmt.Errorf("解析状态摘要失败: %w", err)
 	}
 	rendered := state.Render()
-	if strings.TrimSpace(rendered) == "" || len([]rune(rendered)) > maxChars {
-		return nil, maisaka.FormatContextSummaryBudgetError(rendered, maxChars)
+	if strings.TrimSpace(rendered) == "" {
+		return nil, fmt.Errorf("状态摘要为空")
 	}
 	timestamp := input.Timestamp
 	if timestamp.IsZero() {
@@ -95,8 +86,8 @@ func (a *Agent) buildContextSummary(ctx context.Context, input contextSummaryInp
 	return &summary, nil
 }
 
-// contextCompactionInstruction 按普通/Focus 选择模板并填入字符预算
-func (a *Agent) contextCompactionInstruction(focus bool, maxChars int) (string, error) {
+// contextCompactionInstruction 按普通/Focus 选择模板
+func (a *Agent) contextCompactionInstruction(focus bool) (string, error) {
 	manager, err := prompt.NewManager()
 	if err != nil {
 		return "", fmt.Errorf("加载上下文压缩提示词失败: %w", err)
@@ -110,27 +101,9 @@ func (a *Agent) contextCompactionInstruction(focus bool, maxChars int) (string, 
 	if focus {
 		name = "context_compaction_focus"
 	}
-	rendered, err := manager.LoadPrompt(name, prompt.InitialLocale(), map[string]string{
-		"max_summary_chars": strconv.Itoa(maxChars),
-	})
+	rendered, err := manager.LoadPrompt(name, prompt.InitialLocale(), nil)
 	if err != nil {
 		return "", fmt.Errorf("渲染上下文压缩提示词失败: %w", err)
 	}
 	return rendered, nil
-}
-
-// contextCompactionSummaryMaxChars 对齐 chat.context_compaction_summary_max_chars，默认 6000
-func (a *Agent) contextCompactionSummaryMaxChars() int {
-	bot := a.instanceBotConfig()
-	if bot == nil || bot.Chat.ContextCompactionSummaryMaxChars <= 0 {
-		return 6000
-	}
-	value := bot.Chat.ContextCompactionSummaryMaxChars
-	if value < 1000 {
-		return 1000
-	}
-	if value > 8000 {
-		return 8000
-	}
-	return value
 }

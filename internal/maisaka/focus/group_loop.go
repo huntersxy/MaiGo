@@ -598,7 +598,6 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 		Recent:        recent,
 		SourceContext: strings.Join(sourceContext, "\n"),
 		SessionID:     g.scopeID,
-		MaxChars:      g.maxSummaryChars(),
 		Snapshot:      plannerSnapshot,
 	})
 	if summaryErr != nil {
@@ -692,15 +691,6 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 	}
 	g.mu.Lock()
 	return nil
-}
-
-func (g *GroupRuntime) maxSummaryChars() int {
-	if g.opts.MaxSummaryChars != nil {
-		if value := g.opts.MaxSummaryChars(); value > 0 {
-			return value
-		}
-	}
-	return 1200
 }
 
 func nowSeconds() float64 {

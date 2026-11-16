@@ -91,8 +91,6 @@ type HistoryCompactionInput struct {
 	Snapshot *PlannerRequestSnapshot
 	// SessionID 会话标识
 	SessionID string
-	// MaxChars 摘要字符预算
-	MaxChars int
 	// Timestamp 摘要时间戳，取被裁切消息的最后一条
 	Timestamp time.Time
 	// Focus 是否使用 Focus 压缩提示词

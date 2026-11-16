@@ -369,7 +369,6 @@ type ChatConfig struct {
 	CreativeMode                     bool                  `toml:"creative_mode,omitempty"`
 	MaxContextSize                   int                   `toml:"max_context_size,omitempty"`
 	MaxPrivateContextSize            int                   `toml:"max_private_context_size,omitempty"`
-	ContextCompactionSummaryMaxChars int                   `toml:"context_compaction_summary_max_chars,omitempty"`
 	ReplyTiming                      ChatReplyTimingConfig `toml:"reply_timing,omitempty"`
 	ReplyStyle                       ChatReplyStyleConfig  `toml:"reply_style,omitempty"`
 	// 8.14.19 前 [chat] 根级字段；升级链迁至 reply_timing / reply_style

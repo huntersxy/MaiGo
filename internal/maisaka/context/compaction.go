@@ -29,8 +29,3 @@ func MessageTextForCompaction(message maisaka.ContextMessage) string {
 func BuildContextSummaryMessage(content string, timestamp time.Time, prefix string) maisaka.ContextMessage {
 	return maisaka.BuildSummaryMessage(content, timestamp, prefix)
 }
-
-// FormatContextSummaryBudgetError 校验压缩结果长度
-func FormatContextSummaryBudgetError(rendered string, maxChars int) error {
-	return maisaka.FormatContextSummaryBudgetError(rendered, maxChars)
-}
