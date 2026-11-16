@@ -148,11 +148,11 @@ func (h *Host) pluginConfigPath(pluginID string) (string, error) {
 			continue
 		}
 		if candidate := filepath.Join(root, pluginID); isDirectory(candidate) {
-			return filepath.Join(candidate, "config.toml"), nil
+			return ResolvePluginConfigPath(candidate), nil
 		}
 		// 插件目录名不一定等于插件 ID（如 plugin_management 对应 builtin.plugin-management）
 		if candidate := pluginDirByManifestID(root, pluginID); candidate != "" {
-			return filepath.Join(candidate, "config.toml"), nil
+			return ResolvePluginConfigPath(candidate), nil
 		}
 	}
 	// WebUI/本地内置插件没有运行时目录时，使用插件数据目录承载配置

@@ -17,4 +17,15 @@ if [ -d /opt/plugin-runtime ] && [ -z "$(ls -A /app/plugin-runtime 2>/dev/null)"
     chown -R maibot:maibot /app/plugin-runtime 2>/dev/null || true
 fi
 
+# 安装版 Runner 从 site-packages 读取内置插件与 src.plugin_runtime；
+# 未显式指定时按虚拟环境实际 Python 版本定位
+if [ -z "${MAIBOT_PLUGIN_PROJECT_ROOT:-}" ]; then
+    for candidate in /app/plugin-runtime/lib/python*/site-packages; do
+        if [ -f "$candidate/src/plugin_runtime/runner/runner_main.py" ]; then
+            export MAIBOT_PLUGIN_PROJECT_ROOT="$candidate"
+            break
+        fi
+    done
+fi
+
 exec su-exec maibot:maibot "$@"

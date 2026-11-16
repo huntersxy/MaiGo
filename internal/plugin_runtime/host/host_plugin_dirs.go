@@ -43,6 +43,20 @@ func (h *Host) PluginDirs() []string {
 		}
 	}
 	if len(out) == 0 {
+		// Runner 尚未启动时也要覆盖内置与实例插件目录，依赖同步与配置监听才能看到内置插件
+		dirs, trusted := DefaultRunnerPluginDirs(
+			strings.TrimSpace(os.Getenv(EnvPluginProjectRoot)),
+			RunnerGroupThirdParty,
+			ResolveInstanceRoot(),
+		)
+		for _, dir := range dirs {
+			add(dir)
+		}
+		for _, dir := range trusted {
+			add(dir)
+		}
+	}
+	if len(out) == 0 {
 		for _, dir := range []string{filepath.Join("data", "plugins"), "plugins"} {
 			if isDirectory(dir) {
 				add(dir)

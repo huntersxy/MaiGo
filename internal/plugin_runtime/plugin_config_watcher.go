@@ -121,7 +121,7 @@ func snapshotPluginConfigs(pluginDirs []string) map[string]pluginConfigSnapshot 
 				continue
 			}
 			pluginPath := filepath.Join(root, entry.Name())
-			configPath := filepath.Join(pluginPath, "config.toml")
+			configPath := ResolvePluginConfigPath(pluginPath)
 			info, err := os.Stat(configPath)
 			if err != nil || info.IsDir() {
 				continue

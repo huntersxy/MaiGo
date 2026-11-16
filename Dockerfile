@@ -12,7 +12,10 @@ RUN apk add --no-cache python3 py3-pip && \
     python3 -m venv /runner && \
     /runner/bin/pip install --no-cache-dir --no-input --no-deps "maibot==1.4.0" && \
     /runner/bin/pip install --no-cache-dir --no-input \
-        pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk
+        pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk \
+        "aiohttp>=3.14.3,<4" "httpx>=0.28,<1" "socksio>=1,<2" "pillow>=12.3" "qrcode>=8.2" \
+        "cryptography>=50.0.0" "imageio-ffmpeg>=0.6,<1" "rlottie-python>=1.3.7,<2" \
+        "pycryptodome>=3.20,<4" "jieba>=0.42.1" "pypinyin>=0.54.0"
 
 FROM --platform=$TARGETPLATFORM alpine:3.23 AS pycompat
 RUN apk add --no-cache python3 py3-pip && \

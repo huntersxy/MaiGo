@@ -84,7 +84,7 @@ func isReservedPluginDependencyDirectory(name string) bool {
 }
 
 func isPluginDisabledByConfig(pluginPath string) bool {
-	raw, err := os.ReadFile(filepath.Join(pluginPath, "config.toml"))
+	raw, err := os.ReadFile(ResolvePluginConfigPath(pluginPath))
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			zap.L().Error("读取插件配置失败", zap.String("path", pluginPath), zap.Error(err))

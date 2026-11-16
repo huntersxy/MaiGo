@@ -17,17 +17,13 @@ import (
 	"MaiGo/internal/plugin_runtime"
 )
 
-// resolvePluginConfigPaths 校验插件 ID 并定位已安装插件目录与 config.toml
+// resolvePluginConfigPaths 校验插件 ID 并定位插件目录与 config.toml
 func (d Deps) resolvePluginConfigPaths(pluginID string) (struct{ pluginPath, configPath string }, error) {
 	var paths struct{ pluginPath, configPath string }
 	if err := pluginmarket.ValidatePluginID(pluginID); err != nil {
 		return paths, err
 	}
-	root, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
-	if err != nil {
-		return paths, err
-	}
-	pluginPath, err := pluginmarket.FindInstalledPlugin(root, pluginID)
+	pluginPath, err := d.findManagedPluginPath(pluginID)
 	if err != nil {
 		return paths, err
 	}
@@ -35,8 +31,24 @@ func (d Deps) resolvePluginConfigPaths(pluginID string) (struct{ pluginPath, con
 		return paths, pluginmarket.NewMarketError(http.StatusNotFound, "未找到插件: "+pluginID)
 	}
 	paths.pluginPath = pluginPath
-	paths.configPath = filepath.Join(pluginPath, "config.toml")
+	paths.configPath = pluginruntime.ResolvePluginConfigPath(pluginPath)
 	return paths, nil
+}
+
+// findManagedPluginPath 先查第三方安装，再查内置插件
+func (d Deps) findManagedPluginPath(pluginID string) (string, error) {
+	root, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
+	if err != nil {
+		return "", err
+	}
+	pluginPath, err := pluginmarket.FindInstalledPlugin(root, pluginID)
+	if err != nil {
+		return "", err
+	}
+	if pluginPath != "" {
+		return pluginPath, nil
+	}
+	return pluginruntime.FindBuiltinPluginPath(pluginID), nil
 }
 
 // inspectPluginConfig 调用运行时解析配置；Runner 不可用时映射为 503

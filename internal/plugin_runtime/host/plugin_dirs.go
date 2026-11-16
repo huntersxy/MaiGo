@@ -12,11 +12,34 @@ func DefaultBuiltinPluginDir(projectRoot string) string {
 	if projectRoot == "" {
 		return ""
 	}
-	candidate := filepath.Join(projectRoot, "src", "plugins", "built_in")
-	if isDirectory(candidate) {
-		return candidate
+	for _, rel := range []string{
+		filepath.Join("plugins", "built_in"),
+		filepath.Join("src", "plugins", "built_in"),
+	} {
+		if candidate := filepath.Join(projectRoot, rel); isDirectory(candidate) {
+			return candidate
+		}
 	}
 	return ""
+}
+
+// ResolvePluginConfigPath 对齐 src/common/paths.py 的 resolve_plugin_config_path：
+// 内置插件只共享代码，配置归实例 config/builtin_plugins；第三方插件配置留在插件目录
+func ResolvePluginConfigPath(pluginPath string) string {
+	pluginPath = strings.TrimSpace(pluginPath)
+	if pluginPath == "" {
+		return ""
+	}
+	builtin := DefaultBuiltinPluginDir(os.Getenv(EnvPluginProjectRoot))
+	if builtin != "" {
+		if rel, err := filepath.Rel(builtin, pluginPath); err == nil && rel != "." && rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			if instanceRoot := ResolveInstanceRoot(); instanceRoot != "" {
+				return filepath.Join(instanceRoot, "config", "builtin_plugins", rel, "config.toml")
+			}
+		}
+	}
+	return filepath.Join(pluginPath, "config.toml")
 }
 
 // DefaultThirdPartyPluginDir 返回实例插件目录，对齐 integration._get_third_party_plugin_dirs

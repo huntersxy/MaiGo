@@ -5,7 +5,6 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"MaiGo/internal/plugin_market"
+	"MaiGo/internal/plugin_runtime"
 	ai_search "MaiGo/internal/webui/services/ai_search"
 )
 
@@ -88,26 +88,22 @@ func NewAISearchPluginToolset(d Deps) *ai_search.PluginToolset {
 }
 
 func (d Deps) aiSearchInstalledPlugins(ctx context.Context) (map[string]any, error) {
-	root, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
+	candidates, err := d.pluginCandidates()
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, err
-	}
-	plugins := make([]any, 0, len(entries))
+	plugins := make([]any, 0, len(candidates))
 	statuses := map[string]string{}
 	failures := map[string]string{}
 	if d.PluginHost != nil {
 		statuses = d.PluginHost.PluginLoadStatuses()
 		failures = d.PluginHost.PluginLoadFailureReasons()
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "__") || entry.Name() == "data" {
+	for _, candidate := range candidates {
+		if strings.HasPrefix(candidate.name, ".") || strings.HasPrefix(candidate.name, "__") || candidate.name == "data" {
 			continue
 		}
-		pluginPath := filepath.Join(root, entry.Name())
+		pluginPath := candidate.path
 		manifest, err := pluginmarket.LoadManifestJSON(filepath.Join(pluginPath, "_manifest.json"))
 		if err != nil || manifest == nil {
 			continue
@@ -116,7 +112,7 @@ func (d Deps) aiSearchInstalledPlugins(ctx context.Context) (map[string]any, err
 		if id == "" {
 			continue
 		}
-		enabled, _ := readInstalledPluginEnabled(id, pluginPath)
+		enabled, _ := readPluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
 		status := statuses[id]
 		if status == "" && d.PluginHost == nil {
 			status = "success"
@@ -129,7 +125,7 @@ func (d Deps) aiSearchInstalledPlugins(ctx context.Context) (map[string]any, err
 		}
 		plugins = append(plugins, map[string]any{
 			"id": id, "name": stringFromAny(manifest["name"]), "version": stringFromAny(manifest["version"]),
-			"enabled": enabled, "load_status": status,
+			"enabled": enabled, "builtin": candidate.builtin, "load_status": status,
 		})
 	}
 	return map[string]any{"plugins": plugins}, nil

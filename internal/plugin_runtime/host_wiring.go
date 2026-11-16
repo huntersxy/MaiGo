@@ -262,6 +262,10 @@ var (
 	NewUploadStore = host.NewUploadStore
 	// WebUIRequiredCapabilities WebUI 扩展所需能力
 	WebUIRequiredCapabilities = host.WebUIRequiredCapabilities
+	// DefaultRunnerPluginDirs 按分组返回缺省插件目录与受信目录
+	DefaultRunnerPluginDirs = host.DefaultRunnerPluginDirs
+	// ResolvePluginConfigPath 解析插件配置文件位置
+	ResolvePluginConfigPath = host.ResolvePluginConfigPath
 )
 
 // DefaultRuntimeSettings 返回默认运行时配置

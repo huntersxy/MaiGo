@@ -17,11 +17,6 @@ import (
 
 // handlePluginInstalled 对齐 GET /plugins/installed
 func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
-	root, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
-	if err != nil {
-		writePluginRouteFailure(w, err)
-		return
-	}
 	records := make(map[string]pluginmarketHostRecord)
 	if d.PluginHost != nil {
 		for _, record := range d.PluginHost.ListPlugins() {
@@ -35,22 +30,19 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	circuits := circuitbreaker.Default().Statuses()
-	entries, err := os.ReadDir(root)
+	candidates, err := d.pluginCandidates()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + err.Error()})
 		return
 	}
-	plugins := make([]map[string]any, 0, len(entries))
+	plugins := make([]map[string]any, 0, len(candidates))
 	seen := make(map[string]struct{})
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
+	for _, candidate := range candidates {
+		name := candidate.name
 		if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "__") || name == "data" {
 			continue
 		}
-		pluginPath := filepath.Join(root, name)
+		pluginPath := candidate.path
 		manifestPath := filepath.Join(pluginPath, "_manifest.json")
 		if _, statErr := os.Stat(manifestPath); statErr != nil {
 			continue
@@ -76,7 +68,8 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 
 		enabled := true
 		configError := ""
-		enabledValue, enabledErr := readInstalledPluginEnabled(pluginID, pluginPath)
+		configPath := pluginruntime.ResolvePluginConfigPath(pluginPath)
+		enabledValue, enabledErr := readPluginEnabled(configPath)
 		if enabledErr != nil {
 			configError = "读取插件 " + pluginID + " 启用配置失败：" + enabledErr.Error()
 		} else {
@@ -130,6 +123,7 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 		plugins = append(plugins, map[string]any{
 			"id":             pluginID,
 			"manifest":       manifest,
+			"builtin":        candidate.builtin,
 			"path":           pluginPath,
 			"enabled":        enabled,
 			"disabled":       !enabled,
@@ -195,8 +189,45 @@ func (d Deps) handlePluginMarketplaceReviewIdentity(w http.ResponseWriter, r *ht
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"username": username})
 }
 
-func readInstalledPluginEnabled(pluginID, pluginPath string) (bool, error) {
-	configPath := filepath.Join(pluginPath, "config.toml")
+type pluginCandidate struct {
+	name    string
+	path    string
+	builtin bool
+}
+
+// pluginCandidates 返回第三方与内置插件目录
+func (d Deps) pluginCandidates() ([]pluginCandidate, error) {
+	root, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]pluginCandidate, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			candidates = append(candidates, pluginCandidate{name: entry.Name(), path: filepath.Join(root, entry.Name())})
+		}
+	}
+	builtinRoot := pluginruntime.BuiltinPluginDir()
+	if builtinRoot == "" {
+		return candidates, nil
+	}
+	builtinEntries, err := os.ReadDir(builtinRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range builtinEntries {
+		if entry.IsDir() {
+			candidates = append(candidates, pluginCandidate{name: entry.Name(), path: filepath.Join(builtinRoot, entry.Name()), builtin: true})
+		}
+	}
+	return candidates, nil
+}
+
+func readPluginEnabled(configPath string) (bool, error) {
 	raw, err := os.ReadFile(filepath.Clean(configPath))
 	if err != nil {
 		if os.IsNotExist(err) {

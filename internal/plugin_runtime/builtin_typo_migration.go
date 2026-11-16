@@ -21,7 +21,7 @@ func MigrateBuiltinTypoConfig(projectRoot string, legacy *maibot.ChineseTypoConf
 	if strings.TrimSpace(builtinRoot) == "" || legacy == nil {
 		return nil
 	}
-	target := filepath.Join(builtinRoot, "chinese_typo", "config.toml")
+	target := filepath.Join(ResolveInstanceRoot(), "config", "builtin_plugins", "chinese_typo", "config.toml")
 	if pathExists(target) {
 		return nil
 	}

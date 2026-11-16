@@ -45,6 +45,10 @@ func LoadSpawnConfigFromEnv() SpawnConfig {
 	if cfg.ScriptPath == "" {
 		cfg.ScriptPath = DefaultRunnerModule
 	}
+	// 项目根可能来自自动探测；写回环境变量，供配置解析与依赖同步复用同一口径
+	if cfg.ProjectRoot != "" && strings.TrimSpace(os.Getenv(EnvPluginProjectRoot)) == "" {
+		_ = os.Setenv(EnvPluginProjectRoot, cfg.ProjectRoot)
+	}
 	return cfg
 }
 

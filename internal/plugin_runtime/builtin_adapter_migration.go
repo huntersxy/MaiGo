@@ -105,7 +105,7 @@ func migrateBuiltinAdapter(projectRoot, instanceRoot, pluginID, directoryName, d
 
 	source := candidates[0]
 	oldConfig := filepath.Join(source, "config.toml")
-	config := filepath.Join(builtin, "config.toml")
+	config := filepath.Join(instanceRoot, "config", "builtin_plugins", directoryName, "config.toml")
 	if isSymlink(oldConfig) {
 		return "", fmt.Errorf("%s配置不能是符号链接: %s", displayName, oldConfig)
 	}

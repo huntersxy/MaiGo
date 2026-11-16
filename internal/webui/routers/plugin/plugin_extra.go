@@ -295,12 +295,7 @@ func (d Deps) handlePluginLocalIcon(w http.ResponseWriter, r *http.Request) {
 		writePluginRouteFailure(w, err)
 		return
 	}
-	pluginsRoot, err := pluginmarket.ResolvePluginsDir(d.InstanceDir)
-	if err != nil {
-		httputil.WriteAPIError(w, http.StatusInternalServerError, "服务器错误: "+err.Error())
-		return
-	}
-	pluginPath, err := pluginmarket.FindInstalledPlugin(pluginsRoot, pluginID)
+	pluginPath, err := d.findManagedPluginPath(pluginID)
 	if err != nil {
 		httputil.WriteAPIError(w, http.StatusInternalServerError, "服务器错误: "+err.Error())
 		return
