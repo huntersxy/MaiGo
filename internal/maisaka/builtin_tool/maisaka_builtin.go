@@ -98,7 +98,7 @@ func (p ReplyAttachPicture) pictureIndex() int {
 type ReplyInput struct {
 	MsgID            string               `json:"msg_id,omitempty" jsonschema:"description=要回复的消息 msg_id"`
 	ReplyReference   string               `json:"reply_reference,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
-	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=可选；控制本次回复的篇幅和表达方式"`
+	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
 	Content          string               `json:"content,omitempty" jsonschema:"description=内部桥接字段，模型不要填写；正文由回复生成器生成"`
 	Text             string               `json:"text,omitempty" jsonschema:"description=内部桥接字段，模型不要填写"`
