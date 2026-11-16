@@ -108,3 +108,30 @@ func NewPromptManagerLocaleLoader(manager *prompt.Manager) func(locale string) L
 		}
 	}
 }
+
+// NewCreativeLocaleLoader 超级创意模式按生成语言加载模板；俄语、法语复用中文模板并翻译固定行
+func NewCreativeLocaleLoader(manager *prompt.Manager) func(locale string) LoadPromptFunc {
+	return func(locale string) LoadPromptFunc {
+		language := CreativeLanguage(locale)
+		return func(name string, vars map[string]string) (string, error) {
+			if manager == nil {
+				return "", fmt.Errorf("prompt manager 未初始化")
+			}
+			var (
+				rendered string
+				err      error
+			)
+			if language == "ru-RU" || language == "fr-FR" {
+				rendered, err = manager.RenderLocaleTransform("zh-CN", name, vars, func(template string) string {
+					return TranslateCreativeFixedLines(language, template)
+				})
+			} else {
+				rendered, err = manager.RenderLocale(language, name, vars)
+			}
+			if err != nil {
+				return "", fmt.Errorf("渲染 prompt %q (%s): %w", name, language, err)
+			}
+			return rendered, nil
+		}
+	}
+}

@@ -267,6 +267,10 @@ func (b *PromptBuilder) BuildReplyerOutputInstruction() string {
 		return "Please do not output any extra content (including unnecessary prefixes or suffixes, colons, brackets, stickers, plain at, or @). Only output the message content itself."
 	case strings.HasPrefix(locale, "ja"):
 		return "余計な内容（不要な前置きや後置き、コロン、括弧、スタンプ、通常の at や @ など）は出力せず、発言内容だけを出力してください。"
+	case strings.HasPrefix(locale, "ru"):
+		return "Не добавляйте лишнего (вступлений, окончаний, двоеточий, скобок, стикеров, at или @); выводите только текст сообщения."
+	case strings.HasPrefix(locale, "fr"):
+		return "N’ajoutez rien de superflu (préambules, conclusions, deux-points, parenthèses, autocollants, at ou @) ; produisez uniquement le message."
 	default:
 		return "请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，@等 )，只输出发言内容就好。"
 	}

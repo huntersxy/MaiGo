@@ -143,8 +143,10 @@ type GeneratorConfig struct {
 	// CreativeMode 对齐 chat.creative_mode：普通模型使用通用复古模板
 	CreativeMode bool
 
-	// SuperCreativeMode 对齐 chat.super_creative_mode：日语生成后由同一模型翻译为中文
+	// SuperCreativeMode 对齐 experimental.super_creative_mode：按生成语言构建后由同一模型翻译为中文
 	SuperCreativeMode bool
+	// SuperCreativeLanguage 对齐 experimental.super_creative_language：ja-JP/ru-RU/fr-FR
+	SuperCreativeLanguage string
 
 	// SaveReasoning 对齐 debug.save_maisaka_reasoning：持久化 Replyer 请求与输出预览
 	SaveReasoning bool

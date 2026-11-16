@@ -385,7 +385,8 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.GroupChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.GroupChatPrompt)
 	cfg.PrivateChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.PrivateChatPrompts)
 	cfg.CreativeMode = bot.Chat.CreativeMode
-	cfg.SuperCreativeMode = bot.Chat.SuperCreativeMode
+	cfg.SuperCreativeMode = bot.Experimental.SuperCreativeMode
+	cfg.SuperCreativeLanguage = replyer.CreativeLanguage(bot.Experimental.SuperCreativeLanguage)
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
 	cfg.GeminiReplyCompatibility = bot.Debug.GeminiReplyCompatibility
 	cfg.KeepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
@@ -545,7 +546,7 @@ func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, 
 	}
 	builder := &replyer.PromptBuilder{
 		PromptLoader:       replyer.NewPromptManagerLoader(manager),
-		LocalePromptLoader: replyer.NewPromptManagerLocaleLoader(manager),
+		LocalePromptLoader: replyer.NewCreativeLocaleLoader(manager),
 		Config:             generatorConfig,
 		Now:                time.Now,
 	}

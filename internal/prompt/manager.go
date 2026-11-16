@@ -126,6 +126,27 @@ func (m *Manager) RenderLocale(locale, name string, vars map[string]string) (str
 	return renderFromMerged(name, merged, vars, 0)
 }
 
+// RenderLocaleTransform 按 locale 取模板，先转换固定文案再填充变量
+func (m *Manager) RenderLocaleTransform(locale, name string, vars map[string]string, transform func(string) string) (string, error) {
+	normalized, err := NormalizeLocale(locale)
+	if err != nil {
+		return "", err
+	}
+	m.ensureFresh()
+	m.mu.RLock()
+	merged := mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, normalized)
+	for promptName, registered := range m.prompts {
+		merged[promptName] = registered.Template()
+	}
+	m.mu.RUnlock()
+	if transform != nil {
+		if tpl, ok := merged[name]; ok {
+			merged[name] = transform(tpl)
+		}
+	}
+	return renderFromMerged(name, merged, vars, 0)
+}
+
 func (m *Manager) renderResolved(name string, vars map[string]string, depth int) (string, error) {
 	m.mu.RLock()
 	merged := m.merged

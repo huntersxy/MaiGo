@@ -120,6 +120,10 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	reasoningContinuationCount := 0
 	translationCount := 0
 	superCreativeMode := g.Builder != nil && g.Builder.Config.SuperCreativeMode
+	creativeLanguage := "ja-JP"
+	if g.Builder != nil {
+		creativeLanguage = CreativeLanguage(g.Builder.Config.SuperCreativeLanguage)
+	}
 	reasoningRegenerationRequested := false
 	retroPeriodRegenerationRequested := false
 	geminiRegenerationRequested := false
@@ -288,7 +292,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		}
 
 		// 在 after_response Hook 与正文校验前翻译，插件和发送端只处理中文结果
-		if superCreativeMode && strings.TrimSpace(generationResult.ResponseText()) != "" {
+		if superCreativeMode && activePromptProfile != "mai_replier" && strings.TrimSpace(generationResult.ResponseText()) != "" {
 			result.ErrorCode = "replyer_translation_failed"
 			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult)
 			if translationErr != nil {
@@ -306,7 +310,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			originalAttempts := make([]GenerationAttempt, 0, len(generationResult.GenerationAttempts))
 			for _, attempt := range generationResult.GenerationAttempts {
 				if attempt.WorkflowPurpose == g.requestType() || attempt.WorkflowPurpose == "replyer" {
-					attempt.WorkflowPurpose = "replyer.japanese"
+					attempt.WorkflowPurpose = "replyer." + creativeLanguage
 				}
 				originalAttempts = append(originalAttempts, attempt)
 			}
@@ -491,8 +495,9 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	result.Metrics.Extra["prompt_cache_hit_rate"] = round2(hitRate)
 	result.Metrics.Extra["replyer_retry_count"] = retryCount
 	result.Metrics.Extra["replyer_reasoning_continuation_count"] = reasoningContinuationCount
-	result.Metrics.Extra["replyer_super_creative_mode"] = superCreativeMode
+	result.Metrics.Extra["replyer_super_creative_mode"] = superCreativeMode && activePromptProfile != "mai_replier"
 	result.Metrics.Extra["replyer_translation_count"] = translationCount
+	result.Metrics.Extra["replyer_generation_language"] = creativeLanguage
 	result.Metrics.Extra["replyer_attempt_count"] = retryCount + reasoningContinuationCount + translationCount + 1
 	result.Metrics.Extra["replyer_aggregate_prompt_tokens"] = aggregatePromptTokens
 	result.Metrics.Extra["replyer_aggregate_completion_tokens"] = aggregateCompletionTokens
@@ -560,13 +565,22 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 	var messages []RequestMessage
 	var err error
 	var builder *PromptBuilder
+	profile := strings.TrimSpace(req.PromptProfile)
+	if profile == "" && req.ModelInfo != nil && g.Builder != nil {
+		profile = g.Builder.ResolvePromptProfile(req.ModelInfo)
+	}
+	superActive := g.Builder != nil && g.Builder.Config.SuperCreativeMode && profile != "mai_replier"
+	language := "ja-JP"
+	if g.Builder != nil {
+		language = CreativeLanguage(g.Builder.Config.SuperCreativeLanguage)
+	}
 	if g.DocumentMode {
 		if g.DocumentBuilder == nil {
 			return nil, fmt.Errorf("长文 replyer 提示装配器未配置")
 		}
 		localized := *g.DocumentBuilder
-		if localized.Config.SuperCreativeMode {
-			localized.PromptBuilder = *localized.PromptBuilder.ForLocale("ja-JP")
+		if superActive {
+			localized.PromptBuilder = *localized.PromptBuilder.ForLocale(language)
 		}
 		builder = &localized.PromptBuilder
 		messages, err = localized.BuildDocumentMessages(req)
@@ -575,19 +589,16 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 			return nil, fmt.Errorf("replyer 提示装配器未配置")
 		}
 		builder = g.Builder
-		if builder.Config.SuperCreativeMode {
-			builder = builder.ForLocale("ja-JP")
+		if superActive {
+			builder = builder.ForLocale(language)
 		}
 		messages, err = builder.RequestMessages(ctx, req)
 	}
 	if err != nil {
 		return nil, err
 	}
-	if builder != nil && builder.Config.SuperCreativeMode {
-		instruction, loadErr := builder.LoadPrompt("replyer_super_creative", nil)
-		if loadErr != nil {
-			return nil, fmt.Errorf("加载 replyer_super_creative 失败: %w", loadErr)
-		}
+	if superActive {
+		instruction := CreativeOutputLanguage[language]
 		for index := range messages {
 			if strings.ToLower(strings.TrimSpace(messages[index].Role)) != "system" {
 				continue
@@ -620,13 +631,8 @@ func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client
 		}
 		sourceText = compatible
 	}
-	instruction, err := g.superCreativePromptLoader("zh-CN")("replyer_translate", nil)
-	if err != nil {
-		return GenerationResult{}, nil, fmt.Errorf("加载 replyer_translate 失败: %w", err)
-	}
 	items, err := requestMessagesToContextItems([]RequestMessage{
-		{Role: "system", Content: instruction},
-		{Role: "user", Content: sourceText},
+		{Role: "user", Content: CreativeTranslationInstruction + sourceText},
 	})
 	if err != nil {
 		return GenerationResult{}, nil, err
@@ -648,19 +654,6 @@ func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client
 		return GenerationResult{}, nil, fmt.Errorf("超级创意模式翻译未生成中文正文")
 	}
 	return translated, items, nil
-}
-
-// superCreativePromptLoader 按 locale 加载翻译指令；未配置多语言加载器时退回当前层
-func (g *ReplyGenerator) superCreativePromptLoader(locale string) LoadPromptFunc {
-	if g.Builder != nil && g.Builder.LocalePromptLoader != nil {
-		return g.Builder.LocalePromptLoader(locale)
-	}
-	if g.Builder != nil && g.Builder.PromptLoader != nil {
-		return g.Builder.PromptLoader
-	}
-	return func(string, map[string]string) (string, error) {
-		return "", errPromptLoaderMissing
-	}
 }
 
 func (g *ReplyGenerator) buildGenerationOptions(modelName string) GenerationOptions {
