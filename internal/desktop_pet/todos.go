@@ -1,10 +1,18 @@
 package desktoppet
 
-// 桌宠待办存储，窗口线程与 Agent 指令共用，完成即删除，对齐 desktop_pet/todos.py
+// 桌宠待办存储，窗口线程与 Agent 指令共用，完成后归档留存，对齐 desktop_pet/todos.py
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "golang.org/x/image/webp"
 )
 
 // TodoStore 桌宠待办的原子 JSON 存储
@@ -29,6 +38,7 @@ func NewTodoStore(path string) *TodoStore {
 		_ = json.Unmarshal(raw, &store.items)
 	}
 	for _, item := range store.items {
+		setDefault(item, "images", []any{})
 		setDefault(item, "condition_type", "natural")
 		setDefault(item, "condition", "")
 		setDefault(item, "kind", "user")
@@ -44,13 +54,16 @@ func NewTodoStore(path string) *TodoStore {
 	return store
 }
 
-// List 返回全部待办副本
-func (s *TodoStore) List() []map[string]any {
+// List 返回未完成待办；includeCompleted 时包含已归档项
+func (s *TodoStore) List(includeCompleted bool) []map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]map[string]any, len(s.items))
-	for index, item := range s.items {
-		out[index] = copyAnyMap(item)
+	out := make([]map[string]any, 0, len(s.items))
+	for _, item := range s.items {
+		if !includeCompleted && asString(item["status"]) == "completed" {
+			continue
+		}
+		out = append(out, copyAnyMap(item))
 	}
 	return out
 }
@@ -63,10 +76,10 @@ func (s *TodoStore) Add(text string, options map[string]any) (map[string]any, er
 	}
 	item := map[string]any{
 		"id": uuid.NewString(), "text": normalized, "created_at": float64(time.Now().UnixNano()) / 1e9,
-		"kind": "user", "due_at": nil, "status": "pending", "condition": "", "condition_type": "natural",
-		"revision": uuid.NewString(),
+		"kind": "user", "due_at": nil, "images": []any{}, "status": "pending", "condition": "",
+		"condition_type": "natural", "revision": uuid.NewString(),
 	}
-	item, err = applyTodoOptions(item, options)
+	item, err = s.applyTodoOptions(item, options)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +92,7 @@ func (s *TodoStore) Add(text string, options map[string]any) (map[string]any, er
 	return copyAnyMap(item), nil
 }
 
-// Update 修改待办；text 为 nil 时保留原文
+// Update 修改待办；text 为 nil 时保留原文，已完成事项不可修改
 func (s *TodoStore) Update(todoID string, text *string, options map[string]any) (map[string]any, error) {
 	var normalized *string
 	if text != nil {
@@ -95,16 +108,19 @@ func (s *TodoStore) Update(todoID string, text *string, options map[string]any) 
 		if asString(item["id"]) != todoID {
 			continue
 		}
+		if asString(item["status"]) == "completed" {
+			return nil, fmt.Errorf("已完成事项不可修改，请新增待办")
+		}
 		updated := copyAnyMap(item)
 		if normalized != nil {
 			updated["text"] = *normalized
 		}
-		updated, err := applyTodoOptions(updated, options)
+		updated, err := s.applyTodoOptions(updated, options)
 		if err != nil {
 			return nil, err
 		}
 		changed := false
-		for _, key := range []string{"text", "kind", "due_at", "condition", "condition_type"} {
+		for _, key := range []string{"text", "kind", "due_at", "condition", "condition_type", "images"} {
 			if !todoValueEqual(updated[key], item[key]) {
 				changed = true
 				break
@@ -127,8 +143,30 @@ func (s *TodoStore) Update(todoID string, text *string, options map[string]any) 
 	return nil, fmt.Errorf("待办不存在，请重新查询列表")
 }
 
-// Done 删除待办（完成即删除）
+// Done 标记完成并归档，保留原内容与触发信息
 func (s *TodoStore) Done(todoID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index, item := range s.items {
+		if asString(item["id"]) != todoID {
+			continue
+		}
+		if asString(item["status"]) == "completed" {
+			return nil
+		}
+		completed := copyAnyMap(item)
+		completed["status"] = "completed"
+		completed["completed_at"] = float64(time.Now().UnixNano()) / 1e9
+		completed["revision"] = uuid.NewString()
+		items := append([]map[string]any(nil), s.items...)
+		items[index] = completed
+		return s.save(items)
+	}
+	return fmt.Errorf("待办不存在，请重新查询列表")
+}
+
+// Delete 删除待办
+func (s *TodoStore) Delete(todoID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, item := range s.items {
@@ -145,16 +183,20 @@ func (s *TodoStore) Done(todoID string) error {
 	return fmt.Errorf("待办不存在，请重新查询列表")
 }
 
-// ClaimDue 持锁领取到期且无条件的待办
-func (s *TodoStore) ClaimDue() []map[string]any {
+// ClaimDue 持锁领取到期且无条件的待办；kind 非空时只领取对应类型
+func (s *TodoStore) ClaimDue(kind *string) []map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := float64(time.Now().UnixNano()) / 1e9
 	due := make([]map[string]any, 0)
 	items := make([]map[string]any, 0, len(s.items))
 	for _, item := range s.items {
-		if asString(item["status"]) == "pending" && strings.TrimSpace(asString(item["condition"])) == "" &&
-			item["due_at"] != nil && asFloat(item["due_at"]) <= now {
+		matches := asString(item["status"]) == "pending" && strings.TrimSpace(asString(item["condition"])) == "" &&
+			item["due_at"] != nil && asFloat(item["due_at"]) <= now
+		if matches && kind != nil && asString(item["kind"]) != *kind {
+			matches = false
+		}
+		if matches {
 			claimed := copyAnyMap(item)
 			claimed["status"] = "dispatching"
 			due = append(due, claimed)
@@ -225,11 +267,32 @@ func (s *TodoStore) Finish(todoID, revision, errorText string) {
 	_ = s.save(items)
 }
 
+// Image 读取已保存待办图片的 data URL
+func (s *TodoStore) Image(imageID string) (string, error) {
+	if len(imageID) != 64 {
+		return "", fmt.Errorf("图片标识无效")
+	}
+	for _, char := range imageID {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return "", fmt.Errorf("图片标识无效")
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(s.path), "todo_images", imageID))
+	if err != nil {
+		return "", fmt.Errorf("图片不存在")
+	}
+	mime := mimeForImage(raw)
+	if mime == "" {
+		return "", fmt.Errorf("图片数据无效")
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw), nil
+}
+
 func (s *TodoStore) save(items []map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o777); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(items, "", "  ")
+	raw, err := json.Marshal(items)
 	if err != nil {
 		return err
 	}
@@ -253,12 +316,31 @@ func validateTodoText(text string) (string, error) {
 }
 
 // applyTodoOptions 校验并应用待办可选字段，对齐 _apply_options
-func applyTodoOptions(item map[string]any, options map[string]any) (map[string]any, error) {
-	allowed := map[string]struct{}{"kind": {}, "due_at": {}, "delay_seconds": {}, "condition": {}, "condition_type": {}}
+func (s *TodoStore) applyTodoOptions(item map[string]any, options map[string]any) (map[string]any, error) {
+	allowed := map[string]struct{}{"kind": {}, "due_at": {}, "delay_seconds": {}, "condition": {}, "condition_type": {}, "images": {}}
 	for key := range options {
 		if _, ok := allowed[key]; !ok {
 			return nil, fmt.Errorf("未知待办字段")
 		}
+	}
+	if raw, exists := options["images"]; exists {
+		images, ok := raw.([]any)
+		if !ok || len(images) > 4 {
+			return nil, fmt.Errorf("每个事项最多保存 4 张图片")
+		}
+		stored := make([]any, 0, len(images))
+		for _, image := range images {
+			source, ok := image.(string)
+			if !ok {
+				return nil, fmt.Errorf("图片格式无效")
+			}
+			id, err := s.storeImage(source)
+			if err != nil {
+				return nil, err
+			}
+			stored = append(stored, id)
+		}
+		item["images"] = stored
 	}
 	if raw, exists := options["condition_type"]; exists {
 		conditionType := asString(raw)
@@ -341,6 +423,83 @@ func applyTodoOptions(item map[string]any, options map[string]any) (map[string]a
 	return item, nil
 }
 
+// storeImage 保存 data URL 或校验已保存附件
+func (s *TodoStore) storeImage(source string) (string, error) {
+	if !strings.HasPrefix(source, "data:") {
+		if len(source) != 64 {
+			return "", fmt.Errorf("图片格式无效")
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(s.path), "todo_images", source)); err != nil {
+			return "", fmt.Errorf("图片不存在")
+		}
+		return source, nil
+	}
+	if len(source) > 12*1024*1024 {
+		return "", fmt.Errorf("每张图片不能超过 8 MiB")
+	}
+	header, encoded, found := strings.Cut(source, ",")
+	if !found {
+		return "", fmt.Errorf("无法读取图片")
+	}
+	switch header {
+	case "data:image/png;base64", "data:image/jpeg;base64", "data:image/webp;base64", "data:image/gif;base64":
+	default:
+		return "", fmt.Errorf("仅支持 PNG、JPEG、WebP 或 GIF 图片")
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", fmt.Errorf("无法读取图片")
+	}
+	if len(raw) > 8*1024*1024 {
+		return "", fmt.Errorf("每张图片不能超过 8 MiB")
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || !supportedTodoImageFormat(format) || config.Width*config.Height > 20_000_000 {
+		return "", fmt.Errorf("图片格式不支持或尺寸超过 2000 万像素")
+	}
+	sum := sha256.Sum256(raw)
+	imageID := hex.EncodeToString(sum[:])
+	folder := filepath.Join(filepath.Dir(s.path), "todo_images")
+	if err := os.MkdirAll(folder, 0o777); err != nil {
+		return "", err
+	}
+	path := filepath.Join(folder, imageID)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.WriteFile(path, raw, 0o666); err != nil {
+			return "", err
+		}
+	}
+	return imageID, nil
+}
+
+func supportedTodoImageFormat(format string) bool {
+	switch format {
+	case "png", "jpeg", "webp", "gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func mimeForImage(raw []byte) string {
+	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || config.Width <= 0 || config.Height <= 0 {
+		return ""
+	}
+	switch format {
+	case "png":
+		return "image/png"
+	case "jpeg":
+		return "image/jpeg"
+	case "webp":
+		return "image/webp"
+	case "gif":
+		return "image/gif"
+	default:
+		return ""
+	}
+}
+
 func parseTodoDueAt(text string) (float64, error) {
 	layouts := []string{time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02 15:04:05"}
 	for _, layout := range layouts {
@@ -407,6 +566,19 @@ func todoValueEqual(left, right any) bool {
 	rightNumber, rightOK := asNumber(right)
 	if leftOK && rightOK {
 		return leftNumber == rightNumber
+	}
+	if leftList, ok := left.([]any); ok {
+		if rightList, ok := right.([]any); ok {
+			if len(leftList) != len(rightList) {
+				return false
+			}
+			for index := range leftList {
+				if !todoValueEqual(leftList[index], rightList[index]) {
+					return false
+				}
+			}
+			return true
+		}
 	}
 	return asString(left) == asString(right)
 }

@@ -461,6 +461,7 @@ type DebugConfig struct {
 
 type DesktopPetConfig struct {
 	Enabled                      bool    `toml:"enabled,omitempty"`
+	Mode                         string  `toml:"mode,omitempty"`
 	ChatToolsEnabled             bool    `toml:"chat_tools_enabled,omitempty"`
 	SkinId                       string  `toml:"skin_id,omitempty"`
 	ProactiveWakeEnabled         bool    `toml:"proactive_wake_enabled,omitempty"`
