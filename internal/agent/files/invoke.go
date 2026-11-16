@@ -26,7 +26,7 @@ type Result struct {
 // Host 提供 agent_* 工具的真实宿主能力，由各运行入口按会话装配
 type Host interface {
 	TellAgent(ctx context.Context, text, target string, images []string) (map[string]any, error)
-	AgentStatus(ctx context.Context, includeImage bool) (map[string]any, []Image, error)
+	AgentStatus(ctx context.Context) (map[string]any, []Image, error)
 	AgentChats(ctx context.Context) ([]map[string]any, error)
 	AgentRecent(ctx context.Context, target string, limit int) (map[string]any, error)
 }
@@ -43,7 +43,7 @@ func Invoke(ctx context.Context, name string, args map[string]any, host Host) Re
 	case "agent_talk":
 		return invokeAgentTalk(ctx, args, host)
 	case "agent_status":
-		return invokeAgentStatus(ctx, args, host)
+		return invokeAgentStatus(ctx, host)
 	case "agent_chats":
 		return invokeAgentChats(ctx, host)
 	case "agent_recent":
@@ -67,15 +67,10 @@ func invokeAgentTalk(ctx context.Context, args map[string]any, host Host) Result
 	return success(payload, nil)
 }
 
-func invokeAgentStatus(ctx context.Context, args map[string]any, host Host) Result {
-	includeImage := boolArg(args, "include_image")
-	payload, images, err := host.AgentStatus(ctx, includeImage)
+func invokeAgentStatus(ctx context.Context, host Host) Result {
+	payload, images, err := host.AgentStatus(ctx)
 	if err != nil {
 		return failure(err.Error())
-	}
-	if _, ok := payload["image"].(string); ok {
-		delete(payload, "image")
-		delete(payload, "mime_type")
 	}
 	return success(payload, images)
 }
@@ -172,11 +167,6 @@ func stringArgDefault(args map[string]any, key, fallback string) string {
 	if !ok || value == "" {
 		return fallback
 	}
-	return value
-}
-
-func boolArg(args map[string]any, key string) bool {
-	value, _ := args[key].(bool)
 	return value
 }
 

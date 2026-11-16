@@ -1,13 +1,12 @@
 package bootstrap
 
-// ACP 工具宿主：把真实聊天流、文件服务与电脑状态接到外接 Agent
+// ACP 工具宿主：把真实聊天流与文件服务接到外接 Agent
 
 import (
+	"MaiGo/internal/common/media"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"MaiGo/internal/common/media"
 	"strconv"
 	"strings"
 	"time"
@@ -15,14 +14,12 @@ import (
 	"MaiGo/internal/agent"
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/computer"
 	"MaiGo/internal/core/internal_chat"
 	"MaiGo/internal/files"
 	maisaruntime "MaiGo/internal/maisaka/runtime"
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
-	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 )
 
@@ -33,8 +30,6 @@ type acpAgentHost struct {
 	name     string
 	// workspace Agent 工作区目录，传话附图落盘到其下 relay_images
 	workspace string
-	// computer 桌面截图来源；nil 时 screenshot 引用返回真实错误
-	computer *computer.Service
 }
 
 var _ agent.AgentToolHost = (*acpAgentHost)(nil)
@@ -303,21 +298,6 @@ func chatTargetFromRecord(row *chatsession.Record) (string, int64, error) {
 	return memory.ConversationKindPrivate, parsed, nil
 }
 
-func acpComputerStatus(service *computer.Service) map[string]any {
-	if service == nil {
-		return map[string]any{"enabled": false}
-	}
-	raw, err := sonic.Marshal(service.Status())
-	if err != nil {
-		return map[string]any{"enabled": service.Enabled()}
-	}
-	out := map[string]any{}
-	if err := sonic.Unmarshal(raw, &out); err != nil {
-		return map[string]any{"enabled": service.Enabled()}
-	}
-	return out
-}
-
 // directRemoteURLResolver 只接受适配器已经给出的直链；file_id 解析仍由平台适配器负责
 func directRemoteURLResolver(_ context.Context, source map[string]any) (string, error) {
 	for _, key := range []string{"url", "file_url", "download_url"} {
@@ -466,21 +446,10 @@ func (h *acpAgentHost) resolveRelayImages(ctx context.Context, references []stri
 	if h == nil || h.agent == nil {
 		return nil, nil, fmt.Errorf("Agent 未就绪，无法解析附图")
 	}
-	// Agent 自身传话：available={}（对齐 Python caller == agent_id），只用 screenshot/工作区 hash
-	computerWS := ""
-	var requireEnabled func() error
-	if h.computer != nil {
-		computerWS = h.computer.Workspace()
-		requireEnabled = h.computer.RequireEnabled
-	}
+	// Agent 自身传话：available={}（对齐 Python caller == agent_id），只用工作区 hash
 	resolved, err := agent.ResolveRelayImages(ctx, &acpImageResolver{
 		source:    func() map[string][]media.Ref { return map[string][]media.Ref{} },
 		workspace: h.workspace,
-		screenshot: func(shotCtx context.Context) ([]byte, error) {
-			return h.captureScreenshot(shotCtx)
-		},
-		computerWS:     computerWS,
-		requireEnabled: requireEnabled,
 	}, references)
 	if err != nil {
 		return nil, nil, err
@@ -496,11 +465,8 @@ func (h *acpAgentHost) resolveRelayImages(ctx context.Context, references []stri
 
 // acpImageResolver 把宿主能力适配成 agent.ImageResolver
 type acpImageResolver struct {
-	source         func() map[string][]media.Ref
-	workspace      string
-	screenshot     func(context.Context) ([]byte, error)
-	computerWS     string
-	requireEnabled func() error
+	source    func() map[string][]media.Ref
+	workspace string
 }
 
 func (r *acpImageResolver) SourceImages() map[string][]media.Ref {
@@ -517,39 +483,12 @@ func (r *acpImageResolver) Workspace() string {
 	return r.workspace
 }
 
-func (r *acpImageResolver) Screenshot(ctx context.Context) ([]byte, error) {
-	if r == nil || r.screenshot == nil {
-		return nil, fmt.Errorf("当前宿主不支持截图引用")
-	}
-	return r.screenshot(ctx)
-}
-
 func (r *acpImageResolver) AllowAgentOnlyRefs() bool { return true }
 func (r *acpImageResolver) ResolveWorkspacePath(reference string) (string, error) {
 	if r == nil {
 		return "", nil
 	}
-	return agent.ResolveAgentImagePath(reference, r.workspace, r.computerWS, r.requireEnabled)
-}
-
-// captureScreenshot 对齐 Python resolve_images 的 screenshot 分支：computer.observe() → base64 image
-func (h *acpAgentHost) captureScreenshot(ctx context.Context) ([]byte, error) {
-	if h == nil || h.computer == nil {
-		return nil, fmt.Errorf("当前宿主不支持截图引用")
-	}
-	frame, err := h.computer.Observe(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	image, _ := frame["image"].(string)
-	if strings.TrimSpace(image) == "" {
-		return nil, fmt.Errorf("电脑没有返回截图")
-	}
-	data, err := base64.StdEncoding.DecodeString(image)
-	if err != nil {
-		return nil, fmt.Errorf("电脑截图解码失败: %w", err)
-	}
-	return data, nil
+	return agent.ResolveAgentImagePath(reference, r.workspace)
 }
 
 // reportACPFailure 对齐 messaging.report_failure：用 agent_acp_failure 提示词向原聊天投递内部任务

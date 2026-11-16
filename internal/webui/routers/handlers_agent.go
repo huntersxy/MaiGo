@@ -14,31 +14,10 @@ import (
 
 // AgentControlService 外接 ACP Agent 的可注入控制面，便于 main 接线与测试替身
 type AgentControlService interface {
-	Status(computerStatus map[string]any) agent.Status
+	Status() agent.Status
 	Control(ctx context.Context, operation string) (agent.Status, error)
 	Enqueue(text string, images []string, kind string, replyTo string) (agent.HistoryRecord, error)
 	Agent() *agent.Agent
-}
-
-// pythonAgentComputer 对齐 Python computer.service.status() 的九字段结构
-func pythonAgentComputer(raw map[string]any) map[string]any {
-	computer := map[string]any{
-		"enabled":         false,
-		"paused":          false,
-		"takeover":        false,
-		"error":           "",
-		"activity":        map[string]any{},
-		"pending_request": nil,
-		"connected":       false,
-		"sandbox_id":      nil,
-		"sandbox_running": false,
-	}
-	for key := range computer {
-		if value, ok := raw[key]; ok {
-			computer[key] = value
-		}
-	}
-	return computer
 }
 
 // pythonAgentStatus 对齐 Python agent.service.status() 的字段与空值语义
@@ -52,12 +31,10 @@ func pythonAgentStatus(status agent.Status) map[string]any {
 		"name":                status.Name,
 		"agent_id":            status.AgentID,
 		"backend":             "acp",
-		"desktop_enabled":     status.DesktopEnabled,
 		"external_session_id": sessionID,
 		"paused":              status.Paused,
 		"error":               status.Error,
 		"agent_state":         status.AgentState,
-		"computer":            pythonAgentComputer(status.Computer),
 	}
 }
 
@@ -78,7 +55,7 @@ func (d Deps) handleAgentStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, disabledAgentStatus())
 		return
 	}
-	writeJSON(w, http.StatusOK, pythonAgentStatus(d.ACPAgent.Status(nil)))
+	writeJSON(w, http.StatusOK, pythonAgentStatus(d.ACPAgent.Status()))
 }
 
 func (d Deps) handleAgentControl(w http.ResponseWriter, r *http.Request) {
@@ -149,27 +126,25 @@ func (d Deps) handleAgentEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.ACPAgent == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"events":          []map[string]any{},
-			"queued":          []map[string]any{},
-			"state":           "disabled",
-			"error":           "",
-			"pending":         false,
-			"backend":         "acp",
-			"desktop_enabled": false,
+			"events":  []map[string]any{},
+			"queued":  []map[string]any{},
+			"state":   "disabled",
+			"error":   "",
+			"pending": false,
+			"backend": "acp",
 		})
 		return
 	}
 	agent := d.ACPAgent.Agent()
-	status := d.ACPAgent.Status(nil)
+	status := d.ACPAgent.Status()
 	if agent == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"events":          []map[string]any{},
-			"queued":          []map[string]any{},
-			"state":           "disabled",
-			"error":           status.Error,
-			"pending":         false,
-			"backend":         "acp",
-			"desktop_enabled": status.DesktopEnabled,
+			"events":  []map[string]any{},
+			"queued":  []map[string]any{},
+			"state":   "disabled",
+			"error":   status.Error,
+			"pending": false,
+			"backend": "acp",
 		})
 		return
 	}
@@ -195,13 +170,12 @@ func (d Deps) handleAgentEvents(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"events":          agentHistoryEvents(records, after),
-		"queued":          queued,
-		"state":           state,
-		"error":           status.Error,
-		"pending":         agent.HasPending(),
-		"backend":         "acp",
-		"desktop_enabled": status.DesktopEnabled,
+		"events":  agentHistoryEvents(records, after),
+		"queued":  queued,
+		"state":   state,
+		"error":   status.Error,
+		"pending": agent.HasPending(),
+		"backend": "acp",
 	})
 }
 

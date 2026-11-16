@@ -28,7 +28,6 @@ type AgentRuntime interface {
 	RenderPrompt(name string, vars map[string]string) (string, error)
 	Policy() string
 	ContextText(workspace string) (string, error)
-	ComputerStatus() map[string]any
 }
 
 // Agent 对齐 acp_agent.AcpAgent：inbox、pending、backend state 与单轮执行

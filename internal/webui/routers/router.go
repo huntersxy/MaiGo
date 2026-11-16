@@ -81,10 +81,6 @@ func Mount(r chi.Router, d Deps) {
 		})
 		api.Group(func(gr chi.Router) {
 			gr.Use(d.requireAuthMiddleware)
-			mountComputerRoutes(gr, d)
-		})
-		api.Group(func(gr chi.Router) {
-			gr.Use(d.requireAuthMiddleware)
 			mountAgentRoutes(gr, d)
 		})
 		api.Route("/person", func(pr chi.Router) {

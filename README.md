@@ -7,7 +7,7 @@
 
 ## 描述
 
-MaiGo 是 MaiBot 的 Golang 移植版本，致力于在保持原版逻辑与行为的同时实现更低的内存占用和可选的 Go 平台专属优化。它提供了丰富的功能模块，支持 QQ 群聊/私聊智能对话、多平台适配器接入（OneBot/NapCat/SnowLuma 通过插件）、LLM 多模型路由与任务分配、Maisaka 规划器、Focus 共享组多会话协同、消息去抖与心流调度、主动发言与退避、回复生成、长期记忆 A_Memorix、人物画像、黑话/表达方式/表情包学习、工具系统、插件运行时、MCP 客户端、WebUI 管理后台、文件传输与媒体处理、桌面宠物、电脑沙盒接管、ACP 外接 Agent、统计遥测、配置热重载、日志系统、自动更新等。
+MaiGo 是 MaiBot 的 Golang 移植版本，致力于在保持原版逻辑与行为的同时实现更低的内存占用和可选的 Go 平台专属优化。它提供了丰富的功能模块，支持 QQ 群聊/私聊智能对话、多平台适配器接入（OneBot/NapCat/SnowLuma 通过插件）、LLM 多模型路由与任务分配、Maisaka 规划器、Focus 共享组多会话协同、消息去抖与心流调度、主动发言与退避、回复生成、长期记忆 A_Memorix、人物画像、黑话/表达方式/表情包学习、工具系统、插件运行时、MCP 客户端、WebUI 管理后台、文件传输与媒体处理、桌面宠物、ACP 外接 Agent、统计遥测、配置热重载、日志系统、自动更新等。
 
 ## 功能
 
@@ -30,7 +30,6 @@ MaiGo 是 MaiBot 的 Golang 移植版本，致力于在保持原版逻辑与行�
 - WebUI 内聊
 - 文件传输与媒体处理
 - 桌面宠物
-- 电脑沙盒接管
 - ACP 外接 Agent
 - 统计遥测
 - 配置热重载
@@ -58,8 +57,8 @@ MAIBOT_WEB_PORT=8080 docker compose up -d
 
 ### 非 Docker
 
-Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.0` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
-装好 `maibot==1.4.0` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
+Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.1` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
+装好 `maibot==1.4.1` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 非 Docker 首次启动需设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 
 ## 贡献

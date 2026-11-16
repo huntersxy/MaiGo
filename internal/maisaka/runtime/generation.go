@@ -244,8 +244,7 @@ func (a *Agent) agentChatPolicy() tools.AgentChatPolicy {
 
 func appendMaisakaTools(builders []func() (tool.BaseTool, error)) []func() (tool.BaseTool, error) {
 	builders = append(builders, tools.MaisakaCompatToolBuilders()...)
-	builders = append(builders, tools.WebToolBuilders()...)
-	return append(builders, tools.ComputerToolBuilders()...)
+	return append(builders, tools.WebToolBuilders()...)
 }
 
 // groupToolBuilders 返回群聊可见工具，只包含 MaiBot 同名能力

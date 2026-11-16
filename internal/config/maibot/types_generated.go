@@ -440,15 +440,6 @@ type CommandPermissionConfig struct {
 	AllowChats []string `toml:"allow_chats,omitempty"`
 }
 
-type ComputerConfig struct {
-	Enabled           bool    `toml:"enabled,omitempty"`
-	Networking        bool    `toml:"networking,omitempty"`
-	MemoryMb          int     `toml:"memory_mb,omitempty"`
-	StartupTimeout    float64 `toml:"startup_timeout,omitempty"`
-	RequestTimeout    float64 `toml:"request_timeout,omitempty"`
-	ScreenshotMaxEdge int     `toml:"screenshot_max_edge,omitempty"`
-}
-
 type DebugConfig struct {
 	EnableConsoleInput          bool `toml:"enable_console_input,omitempty"`
 	GeminiReplyCompatibility    bool `toml:"gemini_reply_compatibility,omitempty"`
@@ -891,7 +882,6 @@ type WebUIConfig struct {
 // 字段与 src/config/config.py Config 及 official_configs 等一致
 type BotConfigFile struct {
 	Agent               AgentConfig               `toml:"agent,omitempty"`
-	Computer            ComputerConfig            `toml:"computer,omitempty"`
 	DesktopPet          DesktopPetConfig          `toml:"desktop_pet,omitempty"`
 	Http                HTTPConfig                `toml:"http,omitempty"`
 	Files               FilesConfig               `toml:"files,omitempty"`

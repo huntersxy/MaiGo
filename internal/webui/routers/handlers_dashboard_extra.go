@@ -2,7 +2,6 @@ package webuiapi
 
 import (
 	"crypto/sha1"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -15,15 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"MaiGo/internal/computer"
 	"MaiGo/internal/platform_io"
-
-	"github.com/bytedance/sonic"
-	"github.com/go-chi/chi/v5"
 )
 
-// 本文件对齐 ../MaiBot/src/webui/routers 的 avatar.py、bot_accounts.py、computer.py、agent.py
-// 头像：internal/webui 本地缓存 + Deps.Avatar 外部平台；computer 已接；bot-accounts/agent 依赖注入端口
+// 本文件对齐 ../MaiBot/src/webui/routers 的 avatar.py、bot_accounts.py、agent.py
+// 头像：internal/webui 本地缓存 + Deps.Avatar 外部平台；bot-accounts/agent 依赖注入端口
 
 const (
 	maxAvatarBytes      = 5 * 1024 * 1024
@@ -323,157 +318,4 @@ func serveAvatarFile(w http.ResponseWriter, r *http.Request, cachePath, cacheCon
 	}
 	headers.Set("Content-Type", avatarMediaType(cachePath))
 	http.ServeFile(w, r, cachePath)
-}
-
-func (d Deps) computerService() *computer.Service {
-	return computer.DefaultServiceForRoot(d.InstanceDir)
-}
-
-// writeComputerFailure 对齐 computer.py 的 _execute：校验错误 422，运行时/连接错误 409
-func writeComputerFailure(w http.ResponseWriter, err error) {
-	message := err.Error()
-	if strings.Contains(message, "无效的操作 ID") || strings.Contains(message, "不属于当前沙盒实例") ||
-		strings.Contains(message, "operation 只接受") || strings.Contains(message, "actions 不能为空") ||
-		strings.HasPrefix(message, "actions[") {
-		writeAPIError(w, http.StatusUnprocessableEntity, message)
-		return
-	}
-	writeAPIError(w, http.StatusConflict, message)
-}
-
-func computerPayloadWithoutImage(result map[string]any) map[string]any {
-	payload := make(map[string]any, len(result))
-	for key, value := range result {
-		if key == "image" {
-			continue
-		}
-		payload[key] = value
-	}
-	return payload
-}
-
-func (d Deps) handleComputerStatus(w http.ResponseWriter, r *http.Request) {
-	if !d.requireAuth(w, r) {
-		return
-	}
-	service := d.computerService()
-	_ = service.SyncConfig()
-	writeJSON(w, http.StatusOK, service.Status())
-}
-
-func validComputerControl(operation string) bool {
-	switch operation {
-	case "pause", "resume", "takeover", "stop", "restart":
-		return true
-	default:
-		return false
-	}
-}
-
-func (d Deps) handleComputerControl(w http.ResponseWriter, r *http.Request) {
-	if !d.requireAuth(w, r) {
-		return
-	}
-	raw, ok := readJSONBody(w, r)
-	if !ok {
-		return
-	}
-	var request struct {
-		Operation string `json:"operation"`
-	}
-	if len(raw) == 0 || sonic.Unmarshal(raw, &request) != nil || !validComputerControl(request.Operation) {
-		writeValidationError(w, "operation 只接受 pause/resume/takeover/stop/restart。")
-		return
-	}
-	status, err := d.computerService().Control(r.Context(), request.Operation)
-	if err != nil {
-		writeComputerFailure(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, status)
-}
-
-func (d Deps) handleComputerFrame(w http.ResponseWriter, r *http.Request) {
-	if !d.requireAuth(w, r) {
-		return
-	}
-	zero := 0.0
-	result, err := d.computerService().Observe(r.Context(), &zero)
-	if err != nil {
-		writeComputerFailure(w, err)
-		return
-	}
-	success, _ := result["success"].(bool)
-	if !success {
-		writeJSON(w, http.StatusConflict, result)
-		return
-	}
-	image, _ := result["image"].(string)
-	if image == "" {
-		writeAPIError(w, http.StatusConflict, "电脑没有返回截图")
-		return
-	}
-	data, err := base64.StdEncoding.DecodeString(image)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "电脑截图解码失败: "+err.Error())
-		return
-	}
-	mimeType, _ := result["mime_type"].(string)
-	if mimeType == "" {
-		mimeType = "image/png"
-	}
-	captureID, _ := result["capture_id"].(string)
-	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("Cache-Control", "no-store")
-	if captureID != "" {
-		w.Header().Set("X-Capture-Id", captureID)
-	}
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
-}
-
-func (d Deps) handleComputerInput(w http.ResponseWriter, r *http.Request) {
-	if !d.requireAuth(w, r) {
-		return
-	}
-	raw, ok := readJSONBody(w, r)
-	if !ok {
-		return
-	}
-	var request struct {
-		Actions []map[string]any `json:"actions"`
-	}
-	if len(raw) == 0 || sonic.Unmarshal(raw, &request) != nil {
-		writeValidationError(w, "actions 必须为动作数组")
-		return
-	}
-	if len(request.Actions) == 0 {
-		writeValidationError(w, "actions 不能为空；观察桌面请使用 computer_observe，查询操作请使用 computer_poll。")
-		return
-	}
-	timeout := 5.0
-	result, err := d.computerService().Desktop(r.Context(), request.Actions, &timeout, true, "", "")
-	if err != nil {
-		writeComputerFailure(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, computerPayloadWithoutImage(result))
-}
-
-func (d Deps) handleComputerOperation(w http.ResponseWriter, r *http.Request) {
-	if !d.requireAuth(w, r) {
-		return
-	}
-	operationID := strings.TrimSpace(chi.URLParam(r, "operation_id"))
-	if operationID == "" {
-		writeValidationError(w, "operation_id 不能为空")
-		return
-	}
-	timeout := 1.0
-	result, err := d.computerService().Poll(r.Context(), operationID, &timeout)
-	if err != nil {
-		writeComputerFailure(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, computerPayloadWithoutImage(result))
 }

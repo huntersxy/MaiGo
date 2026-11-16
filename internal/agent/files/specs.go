@@ -56,7 +56,7 @@ var agentSpecs = []Spec{
 				"type": "array",
 				"items": map[string]any{
 					"type":        "string",
-					"description": "普通聊天填写当前带图消息 ID 或图片 hash；Agent 填工作目录图片路径。启用桌面时可填 screenshot 或 C:\\MaiWorkspace 内的图片路径。",
+					"description": "普通聊天填写当前带图消息 ID 或图片 hash；Agent 填工作目录图片路径。",
 				},
 			},
 		}, []string{"text"}),
@@ -65,12 +65,10 @@ var agentSpecs = []Spec{
 	},
 	{
 		Name:        "agent_status",
-		Description: "查看 Agent 后端及运行状态，include_image=true 可读取已启用桌面的最近截图。",
-		Schema: objectSchema(map[string]any{
-			"include_image": map[string]any{"type": "boolean", "default": false},
-		}, []string{}),
-		Deferred: true,
-		Provider: ProviderAgent,
+		Description: "查看 Agent 后端及运行状态。",
+		Schema:      objectSchema(map[string]any{}, []string{}),
+		Deferred:    true,
+		Provider:    ProviderAgent,
 	},
 	{
 		Name:        "agent_chats",

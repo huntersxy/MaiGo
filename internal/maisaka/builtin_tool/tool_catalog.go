@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"MaiGo/internal/computer"
-
 	"github.com/cloudwego/eino/components/tool"
 )
 
@@ -16,7 +14,7 @@ type ToolCatalogEntry struct {
 	Deferred    bool
 }
 
-// BuildToolCatalog 从 ADK 工具列表提取名称与描述，computer_* 在本地模式标记为 deferred，插件工具按自身可见性标记
+// BuildToolCatalog 从 ADK 工具列表提取名称与描述，插件工具按自身可见性标记
 func BuildToolCatalog(ctx context.Context, chatTools []tool.BaseTool) []ToolCatalogEntry {
 	if len(chatTools) == 0 {
 		return nil
@@ -43,7 +41,7 @@ func BuildToolCatalog(ctx context.Context, chatTools []tool.BaseTool) []ToolCata
 		}
 		seen[name] = struct{}{}
 		desc := strings.TrimSpace(info.Desc)
-		deferred := isDeferredToolName(name)
+		deferred := false
 		if marker, ok := item.(deferredToolMarker); ok && marker.IsDeferredTool() {
 			deferred = true
 		}
@@ -54,16 +52,6 @@ func BuildToolCatalog(ctx context.Context, chatTools []tool.BaseTool) []ToolCata
 		})
 	}
 	return out
-}
-
-func isDeferredToolName(name string) bool {
-	switch name {
-	case string(computer.ToolDesktop), string(computer.ToolObserve),
-		string(computer.ToolPoll), string(computer.ToolCancel):
-		return computer.ToolsEnabled()
-	default:
-		return false
-	}
 }
 
 // SearchToolCatalog 按 MaiBot tool_search 同款打分规则在目录中检索

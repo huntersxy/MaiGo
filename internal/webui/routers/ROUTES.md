@@ -195,12 +195,11 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 | GET | `/{emoji_id}/content` | **done**（immutable 缓存头） |
 | DELETE | `/{emoji_id}` | **done** |
 
-## `/api/webui/bot-accounts`、`/api/webui/computer`、`/api/webui/agent`
+## `/api/webui/bot-accounts`、`/api/webui/agent`
 
 | 子 prefix | Go 状态 |
 | --- | --- |
 | `/bot-accounts` | **done**（经 `BotAccountService` 列表/禁用/恢复/删除；生产由 `core/app.go` 注入服务 + `BotAccountOnline`；nil 服务 → 503） |
-| `/computer` | **done**（状态/控制/截图/输入/操作轮询已接 `internal/computer`；未启用时返回 409/503 真实错误） |
 | `/agent` | **done**（可注入 `Deps.ACPAgent`：status/control/events/message；未接线时 status 200 disabled、control 409、events 200 disabled、message 空 422/未启动 409；events 的 `queued`/`pending` 对齐 Python inbox / backend.Pending） |
 
 ## `/api/webui/statistics`（`routers/statistics.py`）

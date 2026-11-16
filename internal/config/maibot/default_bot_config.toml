@@ -13,13 +13,6 @@ acp_model = ""
 acp_timeout = 60
 
 [agent.acp_env]
-[computer]
-enabled = false
-networking = true
-memory_mb = 4096
-startup_timeout = 120
-request_timeout = 60
-screenshot_max_edge = 1600
 
 [desktop_pet]
 enabled = false

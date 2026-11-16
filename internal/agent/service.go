@@ -19,48 +19,42 @@ const (
 
 // Status 对齐 AgentService.status
 type Status struct {
-	Enabled           bool           `json:"enabled"`
-	Name              string         `json:"name"`
-	AgentID           string         `json:"agent_id"`
-	Backend           string         `json:"backend"`
-	DesktopEnabled    bool           `json:"desktop_enabled"`
-	ExternalSessionID string         `json:"external_session_id,omitempty"`
-	Paused            bool           `json:"paused"`
-	Error             string         `json:"error"`
-	AgentState        string         `json:"agent_state"`
-	Computer          map[string]any `json:"computer,omitempty"`
-	ACPConnected      bool           `json:"acp_connected"`
+	Enabled           bool   `json:"enabled"`
+	Name              string `json:"name"`
+	AgentID           string `json:"agent_id"`
+	Backend           string `json:"backend"`
+	ExternalSessionID string `json:"external_session_id,omitempty"`
+	Paused            bool   `json:"paused"`
+	Error             string `json:"error"`
+	AgentState        string `json:"agent_state"`
+	ACPConnected      bool   `json:"acp_connected"`
 }
 
 // ServiceOptions AcpAgent 依赖；缺省能力必须显式报错而非伪造
 type ServiceOptions struct {
-	DataDir         string
-	RenderPrompt    func(name string, vars map[string]string) (string, error)
-	Profile         string
-	AgentToolHost   AgentToolHost
-	FileHost        FileToolHost
-	ComputerEnabled bool
-	ComputerStatus  func() map[string]any
+	DataDir       string
+	RenderPrompt  func(name string, vars map[string]string) (string, error)
+	Profile       string
+	AgentToolHost AgentToolHost
+	FileHost      FileToolHost
 	// ReportFailure 对齐 messaging.report_failure；未接线时只持久化错误
 	ReportFailure func(target string, taskIDs []string, errMsg string)
 }
 
 // Service 对齐 AgentService：任务队列、pause/resume、turn 循环
 type Service struct {
-	cfg            Config
-	name           string
-	desktopEnabled bool
-	bridge         *Bridge
-	opts           ServiceOptions
-	root           string
-	mu             sync.RWMutex
+	cfg    Config
+	name   string
+	bridge *Bridge
+	opts   ServiceOptions
+	root   string
+	mu     sync.RWMutex
 
 	agent       *Agent
 	started     bool
 	paused      bool
 	manualPause bool
 	errMsg      string
-	computer    map[string]any
 	lastState   string
 	currentTurn context.CancelFunc
 	wake        chan struct{}
@@ -70,7 +64,7 @@ type Service struct {
 }
 
 // NewService 创建 Agent 服务；options 可省略以兼容旧调用
-func NewService(cfg Config, desktopEnabled bool, options ...ServiceOptions) *Service {
+func NewService(cfg Config, options ...ServiceOptions) *Service {
 	opts := ServiceOptions{}
 	if len(options) > 0 {
 		opts = options[0]
@@ -79,14 +73,13 @@ func NewService(cfg Config, desktopEnabled bool, options ...ServiceOptions) *Ser
 		opts.DataDir = filepath.Join("data", "agent")
 	}
 	return &Service{
-		cfg:            cfg,
-		name:           agentName,
-		desktopEnabled: desktopEnabled,
-		bridge:         NewBridge(),
-		opts:           opts,
-		root:           opts.DataDir,
-		wake:           make(chan struct{}, 1),
-		lastState:      "stopped",
+		cfg:       cfg,
+		name:      agentName,
+		bridge:    NewBridge(),
+		opts:      opts,
+		root:      opts.DataDir,
+		wake:      make(chan struct{}, 1),
+		lastState: "stopped",
 	}
 }
 
@@ -151,7 +144,6 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) providers() []ToolProvider {
 	return []ToolProvider{
 		NewAgentToolProvider(s.opts.AgentToolHost, s.statusMap),
-		NewComputerToolProvider(s.opts.ComputerEnabled, defaultAgentID, s.computerStatus),
 		NewFileToolProvider(s.opts.FileHost),
 	}
 }
@@ -323,17 +315,11 @@ func (s *Service) Reload(ctx context.Context, cfg Config) error {
 	return s.Start(ctx)
 }
 
-// Status 返回 Agent 状态；computer 参数兼容旧调用，nil 时对齐 Python 取 live computer.status()
-func (s *Service) Status(computerStatus map[string]any) Status {
+// Status 返回 Agent 状态
+func (s *Service) Status() Status {
 	s.mu.RLock()
 	agent := s.agent
-	computer := s.computer
 	s.mu.RUnlock()
-	if computerStatus != nil {
-		computer = computerStatus
-	} else if computer == nil {
-		computer = s.ComputerStatus()
-	}
 	agentState := s.lastState
 	sessionID := ""
 	connected := s.bridge.Connected()
@@ -350,12 +336,10 @@ func (s *Service) Status(computerStatus map[string]any) Status {
 		Name:              s.name,
 		AgentID:           defaultAgentID,
 		Backend:           "acp",
-		DesktopEnabled:    liveDesktopEnabled(computer, s.opts.ComputerEnabled, s.desktopEnabled),
 		ExternalSessionID: sessionID,
 		Paused:            s.paused,
 		Error:             s.errMsg,
 		AgentState:        agentState,
-		Computer:          computer,
 		ACPConnected:      connected,
 	}
 }
@@ -364,7 +348,7 @@ func (s *Service) Status(computerStatus map[string]any) Status {
 func (s *Service) Control(ctx context.Context, operation string) (Status, error) {
 	s.mu.Lock()
 	if !s.cfg.Enabled {
-		st := s.statusLocked(nil)
+		st := s.statusLocked()
 		s.mu.Unlock()
 		return st, ErrDisabled
 	}
@@ -374,7 +358,7 @@ func (s *Service) Control(ctx context.Context, operation string) (Status, error)
 		s.manualPause = true
 		s.lastState = "paused"
 		cancel := s.currentTurn
-		st := s.statusLocked(nil)
+		st := s.statusLocked()
 		s.mu.Unlock()
 		if cancel != nil {
 			cancel()
@@ -385,7 +369,7 @@ func (s *Service) Control(ctx context.Context, operation string) (Status, error)
 		s.manualPause = false
 		s.errMsg = ""
 		s.lastState = "idle"
-		st := s.statusLocked(nil)
+		st := s.statusLocked()
 		s.mu.Unlock()
 		s.Wake()
 		return st, s.saveRuntimeState()
@@ -397,7 +381,7 @@ func (s *Service) Control(ctx context.Context, operation string) (Status, error)
 		}
 		s.mu.Unlock()
 		if !bridge.Connected() {
-			return s.Status(nil), ErrNotConnected
+			return s.Status(), ErrNotConnected
 		}
 		method := "ping"
 		if operation == "status" {
@@ -410,7 +394,7 @@ func (s *Service) Control(ctx context.Context, operation string) (Status, error)
 		if _, err := bridge.Request(ctx, method, map[string]any{}, pingTimeout); err != nil {
 			s.mu.Lock()
 			s.errMsg = err.Error()
-			st := s.statusLocked(nil)
+			st := s.statusLocked()
 			s.mu.Unlock()
 			return st, err
 		}
@@ -419,17 +403,17 @@ func (s *Service) Control(ctx context.Context, operation string) (Status, error)
 		if s.lastState == "stopped" {
 			s.lastState = "idle"
 		}
-		st := s.statusLocked(nil)
+		st := s.statusLocked()
 		s.mu.Unlock()
 		return st, nil
 	default:
-		st := s.statusLocked(nil)
+		st := s.statusLocked()
 		s.mu.Unlock()
 		return st, fmt.Errorf("Agent control 只接受 pause/resume，电脑控制请使用独立电脑接口。")
 	}
 }
 
-func (s *Service) statusLocked(computer map[string]any) Status {
+func (s *Service) statusLocked() Status {
 	agentState := s.lastState
 	sessionID := ""
 	if s.agent != nil {
@@ -438,30 +422,21 @@ func (s *Service) statusLocked(computer map[string]any) Status {
 		sessionID = s.agent.sessionID
 		s.agent.mu.Unlock()
 	}
-	if computer == nil {
-		computer = s.computer
-	}
-	if computer == nil {
-		// 持锁路径也回落 live ComputerStatus，避免 WebUI/Control 拿到空 computer
-		computer = s.ComputerStatus()
-	}
 	return Status{
 		Enabled:           s.cfg.Enabled,
 		Name:              s.name,
 		AgentID:           defaultAgentID,
 		Backend:           "acp",
-		DesktopEnabled:    liveDesktopEnabled(computer, s.opts.ComputerEnabled, s.desktopEnabled),
 		ExternalSessionID: sessionID,
 		Paused:            s.paused,
 		Error:             s.errMsg,
 		AgentState:        agentState,
-		Computer:          computer,
 		ACPConnected:      s.bridge.Connected(),
 	}
 }
 
 func (s *Service) statusMap() map[string]any {
-	st := s.Status(nil)
+	st := s.Status()
 	raw, err := sonic.ConfigStd.Marshal(st)
 	if err != nil {
 		return map[string]any{"enabled": st.Enabled, "agent_state": st.AgentState}
@@ -488,11 +463,6 @@ func (s *Service) Policy() string {
 	policy, err := s.RenderPrompt("agent_acp", map[string]string{"maibot_profile": profile})
 	if err != nil {
 		return ""
-	}
-	if s.opts.ComputerEnabled {
-		if suffix, err := s.RenderPrompt("agent_acp_computer", nil); err == nil && strings.TrimSpace(suffix) != "" {
-			policy = strings.TrimRight(policy, "\n") + "\n" + suffix
-		}
 	}
 	return policy
 }
@@ -538,28 +508,6 @@ func (s *Service) ContextText(workspace string) (string, error) {
 	}
 	return strings.TrimSpace(strings.Join(kept, "\n")) + "\n\n", nil
 }
-
-func liveDesktopEnabled(computer map[string]any, optsEnabled, fallback bool) bool {
-	if computer != nil {
-		if v, ok := computer["enabled"].(bool); ok {
-			return v
-		}
-	}
-	if optsEnabled {
-		return true
-	}
-	return fallback
-}
-
-// ComputerStatus 实现 AgentRuntime
-func (s *Service) ComputerStatus() map[string]any {
-	if s.opts.ComputerStatus != nil {
-		return s.opts.ComputerStatus()
-	}
-	return map[string]any{"enabled": s.opts.ComputerEnabled}
-}
-
-func (s *Service) computerStatus() map[string]any { return s.ComputerStatus() }
 
 type runtimeState struct {
 	Paused      bool   `json:"paused"`

@@ -3,7 +3,7 @@ package agent
 // 传话附图解析，对齐 MaiBot src/agent/images.py 的 resolve_images。
 //
 // 引用来源按 Python 优先级依次为：当前会话的聊天图片（SourceImages 索引）、
-// 工作区 relay_images 下的 hash 文件、宿主提供的截图。解析结果写入工作区
+// 工作区 relay_images 下的 hash 文件。解析结果写入工作区
 // relay_images，并以组件形式交给传话链路。
 
 import (
@@ -41,9 +41,7 @@ type ImageResolver interface {
 	SourceImages() map[string][]media.Ref
 	// Workspace 返回 Agent 工作区目录
 	Workspace() string
-	// Screenshot 返回宿主当前截图，仅在调用方为 Agent 自身时需要
-	Screenshot(ctx context.Context) ([]byte, error)
-	// AllowAgentOnlyRefs 对齐 caller == agent_id：允许 screenshot / 工作区 hash / 工作区路径
+	// AllowAgentOnlyRefs 对齐 caller == agent_id：允许工作区 hash / 工作区路径
 	AllowAgentOnlyRefs() bool
 	// ResolveWorkspacePath 对齐 AgentService.image_path；未实现时返回空路径
 	ResolveWorkspacePath(reference string) (string, error)
@@ -93,20 +91,8 @@ func ResolveRelayImages(ctx context.Context, resolver ImageResolver, references 
 			continue
 		}
 
-		// 2/3/4) screenshot、工作区 hash、工作区路径仅 Agent 自身可用
+		// 2/3) 工作区 hash、工作区路径仅 Agent 自身可用
 		if resolver.AllowAgentOnlyRefs() {
-			if reference == "screenshot" {
-				data, err := resolver.Screenshot(ctx)
-				if err != nil {
-					return nil, err
-				}
-				image, err := saveRelayImage(workspace, data, "")
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, image)
-				continue
-			}
 			if relayHashPattern.MatchString(reference) {
 				pattern := filepath.Join(workspace, relayImageDir, reference+".*")
 				matches, err := filepath.Glob(pattern)
@@ -193,58 +179,26 @@ func saveRelayImage(workspace string, data []byte, mime string) (RelayImage, err
 	}, nil
 }
 
-// maiWorkspacePrefix 对齐 Python PureWindowsPath(r"C:\MaiWorkspace")
-const maiWorkspacePrefix = `C:\MaiWorkspace`
-
-// ResolveAgentImagePath 对齐 AgentService.image_path：
-// - C:\MaiWorkspace\... 映射到电脑宿主工作目录（需 requireEnabled）
-// - 其它路径必须落在 agentWorkspace 内
-func ResolveAgentImagePath(reference, agentWorkspace, computerWorkspace string, requireEnabled func() error) (string, error) {
+// ResolveAgentImagePath 对齐 AgentService.image_path：路径必须落在 agentWorkspace 内
+func ResolveAgentImagePath(reference, agentWorkspace string) (string, error) {
 	reference = strings.TrimSpace(reference)
 	if reference == "" {
-		return "", fmt.Errorf("附图必须位于当前 Agent 工作目录或已启用的电脑工作目录。")
+		return "", fmt.Errorf("附图必须位于当前 Agent 工作目录。")
 	}
-	normalized := strings.ReplaceAll(reference, "/", "\\")
-	lower := strings.ToLower(normalized)
-	prefix := strings.ToLower(maiWorkspacePrefix)
-	var workspace string
-	var rel string
-	if lower == prefix || strings.HasPrefix(lower, prefix+"\\") {
-		if requireEnabled != nil {
-			if err := requireEnabled(); err != nil {
-				return "", err
-			}
-		}
-		workspace = strings.TrimSpace(computerWorkspace)
-		if workspace == "" {
-			return "", fmt.Errorf("电脑服务未启用或正在关闭，请检查 computer.enabled。")
-		}
-		if lower == prefix {
-			rel = "."
-		} else {
-			rel = normalized[len(maiWorkspacePrefix)+1:]
-		}
-	} else {
-		workspace = strings.TrimSpace(agentWorkspace)
-		if workspace == "" {
-			return "", fmt.Errorf("Agent 工作区未配置")
-		}
-		raw := reference
-		if filepath.IsAbs(raw) {
-			path, err := filepath.Abs(raw)
-			if err != nil {
-				return "", err
-			}
-			return ensureUnderWorkspace(workspace, path)
-		}
-		rel = raw
+	workspace := strings.TrimSpace(agentWorkspace)
+	if workspace == "" {
+		return "", fmt.Errorf("Agent 工作区未配置")
 	}
 	base, err := filepath.Abs(workspace)
 	if err != nil {
 		return "", err
 	}
-	joined := filepath.Join(base, filepath.FromSlash(strings.ReplaceAll(rel, "\\", "/")))
-	path, err := filepath.Abs(joined)
+	raw := filepath.FromSlash(strings.ReplaceAll(reference, "\\", "/"))
+	path := raw
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(base, path)
+	}
+	path, err = filepath.Abs(path)
 	if err != nil {
 		return "", err
 	}
@@ -262,7 +216,7 @@ func ensureUnderWorkspace(workspace, path string) (string, error) {
 	}
 	rel, err := filepath.Rel(base, target)
 	if err != nil || strings.HasPrefix(rel, "..") || rel == ".." {
-		return "", fmt.Errorf("附图必须位于当前 Agent 工作目录或已启用的电脑工作目录。")
+		return "", fmt.Errorf("附图必须位于当前 Agent 工作目录。")
 	}
 	return target, nil
 }

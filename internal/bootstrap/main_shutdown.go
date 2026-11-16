@@ -16,7 +16,6 @@ type workerShutdownHooks struct {
 	StopMessageEntry  func(context.Context) error
 	StopDesktopPet    func(context.Context) error
 	StopACPAgent      func(context.Context) error
-	StopComputer      func(context.Context) error
 	StopChatLoop      func(context.Context) error
 	StopHTTP          func(context.Context) error
 	StopConfigWatcher func(context.Context) error
@@ -92,13 +91,12 @@ func newWorkerShutdownPlan(hooks workerShutdownHooks) runtime.ShutdownPlan {
 	// 先关闭广播入口，后续关停日志只写文件/终端，不再派生 WebSocket 任务
 	add("停止日志广播", runtime.PhasePre, runtime.LogBroadcastTimeout, hooks.StopLogBroadcast)
 
-	// 消息生产者先于插件、电脑及存储关闭，避免在依赖销毁后继续调用工具
+	// 消息生产者先于插件及存储关闭，避免在依赖销毁后继续调用工具
 	add("停止消息入口", runtime.PhasePre, 5*time.Second, hooks.StopMessageEntry)
 	// 先停止桌宠轮询和主动唤醒，窗口退出时仍可调用插件关闭钩子
 	add("停止桌宠", runtime.PhasePre, 6*time.Second, hooks.StopDesktopPet)
 	add("停止聊天循环", runtime.PhasePre, 5*time.Second, hooks.StopChatLoop)
 	add("停止外接 Agent", runtime.PhasePre, 8*time.Second, hooks.StopACPAgent)
-	add("保存并断开电脑", runtime.PhasePre, 8*time.Second, hooks.StopComputer)
 	add("关闭 HTTP 服务", runtime.PhasePre, 5*time.Second, hooks.StopHTTP)
 	add("停止配置监听", runtime.PhasePre, 5*time.Second, hooks.StopConfigWatcher)
 	add("触发 ON_STOP 事件", runtime.PhasePre, 5*time.Second, hooks.EmitOnStop)

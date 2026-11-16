@@ -1,7 +1,7 @@
 {
  "source": {
-  "maibot_root": "maibot==1.4.0",
-  "maibot_version": "1.4.0",
+  "maibot_root": "maibot==1.4.1",
+  "maibot_version": "1.4.1",
   "fastapi": "0.162.0",
   "pydantic": "2.14.3"
  },
@@ -1303,59 +1303,6 @@
     "type": "object",
     "x-order": [
      "token"
-    ]
-   }
-  },
-  {
-   "method": "POST",
-   "path": "/api/webui/computer/control",
-   "required": true,
-   "schema": {
-    "properties": {
-     "operation": {
-      "enum": [
-       "pause",
-       "resume",
-       "takeover",
-       "stop",
-       "restart"
-      ],
-      "title": "Operation",
-      "type": "string"
-     }
-    },
-    "required": [
-     "operation"
-    ],
-    "title": "ComputerControl",
-    "type": "object",
-    "x-order": [
-     "operation"
-    ]
-   }
-  },
-  {
-   "method": "POST",
-   "path": "/api/webui/computer/input",
-   "required": true,
-   "schema": {
-    "properties": {
-     "actions": {
-      "items": {
-       "additionalProperties": true,
-       "type": "object"
-      },
-      "title": "Actions",
-      "type": "array"
-     }
-    },
-    "required": [
-     "actions"
-    ],
-    "title": "DesktopInput",
-    "type": "object",
-    "x-order": [
-     "actions"
     ]
    }
   },

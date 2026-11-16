@@ -13,7 +13,6 @@ import (
 	"MaiGo/internal/agent/files"
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/media"
-	"MaiGo/internal/computer"
 	"MaiGo/internal/files"
 
 	"github.com/bytedance/sonic"
@@ -99,7 +98,7 @@ func (h *conversationAgentFilesHost) TellAgent(ctx context.Context, text, target
 	if err != nil {
 		return nil, err
 	}
-	status := h.agent.acpService.Status(nil)
+	status := h.agent.acpService.Status()
 	result := map[string]any{
 		"delivered": true,
 		"relay_id":  relayID,
@@ -156,29 +155,18 @@ func (r *chatRelayImageResolver) Workspace() string {
 	return r.workspace
 }
 
-func (r *chatRelayImageResolver) Screenshot(context.Context) ([]byte, error) {
-	return nil, fmt.Errorf("当前宿主不支持截图引用")
-}
-
 func (r *chatRelayImageResolver) AllowAgentOnlyRefs() bool                    { return false }
 func (r *chatRelayImageResolver) ResolveWorkspacePath(string) (string, error) { return "", nil }
 
-// AgentStatus 返回 Agent 状态，include_image 时合并桌面最近一帧
-func (h *conversationAgentFilesHost) AgentStatus(ctx context.Context, includeImage bool) (map[string]any, []agentfiles.Image, error) {
+// AgentStatus 返回 Agent 状态
+func (h *conversationAgentFilesHost) AgentStatus(ctx context.Context) (map[string]any, []agentfiles.Image, error) {
 	if h.agent == nil || h.agent.acpService == nil {
 		return nil, nil, fmt.Errorf("Agent 未启动，请在设置的“Agent连接”中启用连接。")
 	}
-	status := h.agent.acpService.Status(nil)
+	status := h.agent.acpService.Status()
 	raw, err := statusMap(status)
 	if err != nil {
 		return nil, nil, err
-	}
-	if includeImage {
-		if service := computer.DefaultService(); service != nil && service.Enabled() {
-			for key, value := range service.LastFrameSnapshot() {
-				raw[key] = value
-			}
-		}
 	}
 	payload, images := agentfiles.StatusPayload(raw)
 	return payload, images, nil

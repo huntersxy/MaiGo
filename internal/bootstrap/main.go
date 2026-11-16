@@ -26,7 +26,6 @@ import (
 	"MaiGo/internal/common/logger"
 	"MaiGo/internal/common/message_server"
 	maimserver "MaiGo/internal/common/message_server/server"
-	"MaiGo/internal/computer"
 	"MaiGo/internal/config"
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/config/model_profiles"
@@ -589,42 +588,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 				defer cancel()
 				if err := desktopPetSvc.Reload(ctx); err != nil {
 					zap.L().Warn("桌宠配置热重载失败，保留上一版本", zap.Error(err))
-				}
-				return
-			}
-		})
-	}
-
-	computerRoot := strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR"))
-	var computerSvc *computer.Service
-	if computerRoot != "" {
-		computerSvc = computer.DefaultServiceForRoot(computerRoot)
-	} else {
-		computerSvc = computer.DefaultService()
-	}
-	startup.AddCleanup("保存并断开电脑", func(ctx context.Context) error {
-		return computerSvc.Stop(ctx)
-	})
-	if err := computerSvc.Start(startup.Context()); err != nil {
-		zap.L().Warn("电脑沙盒启动失败，电脑工具保持未连接", zap.Error(err))
-	}
-	if !startup.Check("桌宠与电脑初始化") {
-		return 1
-	}
-	if instHolder != nil {
-		instHolder.RegisterReloadCallback(func(_ *maibotcfg.InstanceConfig, scopes []maibotcfg.ReloadScope) {
-			for _, scope := range scopes {
-				if scope != maibotcfg.ReloadScopeBot {
-					continue
-				}
-				if err := computerSvc.SyncConfig(); err != nil {
-					zap.L().Warn("电脑沙盒配置热重载失败，保留上一版本", zap.Error(err))
-					return
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				if err := computerSvc.Reload(ctx); err != nil {
-					zap.L().Warn("电脑沙盒重载失败", zap.Error(err))
 				}
 				return
 			}
@@ -1281,9 +1244,8 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		workspaceRoot = instHolder.Dir()
 	}
 	acpAgentHost.workspace = filepath.Join(workspaceRoot, "data", "agent", "workspace")
-	acpAgentHost.computer = computerSvc
 	acpFileHost := newACPFileHost(fileService, memoryMgr)
-	acpService = startACPAgentService(instHolder, promptMgr, maiAgent, computerSvc, acpAgentHost, acpFileHost)
+	acpService = startACPAgentService(instHolder, promptMgr, maiAgent, acpAgentHost, acpFileHost)
 	maiAgent.SetACPService(acpService)
 	if acpService != nil {
 		startup.AddCleanup("停止外接 Agent", func(context.Context) error {
@@ -1820,12 +1782,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			stopACPAgentService(acpService)
 			return nil
 		},
-		StopComputer: func(ctx context.Context) error {
-			if computerSvc == nil {
-				return nil
-			}
-			return computerSvc.Stop(ctx)
-		},
 		StopChatLoop: func(ctx context.Context) error {
 			if chatPipeline != nil {
 				if err := chatPipeline.Close(ctx); err != nil {
@@ -2161,7 +2117,7 @@ func acpConfigFromBot(raw maibotcfg.AgentConfig) agent.Config {
 }
 
 // startACPAgentService 启动外部 ACP Agent 接线；默认关闭时只创建空服务，不启动任务
-func startACPAgentService(holder *maibotcfg.InstanceHolder, promptMgr *prompt.Manager, maiAgent *maisaruntime.Agent, computerSvc *computer.Service, agentHost agent.AgentToolHost, fileHost agent.FileToolHost) *agent.Service {
+func startACPAgentService(holder *maibotcfg.InstanceHolder, promptMgr *prompt.Manager, maiAgent *maisaruntime.Agent, agentHost agent.AgentToolHost, fileHost agent.FileToolHost) *agent.Service {
 	if holder == nil {
 		return nil
 	}
@@ -2169,15 +2125,10 @@ func startACPAgentService(holder *maibotcfg.InstanceHolder, promptMgr *prompt.Ma
 	if instCfg == nil {
 		return nil
 	}
-	computerEnabled := computerSvc != nil && computerSvc.Enabled()
 	opts := agent.ServiceOptions{
-		DataDir:         filepath.Join(holder.Dir(), "data", "agent"),
-		AgentToolHost:   agentHost,
-		FileHost:        fileHost,
-		ComputerEnabled: computerEnabled,
-		ComputerStatus: func() map[string]any {
-			return acpComputerStatus(computerSvc)
-		},
+		DataDir:       filepath.Join(holder.Dir(), "data", "agent"),
+		AgentToolHost: agentHost,
+		FileHost:      fileHost,
 	}
 	if promptMgr != nil {
 		opts.RenderPrompt = promptMgr.Render
@@ -2197,17 +2148,17 @@ func startACPAgentService(holder *maibotcfg.InstanceHolder, promptMgr *prompt.Ma
 			reportACPFailure(maiAgent, mem, render, name, target, taskIDs, errMsg)
 		}
 	}
-	service := agent.NewService(acpConfigFromBot(instCfg.Bot.Agent), computerEnabled, opts)
+	service := agent.NewService(acpConfigFromBot(instCfg.Bot.Agent), opts)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := service.Start(ctx); err != nil {
 		zap.L().Warn("外部 ACP Agent 启动失败，保持未连接", zap.Error(err))
 		return service
 	}
-	if service.Status(nil).Enabled {
+	if service.Status().Enabled {
 		zap.L().Info("外部 ACP Agent 已启用",
-			zap.String("connection", string(service.Status(nil).Backend)),
-			zap.String("state", service.Status(nil).AgentState))
+			zap.String("connection", string(service.Status().Backend)),
+			zap.String("state", service.Status().AgentState))
 	}
 	return service
 }

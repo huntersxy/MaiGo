@@ -16,15 +16,6 @@ func mountBotAccountRoutes(api chi.Router, d Deps) {
 	api.Delete("/bot-accounts/{account_id}", d.handleBotAccountDelete)
 }
 
-// mountComputerRoutes 注册 /api/webui/computer 路由（对齐 routers/computer.py）
-func mountComputerRoutes(api chi.Router, d Deps) {
-	api.Get("/computer", d.handleComputerStatus)
-	api.Post("/computer/control", d.handleComputerControl)
-	api.Get("/computer/frame", d.handleComputerFrame)
-	api.Post("/computer/input", d.handleComputerInput)
-	api.Get("/computer/operations/{operation_id}", d.handleComputerOperation)
-}
-
 // mountAgentRoutes 注册 /api/webui/agent 路由
 func mountAgentRoutes(api chi.Router, d Deps) {
 	api.Get("/agent", d.handleAgentStatus)
