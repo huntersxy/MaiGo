@@ -3,9 +3,7 @@ package stats
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +16,6 @@ type DetailedReportOptions struct {
 	DB          *gorm.DB
 	Provider    DetailedProvider
 	InstanceDir string
-	ReportPath  string
 	Interval    time.Duration
 	Now         func() time.Time
 }
@@ -100,7 +97,7 @@ func (r *DetailedReporter) runLoop(ctx context.Context, done chan struct{}) {
 	}
 }
 
-// RunOnce 构建快照、原子写 HTML 与快照文件
+// RunOnce 构建快照并写入快照文件
 func (r *DetailedReporter) RunOnce(ctx context.Context) (DetailedStatisticsData, error) {
 	r.runMu.Lock()
 	defer r.runMu.Unlock()
@@ -120,20 +117,11 @@ func (r *DetailedReporter) RunOnce(ctx context.Context) (DetailedStatisticsData,
 	if err != nil {
 		return emptyDetailedStatistics(now), err
 	}
-	htmlBytes, err := RenderDetailedHTML(snapshot)
-	if err != nil {
-		return emptyDetailedStatistics(now), err
-	}
-	reportPath := resolveDetailedReportPath(r.options.InstanceDir, r.options.ReportPath)
-	if err := writeAtomicFile(reportPath, htmlBytes, 0o644); err != nil {
-		return emptyDetailedStatistics(now), fmt.Errorf("写入详细统计 HTML 报告失败: %w", err)
-	}
 	if err := StoreDetailedStatisticsSnapshot(r.options.InstanceDir, snapshot); err != nil {
 		return emptyDetailedStatistics(now), err
 	}
-	_ = cleanupStaleDetailedTemps(filepath.Dir(reportPath), now, 24*time.Hour)
 	_ = cleanupStaleDetailedTemps(filepath.Dir(DetailedSnapshotPath(r.options.InstanceDir)), now, 24*time.Hour)
-	r.logger().Info("详细统计报告已生成", zap.String("report_path", reportPath), zap.String("generated_at", snapshot.GeneratedAt))
+	r.logger().Info("详细统计快照已更新", zap.String("generated_at", snapshot.GeneratedAt))
 	// 对齐 Python StatisticOutputTask：同一轮汇总后输出近1小时控制台统计
 	logConsoleStatistics(snapshot)
 	return snapshot, nil
@@ -141,17 +129,4 @@ func (r *DetailedReporter) RunOnce(ctx context.Context) (DetailedStatisticsData,
 
 func (r *DetailedReporter) logger() *zap.Logger {
 	return zap.L()
-}
-
-func resolveDetailedReportPath(instanceDir, override string) string {
-	if strings.TrimSpace(override) != "" {
-		return override
-	}
-	if configured := strings.TrimSpace(os.Getenv("MAIBOT_STATISTICS_REPORT_PATH")); configured != "" {
-		return configured
-	}
-	if strings.TrimSpace(instanceDir) == "" {
-		return "maibot_statistics.html"
-	}
-	return filepath.Join(instanceDir, "maibot_statistics.html")
 }
