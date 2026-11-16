@@ -492,6 +492,7 @@ type EmojiConfig struct {
 
 type ExperimentalConfig struct {
 	PassiveReplyer        bool  `toml:"passive_replyer,omitempty"`
+	ReplyCache            bool  `toml:"reply_cache,omitempty"`
 	GroupAttentionDrift   any   `toml:"group_attention_drift,omitempty"`
 	PrivateAttentionDrift any   `toml:"private_attention_drift,omitempty"`
 	FocusMode             bool  `toml:"focus_mode,omitempty"`

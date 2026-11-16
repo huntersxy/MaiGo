@@ -60,7 +60,7 @@ multiple_probability = 0
 enable_reply_at = true
 max_context_size = 50
 max_private_context_size = 75
-context_compaction_summary_max_chars = 6000
+creative_mode = true
 
 [chat.reply_timing]
 message_debounce_mode = "natural"
