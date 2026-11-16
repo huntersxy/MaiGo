@@ -14,7 +14,7 @@ import (
 // 默认在版本升级或旧版迁移后写回磁盘；MAIBOT_CONFIG_WRITEBACK=0/false 可显式关闭（见 writeback.go）
 // 见 MaiBot src/config/config.py CONFIG_VERSION / MODEL_CONFIG_VERSION
 const (
-	BotConfigTargetVersion   = "8.15.71"
+	BotConfigTargetVersion   = "8.15.72"
 	ModelConfigTargetVersion = "1.17.25"
 )
 

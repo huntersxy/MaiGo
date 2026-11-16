@@ -145,6 +145,8 @@ type GeneratorConfig struct {
 
 	// SaveReasoning 对齐 debug.save_maisaka_reasoning：持久化 Replyer 请求与输出预览
 	SaveReasoning bool
+	// GeminiReplyCompatibility 对齐 debug.gemini_reply_compatibility：剥离混入正文的思考格式
+	GeminiReplyCompatibility bool
 	// KeepPreviewBase64 对齐 debug.keep_prompt_preview_json_base64
 	KeepPreviewBase64 bool
 

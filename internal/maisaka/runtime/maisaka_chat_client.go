@@ -386,6 +386,7 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.PrivateChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.PrivateChatPrompts)
 	cfg.CreativeMode = bot.Chat.CreativeMode
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
+	cfg.GeminiReplyCompatibility = bot.Debug.GeminiReplyCompatibility
 	cfg.KeepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
 	cfg.KeywordRules = replyer.KeywordRulesFromConfig(bot.KeywordReaction.KeywordRules)
 	cfg.RegexRules = replyer.RegexRulesFromConfig(bot.KeywordReaction.RegexRules)

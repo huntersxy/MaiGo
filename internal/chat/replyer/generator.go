@@ -120,6 +120,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	reasoningContinuationCount := 0
 	reasoningRegenerationRequested := false
 	retroPeriodRegenerationRequested := false
+	geminiRegenerationRequested := false
 
 	defaultTaskName := g.defaultTaskName()
 	var responseText string
@@ -344,6 +345,28 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		matchedRegexDescription := strings.TrimSpace(stringValue(after.Kwargs["matched_regex_description"]))
 		retryReason := strings.TrimSpace(stringValue(after.Kwargs["retry_reason"]))
 
+		// 兼容 Gemini 混入正文的显式思考格式：能可靠剥离则改写正文，否则有限重生成
+		if g.Builder != nil && g.Builder.Config.GeminiReplyCompatibility {
+			compatible, compatErr := NormalizeGeminiReply(responseText)
+			if compatErr != nil {
+				responseText = ""
+				generationResult.OutputItems = llm.ReplaceOutputProjection(generationResult.OutputItems, "", true, nil, false)
+				zap.L().Warn("Gemini 回复兼容处理: " + compatErr.Error())
+				if geminiRegenerationRequested || retryCount >= g.maxHookRetries() {
+					result.ErrorCode = "gemini_reply_format_error"
+					result.ErrorMessage = compatErr.Error()
+					break
+				}
+				geminiRegenerationRequested = true
+				retryRequested = true
+				retryReason = "请重新生成正式聊天正文，不要输出思考过程、分析标题、草稿或思考标签。"
+			} else if compatible != responseText {
+				zap.L().Info(fmt.Sprintf("Gemini 回复兼容处理: 正文长度=%d->%d", len([]rune(responseText)), len([]rune(compatible))))
+				responseText = compatible
+				generationResult.OutputItems = llm.ReplaceOutputProjection(generationResult.OutputItems, responseText, true, nil, false)
+			}
+		}
+
 		if activePromptProfile == "mai_replier" && !retroPeriodRegenerationRequested && containsAny(responseText, "发个句号", "一个句号") && retryCount < g.maxHookRetries() {
 			retroPeriodRegenerationRequested = true
 			retryRequested = true
@@ -457,7 +480,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	result.RequestMessages = finalRequestItems
 	g.persistReplyPreview(ctx, &result, sessionID, req.ReplyReason)
 	if strings.TrimSpace(responseText) == "" {
-		if result.ErrorCode != "plugin_aborted" {
+		if result.ErrorCode != "plugin_aborted" && result.ErrorCode != "gemini_reply_format_error" {
 			if result.ErrorCode == "plugin_empty_response" {
 				result.ErrorMessage = "插件 Hook 将回复正文修改为空。请调整回复目标或停止本次回复，勿原样重复调用。"
 			} else {

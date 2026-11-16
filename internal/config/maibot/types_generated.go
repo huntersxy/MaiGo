@@ -451,6 +451,7 @@ type ComputerConfig struct {
 
 type DebugConfig struct {
 	EnableConsoleInput          bool `toml:"enable_console_input,omitempty"`
+	GeminiReplyCompatibility    bool `toml:"gemini_reply_compatibility,omitempty"`
 	ShowMaisakaThinking         bool `toml:"show_maisaka_thinking,omitempty"`
 	SaveMaisakaReasoning        bool `toml:"save_maisaka_reasoning,omitempty"`
 	KeepPromptPreviewJsonBase64 bool `toml:"keep_prompt_preview_json_base64,omitempty"`
