@@ -180,6 +180,14 @@ func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req Rep
 			keywordsReactionPrompt = prompt
 		}
 	}
+	replyTargetBlock := b.BuildRetroReplyTargetBlock(req.Target, history)
+	if replyTargetBlock != "" {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(b.Config.PromptLocale)), "en") {
+			replyTargetBlock += "."
+		} else {
+			replyTargetBlock += "。"
+		}
+	}
 	return map[string]string{
 		"bot_name":                 b.Config.BotName,
 		"sender_name":              b.BuildRetroSenderName(history, req.Target),
@@ -188,7 +196,7 @@ func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req Rep
 		"extra_info_block":         BuildRetroExtraInfoBlock(req.ReplyRequirements),
 		"dialogue_prompt":          b.BuildRetroDialogueBlock(history),
 		"time_block":               "当前时间：" + now.Format("2006-01-02 15:04:05"),
-		"reply_target_block":       b.BuildRetroReplyTargetBlock(req.Target, history),
+		"reply_target_block":       replyTargetBlock,
 		"planner_reasoning":        combinedReference,
 		"keywords_reaction_prompt": keywordsReactionPrompt,
 	}

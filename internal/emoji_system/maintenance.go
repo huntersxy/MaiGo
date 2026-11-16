@@ -153,6 +153,10 @@ func (r *Registry) RunMaintenanceOnce(ctx context.Context, opts MaintenanceOptio
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
+		// .tmp 由缓存流程管理，可能尚未完成写入或格式识别
+		if strings.EqualFold(filepath.Ext(entry.Name()), ".tmp") {
+			continue
+		}
 		info, infoErr := entry.Info()
 		if infoErr != nil || !info.Mode().IsRegular() {
 			continue

@@ -82,12 +82,23 @@ func (b *PromptBuilder) BuildReplyInstruction() string {
 	return "请自然地回复。不要输出多余说明、括号、@ 或额外标记，只输出实际要发言的内容。"
 }
 
-// BuildReplyReferenceMessage 有 reference 时只使用参考，否则使用 Planner 正文
+// BuildReplyReferenceMessage 有 reference 时只使用参考，否则使用 Planner 正文，并标注为当前想法
 func (b *PromptBuilder) BuildReplyReferenceMessage(replyReason, replyReference string) string {
-	if normalized := strings.TrimSpace(replyReference); normalized != "" {
-		return normalized
+	thought := strings.TrimSpace(replyReference)
+	if thought == "" {
+		thought = strings.TrimSpace(replyReason)
 	}
-	return strings.TrimSpace(replyReason)
+	if thought == "" {
+		return ""
+	}
+	locale := strings.ToLower(strings.TrimSpace(b.Config.PromptLocale))
+	if strings.HasPrefix(locale, "en") {
+		return "Current thought:\n\"" + thought + "\""
+	}
+	if strings.HasPrefix(locale, "ja") {
+		return "現在の考え：\n「" + thought + "」"
+	}
+	return "当前想法：\n“" + thought + "”"
 }
 
 // BuildTemporaryReplyStyleMessage 对齐 _build_temporary_reply_style_message
