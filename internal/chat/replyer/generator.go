@@ -588,7 +588,16 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 		if loadErr != nil {
 			return nil, fmt.Errorf("加载 replyer_super_creative 失败: %w", loadErr)
 		}
-		messages = append(messages, RequestMessage{Role: "user", Content: instruction})
+		for index := range messages {
+			if strings.ToLower(strings.TrimSpace(messages[index].Role)) != "system" {
+				continue
+			}
+			if len(messages[index].Parts) > 0 {
+				messages[index].Parts = append(messages[index].Parts, RequestPart{Kind: "text", Text: "\n" + instruction})
+			} else {
+				messages[index].Content += "\n" + instruction
+			}
+		}
 	}
 	return requestMessagesToContextItems(messages)
 }
