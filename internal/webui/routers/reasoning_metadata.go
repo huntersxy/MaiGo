@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"MaiGo/internal/common/llmjson"
 )
 
 // 本文件对齐 ../MaiBot/src/webui/routers/reasoning_process.py 的元数据与预览提取
@@ -579,8 +581,12 @@ func extractSelectedExpressionPairs(payload map[string]any) ([]reasoningSelected
 	if output == "" {
 		return nil, false
 	}
-	var result map[string]any
-	if err := json.Unmarshal([]byte(output), &result); err != nil {
+	parsed, err := llmjson.Parse(output, true, true)
+	if err != nil {
+		return nil, false
+	}
+	result, ok := parsed.(map[string]any)
+	if !ok {
 		return nil, false
 	}
 	rawIDs, ok := result["selected_ids"].([]any)
