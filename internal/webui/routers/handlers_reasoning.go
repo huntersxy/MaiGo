@@ -590,6 +590,17 @@ func (d Deps) handleReasoningToolCallSource(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusOK, map[string]any{"record": nil})
 		return
 	}
+	// 被动回复不产生工具调用输出，直接使用保存时记录的真实 Planner 来源
+	if payload, ok := loadReasoningJSONPayload(filepath.Join(root, toolStage, session, stem+".json")); ok {
+		if metadata, ok := payload["metadata"].(map[string]any); ok {
+			if sourceURI, ok := metadata["source_planner_uri"].(string); ok {
+				if sourceStep, found := parseReasoningSourceURI(root, session, sourceURI); found {
+					writeJSON(w, http.StatusOK, map[string]any{"record": reasoningToolCallRecord(callID, sourceStep.Stage, session, sourceStep.Stem)})
+					return
+				}
+			}
+		}
+	}
 	stageNames := listReasoningStageNames(root)
 	sort.SliceStable(stageNames, func(i, j int) bool { return stageNames[i] == "planner" && stageNames[j] != "planner" })
 	for _, stage := range stageNames {

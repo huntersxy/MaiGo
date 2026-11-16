@@ -12,6 +12,7 @@ func mountReasoningRoutes(r chi.Router, d Deps) {
 	r.Get("/html", d.handleReasoningHTML)
 	r.Get("/tool-call-records", d.handleReasoningToolCallRecords)
 	r.Get("/tool-call-source", d.handleReasoningToolCallSource)
+	r.Get("/related-records", d.handleReasoningRelatedRecords)
 	r.Get("/active-context", d.handleReasoningActiveContext)
 	r.Post("/import", d.handleReasoningImport)
 	r.Post("/replay", d.handleReasoningReplay)

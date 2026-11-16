@@ -1,9 +1,11 @@
 package replyer
 
 import (
+	"context"
 	"strings"
 	"time"
 
+	"MaiGo/internal/common/reasoningtrace"
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka/display"
 
@@ -13,7 +15,7 @@ import (
 
 // persistReplyPreview 对齐 _persist_reply_preview：仅在开启 debug.save_maisaka_reasoning 时
 // 把本次 replyer 请求与输出写入结构化 Prompt 预览，供 WebUI 推理页面查看
-func (g *ReplyGenerator) persistReplyPreview(result *ReplyGenerationResult, sessionID, replyReason string) {
+func (g *ReplyGenerator) persistReplyPreview(ctx context.Context, result *ReplyGenerationResult, sessionID, replyReason string) {
 	if g == nil || result == nil {
 		return
 	}
@@ -41,6 +43,10 @@ func (g *ReplyGenerator) persistReplyPreview(result *ReplyGenerationResult, sess
 			metadata[key] = value
 		}
 	}
+	traceID := reasoningtrace.TraceID(ctx)
+	if traceID != "" {
+		metadata["reasoning_trace_id"] = traceID
+	}
 
 	payload := map[string]any{
 		"schema_version": 6,
@@ -64,7 +70,7 @@ func (g *ReplyGenerator) persistReplyPreview(result *ReplyGenerationResult, sess
 	if logger == nil {
 		logger = display.DefaultPromptPreviewLogger()
 	}
-	if _, err := logger.SavePreviewFile(sessionID, g.requestType(), string(content), nil, nil); err != nil {
+	if _, err := logger.SavePreviewFileWithTrace(sessionID, g.requestType(), string(content), nil, nil, traceID); err != nil {
 		zap.L().Warn("写入 Replyer Prompt 预览失败", zap.Error(err))
 	}
 }

@@ -68,7 +68,7 @@ func NormalizePreviewMetadata(metadata map[string]any) map[string]any {
 	if value, ok := metadata["prompt_cache_reported"].(bool); ok {
 		normalized["prompt_cache_reported"] = value
 	}
-	for _, key := range []string{"tool_choice", "request_source"} {
+	for _, key := range []string{"tool_choice", "request_source", "source_planner_uri", "reasoning_trace_id"} {
 		if value, ok := metadata[key].(string); ok {
 			normalized[key] = value
 		}

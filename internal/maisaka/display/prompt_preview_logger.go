@@ -72,11 +72,18 @@ func ConfigureDefaultPreviewLimit(limit int) {
 
 // SavePreviewFile 登记一次预览落盘并立即返回该预览的文件路径
 func (l *PromptPreviewLogger) SavePreviewFile(chatID, category, content string, images []PreviewImageAsset, lookup PreviewSessionLookup) (string, error) {
+	return l.SavePreviewFileWithTrace(chatID, category, content, images, lookup, "")
+}
+
+// SavePreviewFileWithTrace 保存预览并登记到本轮推理 trace
+func (l *PromptPreviewLogger) SavePreviewFileWithTrace(
+	chatID, category, content string, images []PreviewImageAsset, lookup PreviewSessionLookup, traceID string,
+) (string, error) {
 	categoryDir := NormalizePreviewName(category)
 	chatDir := filepath.Join(l.BaseDir, categoryDir, BuildPreviewChatDirName(chatID, lookup))
 	stem := l.allocateStem(chatDir)
 	filePath := filepath.Join(chatDir, fmt.Sprintf("%d.json", stem))
-	if err := l.WriteRecordFile(filePath, content, images); err != nil {
+	if err := l.WriteRecordFileWithTrace(filePath, content, images, traceID); err != nil {
 		return "", err
 	}
 	l.trimOverflow(chatDir)
@@ -85,6 +92,11 @@ func (l *PromptPreviewLogger) SavePreviewFile(chatID, category, content string, 
 
 // WriteRecordFile 原子写入一条预览记录
 func (l *PromptPreviewLogger) WriteRecordFile(filePath, content string, images []PreviewImageAsset) error {
+	return l.WriteRecordFileWithTrace(filePath, content, images, "")
+}
+
+// WriteRecordFileWithTrace 原子写入一条预览记录，并同步推理轮次索引
+func (l *PromptPreviewLogger) WriteRecordFileWithTrace(filePath, content string, images []PreviewImageAsset, traceID string) error {
 	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
 		return err
 	}
@@ -104,7 +116,10 @@ func (l *PromptPreviewLogger) WriteRecordFile(filePath, content string, images [
 	if err := os.WriteFile(temporary, []byte(content), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(temporary, filePath)
+	if err := os.Rename(temporary, filePath); err != nil {
+		return err
+	}
+	return RegisterReasoningStep(l.BaseDir, filePath, traceID)
 }
 
 // AppendRecordEvent 追加一行事件，旧事件保持原样
@@ -135,6 +150,7 @@ func (l *PromptPreviewLogger) AppendRecordEvent(filePath, content string, images
 
 // DeleteRecordFile 删除日志
 func (l *PromptPreviewLogger) DeleteRecordFile(filePath string) error {
+	RemoveReasoningStep(l.BaseDir, filePath)
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}

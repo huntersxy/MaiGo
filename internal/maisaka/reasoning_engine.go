@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"MaiGo/internal/common/reasoningtrace"
 	"MaiGo/internal/maisaka/turn_trigger"
 )
 
@@ -804,6 +805,8 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 	monitorResults := make([]map[string]any, 0, len(toolCalls))
 	shouldStopAfterExecution := false
 	deferredPostHistory := make([]ContextMessage, 0, len(toolCalls))
+	// 同一批工具调用共用本轮 trace，供预览记录互相索引
+	traceCtx := reasoningtrace.WithTraceID(ctx, reasoningtrace.NewTraceID())
 
 	for index, call := range toolCalls {
 		e.logToolCallSource(call, index+1, len(toolCalls))
@@ -826,7 +829,7 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 				Message:  "被动式 replyer 不调用 reply；决定发言时请直接输出回复指导，不要调用工具。",
 			}
 		} else if runtime.opts.Tools != nil {
-			result = e.invokeTool(ctx, invocation)
+			result = e.invokeTool(traceCtx, invocation)
 		}
 		if !runtime.IsActionToolCurrentlyAvailable(call.Name) && !result.Success {
 			result = appendDeferredToolParameterHint(result)
@@ -836,10 +839,10 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 			runtime.resetConsecutiveWaitCount("tool:" + call.Name)
 		}
 		if runtime.opts.Tools != nil {
-			runtime.opts.Tools.AfterExecution(ctx, invocation, result)
+			runtime.opts.Tools.AfterExecution(traceCtx, invocation, result)
 		}
 		// 对齐 Python reasoning_engine.py:2125 先落库工具记录并处理副作用，再整理与追加历史
-		e.recordToolExecution(ctx, invocation, result, runtime.CurrentActionToolSpec(call.Name))
+		e.recordToolExecution(traceCtx, invocation, result, runtime.CurrentActionToolSpec(call.Name))
 
 		condensed := ""
 		rawContent := result.Content

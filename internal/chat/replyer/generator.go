@@ -455,7 +455,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	}
 
 	result.RequestMessages = finalRequestItems
-	g.persistReplyPreview(&result, sessionID, req.ReplyReason)
+	g.persistReplyPreview(ctx, &result, sessionID, req.ReplyReason)
 	if strings.TrimSpace(responseText) == "" {
 		if result.ErrorCode != "plugin_aborted" {
 			if result.ErrorCode == "plugin_empty_response" {
