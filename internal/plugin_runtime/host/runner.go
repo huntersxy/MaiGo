@@ -167,6 +167,7 @@ func (h *Host) StopRunner(group RunnerGroup) {
 	}
 	state.Started = false
 	h.markRunnerStopped(group)
+	h.clearStartupState(group)
 }
 
 // StopAllRunners 按启动逆序停止全部 Runner 组（第三方先于内置）

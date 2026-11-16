@@ -2,8 +2,11 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 
 	"MaiGo/internal/plugin_runtime/protocol"
 )
@@ -23,6 +26,9 @@ const (
 	DefaultRunnerSpawnWait   = 30 * time.Second
 	DefaultMaxRestartAttempt = 3
 )
+
+// ErrRunnerReadyTimeout 就绪等待超时；加载仍在后台继续，不属于启动失败
+var ErrRunnerReadyTimeout = errors.New("等待 Runner 就绪超时")
 
 // RunnerStatus Runner 运行时快照
 type RunnerStatus struct {
@@ -228,11 +234,11 @@ func (h *Host) WaitForRunnerReady(ctx context.Context, group RunnerGroup, timeou
 		select {
 		case <-ctx.Done():
 			return protocol.RunnerReadyPayload{}, ctx.Err()
-		case <-ticker.C:
-			if time.Now().After(deadline) {
-				return protocol.RunnerReadyPayload{}, fmt.Errorf("等待 Runner 就绪超时（%s）", timeout)
+			case <-ticker.C:
+				if time.Now().After(deadline) {
+					return protocol.RunnerReadyPayload{}, fmt.Errorf("%w（%s）", ErrRunnerReadyTimeout, timeout)
+				}
 			}
-		}
 	}
 }
 
@@ -287,4 +293,29 @@ func (h *Host) resetRestartCount(group RunnerGroup) {
 	lifecycle := h.runnerLifecycleLocked(group)
 	lifecycle.RestartCount = 0
 	h.mu.Unlock()
+}
+
+// waitForStartupCompletion 持续等待本轮加载：进程退出/断连仍报错，超时只产生可见等待状态
+func (h *Host) waitForStartupCompletion(ctx context.Context, group RunnerGroup, timeout time.Duration) (protocol.RunnerReadyPayload, error) {
+	if timeout <= 0 {
+		timeout = h.RunnerSpawnTimeout()
+	}
+	startedAt := time.Now()
+	for {
+		payload, err := h.WaitForRunnerReady(ctx, group, timeout)
+		if err == nil {
+			h.clearStartupTimeout(group)
+			return payload, nil
+		}
+		if !errors.Is(err, ErrRunnerReadyTimeout) || ctx.Err() != nil {
+			return payload, err
+		}
+		elapsed := time.Since(startedAt).Seconds()
+		reason := fmt.Sprintf(
+			"本组插件加载已等待 %.1f 秒，超过 %g 秒的等待阈值；尚未完成的插件仍在后台加载，Runner 未被停止。",
+			elapsed, timeout.Seconds(),
+		)
+		h.recordStartupTimeout(group, reason)
+		zap.L().Warn(reason)
+	}
 }

@@ -134,6 +134,27 @@ type RunnerReadyPayload struct {
 	ExplicitlyDisabledPlugins []string          `msgpack:"explicitly_disabled_plugins" json:"explicitly_disabled_plugins"`
 }
 
+// RunnerStartupProgressPayload runner.startup_progress 广播：本轮已完成结果和仍在等待的插件
+type RunnerStartupProgressPayload struct {
+	LoadedPlugins             []string          `msgpack:"loaded_plugins" json:"loaded_plugins"`
+	FailedPlugins             []string          `msgpack:"failed_plugins" json:"failed_plugins"`
+	FailedPluginReasons       map[string]string `msgpack:"failed_plugin_reasons" json:"failed_plugin_reasons"`
+	InactivePlugins           []string          `msgpack:"inactive_plugins" json:"inactive_plugins"`
+	ExplicitlyDisabledPlugins []string          `msgpack:"explicitly_disabled_plugins" json:"explicitly_disabled_plugins"`
+	LoadingPlugins            []string          `msgpack:"loading_plugins" json:"loading_plugins"`
+}
+
+// ReadyPayload 转换成本轮完成结果
+func (p RunnerStartupProgressPayload) ReadyPayload() RunnerReadyPayload {
+	return RunnerReadyPayload{
+		LoadedPlugins:             p.LoadedPlugins,
+		FailedPlugins:             p.FailedPlugins,
+		FailedPluginReasons:       p.FailedPluginReasons,
+		InactivePlugins:           p.InactivePlugins,
+		ExplicitlyDisabledPlugins: p.ExplicitlyDisabledPlugins,
+	}
+}
+
 // UnregisterPluginPayload plugin.unregister 请求，对齐 protocol.envelope.UnregisterPluginPayload
 type UnregisterPluginPayload struct {
 	PluginID string `msgpack:"plugin_id" json:"plugin_id"`

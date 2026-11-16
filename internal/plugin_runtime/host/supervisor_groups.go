@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // RunnerGroupSpec 双 Supervisor 启动计划中的单个分组
@@ -36,7 +38,7 @@ func runnerGroupPriority(group RunnerGroup) int {
 
 // StartRunnerGroups 按内置优先、第三方在后的顺序启动分组
 //
-// 任一分组启动失败或要求就绪但未就绪时，按已启动分组的逆序回滚，避免半启动状态。
+// 单组启动失败只记录日志并继续下一组；只有全部分组都失败才返回错误。
 func (h *Host) StartRunnerGroups(ctx context.Context, specs []RunnerGroupSpec) ([]*RunnerState, error) {
 	if h == nil {
 		return nil, fmt.Errorf("Host 未初始化")
@@ -49,8 +51,12 @@ func (h *Host) StartRunnerGroups(ctx context.Context, specs []RunnerGroupSpec) (
 	for _, spec := range normalized {
 		state, startErr := h.StartRunner(ctx, spec.Options)
 		if startErr != nil {
-			h.StopRunnerGroupsReverse(specsToGroups(normalized[:len(states)]))
-			return nil, fmt.Errorf("启动 Runner 分组 %s 失败: %w", spec.Group, startErr)
+			zap.L().Error("插件运行时分组启动失败",
+				zap.String("group", string(spec.Group)),
+				zap.Error(startErr),
+			)
+			h.recordStartupFailure(spec.Group, fmt.Sprintf("%T: %v", startErr, startErr))
+			continue
 		}
 		states = append(states, state)
 		if !spec.RequireReady {
@@ -60,10 +66,21 @@ func (h *Host) StartRunnerGroups(ctx context.Context, specs []RunnerGroupSpec) (
 		if timeout <= 0 {
 			timeout = h.RunnerSpawnTimeout()
 		}
-		if _, readyErr := h.WaitForRunnerReady(ctx, spec.Group, timeout); readyErr != nil {
-			h.StopRunnerGroupsReverse(specsToGroups(normalized[:len(states)]))
-			return nil, fmt.Errorf("Runner 分组 %s 未就绪: %w", spec.Group, readyErr)
+		if _, readyErr := h.waitForStartupCompletion(ctx, spec.Group, timeout); readyErr != nil {
+			if ctx.Err() != nil {
+				return states, ctx.Err()
+			}
+			zap.L().Error("Runner 分组启动失败",
+				zap.String("group", string(spec.Group)),
+				zap.Error(readyErr),
+			)
+			h.recordStartupFailure(spec.Group, fmt.Sprintf("%T: %v", readyErr, readyErr))
+			h.StopRunner(spec.Group)
+			states = states[:len(states)-1]
 		}
+	}
+	if len(states) == 0 {
+		return nil, fmt.Errorf("所有插件运行时分组均启动失败")
 	}
 	return states, nil
 }
@@ -89,14 +106,6 @@ func normalizeRunnerGroupSpecs(specs []RunnerGroupSpec) ([]RunnerGroupSpec, erro
 		return runnerGroupPriority(normalized[i].Group) < runnerGroupPriority(normalized[j].Group)
 	})
 	return normalized, nil
-}
-
-func specsToGroups(specs []RunnerGroupSpec) []RunnerGroup {
-	groups := make([]RunnerGroup, 0, len(specs))
-	for _, spec := range specs {
-		groups = append(groups, spec.Group)
-	}
-	return groups
 }
 
 // StopRunnerGroupsReverse 按启动逆序停止指定分组，第三方先于内置

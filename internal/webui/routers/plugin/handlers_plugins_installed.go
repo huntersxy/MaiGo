@@ -84,14 +84,26 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 		record, registered := records[pluginID]
 		loadStatus := "not_loaded"
 		loadError := ""
-		if registered {
-			loadStatus = "success"
-		}
-		// 对齐 Python integration.py:309 的 _plugin_transitions：加载/停止中优先展示过渡状态
 		if d.PluginHost != nil {
+			statuses := d.PluginHost.PluginLoadStatuses()
+			reasons := d.PluginHost.PluginLoadFailureReasons()
+			if status, ok := statuses[pluginID]; ok {
+				loadStatus = status
+				if status == "failed" || status == "timed_out" {
+					loadError = reasons[pluginID]
+				}
+			} else {
+				loadStatus = d.PluginHost.StartupLoadStatus()
+				if loadStatus == "failed" || loadStatus == "timed_out" {
+					loadError = d.PluginHost.StartupLoadReason()
+				}
+			}
+			// 对齐 Python integration.py:309 的 _plugin_transitions：加载/停止中优先展示过渡状态
 			if transition := d.PluginHost.PluginTransition(pluginID); transition != "" {
 				loadStatus = transition
 			}
+		} else if registered {
+			loadStatus = "success"
 		}
 		if record.configError != "" {
 			loadStatus = "failed"
@@ -102,7 +114,7 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			loadError = configError
 		}
 		effectiveStatus := loadStatus
-		if !enabled && loadStatus != "success" && loadStatus != "loading" && loadStatus != "stopping" {
+		if !enabled && loadStatus != "success" && loadStatus != "loading" && loadStatus != "timed_out" && loadStatus != "stopping" {
 			effectiveStatus = "disabled"
 		}
 		release, _ := pluginmarket.ReadReleaseReceipt(pluginPath)
@@ -138,7 +150,7 @@ type pluginmarketHostRecord struct {
 }
 
 func loadErrorOrEmpty(loadError, status string) string {
-	if status == "failed" {
+	if status == "failed" || status == "timed_out" {
 		return loadError
 	}
 	return ""

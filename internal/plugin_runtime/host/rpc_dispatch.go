@@ -45,6 +45,8 @@ func (s *RPCServer) dispatchRequest(ctx context.Context, env protocol.Envelope) 
 		return s.handleUnregisterPlugin(env)
 	case protocol.MethodRunnerReady:
 		return s.handleRunnerReady(env)
+	case protocol.MethodRunnerStartupProgress:
+		return s.handleStartupProgress(env)
 	default:
 		return env.MakeErrorResponse(
 			string(protocol.ErrorCodeMethodNotAllowed),
@@ -78,6 +80,10 @@ func (s *RPCServer) handleBroadcast(ctx context.Context, env protocol.Envelope) 
 		return nil
 	case protocol.MethodRunnerReady:
 		_ = s.handleRunnerReady(env)
+		return nil
+	case protocol.MethodRunnerStartupProgress:
+		_ = s.handleStartupProgress(env)
+		return nil
 		return nil
 	default:
 		return nil
@@ -294,4 +300,14 @@ func (s *RPCServer) handleRunnerReady(env protocol.Envelope) protocol.Envelope {
 	}
 	s.host.ApplyRunnerReadyForGroup(payload, s.RunnerGroup())
 	return env.MakeResponse(map[string]any{"accepted": true}, nil)
+}
+
+// handleStartupProgress 整轮完成前发布逐插件结果
+func (s *RPCServer) handleStartupProgress(env protocol.Envelope) protocol.Envelope {
+	payload, err := decodePayload[protocol.RunnerStartupProgressPayload](env.Payload)
+	if err != nil {
+		return env.MakeErrorResponse(string(protocol.ErrorCodeBadPayload), "runner.startup_progress payload 非法", nil)
+	}
+	accepted := s.host.ApplyRunnerStartupProgressForGroup(payload, s.RunnerGroup())
+	return env.MakeResponse(map[string]any{"accepted": accepted}, nil)
 }

@@ -2,9 +2,10 @@ package protocol
 
 // RPC 方法名常量，对齐 Host rpc_server / supervisor 注册表（子集）
 const (
-	MethodRunnerHello    = "runner.hello"
-	MethodRunnerReady    = "runner.ready"
-	MethodRunnerLogBatch = "runner.log_batch"
+	MethodRunnerHello           = "runner.hello"
+	MethodRunnerReady           = "runner.ready"
+	MethodRunnerStartupProgress = "runner.startup_progress"
+	MethodRunnerLogBatch        = "runner.log_batch"
 
 	MethodHostPing = "host.ping"
 	MethodPing     = "ping"

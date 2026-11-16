@@ -512,7 +512,7 @@ func (s *RPCServer) serveConn(ctx context.Context, raw net.Conn) {
 }
 
 func (s *RPCServer) handleHandshake(conn *transport.FramedConn) error {
-	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	data, err := conn.RecvFrame()
 	_ = conn.SetReadDeadline(time.Time{})
 	if err != nil {

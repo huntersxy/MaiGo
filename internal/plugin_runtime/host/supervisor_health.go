@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -186,12 +187,14 @@ func (h *Host) RestartRunner(ctx context.Context, opts StartRunnerOptions) error
 	state, err := h.StartRunner(ctx, opts)
 	if err != nil {
 		h.failRunnerStart(opts.Group, err)
+		h.recordStartupFailure(opts.Group, fmt.Sprintf("%T: %v", err, err))
 		return err
 	}
 	if opts.SpawnPython {
-		payload, waitErr := h.WaitForRunnerReady(ctx, opts.Group, h.RunnerSpawnTimeout())
+		payload, waitErr := h.waitForStartupCompletion(ctx, opts.Group, h.RunnerSpawnTimeout())
 		if waitErr != nil {
 			h.failRunnerStart(opts.Group, waitErr)
+			h.recordStartupFailure(opts.Group, fmt.Sprintf("%T: %v", waitErr, waitErr))
 			h.StopRunner(opts.Group)
 			return waitErr
 		}
