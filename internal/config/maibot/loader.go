@@ -183,9 +183,6 @@ func finalizeLoadedConfig(out *InstanceConfig, opts LoadOptions) (*InstanceConfi
 	if err := ValidateFilesConfig(out.Bot); err != nil {
 		return nil, fmt.Errorf("bot_config files 校验: %w", err)
 	}
-	if err := ValidateKeywordReaction(out.Bot); err != nil {
-		return nil, fmt.Errorf("bot_config 关键词反应校验: %w", err)
-	}
 	if err := ValidateModelConfig(out.Model, nil); err != nil {
 		return nil, fmt.Errorf("model_config 校验: %w", err)
 	}

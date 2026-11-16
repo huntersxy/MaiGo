@@ -27,6 +27,7 @@ func (g *ReplyGenerator) invokeBeforeRequestHook(ctx context.Context, sessionID 
 		"task_name":               defaultTask,
 		"model_name":              "",
 		"extra_prompt":            pluginPrompt,
+		"match_text":              keywordReactionMatchText(g.Builder, history, req.Target),
 		"attempt":                 retryCount + 1,
 		"retry_count":             retryCount,
 		"max_retries":             g.maxHookRetries(),
@@ -47,6 +48,24 @@ func (g *ReplyGenerator) invokeBeforeRequestHook(ctx context.Context, sessionID 
 		result.Kwargs["extra_prompt"] = pluginPrompt
 	}
 	return result
+}
+
+// keywordReactionMatchText 返回本次回复针对的最新用户消息文本
+func keywordReactionMatchText(builder *PromptBuilder, history []ChatMessage, target *ReplyTarget) string {
+	if target != nil && builder != nil {
+		return strings.TrimSpace(builder.BuildTargetMessageContent(target))
+	}
+	for index := len(history) - 1; index >= 0; index-- {
+		message := history[index]
+		if message.SourceKind != "user" {
+			continue
+		}
+		content := strings.TrimSpace(firstNonEmpty(message.Content, buildTextFromParts(message.Parts)))
+		if content != "" {
+			return content
+		}
+	}
+	return ""
 }
 
 // invokeBeforeModelRequestHook 发射 maisaka.replyer.before_model_request

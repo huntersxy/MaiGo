@@ -163,9 +163,6 @@ func validateBotConfigMap(doc map[string]any) error {
 	if err := maibotcfg.ValidateFilesConfig(file); err != nil {
 		return err
 	}
-	if err := maibotcfg.ValidateKeywordReaction(file); err != nil {
-		return err
-	}
 	return maibotcfg.ValidateReplyPostProcess(file)
 }
 

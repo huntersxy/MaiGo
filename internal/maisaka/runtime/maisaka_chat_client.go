@@ -390,8 +390,6 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
 	cfg.GeminiReplyCompatibility = bot.Debug.GeminiReplyCompatibility
 	cfg.KeepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
-	cfg.KeywordRules = replyer.KeywordRulesFromConfig(bot.KeywordReaction.KeywordRules)
-	cfg.RegexRules = replyer.RegexRulesFromConfig(bot.KeywordReaction.RegexRules)
 	return cfg
 }
 

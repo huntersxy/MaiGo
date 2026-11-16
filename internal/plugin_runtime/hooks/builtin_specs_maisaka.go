@@ -65,6 +65,10 @@ func maisakaHookSpecs() []HookSpec {
 					"type":        "string",
 					"description": "Hook 可追加到本次 replyer 提示词中的额外回复要求。",
 				},
+				"match_text": map[string]any{
+					"type":        "string",
+					"description": "本次回复所针对的最新用户消息文本，供插件做关键词等匹配；无可用文本时为空字符串。",
+				},
 				"attempt":     map[string]any{"type": "integer", "description": "当前生成尝试序号，从 1 开始。"},
 				"retry_count": map[string]any{"type": "integer", "description": "当前已经重新生成的次数。"},
 				"max_retries": map[string]any{
@@ -78,7 +82,7 @@ func maisakaHookSpecs() []HookSpec {
 					"type":        "object",
 					"description": "reply 工具透传给 replyer 的额外参数，不含目标消息 ID 等内部参数。",
 				},
-			}, "session_id", "request_type", "task_name", "model_name", "extra_prompt", "attempt", "retry_count", "max_retries", "reply_message_id", "reply_reason", "selected_expression_ids", "reply_tool_args"),
+			}, "session_id", "request_type", "task_name", "model_name", "extra_prompt", "match_text", "attempt", "retry_count", "max_retries", "reply_message_id", "reply_reason", "selected_expression_ids", "reply_tool_args"),
 			DefaultTimeoutMS: 6000,
 			DenyAbort:        true,
 		},

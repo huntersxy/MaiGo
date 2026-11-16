@@ -376,10 +376,8 @@ func limitLatestRequestImages(items []RequestMessage, limit int) []RequestMessag
 
 // BuildRequestMessages 对齐 _build_request_messages 的普通模板分支
 func (b *PromptBuilder) BuildRequestMessages(ctx context.Context, req ReplyRequest) ([]RequestMessage, error) {
-	keywordsReactionPrompt, err := b.BuildKeywordReactionPrompt(req.History, req.Target)
-	if err != nil {
-		return nil, err
-	}
+	// 关键词反应由内置插件通过 maisaka.replyer.before_request 追加到回复要求
+	keywordsReactionPrompt := ""
 	systemPrompt, err := b.BuildSystemPrompt()
 	if err != nil {
 		return nil, err

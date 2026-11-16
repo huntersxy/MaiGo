@@ -107,18 +107,6 @@ type AttachmentImage struct {
 	Content    string
 }
 
-// KeywordRule 关键词反应规则
-type KeywordRule struct {
-	Keywords []string
-	Reaction string
-}
-
-// RegexRule 正则反应规则；Reaction 中可用 [name] 引用命名捕获组
-type RegexRule struct {
-	Patterns []string
-	Reaction string
-}
-
 // GeneratorConfig replyer prompt 生成所需配置，对应 global_config 的相关字段
 type GeneratorConfig struct {
 	BotName     string
@@ -133,9 +121,6 @@ type GeneratorConfig struct {
 	PrivateChatPrompt string
 	ChatPrompt        string
 	IsGroupChat       *bool
-
-	KeywordRules []KeywordRule
-	RegexRules   []RegexRule
 
 	// PromptLocale 用于输出格式说明；为空时默认 zh-CN
 	PromptLocale string

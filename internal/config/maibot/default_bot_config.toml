@@ -418,10 +418,6 @@ check_interval_hours = 6.0
 emoji_file_retention_days = 30
 no_file_record_retention_days = 30
 
-[keyword_reaction]
-keyword_rules = []
-regex_rules = []
-
 [response_post_process]
 enable_response_post_process = true
 typing_speed = 1.0

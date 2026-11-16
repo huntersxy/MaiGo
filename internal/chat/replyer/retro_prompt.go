@@ -181,9 +181,6 @@ func (b *PromptBuilder) BuildRetroTemplateContext(history []ChatMessage, req Rep
 	keywordsReactionPrompt := ""
 	if !maiReplier {
 		expressionHabitsBlock = strings.TrimSpace(req.ExpressionHabits)
-		if prompt, err := b.BuildKeywordReactionPrompt(history, req.Target); err == nil {
-			keywordsReactionPrompt = prompt
-		}
 	}
 	replyTargetBlock := b.BuildRetroReplyTargetBlock(req.Target, history)
 	if replyTargetBlock != "" {

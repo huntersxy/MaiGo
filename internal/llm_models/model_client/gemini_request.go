@@ -190,17 +190,17 @@ func (c *geminiClient) buildGenerationConfig(
 	enableGoogleSearch bool,
 	extra map[string]any,
 ) map[string]any {
-		config := filterGeminiExtraParams(extra, c.model)
-		// 对齐 Python gemini_client.py:913-914：extra_params 已有 temperature 时不覆盖；
-		// send_temperature=false 只让上游把请求温度置空，不剥 extra_params。
-		if maxTokens != nil {
-			config["maxOutputTokens"] = *maxTokens
+	config := filterGeminiExtraParams(extra, c.model)
+	// 对齐 Python gemini_client.py:913-914：extra_params 已有 temperature 时不覆盖；
+	// send_temperature=false 只让上游把请求温度置空，不剥 extra_params。
+	if maxTokens != nil {
+		config["maxOutputTokens"] = *maxTokens
+	}
+	if temperature != nil {
+		if _, exists := config["temperature"]; !exists {
+			config["temperature"] = *temperature
 		}
-		if temperature != nil {
-			if _, exists := config["temperature"]; !exists {
-				config["temperature"] = *temperature
-			}
-		}
+	}
 	if topP != nil {
 		config["topP"] = *topP
 	}
@@ -429,7 +429,7 @@ func buildGeminiContents(messages []*schema.AgenticMessage) ([]map[string]any, s
 					return nil, "", err
 				}
 				if len(parts) > 0 {
-					contents = append(contents, map[string]any{"role": "tool", "parts": parts})
+					contents = append(contents, map[string]any{"role": "user", "parts": parts})
 				}
 				continue
 			}

@@ -1301,6 +1301,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 					zap.L().Error("错字配置迁移到内置插件失败", zap.Error(err))
 					return 1
 				}
+				if err := pluginruntime.MigrateBuiltinKeywordReactionConfig(pluginSpawnCfg.ProjectRoot, &instanceCfg.Bot.KeywordReaction); err != nil {
+					zap.L().Error("关键词反应配置迁移到内置插件失败", zap.Error(err))
+					return 1
+				}
 			}
 		}
 		// 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局

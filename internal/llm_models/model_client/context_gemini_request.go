@@ -27,7 +27,7 @@ func BuildGeminiContentsFromContextItems(items []ContextItem) ([]map[string]any,
 		if len(toolParts) == 0 {
 			return
 		}
-		contents = append(contents, map[string]any{"role": "tool", "parts": toolParts})
+		contents = append(contents, map[string]any{"role": "user", "parts": toolParts})
 		toolParts = nil
 	}
 	flushModel := func() {
