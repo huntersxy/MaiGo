@@ -35,3 +35,23 @@ func TestCommandTextRemovesOnlyLeadingBotMention(t *testing.T) {
 		t.Fatalf("组件不匹配时不应改写正文: %q", got)
 	}
 }
+
+func TestCommandTargetAllowedRequiresStructuredSelfMention(t *testing.T) {
+	account := "bot"
+	bot := &ChatBot{requireSelfMention: func() bool { return true }}
+	message := &SessionMessage{AccountID: &account}
+	if !bot.commandTargetAllowed(message) {
+		t.Fatal("无 @ 的命令应允许")
+	}
+	other := "someone"
+	message.RawMessage = &messagecomponent.MessageSequence{Components: []messagecomponent.Component{
+		messagecomponent.AtComponent{TargetUserID: other},
+	}}
+	if bot.commandTargetAllowed(message) {
+		t.Fatal("仅 @ 他人时命令不应匹配")
+	}
+	message.RawMessage.Components = append(message.RawMessage.Components, messagecomponent.AtComponent{TargetUserID: account})
+	if !bot.commandTargetAllowed(message) {
+		t.Fatal("@ 中包含当前账号时应允许")
+	}
+}

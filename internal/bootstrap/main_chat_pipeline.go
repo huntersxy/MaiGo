@@ -85,6 +85,8 @@ type chatPipelineOptions struct {
 	EnableVoiceTranscription bool
 	// SilentPermission 对齐 plugin.silent_permission_denied；nil 视为 false
 	SilentPermission func() bool
+	// RequireSelfMention 对齐 plugin.command_require_self_mention；nil 视为 false
+	RequireSelfMention func() bool
 }
 
 // newChatRuntimePipeline 构建旧四参主链；imag 可为空，为空时只保留 Agent 直通
@@ -182,6 +184,7 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 		VoiceMaxBytes:            options.VoiceMaxBytes,
 		EnableVoiceTranscription: options.EnableVoiceTranscription,
 		SilentPermission:         options.SilentPermission,
+		RequireSelfMention:       options.RequireSelfMention,
 		SkipInboundStore:         true,
 		OnHeartflowError:         pipeline.handleHeartflowError,
 		StartupContext:           ctx,

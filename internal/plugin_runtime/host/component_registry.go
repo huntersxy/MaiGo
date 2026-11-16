@@ -208,6 +208,17 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 	}
 
 	switch componentType {
+	case ComponentTypeAction:
+		converted := convertActionMetadataToToolMetadata(comp.Name, metadata)
+		entry.ComponentType = ComponentTypeTool
+		entry.Metadata = converted
+		entry.Enabled = metadataEnabled(converted)
+		entry.Description = metadataText(converted, "description")
+		entry.ParametersRaw = converted["parameters_raw"]
+		entry.InvokeMethod = "plugin.invoke_action"
+		zap.L().Warn("插件仍在使用已弃用的 Action，请迁移到 Tool",
+			zap.String("plugin_id", pluginID), zap.String("component", name))
+		return entry, nil
 	case ComponentTypeTool:
 		platforms, err := normalizeComponentPlatforms(metadata["platforms"], "Tool")
 		if err != nil {
@@ -328,6 +339,45 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 	default:
 		return nil, fmt.Errorf("组件类型 %s 不存在", comp.ComponentType)
 	}
+}
+
+// convertActionMetadataToToolMetadata 为旧 ACTION 声明补齐统一工具参数 Schema 和调用方式
+func convertActionMetadataToToolMetadata(name string, metadata map[string]any) map[string]any {
+	converted := cloneComponentMetadata(metadata)
+	converted["description"] = firstNonEmpty(
+		metadataText(metadata, "description"),
+		metadataText(metadata, "brief_description"),
+		"工具 "+name,
+	)
+	parametersRaw := map[string]any{}
+	if raw, ok := metadata["action_parameters"].(map[string]any); ok && len(raw) > 0 {
+		properties := make(map[string]any, len(raw))
+		for parameterName, parameterDescription := range raw {
+			normalized := strings.TrimSpace(parameterName)
+			if normalized == "" {
+				continue
+			}
+			description := strings.TrimSpace(fmt.Sprint(parameterDescription))
+			if description == "" {
+				description = "兼容旧 Action 参数"
+			}
+			properties[normalized] = map[string]any{
+				"type":        "string",
+				"description": description,
+			}
+		}
+		if len(properties) > 0 {
+			parametersRaw = map[string]any{
+				"type":       "object",
+				"properties": properties,
+			}
+		}
+	}
+	converted["parameters_raw"] = parametersRaw
+	converted["invoke_method"] = "plugin.invoke_action"
+	converted["legacy_action"] = true
+	converted["legacy_component_type"] = ComponentTypeAction
+	return converted
 }
 
 // ReplacePluginComponents 整体替换一个插件的通用组件集合
@@ -474,7 +524,11 @@ func (r *ComponentRegistry) ComponentsByType(componentType string, enabledOnly b
 		if entry == nil {
 			continue
 		}
-		if entry.ComponentType != normalized {
+		if normalized == ComponentTypeAction {
+			if entry.ComponentType != ComponentTypeTool || entry.InvokeMethod != "plugin.invoke_action" {
+				continue
+			}
+		} else if entry.ComponentType != normalized {
 			continue
 		}
 		if enabledOnly && !checkComponentEnabled(entry, filter) {

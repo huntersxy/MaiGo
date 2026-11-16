@@ -69,6 +69,8 @@ type Options struct {
 	EnableVoiceTranscription bool
 	// SilentPermission 对齐 global_config.plugin.silent_permission_denied；nil 视为 false
 	SilentPermission func() bool
+	// RequireSelfMention 对齐 plugin.command_require_self_mention；nil 视为 false
+	RequireSelfMention func() bool
 
 	// SkipInboundStore 跳过心流接收器落库；宿主运行时已自行持久化消息时使用
 	SkipInboundStore bool
@@ -211,6 +213,7 @@ func New(options Options) *Runtime {
 		VoiceTranscriber:         voicePort,
 		EnableVoiceTranscription: options.EnableVoiceTranscription,
 		SilentPermission:         options.SilentPermission,
+		RequireSelfMention:       options.RequireSelfMention,
 		Persons:                  &PersonPort{Registry: options.People},
 		Replies:                  &ReplyPort{Messages: options.Messages},
 		Filter:                   options.InboundFilter,

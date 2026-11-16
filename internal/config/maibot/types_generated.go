@@ -752,10 +752,11 @@ type PersonalityProfile struct {
 }
 
 type PluginConfig struct {
-	Permission             []string `toml:"permission,omitempty"`
-	SilentPermissionDenied bool     `toml:"silent_permission_denied,omitempty"`
-	CommandPermissions     any      `toml:"command_permissions,omitempty"`
-	DisabledCommands       []string `toml:"disabled_commands,omitempty"`
+	Permission                []string `toml:"permission,omitempty"`
+	SilentPermissionDenied    bool     `toml:"silent_permission_denied,omitempty"`
+	CommandRequireSelfMention bool     `toml:"command_require_self_mention,omitempty"`
+	CommandPermissions        any      `toml:"command_permissions,omitempty"`
+	DisabledCommands          []string `toml:"disabled_commands,omitempty"`
 }
 
 type PluginRuntimeConfig struct {

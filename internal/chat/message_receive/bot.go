@@ -37,6 +37,7 @@ type ChatBot struct {
 	now                func() time.Time
 	voiceTranscription bool
 	silentPermission   func() bool
+	requireSelfMention func() bool
 }
 
 // NewChatBot 构造入站机器人；Manager 为空时创建仅内存管理器
@@ -78,6 +79,7 @@ func NewChatBot(options ChatBotOptions) *ChatBot {
 		now:                now,
 		voiceTranscription: options.EnableVoiceTranscription,
 		silentPermission:   options.SilentPermission,
+		requireSelfMention: options.RequireSelfMention,
 	}
 }
 

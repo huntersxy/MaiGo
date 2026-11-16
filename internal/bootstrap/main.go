@@ -1227,6 +1227,13 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			}
 			return instHolder.Config().Bot.Plugin.SilentPermissionDenied
 		},
+		// 对齐 Python global_config.plugin.command_require_self_mention
+		RequireSelfMention: func() bool {
+			if instHolder == nil || instHolder.Config() == nil {
+				return false
+			}
+			return instHolder.Config().Bot.Plugin.CommandRequireSelfMention
+		},
 		LocalOperator: func(platform, userID string) bool {
 			// 对齐 Python is_local_operator：按 platform 与 additional_config 判定
 			return localoperator.IsLocalOperator(platform, map[string]any{"user_id": userID})

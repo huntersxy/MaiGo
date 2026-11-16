@@ -13,6 +13,7 @@ import (
 
 // MaiBot 组件类型，对齐 host/component_registry.py ComponentTypes
 const (
+	ComponentTypeAction         = "ACTION"
 	ComponentTypeCommand        = "COMMAND"
 	ComponentTypeTool           = "TOOL"
 	ComponentTypeEventHandler   = "EVENT_HANDLER"
@@ -25,6 +26,7 @@ const (
 
 // knownComponentTypes 全部合法组件类型
 var knownComponentTypes = map[string]struct{}{
+	ComponentTypeAction:         {},
 	ComponentTypeCommand:        {},
 	ComponentTypeTool:           {},
 	ComponentTypeEventHandler:   {},

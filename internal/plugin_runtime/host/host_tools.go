@@ -207,6 +207,15 @@ func pluginToolPayload(entry *ComponentEntry, args map[string]any, execCtx ToolE
 			payload[key] = value
 		}
 	}
+	if entry.InvokeMethod == "plugin.invoke_action" {
+		// 旧插件通过 action_data 接收业务参数，通过 chat_id 定位聊天流
+		streamID := firstNonEmpty(stringValue(contextPayload["stream_id"]), execCtx.StreamID, execCtx.SessionID)
+		if streamID != "" {
+			payload["stream_id"] = streamID
+			payload["chat_id"] = streamID
+		}
+		payload["action_data"] = cloneAnyMap(args)
+	}
 	return payload
 }
 

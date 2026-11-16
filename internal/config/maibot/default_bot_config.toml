@@ -514,6 +514,7 @@ allow_url = false
 [plugin]
 permission = []
 silent_permission_denied = false
+command_require_self_mention = false
 disabled_commands = []
 
 [plugin.command_permissions]

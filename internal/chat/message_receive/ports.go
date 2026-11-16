@@ -150,6 +150,8 @@ type ChatBotOptions struct {
 	EnableVoiceTranscription bool
 	// SilentPermission 对齐 global_config.plugin.silent_permission_denied；nil 视为 false
 	SilentPermission func() bool
+	// RequireSelfMention 对齐 global_config.plugin.command_require_self_mention；nil 视为 false
+	RequireSelfMention func() bool
 	// ChatControl 聊天暂停与活跃会话管理；nil 时暂停命令只记录状态
 	ChatControl ChatControl
 	Now         func() time.Time

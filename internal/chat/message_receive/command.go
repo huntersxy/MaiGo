@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"MaiGo/internal/common/data_models/messagecomponent"
 	"MaiGo/internal/core/chatpause"
 	"MaiGo/internal/core/localoperator"
 
@@ -18,9 +19,38 @@ const (
 	clearInterceptLevel = 1
 )
 
+// commandTargetAllowed 含 @ 的命令须指向当前接收账号；无 @ 或未开启限制时正常匹配
+func (b *ChatBot) commandTargetAllowed(message *SessionMessage) bool {
+	if b == nil || b.requireSelfMention == nil || !b.requireSelfMention() {
+		return true
+	}
+	if message == nil || message.RawMessage == nil {
+		return true
+	}
+	accountID := ""
+	if message.AccountID != nil {
+		accountID = strings.TrimSpace(*message.AccountID)
+	}
+	mentioned := false
+	for _, component := range message.RawMessage.Components {
+		at, ok := component.(messagecomponent.AtComponent)
+		if !ok {
+			continue
+		}
+		mentioned = true
+		if strings.TrimSpace(at.TargetUserID) == accountID {
+			return true
+		}
+	}
+	return !mentioned
+}
+
 // IsCommandCandidate 判断消息是否可能进入命令链
 func (b *ChatBot) IsCommandCandidate(message *SessionMessage) bool {
 	if b == nil || message == nil {
+		return false
+	}
+	if !b.commandTargetAllowed(message) {
 		return false
 	}
 	text := message.CommandText()
@@ -68,6 +98,9 @@ func (b *ChatBot) IsCommandCandidate(message *SessionMessage) bool {
 // ProcessCommands 对齐 bot._process_commands，返回 handled、response、continueProcess
 func (b *ChatBot) ProcessCommands(ctx context.Context, message *SessionMessage) (bool, string, bool) {
 	if b == nil || message == nil {
+		return false, "", true
+	}
+	if !b.commandTargetAllowed(message) {
 		return false, "", true
 	}
 	// 对齐 Python：命令匹配移除指向当前机器人的前导 @；空串直接继续
@@ -199,6 +232,9 @@ func (b *ChatBot) ProcessClearContextCommand(ctx context.Context, message *Sessi
 	if b == nil || message == nil || b.manager == nil {
 		return false
 	}
+	if !b.commandTargetAllowed(message) {
+		return false
+	}
 	local := localoperator.IsLocalOperator(message.Platform, message.MessageInfo.AdditionalConfig)
 	if !local && b.commands != nil && b.commands.IsCoreCommandDisabled("clear") {
 		return false
@@ -266,6 +302,9 @@ func (b *ChatBot) ProcessClearContextCommand(ctx context.Context, message *Sessi
 // ProcessAdapterLifecycleCommand 对齐 bot._process_adapter_lifecycle_command
 func (b *ChatBot) ProcessAdapterLifecycleCommand(ctx context.Context, message *SessionMessage) bool {
 	if b == nil || message == nil {
+		return false
+	}
+	if !b.commandTargetAllowed(message) {
 		return false
 	}
 	text := message.CommandText()
