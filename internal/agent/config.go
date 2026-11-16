@@ -9,9 +9,14 @@ const (
 	ConnectionCustom     ConnectionKind = "custom"
 )
 
+// DefaultAgentID 对齐 AgentService.agent_id
+const DefaultAgentID = "__maibot_agent__"
+
 // Config 对齐 src/agent/config.py AgentConfig（字段子集）
 type Config struct {
 	Enabled         bool
+	AllowUsers      []string
+	AllowGroups     []string
 	PlannerEnabled  bool
 	PlannerSessions []string
 	Connection      ConnectionKind

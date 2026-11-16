@@ -474,6 +474,9 @@ func (t *AgentToolRuntime) AvailableTools(ctx context.Context) ([]maisaka.ToolSp
 		if !desktopPetToolVisible(ctx, info.Name) {
 			continue
 		}
+		if !tools.AgentChatToolVisible(ctx, info.Name, t.Agent.agentChatPolicy()) {
+			continue
+		}
 		switch maisaka.GetBuiltinToolVisibility(spec) {
 		case maisaka.BuiltinHidden:
 			continue

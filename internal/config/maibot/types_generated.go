@@ -325,6 +325,8 @@ type APIProvider struct {
 
 type AgentConfig struct {
 	Enabled         bool              `toml:"enabled,omitempty"`
+	AllowUsers      []string          `toml:"allow_users,omitempty"`
+	AllowGroups     []string          `toml:"allow_groups,omitempty"`
 	PlannerEnabled  bool              `toml:"planner_enabled,omitempty"`
 	PlannerSessions []string          `toml:"planner_sessions,omitempty"`
 	Connection      string            `toml:"connection,omitempty"`

@@ -2084,6 +2084,8 @@ const (
 func acpConfigFromBot(raw maibotcfg.AgentConfig) agent.Config {
 	cfg := agent.DefaultConfig()
 	cfg.Enabled = raw.Enabled
+	cfg.AllowUsers = append([]string(nil), raw.AllowUsers...)
+	cfg.AllowGroups = append([]string(nil), raw.AllowGroups...)
 	cfg.PlannerEnabled = raw.PlannerEnabled
 	cfg.PlannerSessions = append([]string(nil), raw.PlannerSessions...)
 	switch raw.Connection {

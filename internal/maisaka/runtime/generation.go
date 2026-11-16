@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"MaiGo/internal/agent"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/config"
 	"MaiGo/internal/llm_models"
@@ -228,7 +229,17 @@ func (a *Agent) agentFileToolBuilders() []func() (tool.BaseTool, error) {
 	if instance == nil {
 		return nil
 	}
-	return tools.AgentFileToolBuilders(instance.Agent.Enabled, instance.Capabilities.Files)
+	return tools.AgentFileToolBuilders(instance.Agent.Enabled, instance.Capabilities.Files, a.agentChatPolicy())
+}
+
+// agentChatPolicy 按实例配置构造外接 Agent 的聊天白名单
+func (a *Agent) agentChatPolicy() tools.AgentChatPolicy {
+	policy := tools.AgentChatPolicy{AgentID: agent.DefaultAgentID}
+	if instance := a.instanceBotConfig(); instance != nil {
+		policy.AllowUsers = instance.Agent.AllowUsers
+		policy.AllowGroups = instance.Agent.AllowGroups
+	}
+	return policy
 }
 
 func appendMaisakaTools(builders []func() (tool.BaseTool, error)) []func() (tool.BaseTool, error) {

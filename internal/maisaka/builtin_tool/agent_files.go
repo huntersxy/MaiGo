@@ -3,9 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"MaiGo/internal/agent/files"
+	"MaiGo/internal/core/localoperator"
 	"MaiGo/internal/files"
 	"MaiGo/internal/mcp_module"
 
@@ -18,13 +20,13 @@ import (
 // AgentFileToolBuilders 返回主聊天可用的 agent_* 与 files_* 工具构造器
 // agent 工具对齐 Python 普通聊天只可见 agent_talk/agent_status，且初始为 deferred；
 // files 工具来自 src/files/provider.py（本仓 internal/files/provider.go）。
-func AgentFileToolBuilders(agentEnabled, filesEnabled bool) []func() (tool.BaseTool, error) {
+func AgentFileToolBuilders(agentEnabled, filesEnabled bool, policy AgentChatPolicy) []func() (tool.BaseTool, error) {
 	builders := make([]func() (tool.BaseTool, error), 0, 7)
 	if agentEnabled {
 		for _, name := range agentfiles.AgentChatTools() {
 			name := name
 			builders = append(builders, func() (tool.BaseTool, error) {
-				return newAgentFileTool(name)
+				return newAgentFileTool(name, policy)
 			})
 		}
 	}
@@ -39,15 +41,58 @@ func AgentFileToolBuilders(agentEnabled, filesEnabled bool) []func() (tool.BaseT
 	return builders
 }
 
+// AgentChatPolicy 外接 Agent 工具的聊天白名单，对齐 AgentToolProvider._allowed_chat
+type AgentChatPolicy struct {
+	AgentID     string
+	AllowUsers  []string
+	AllowGroups []string
+}
+
+// Allows 判断当前聊天能否指挥外接 Agent：Agent 自身会话始终放行，白名单全空时不限制
+func (p AgentChatPolicy) Allows(tc *ToolContext) bool {
+	if tc != nil && strings.TrimSpace(tc.SessionID) != "" && tc.SessionID == p.AgentID {
+		return true
+	}
+	if len(p.AllowUsers) == 0 && len(p.AllowGroups) == 0 {
+		return true
+	}
+	if tc == nil {
+		return false
+	}
+	target := ""
+	if tc.TargetID != 0 {
+		target = strconv.FormatInt(tc.TargetID, 10)
+	}
+	scoped := localoperator.BuildScopedUserID(tc.Platform, target)
+	if scoped == "" {
+		return false
+	}
+	if tc.ConversationKind == "group" {
+		_, allowed := localoperator.NormalizeOperatorPermissions(p.AllowGroups)[scoped]
+		return allowed
+	}
+	_, allowed := localoperator.NormalizeOperatorPermissions(p.AllowUsers)[scoped]
+	return allowed
+}
+
+// AgentChatToolVisible 对齐 list_tools 的白名单过滤：不允许时工具不出现在可见列表
+func AgentChatToolVisible(ctx context.Context, name string, policy AgentChatPolicy) bool {
+	if !agentfiles.IsAgentChatTool(name) {
+		return true
+	}
+	return policy.Allows(GetToolContext(ctx))
+}
+
 // agentFileTool 同时承载 agent_* 与 files_* 两类工具，分发时按来源字段区分
 type agentFileTool struct {
 	spec     agentfiles.Spec
 	fileSpec filesvc.ToolSpec
 	isFile   bool
+	policy   AgentChatPolicy
 	info     *schema.ToolInfo
 }
 
-func newAgentFileTool(name string) (tool.BaseTool, error) {
+func newAgentFileTool(name string, policy AgentChatPolicy) (tool.BaseTool, error) {
 	spec, ok := agentfiles.Lookup(name)
 	if !ok {
 		return nil, fmt.Errorf("未知的 agent 工具: %s", name)
@@ -56,7 +101,7 @@ func newAgentFileTool(name string) (tool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &agentFileTool{spec: spec, info: info}, nil
+	return &agentFileTool{spec: spec, policy: policy, info: info}, nil
 }
 
 func newFileTool(name string) (tool.BaseTool, error) {
@@ -148,6 +193,9 @@ func (t *agentFileTool) invoke(ctx context.Context, arguments string) agentfiles
 	}
 	var host agentfiles.Host
 	if tc != nil {
+		if !t.policy.Allows(tc) {
+			return agentfiles.Result{Failed: true, ErrorMessage: "当前聊天没有指挥外接 Agent 的权限。"}
+		}
 		host = tc.AgentFilesHost
 	}
 	return agentfiles.Invoke(ctx, t.spec.Name, args, host)
