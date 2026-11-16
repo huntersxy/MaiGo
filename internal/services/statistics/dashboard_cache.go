@@ -20,12 +20,8 @@ type dashboardCacheSnapshot struct {
 }
 
 func loadDashboardStatisticsCache(instanceDir string, hours int, now time.Time) (DashboardData, bool) {
-	store, err := openTelemetryStore(instanceDir)
-	if err != nil {
-		return DashboardData{}, false
-	}
-	raw := store.Get(dashboardCacheKey)
-	if raw == nil {
+	raw, ok := loadDashboardCacheRaw(instanceDir)
+	if !ok {
 		return DashboardData{}, false
 	}
 	encoded, err := sonic.Marshal(raw)
@@ -60,12 +56,8 @@ func loadDashboardStatisticsCache(instanceDir string, hours int, now time.Time) 
 }
 
 func updateDashboardStatisticsCacheEntry(instanceDir string, hours int, data DashboardData, now time.Time) error {
-	store, err := openTelemetryStore(instanceDir)
-	if err != nil {
-		return err
-	}
 	entries := map[string]map[string]any{}
-	if raw := store.Get(dashboardCacheKey); raw != nil {
+	if raw, ok := loadStatisticsCacheFile(instanceDir, dashboardCacheFilename); ok {
 		encoded, err := sonic.Marshal(raw)
 		if err == nil {
 			var previous dashboardCacheSnapshot
@@ -75,11 +67,32 @@ func updateDashboardStatisticsCacheEntry(instanceDir string, hours int, data Das
 		}
 	}
 	entries[formatDashboardHours(hours)] = compactDashboardCacheEntry(data)
-	return store.Set(dashboardCacheKey, dashboardCacheSnapshot{
+	return saveStatisticsCacheFile(instanceDir, dashboardCacheFilename, dashboardCacheSnapshot{
 		Version:     dashboardCacheVersion,
 		GeneratedAt: float64(now.UnixNano()) / 1e9,
 		Entries:     entries,
 	})
+}
+
+// loadDashboardCacheRaw 读取独立缓存文件；首次读取时把旧 local_store 键迁出
+func loadDashboardCacheRaw(instanceDir string) (any, bool) {
+	if raw, ok := loadStatisticsCacheFile(instanceDir, dashboardCacheFilename); ok {
+		return raw, true
+	}
+	store, err := openTelemetryStore(instanceDir)
+	if err != nil {
+		return nil, false
+	}
+	raw := store.Get(dashboardCacheKey)
+	if raw == nil {
+		return nil, false
+	}
+	if err := saveStatisticsCacheFile(instanceDir, dashboardCacheFilename, raw); err != nil {
+		logStatisticsCacheFailure("迁移首页统计缓存失败", statisticsCachePath(instanceDir, dashboardCacheFilename), err)
+		return raw, true
+	}
+	_ = store.Delete(dashboardCacheKey)
+	return raw, true
 }
 
 func formatDashboardHours(hours int) string {

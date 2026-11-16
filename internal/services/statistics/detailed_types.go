@@ -23,6 +23,7 @@ type (
 
 // DetailedUsage 是 detailed 统计需要的 llm_usage 投影
 type DetailedUsage struct {
+	ID                    int64
 	Timestamp             time.Time
 	RequestType           string
 	ProviderName          string
@@ -63,6 +64,17 @@ type DetailedBotAccount struct {
 	AccountID string
 }
 
+// DetailedTaskUsage 是 model_task_usage 的可靠性投影
+type DetailedTaskUsage struct {
+	BucketTime      time.Time
+	TaskName        string
+	ModelName       string
+	ProviderName    string
+	RequestCount    int64
+	FailureCount    int64
+	SuccessDuration float64
+}
+
 // DetailedProvider 抽象 detailed 统计所需的只读查询，便于无真实库测试
 type DetailedProvider interface {
 	EarliestStatisticsTime(ctx context.Context) (time.Time, bool, error)
@@ -72,4 +84,8 @@ type DetailedProvider interface {
 	OnlineIntervalsSince(ctx context.Context, start time.Time) ([]OnlineInterval, error)
 	MessagesSince(ctx context.Context, start time.Time) ([]DetailedMessage, error)
 	BotAccounts(ctx context.Context) ([]DetailedBotAccount, error)
+	TaskUsageSince(ctx context.Context, start time.Time) ([]DetailedTaskUsage, error)
+	UsageHourlyBetween(ctx context.Context, startBucket, endBucket time.Time) ([]UsageEntry, error)
+	MessageCountBetween(ctx context.Context, start, end time.Time) (int64, error)
+	ReplyCountBetween(ctx context.Context, start, end time.Time, toolName string) (int64, error)
 }

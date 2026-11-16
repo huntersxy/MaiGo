@@ -57,7 +57,7 @@ func (p *postgresDetailedProvider) UsageSince(ctx context.Context, start time.Ti
 	if p == nil || p.db == nil {
 		return nil, nil
 	}
-	query := "SELECT timestamp, request_type, " +
+	query := "SELECT id, timestamp, request_type, " +
 		"model_api_provider_name AS provider_name, model_assign_name, model_name, " +
 		"session_id, task_name, prompt_tokens, completion_tokens, " +
 		"prompt_cache_enabled, prompt_cache_hit_tokens, prompt_cache_miss_tokens, " +
@@ -67,6 +67,13 @@ func (p *postgresDetailedProvider) UsageSince(ctx context.Context, start time.Ti
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (p *postgresDetailedProvider) UsageHourlyBetween(ctx context.Context, startBucket, endBucket time.Time) ([]UsageEntry, error) {
+	if p == nil || p.db == nil {
+		return nil, nil
+	}
+	return UsageHourlyRows(ctx, p.db, startBucket, endBucket)
 }
 
 func (p *postgresDetailedProvider) MessageChatsSince(ctx context.Context, start time.Time) ([]DetailedMessageChat, error) {
@@ -171,4 +178,60 @@ func (p *postgresDetailedProvider) BotAccounts(ctx context.Context) ([]DetailedB
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (p *postgresDetailedProvider) TaskUsageSince(ctx context.Context, start time.Time) ([]DetailedTaskUsage, error) {
+	if p == nil || p.db == nil || !p.db.Migrator().HasTable("model_task_usage") {
+		return nil, nil
+	}
+	query := `SELECT bucket_time, task_name, model_name, provider_name,
+		request_count, failure_count, success_duration
+		FROM model_task_usage WHERE bucket_time >= ? ORDER BY bucket_time`
+	var rows []struct {
+		BucketTime      time.Time
+		TaskName        string
+		ModelName       string
+		ProviderName    string
+		RequestCount    int64
+		FailureCount    int64
+		SuccessDuration float64
+	}
+	if err := p.db.WithContext(ctx).Raw(query, start).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]DetailedTaskUsage, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, DetailedTaskUsage{
+			BucketTime: row.BucketTime, TaskName: row.TaskName, ModelName: row.ModelName, ProviderName: row.ProviderName,
+			RequestCount: row.RequestCount, FailureCount: row.FailureCount, SuccessDuration: row.SuccessDuration,
+		})
+	}
+	return out, nil
+}
+
+func (p *postgresDetailedProvider) MessageCountBetween(ctx context.Context, start, end time.Time) (int64, error) {
+	if p == nil || p.db == nil || !p.db.Migrator().HasTable("mai_messages") {
+		return 0, nil
+	}
+	var count int64
+	query := `SELECT COUNT(*) FROM mai_messages
+		WHERE COALESCE(received_at, timestamp) >= ? AND COALESCE(received_at, timestamp) < ?
+			AND (COALESCE(group_id, '') <> '' OR user_id <> 0)`
+	if err := p.db.WithContext(ctx).Raw(query, start, end).Scan(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (p *postgresDetailedProvider) ReplyCountBetween(ctx context.Context, start, end time.Time, toolName string) (int64, error) {
+	if p == nil || p.db == nil || !p.db.Migrator().HasTable("tool_records") {
+		return 0, nil
+	}
+	var count int64
+	if err := p.db.WithContext(ctx).Raw(
+		"SELECT COUNT(*) FROM tool_records WHERE timestamp >= ? AND timestamp < ? AND tool_name = ?",
+		start, end, toolName).Scan(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

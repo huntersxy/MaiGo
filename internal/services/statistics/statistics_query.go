@@ -74,9 +74,17 @@ func GetStatisticsSummary(ctx context.Context, db *gorm.DB, start, end time.Time
 	summary.ChatCacheMissTokens = row.ChatCacheMissTokens
 	summary.ChatCacheHitRate = calculateCacheHitRate(row.ChatCacheHitTokens, row.ChatCacheMissTokens)
 	summary.AvgResponseTime = row.AvgResponseTime
+	if err := applySummaryActivity(ctx, db, start, end, &summary); err != nil {
+		return summary, err
+	}
+	return summary, nil
+}
+
+// applySummaryActivity 填充在线时长、每小时均值与消息计数，供摘要 SQL 与小时汇总路径共用
+func applySummaryActivity(ctx context.Context, db *gorm.DB, start, end time.Time, summary *StatisticsSummary) error {
 	online, err := statisticsOnlineSeconds(ctx, db, start, end)
 	if err != nil {
-		return summary, err
+		return err
 	}
 	summary.OnlineTime = online
 	if summary.OnlineTime > 0 {
@@ -87,14 +95,14 @@ func GetStatisticsSummary(ctx context.Context, db *gorm.DB, start, end time.Time
 	// Python message_repository 排除 message_id = 'notice'；Go 的 NapCat 通知行 external_message_id 为 napcat-notice-*
 	if err := db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM mai_messages
 		WHERE COALESCE(received_at, timestamp) >= ? AND COALESCE(received_at, timestamp) <= ?`+noticeMessageFilterSQL, start, end).Scan(&summary.TotalMessages).Error; err != nil {
-		return summary, fmt.Errorf("查询消息总数失败: %w", err)
+		return fmt.Errorf("查询消息总数失败: %w", err)
 	}
 	if err := db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM mai_messages
 		WHERE COALESCE(received_at, timestamp) >= ? AND COALESCE(received_at, timestamp) <= ?
 			AND reply_to IS NOT NULL`+noticeMessageFilterSQL, start, end).Scan(&summary.TotalReplies).Error; err != nil {
-		return summary, fmt.Errorf("查询回复总数失败: %w", err)
+		return fmt.Errorf("查询回复总数失败: %w", err)
 	}
-	return summary, nil
+	return nil
 }
 
 func querySummaryRow(ctx context.Context, db *gorm.DB, start, end time.Time) (summaryRow, error) {
@@ -147,16 +155,16 @@ const (
 	ELSE 0 END`
 )
 
-// modelStatisticsOrderClause 生成模型统计排序：请求数降序 + GROUP BY 表达式逆字典序
+// modelStatisticsOrderClause 生成模型统计排序：请求数降序，同次数按模型名升序
 //
 // SQLite 的 BINARY collation 就是 UTF-8 字节序；PG 默认 collation 对大小写/非 ASCII 排序
-// 可能与字节序不同，因此 PG 显式 COLLATE "C"，复刻 Python-SQLite 的逆字典序（可观察行为）
+// 可能与字节序不同，因此 PG 显式 COLLATE "C"，与 SQLite BINARY 保持一致
 func modelStatisticsOrderClause(db *gorm.DB) string {
 	expression := "COALESCE(model_assign_name, model_name, 'unknown')"
 	if timeSeriesDialect(db) == timeSeriesDialectSQLite {
-		return "ORDER BY request_count DESC, " + expression + " DESC"
+		return "ORDER BY request_count DESC, " + expression + " ASC"
 	}
-	return "ORDER BY request_count DESC, " + expression + ` COLLATE "C" DESC`
+	return "ORDER BY request_count DESC, " + expression + ` COLLATE "C" ASC`
 }
 
 // GetModelStatistics 按模型聚合最近时间范围内的调用，取调用次数前 10
@@ -170,9 +178,8 @@ func GetModelStatistics(ctx context.Context, db *gorm.DB, start, end time.Time) 
 	var rows []modelStatsRow
 	hitSQL, missSQL := summaryCacheSQL(db)
 	where, args := statisticsRangeClause(db, "timestamp", start, end)
-	// 对齐 Python statistics_service.py:432-453：GROUP BY COALESCE(model_assign_name, model_name, 'unknown')，只按 count 降序
-	// Python SQL 没有显式 tiebreak；MaiBot 1.3.19 + SQLite 3.46.1 实测并列组按 GROUP BY 表达式逆字典序输出
-	// 这里显式写 count DESC + COALESCE(...) DESC；PG 再补 COLLATE "C"，让字节序与 SQLite BINARY 一致
+	// 对齐 Python statistics_service.py：GROUP BY COALESCE(model_assign_name, model_name, 'unknown')，
+	// 按调用次数降序、模型名升序取前 10，小时汇总路径使用同一排序
 	query := `SELECT
 		COALESCE(model_assign_name, model_name, 'unknown') AS model_name,
 		COUNT(*) AS request_count,
@@ -284,7 +291,7 @@ func GetDashboardStatisticsAt(ctx context.Context, db *gorm.DB, hours int, useCa
 			return data, nil
 		}
 	}
-	data, err := computeDashboardStatisticsAt(ctx, db, hours, now)
+	data, err := computeDashboardStatisticsAt(ctx, db, hours, now, UsageHourlyState{})
 	if err != nil {
 		return data, err
 	}
@@ -294,18 +301,44 @@ func GetDashboardStatisticsAt(ctx context.Context, db *gorm.DB, hours int, useCa
 	return data, nil
 }
 
-// computeDashboardStatisticsAt 在已刷新聚合的前提下按给定时刻计算仪表盘数据
-func computeDashboardStatisticsAt(ctx context.Context, db *gorm.DB, hours int, now time.Time) (DashboardData, error) {
+// computeDashboardStatisticsAt 按给定时刻计算仪表盘数据；小时汇总就绪时用量部分读汇总
+func computeDashboardStatisticsAt(ctx context.Context, db *gorm.DB, hours int, now time.Time, usageHourly UsageHourlyState) (DashboardData, error) {
 	start := now.Add(-time.Duration(hours) * time.Hour)
-	summary, err := GetStatisticsSummary(ctx, db, start, now)
+	var usageItems []UsageEntry
+	useUsageItems := false
+	if usageHourly.Ready && db != nil {
+		items, err := WindowUsage(ctx, db, start, now, true, usageHourly.Cursor)
+		if err != nil {
+			return DashboardData{}, err
+		}
+		usageItems = items
+		useUsageItems = true
+	}
+	var summary StatisticsSummary
+	var err error
+	if useUsageItems {
+		summary, err = summaryFromUsageItems(ctx, db, start, now, usageItems)
+	} else {
+		summary, err = GetStatisticsSummary(ctx, db, start, now)
+	}
 	if err != nil {
 		return DashboardData{}, err
 	}
-	models, err := GetModelStatistics(ctx, db, start, now)
+	var models []ModelStatistics
+	if useUsageItems {
+		models = modelStatisticsFromUsage(usageItems)
+	} else {
+		models, err = GetModelStatistics(ctx, db, start, now)
+	}
 	if err != nil {
 		return DashboardData{}, err
 	}
-	hourly, err := GetHourlyStatistics(ctx, db, start, now)
+	var hourly []TimeSeriesData
+	if useUsageItems {
+		hourly = hourlyStatisticsFromUsage(usageItems, start, now)
+	} else {
+		hourly, err = GetHourlyStatistics(ctx, db, start, now)
+	}
 	if err != nil {
 		return DashboardData{}, err
 	}
@@ -316,7 +349,12 @@ func computeDashboardStatisticsAt(ctx context.Context, db *gorm.DB, hours int, n
 	for i := range hourly {
 		hourly[i].OnlineSeconds = online[hourly[i].Timestamp]
 	}
-	daily, err := GetDailyStatistics(ctx, db, start, now)
+	var daily []TimeSeriesData
+	if useUsageItems {
+		daily = dailyStatisticsFromUsage(usageItems, start, now)
+	} else {
+		daily, err = GetDailyStatistics(ctx, db, start, now)
+	}
 	if err != nil {
 		return DashboardData{}, err
 	}

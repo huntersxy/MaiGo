@@ -61,7 +61,8 @@ func StartAggregationRefresher(ctx context.Context, db *gorm.DB, opts Aggregatio
 			log.Warn("统计汇总增量刷新失败，等待下一轮重试", zap.Error(err), zap.Duration("elapsed", time.Since(startedAt)))
 			return
 		}
-		if err := writeDashboardStatisticsCache(refreshCtx, db, opts.InstanceDir, time.Now()); err != nil {
+		usageHourly := RefreshUsageHourly(refreshCtx, db, usageHourlyTimeBudget)
+		if err := writeDashboardStatisticsCache(refreshCtx, db, opts.InstanceDir, time.Now(), usageHourly); err != nil {
 			log.Warn("刷新 WebUI 仪表盘缓存失败，等待下一轮重试", zap.Error(err), zap.Duration("elapsed", time.Since(startedAt)))
 			return
 		}

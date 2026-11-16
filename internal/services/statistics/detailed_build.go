@@ -108,6 +108,10 @@ func emptyDetailedStatistics(now time.Time) DetailedStatisticsData {
 
 // BuildDetailedStatistics 按 Python StatisticOutputTask 的快照语义构建详细统计
 func BuildDetailedStatistics(ctx context.Context, provider DetailedProvider, now time.Time) (DetailedStatisticsData, error) {
+	return buildDetailedStatistics(ctx, provider, now, UsageHourlyState{})
+}
+
+func buildDetailedStatistics(ctx context.Context, provider DetailedProvider, now time.Time, usageHourly UsageHourlyState) (DetailedStatisticsData, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -138,7 +142,13 @@ func BuildDetailedStatistics(ctx context.Context, provider DetailedProvider, now
 	if err != nil {
 		return emptyDetailedStatistics(now), fmt.Errorf("查询模型用量失败: %w", err)
 	}
-	accumulateDetailedUsage(usage, starts, periods)
+	if usageHourly.Ready {
+		if err := accumulateDetailedUsageHourly(ctx, provider, starts, periods, usage, now, usageHourly.Cursor); err != nil {
+			return emptyDetailedStatistics(now), fmt.Errorf("查询小时用量汇总失败: %w", err)
+		}
+	} else {
+		accumulateDetailedUsage(usage, starts, periods)
+	}
 
 	nameMapping := map[string]detailedChatName{}
 	order := make([]int, len(detailedPeriodDefinitions))
@@ -187,6 +197,7 @@ func BuildDetailedStatistics(ctx context.Context, provider DetailedProvider, now
 	for i, definition := range detailedPeriodDefinitions {
 		snapshot.Periods = append(snapshot.Periods, buildDetailedPeriod(definition.key, starts[i], now, periods[i], nameMapping))
 	}
+	enrichDetailedPeriods(ctx, provider, &snapshot, starts, now, usage, messages, intervals)
 	snapshot.Trends, snapshot.Metrics = buildDetailedTimeSeries(now, usage, messages, intervals, accounts)
 	return snapshot, nil
 }
@@ -202,75 +213,203 @@ func BuildDetailedStatisticsForDB(ctx context.Context, db *gorm.DB, now time.Tim
 	return BuildDetailedStatistics(ctx, NewDetailedProvider(db), now)
 }
 
+type detailedUsageSample struct {
+	Timestamp        time.Time
+	RequestType      string
+	ProviderName     string
+	ModelName        string
+	SessionID        string
+	TaskName         string
+	RequestCount     int64
+	PromptTokens     int64
+	CompletionTokens int64
+	CacheHitTokens   int64
+	CacheMissTokens  int64
+	Cost             float64
+	DurationCount    int64
+	DurationSum      float64
+	DurationSumSq    float64
+}
+
+func detailedSampleFromRecord(record DetailedUsage) detailedUsageSample {
+	hitTokens, missTokens := int64(0), int64(0)
+	if record.PromptCacheEnabled {
+		hitTokens, missTokens = normalizeCacheTokens(record.PromptTokens, true, record.PromptCacheHitTokens, record.PromptCacheMissTokens)
+	}
+	sample := detailedUsageSample{
+		Timestamp: record.Timestamp, RequestType: record.RequestType, ProviderName: record.ProviderName,
+		ModelName: firstNonEmpty(record.ModelAssignName, record.ModelName), SessionID: record.SessionID,
+		TaskName: record.TaskName, RequestCount: 1, PromptTokens: record.PromptTokens,
+		CompletionTokens: record.CompletionTokens, CacheHitTokens: hitTokens, CacheMissTokens: missTokens,
+		Cost: record.Cost,
+	}
+	if record.TimeCost > 0 {
+		sample.DurationCount = 1
+		sample.DurationSum = record.TimeCost
+		sample.DurationSumSq = record.TimeCost * record.TimeCost
+	}
+	return sample
+}
+
+func detailedSampleFromUsage(entry UsageEntry) detailedUsageSample {
+	return detailedUsageSample{
+		Timestamp: entry.Timestamp, RequestType: entry.Key.RequestType, ProviderName: entry.Key.ProviderName,
+		ModelName: entry.Key.ModelName, SessionID: entry.Key.SessionID, TaskName: entry.Key.TaskName,
+		RequestCount: entry.Metrics.RequestCount, PromptTokens: entry.Metrics.PromptTokens,
+		CompletionTokens: entry.Metrics.CompletionTokens, CacheHitTokens: entry.Metrics.CacheHitTokens,
+		CacheMissTokens: entry.Metrics.CacheMissTokens, Cost: entry.Metrics.Cost,
+		DurationCount: entry.Metrics.DurationCount, DurationSum: entry.Metrics.DurationSum,
+		DurationSumSq: entry.Metrics.DurationSumSq,
+	}
+}
+
 func accumulateDetailedUsage(usage []DetailedUsage, starts []time.Time, periods []*detailedPeriodData) {
 	for _, record := range usage {
-		requestType := firstNonEmpty(record.RequestType, "unknown")
-		providerName := firstNonEmpty(record.ProviderName, "unknown")
-		modelName := firstNonEmpty(record.ModelAssignName, record.ModelName, "unknown")
-		moduleName := requestType
-		if index := strings.Index(requestType, "."); index >= 0 {
-			moduleName = requestType[:index]
+		addDetailedUsageSample(starts, periods, detailedSampleFromRecord(record))
+	}
+}
+
+// accumulateDetailedUsageHourly 整点区间读小时汇总，时间段两端与刷新后新写入的记录读明细
+func accumulateDetailedUsageHourly(
+	ctx context.Context, provider DetailedProvider, starts []time.Time, periods []*detailedPeriodData,
+	usage []DetailedUsage, now time.Time, cursor int64,
+) error {
+	type hourRange struct {
+		first time.Time
+		last  time.Time
+		ok    bool
+	}
+	ranges := make([]hourRange, len(starts))
+	var earliest, latest time.Time
+	hasHourly := false
+	for i, start := range starts {
+		first, last, ok := clampHourRange(start, now)
+		ranges[i] = hourRange{first: first, last: last, ok: ok}
+		if !ok {
+			continue
 		}
-		taskName := firstNonEmpty(record.TaskName, "未记录")
-		sessionID := strings.TrimSpace(record.SessionID)
-		chatKey := sessionID
-		if chatKey == "" {
-			chatKey = "__global__"
+		if !hasHourly || first.Before(earliest) {
+			earliest = first
 		}
-		promptTokens := record.PromptTokens
-		completionTokens := record.CompletionTokens
-		totalTokens := promptTokens + completionTokens
-		hitTokens, missTokens := int64(0), int64(0)
-		if record.PromptCacheEnabled {
-			hitTokens, missTokens = normalizeCacheTokens(promptTokens, true, record.PromptCacheHitTokens, record.PromptCacheMissTokens)
+		if !hasHourly || last.After(latest) {
+			latest = last
 		}
-		kind := "generation"
-		if taskName == "embedding" || taskName == "image_embedding" {
-			kind = "embedding"
+		hasHourly = true
+	}
+	if hasHourly {
+		entries, err := provider.UsageHourlyBetween(ctx, earliest, latest)
+		if err != nil {
+			return err
 		}
-		names := []struct {
-			dimension string
-			name      string
-		}{
-			{"type", requestType},
-			{"user", providerName},
-			{"model", modelName},
-			{"module", moduleName},
-			{"task", taskName},
-			{"request_type", requestType},
+		for _, entry := range entries {
+			for i := range ranges {
+				if ranges[i].ok && !entry.Timestamp.Before(ranges[i].first) && entry.Timestamp.Before(ranges[i].last) {
+					sample := detailedSampleFromUsage(entry)
+					addDetailedUsageSample(starts[i:i+1], periods[i:i+1], sample)
+				}
+			}
 		}
-		timestamp := record.Timestamp.In(time.Local)
-		for i, start := range starts {
+		tailStart := usageBucketStart(now)
+		for _, record := range usage {
+			timestamp := record.Timestamp.In(time.Local)
+			if !timestamp.Before(tailStart) {
+				for i := range ranges {
+					if ranges[i].ok {
+						addDetailedUsageSample(starts[i:i+1], periods[i:i+1], detailedSampleFromRecord(record))
+					}
+				}
+			}
+		}
+		for _, record := range usage {
+			if record.ID <= cursor {
+				continue
+			}
+			timestamp := record.Timestamp.In(time.Local)
+			for i := range ranges {
+				if ranges[i].ok && !timestamp.Before(ranges[i].first) && timestamp.Before(ranges[i].last) {
+					addDetailedUsageSample(starts[i:i+1], periods[i:i+1], detailedSampleFromRecord(record))
+				}
+			}
+		}
+	}
+	for i, start := range starts {
+		for _, record := range usage {
+			timestamp := record.Timestamp.In(time.Local)
 			if timestamp.Before(start) {
 				continue
 			}
-			period := periods[i]
-			period.totalRequests++
-			period.totalCost += record.Cost
-			period.cacheHitTokens += hitTokens
-			period.cacheMissTokens += missTokens
-			period.inputTokens += promptTokens
-			period.outputTokens += completionTokens
-			period.tokensByChat[chatKey] += totalTokens
-			period.costByChat[chatKey] += record.Cost
-			for _, item := range names {
-				totals := period.classified[detailedClassKey{item.dimension, kind, item.name}]
-				if totals == nil {
-					totals = &detailedClassTotals{}
-					period.classified[detailedClassKey{item.dimension, kind, item.name}] = totals
-				}
-				totals.requestCount++
-				totals.inputTokens += promptTokens
-				totals.outputTokens += completionTokens
-				totals.cacheHitTokens += hitTokens
-				totals.cacheMissTokens += missTokens
-				totals.totalCost += record.Cost
-				if record.TimeCost > 0 {
-					totals.durationCount++
-					totals.durationSum += record.TimeCost
-					totals.durationSumSq += record.TimeCost * record.TimeCost
-				}
+			if ranges[i].ok && !timestamp.Before(ranges[i].first) {
+				continue
 			}
+			addDetailedUsageSample(starts[i:i+1], periods[i:i+1], detailedSampleFromRecord(record))
+		}
+	}
+	return nil
+}
+
+func addDetailedUsageSample(starts []time.Time, periods []*detailedPeriodData, sample detailedUsageSample) {
+	requestType := firstNonEmpty(sample.RequestType, "unknown")
+	providerName := firstNonEmpty(sample.ProviderName, "unknown")
+	modelName := firstNonEmpty(sample.ModelName, "unknown")
+	moduleName := requestType
+	if index := strings.Index(requestType, "."); index >= 0 {
+		moduleName = requestType[:index]
+	}
+	taskName := firstNonEmpty(sample.TaskName, "未记录")
+	sessionID := strings.TrimSpace(sample.SessionID)
+	chatKey := sessionID
+	if chatKey == "" {
+		chatKey = "__global__"
+	}
+	totalTokens := sample.PromptTokens + sample.CompletionTokens
+	kind := "generation"
+	if taskName == "embedding" || taskName == "image_embedding" {
+		kind = "embedding"
+	}
+	names := []struct {
+		dimension string
+		name      string
+	}{
+		{"type", requestType},
+		{"user", providerName},
+		{"model", modelName},
+		{"module", moduleName},
+		{"task", taskName},
+		{"request_type", requestType},
+	}
+	requestCount := sample.RequestCount
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+	timestamp := sample.Timestamp.In(time.Local)
+	for i, start := range starts {
+		if timestamp.Before(start) {
+			continue
+		}
+		period := periods[i]
+		period.totalRequests += requestCount
+		period.totalCost += sample.Cost
+		period.cacheHitTokens += sample.CacheHitTokens
+		period.cacheMissTokens += sample.CacheMissTokens
+		period.inputTokens += sample.PromptTokens
+		period.outputTokens += sample.CompletionTokens
+		period.tokensByChat[chatKey] += totalTokens
+		period.costByChat[chatKey] += sample.Cost
+		for _, item := range names {
+			totals := period.classified[detailedClassKey{item.dimension, kind, item.name}]
+			if totals == nil {
+				totals = &detailedClassTotals{}
+				period.classified[detailedClassKey{item.dimension, kind, item.name}] = totals
+			}
+			totals.requestCount += requestCount
+			totals.inputTokens += sample.PromptTokens
+			totals.outputTokens += sample.CompletionTokens
+			totals.cacheHitTokens += sample.CacheHitTokens
+			totals.cacheMissTokens += sample.CacheMissTokens
+			totals.totalCost += sample.Cost
+			totals.durationCount += sample.DurationCount
+			totals.durationSum += sample.DurationSum
+			totals.durationSumSq += sample.DurationSumSq
 		}
 	}
 }
@@ -321,6 +460,8 @@ func buildDetailedPeriod(key string, start, now time.Time, data *detailedPeriodD
 		RequestTypes:  buildDetailedBreakdowns(data, "request_type"),
 		Chats:         chats,
 		Distributions: buildDetailedDistributions(data, names),
+		Reliability:   emptyDetailedReliability(),
+		Trend:         emptyDetailedTrend(),
 	}
 }
 

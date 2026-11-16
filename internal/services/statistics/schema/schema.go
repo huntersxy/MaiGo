@@ -117,6 +117,29 @@ var postgresStatements = []string{
 			UNIQUE(bucket_time,request_type,model_name,provider_name)
 	)`,
 	`CREATE INDEX IF NOT EXISTS ix_statistics_model_hourly_bucket_time ON statistics_model_hourly(bucket_time)`,
+	`CREATE TABLE IF NOT EXISTS statistics_usage_hourly (
+		id BIGSERIAL PRIMARY KEY,
+		bucket_time TIMESTAMPTZ NOT NULL,
+		request_type TEXT NOT NULL,
+		provider_name TEXT NOT NULL,
+		model_name TEXT NOT NULL,
+		task_name TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		request_count BIGINT NOT NULL DEFAULT 0,
+		prompt_tokens BIGINT NOT NULL DEFAULT 0,
+		completion_tokens BIGINT NOT NULL DEFAULT 0,
+		cache_hit_tokens BIGINT NOT NULL DEFAULT 0,
+		cache_miss_tokens BIGINT NOT NULL DEFAULT 0,
+		cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+		duration_count BIGINT NOT NULL DEFAULT 0,
+		duration_sum DOUBLE PRECISION NOT NULL DEFAULT 0,
+		duration_sum_sq DOUBLE PRECISION NOT NULL DEFAULT 0,
+		response_time_count BIGINT NOT NULL DEFAULT 0,
+		response_time_sum DOUBLE PRECISION NOT NULL DEFAULT 0,
+		CONSTRAINT uq_statistics_usage_hourly_dimensions
+			UNIQUE(bucket_time,request_type,provider_name,model_name,task_name,session_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS ix_statistics_usage_hourly_bucket_time ON statistics_usage_hourly(bucket_time)`,
 	`CREATE TABLE IF NOT EXISTS statistics_aggregation_cursors (
 		source_name TEXT PRIMARY KEY,
 		last_processed_id BIGINT NOT NULL DEFAULT 0,
@@ -193,6 +216,29 @@ var sqliteStatements = []string{
 			UNIQUE(bucket_time,request_type,model_name,provider_name)
 	)`,
 	`CREATE INDEX IF NOT EXISTS ix_statistics_model_hourly_bucket_time ON statistics_model_hourly(bucket_time)`,
+	`CREATE TABLE IF NOT EXISTS statistics_usage_hourly (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		bucket_time TIMESTAMP NOT NULL,
+		request_type TEXT NOT NULL,
+		provider_name TEXT NOT NULL,
+		model_name TEXT NOT NULL,
+		task_name TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
+		request_count INTEGER NOT NULL DEFAULT 0,
+		prompt_tokens INTEGER NOT NULL DEFAULT 0,
+		completion_tokens INTEGER NOT NULL DEFAULT 0,
+		cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+		cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+		cost REAL NOT NULL DEFAULT 0,
+		duration_count INTEGER NOT NULL DEFAULT 0,
+		duration_sum REAL NOT NULL DEFAULT 0,
+		duration_sum_sq REAL NOT NULL DEFAULT 0,
+		response_time_count INTEGER NOT NULL DEFAULT 0,
+		response_time_sum REAL NOT NULL DEFAULT 0,
+		CONSTRAINT uq_statistics_usage_hourly_dimensions
+			UNIQUE(bucket_time,request_type,provider_name,model_name,task_name,session_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS ix_statistics_usage_hourly_bucket_time ON statistics_usage_hourly(bucket_time)`,
 	`CREATE TABLE IF NOT EXISTS statistics_aggregation_cursors (
 		source_name TEXT PRIMARY KEY,
 		last_processed_id INTEGER NOT NULL DEFAULT 0,

@@ -26,15 +26,16 @@ const DetailedReportInterval = 15 * time.Minute
 // ErrDetailedReporterStarted 表示报告任务已在运行
 var ErrDetailedReporterStarted = fmt.Errorf("详细统计报告任务已启动")
 
-// DetailedReporter 定时生成 HTML 报告并发布详细统计快照
+// DetailedReporter 定时构建并发布详细统计快照
 type DetailedReporter struct {
 	options DetailedReportOptions
 
-	mu      sync.Mutex
-	running bool
-	cancel  context.CancelFunc
-	done    chan struct{}
-	runMu   sync.Mutex
+	mu          sync.Mutex
+	running     bool
+	cancel      context.CancelFunc
+	done        chan struct{}
+	runMu       sync.Mutex
+	usageHourly UsageHourlyState
 }
 
 // NewDetailedReporter 创建统计报告任务
@@ -113,7 +114,12 @@ func (r *DetailedReporter) RunOnce(ctx context.Context) (DetailedStatisticsData,
 		}
 		provider = NewDetailedProvider(r.options.DB)
 	}
-	snapshot, err := BuildDetailedStatistics(ctx, provider, now)
+	if r.options.DB != nil {
+		r.usageHourly = RefreshUsageHourly(ctx, r.options.DB, usageHourlyTimeBudget)
+	} else {
+		r.usageHourly = UsageHourlyState{}
+	}
+	snapshot, err := buildDetailedStatistics(ctx, provider, now, r.usageHourly)
 	if err != nil {
 		return emptyDetailedStatistics(now), err
 	}
@@ -124,6 +130,10 @@ func (r *DetailedReporter) RunOnce(ctx context.Context) (DetailedStatisticsData,
 	r.logger().Info("详细统计快照已更新", zap.String("generated_at", snapshot.GeneratedAt))
 	// 对齐 Python StatisticOutputTask：同一轮汇总后输出近1小时控制台统计
 	logConsoleStatistics(snapshot)
+	if r.options.DB != nil && !r.usageHourly.Ready {
+		// 报表之后继续回填，不影响本轮耗时；下一轮统计可直接读汇总
+		r.usageHourly = RefreshUsageHourly(ctx, r.options.DB, 120*time.Second)
+	}
 	return snapshot, nil
 }
 

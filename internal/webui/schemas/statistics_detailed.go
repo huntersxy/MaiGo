@@ -41,6 +41,8 @@ type DetailedStatisticsBreakdown struct {
 	AvgCallsPerReply  *float64 `json:"avg_calls_per_reply"`
 	AvgTokensPerReply *float64 `json:"avg_tokens_per_reply"`
 	AvgTokensPerCall  *float64 `json:"avg_tokens_per_call"`
+	AttemptCount      *int64   `json:"attempt_count"`
+	FailureCount      *int64   `json:"failure_count"`
 }
 
 // DetailedChatStatistics 对齐 DetailedChatStatistics
@@ -70,18 +72,64 @@ type DetailedStatisticsDistributions struct {
 	ChatCosts         []DetailedDistributionItem `json:"chat_costs"`
 }
 
+// DetailedReliabilityItem 模型、供应商或任务维度的调用可靠性
+type DetailedReliabilityItem struct {
+	Name               string   `json:"name"`
+	AttemptCount       int64    `json:"attempt_count"`
+	FailureCount       int64    `json:"failure_count"`
+	FailureRate        *float64 `json:"failure_rate"`
+	AvgSuccessDuration *float64 `json:"avg_success_duration"`
+}
+
+// DetailedReliabilityData 单个统计时段的调用可靠性
+type DetailedReliabilityData struct {
+	CoverageStart      string                    `json:"coverage_start"`
+	Truncated          bool                      `json:"truncated"`
+	AttemptCount       int64                     `json:"attempt_count"`
+	FailureCount       int64                     `json:"failure_count"`
+	FailureRate        *float64                  `json:"failure_rate"`
+	AvgSuccessDuration *float64                  `json:"avg_success_duration"`
+	ByModel            []DetailedReliabilityItem `json:"by_model"`
+	ByProvider         []DetailedReliabilityItem `json:"by_provider"`
+	ByTask             []DetailedReliabilityItem `json:"by_task"`
+}
+
+// DetailedPeriodTrend 与统计时段对齐的趋势、失败时间线和活跃热力图
+type DetailedPeriodTrend struct {
+	StartTime       string               `json:"start_time"`
+	BucketMinutes   int                  `json:"bucket_minutes"`
+	Truncated       bool                 `json:"truncated"`
+	TimeLabels      []string             `json:"time_labels"`
+	Costs           []float64            `json:"costs"`
+	Tokens          []int64              `json:"tokens"`
+	Requests        []int64              `json:"requests"`
+	Messages        []int64              `json:"messages"`
+	Attempts        []int64              `json:"attempts"`
+	Failures        []int64              `json:"failures"`
+	CostByModel     map[string][]float64 `json:"cost_by_model"`
+	TokensByModel   map[string][]int64   `json:"tokens_by_model"`
+	RequestsByModel map[string][]int64   `json:"requests_by_model"`
+	CostByModule    map[string][]float64 `json:"cost_by_module"`
+	MessageByChat   map[string][]int64   `json:"message_by_chat"`
+	HeatmapMessages [][]int64            `json:"heatmap_messages"`
+	HeatmapCosts    [][]float64          `json:"heatmap_costs"`
+}
+
 // DetailedStatisticsPeriod 对齐 DetailedStatisticsPeriod
 type DetailedStatisticsPeriod struct {
-	Key           string                          `json:"key"`
-	StartTime     string                          `json:"start_time"`
-	EndTime       string                          `json:"end_time"`
-	Summary       DetailedStatisticsSummary       `json:"summary"`
-	Models        []DetailedStatisticsBreakdown   `json:"models"`
-	Modules       []DetailedStatisticsBreakdown   `json:"modules"`
-	TaskGroups    []DetailedStatisticsBreakdown   `json:"task_groups"`
-	RequestTypes  []DetailedStatisticsBreakdown   `json:"request_types"`
-	Chats         []DetailedChatStatistics        `json:"chats"`
-	Distributions DetailedStatisticsDistributions `json:"distributions"`
+	Key             string                          `json:"key"`
+	StartTime       string                          `json:"start_time"`
+	EndTime         string                          `json:"end_time"`
+	Summary         DetailedStatisticsSummary       `json:"summary"`
+	PreviousSummary *DetailedStatisticsSummary      `json:"previous_summary"`
+	Models          []DetailedStatisticsBreakdown   `json:"models"`
+	Modules         []DetailedStatisticsBreakdown   `json:"modules"`
+	TaskGroups      []DetailedStatisticsBreakdown   `json:"task_groups"`
+	RequestTypes    []DetailedStatisticsBreakdown   `json:"request_types"`
+	Chats           []DetailedChatStatistics        `json:"chats"`
+	Distributions   DetailedStatisticsDistributions `json:"distributions"`
+	Reliability     DetailedReliabilityData         `json:"reliability"`
+	Trend           DetailedPeriodTrend             `json:"trend"`
 }
 
 // DetailedStatisticsTrendData 对齐 DetailedStatisticsTrendData

@@ -12,14 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-const detailedSnapshotRelativePath = "data/statistics/detailed_statistics.json"
-
 // DetailedSnapshotPath 返回详细统计快照的持久化路径
 func DetailedSnapshotPath(instanceDir string) string {
-	if strings.TrimSpace(instanceDir) == "" {
-		instanceDir = "."
-	}
-	return filepath.Join(instanceDir, filepath.FromSlash(detailedSnapshotRelativePath))
+	return statisticsCachePath(instanceDir, detailedCacheFilename)
 }
 
 // LoadDetailedStatisticsSnapshot 从实例目录读取最近一次报告发布的快照
@@ -51,7 +46,7 @@ func LoadDetailedStatisticsSnapshot(instanceDir string) (DetailedStatisticsData,
 
 // StoreDetailedStatisticsSnapshot 原子写入详细统计快照
 func StoreDetailedStatisticsSnapshot(instanceDir string, snapshot DetailedStatisticsData) error {
-	raw, err := json.MarshalIndent(snapshot, "", "  ")
+	raw, err := json.Marshal(snapshot)
 	if err != nil {
 		return fmt.Errorf("序列化详细统计快照失败: %w", err)
 	}
