@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"MaiGo/internal/common/data_models/messagecomponent"
 )
@@ -130,6 +131,43 @@ func (m *SessionMessage) PlainText() string {
 		return ""
 	}
 	return *m.ProcessedPlainText
+}
+
+// CommandText 仅为命令匹配移除指向当前机器人的前导结构化 @，保留原始展示正文
+func (m *SessionMessage) CommandText() string {
+	text := strings.TrimSpace(m.PlainText())
+	if !strings.HasPrefix(text, "@") || m == nil || m.RawMessage == nil {
+		return text
+	}
+	accountID := ""
+	if m.AccountID != nil {
+		accountID = strings.TrimSpace(*m.AccountID)
+	}
+	for _, component := range m.RawMessage.Components {
+		if part, ok := component.(messagecomponent.TextComponent); ok && strings.TrimSpace(part.Text) == "" {
+			continue
+		}
+		at, ok := component.(messagecomponent.AtComponent)
+		if !ok || strings.TrimSpace(at.TargetUserID) != accountID {
+			break
+		}
+		name := strings.TrimSpace(at.TargetUserID)
+		if at.Cardname != nil && strings.TrimSpace(*at.Cardname) != "" {
+			name = strings.TrimSpace(*at.Cardname)
+		} else if at.Nickname != nil && strings.TrimSpace(*at.Nickname) != "" {
+			name = strings.TrimSpace(*at.Nickname)
+		}
+		prefix := "@" + name
+		if !strings.HasPrefix(text, prefix) {
+			break
+		}
+		remainder := text[len(prefix):]
+		if remainder != "" && !unicode.IsSpace([]rune(remainder)[0]) {
+			break
+		}
+		text = strings.TrimLeftFunc(remainder, unicode.IsSpace)
+	}
+	return text
 }
 
 // SetPlainText 设置已处理正文

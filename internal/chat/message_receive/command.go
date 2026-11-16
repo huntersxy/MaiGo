@@ -23,7 +23,7 @@ func (b *ChatBot) IsCommandCandidate(message *SessionMessage) bool {
 	if b == nil || message == nil {
 		return false
 	}
-	text := strings.TrimSpace(message.PlainText())
+	text := message.CommandText()
 	if text == "" {
 		return false
 	}
@@ -70,8 +70,8 @@ func (b *ChatBot) ProcessCommands(ctx context.Context, message *SessionMessage) 
 	if b == nil || message == nil {
 		return false, "", true
 	}
-	// 对齐 Python：匹配文本用 processed_plain_text 原样（不 strip）；空串直接继续
-	text := message.PlainText()
+	// 对齐 Python：命令匹配移除指向当前机器人的前导 @；空串直接继续
+	text := message.CommandText()
 	if text == "" || b.commands == nil {
 		return false, "", true
 	}
@@ -203,7 +203,7 @@ func (b *ChatBot) ProcessClearContextCommand(ctx context.Context, message *Sessi
 	if !local && b.commands != nil && b.commands.IsCoreCommandDisabled("clear") {
 		return false
 	}
-	text := strings.TrimSpace(message.PlainText())
+	text := message.CommandText()
 	if local {
 		if text != clearContextCommand && !strings.HasPrefix(text, clearContextCommand+" ") {
 			return false
@@ -268,7 +268,7 @@ func (b *ChatBot) ProcessAdapterLifecycleCommand(ctx context.Context, message *S
 	if b == nil || message == nil {
 		return false
 	}
-	text := strings.TrimSpace(message.PlainText())
+	text := message.CommandText()
 	parts := strings.Fields(text)
 	if len(parts) == 0 {
 		return false
@@ -388,7 +388,7 @@ func (b *ChatBot) handleChatListCommand(ctx context.Context, message *SessionMes
 			end = len(lines)
 		}
 		if err := b.sendText(ctx, message, strings.Join(lines[start:end], "\n\n")); err != nil {
-			zap.L().Warn("聊天流列表发送失败: session_id=" + message.SessionID, zap.Error(err))
+			zap.L().Warn("聊天流列表发送失败: session_id="+message.SessionID, zap.Error(err))
 			break
 		}
 	}
