@@ -103,11 +103,8 @@ func GetBuiltinToolVisibility(spec ToolSpec) BuiltinToolVisibility {
 	}
 }
 
-// IsBuiltinToolInActionStage 内置工具是否属于 Action Loop 阶段；被动式单独使用 stop
+// IsBuiltinToolInActionStage 内置工具是否属于 Action Loop 阶段
 func IsBuiltinToolInActionStage(spec ToolSpec, passiveReplyer bool) bool {
-	if (spec.Name == "stop" || spec.Name == "wait") && !passiveReplyer {
-		return false
-	}
 	if spec.Name == "reply" && passiveReplyer {
 		return false
 	}

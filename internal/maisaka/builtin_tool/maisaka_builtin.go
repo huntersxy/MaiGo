@@ -191,13 +191,7 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	// 部分适配器（如 QQ 官方机器人）的消息 ID 是字符串而非数字：此时无法用
 	// 数字 reply_to 引用，按「不引用」发送，而不是让整条回复失败。
 	msgID := strings.TrimSpace(input.MsgID)
-	if replyTo == 0 && msgID == "" {
-		return &maisakaStubOutput{
-			Success: false,
-			Message: "reply 工具需要提供有效的 `msg_id` 参数。",
-		}, nil
-	}
-	if replyTo == 0 {
+	if replyTo == 0 && msgID != "" {
 		zap.L().Debug("目标消息 ID 不是数字，按不引用发送",
 			zap.String("plugin_msg_id", msgID))
 	}

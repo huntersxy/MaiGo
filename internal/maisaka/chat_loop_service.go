@@ -17,7 +17,7 @@ const (
 	// MinRetainedChatMessages 上下文选择至少保留的消息条数
 	MinRetainedChatMessages = 8
 	// PLANNER_FINAL_USER_REMINDER 每轮 Planner 请求末尾的一次性提醒
-	PlannerFinalUserReminder = "请你进行分析，是不调用工具，进行思考和等待\n还是使用工具搜集处理信息或使用reply回复"
+	PlannerFinalUserReminder = "请分析后决定下一步：用工具收集或处理信息，用 reply 回复，用 wait 稍后再判断，或用 stop 静默结束本轮。"
 	// FocusPlannerFinalUserReminderTemplate Focus 模式的末尾提醒模板
 	FocusPlannerFinalUserReminderTemplate = "你需要输出对%s发言的分析，视情况输出文本内容的分析，思考是否进行工具调用"
 )
@@ -372,9 +372,9 @@ func (s *ChatLoopService) localizedMap(texts map[string]string) string {
 
 func (s *ChatLoopService) buildPlannerIdleFocusRule() string {
 	return s.localizedMap(map[string]string{
-		"en-US": "Consider all chats in the shared context. Every tool requires its target session_id. Use wait only to pause the entire group; otherwise finish this thought when no action is needed.",
-		"ja-JP": "共有コンテキスト内の全チャットを判断してください。すべてのツールに対象の session_id が必要です。wait はグループ全体を待機させる場合だけ使い、行動が不要なら思考を終了してください。",
-		"zh-CN": "结合共享上下文中的所有聊天判断，每个工具填写目标 session_id；只有需要整个组暂停等待时才使用 wait，没有需要执行的动作时结束本轮思考。",
+		"en-US": "Consider all chats in the shared context. Every tool requires its target session_id. reply.after_reply controls the entire group: stop by default, continue for further actions, or wait with wait_seconds. To end the group turn silently, call stop on its own with a session_id from the group.",
+		"ja-JP": "共有コンテキスト内の全チャットを判断し、各ツールに対象の session_id を指定してください。reply.after_reply はグループ全体に適用され、既定は stop、行動を続けるなら continue、待機するなら wait と wait_seconds を使います。発言せずにグループのターンを終えるには、グループ内の session_id を指定して stop を単独で呼び出してください。",
+		"zh-CN": "结合共享上下文中的所有聊天判断，每个工具填写目标 session_id；reply.after_reply 作用于整个组，默认 stop，需继续操作选 continue，需等待选 wait 并填写 wait_seconds。需要静默结束整个组的本轮思考时，填写组内的 session_id 并单独调用 stop。",
 	})
 }
 

@@ -702,6 +702,13 @@ func (e *ReasoningEngine) handlePlannerResponseActions(ctx context.Context, resp
 	}
 	e.lastReasoningContent = plannerContent
 	state.LastThought = plannerContent
+	// stop 是终止信号：不写入工具调用，也不执行同批其它工具
+	if hasStopToolCall(response.ToolCalls) {
+		e.endPlannerNoToolCycle(state, "状态：已结束本轮思考")
+		state.CycleEnd = cycleEndForPauseTool("stop")
+		state.ToolResultSummaries = nil
+		return true
+	}
 	for _, message := range response.RawMessages {
 		if message.SessionID == "" {
 			message.SessionID = runtime.sessionID
@@ -739,6 +746,15 @@ func (e *ReasoningEngine) handlePlannerResponseActions(ctx context.Context, resp
 	state.ToolResultSummaries = nil
 	state.ToolMonitorResults = nil
 	return true
+}
+
+func hasStopToolCall(toolCalls []ToolCall) bool {
+	for _, call := range toolCalls {
+		if strings.TrimSpace(call.Name) == "stop" {
+			return true
+		}
+	}
+	return false
 }
 
 // EndPlannerNoToolCycle 供内置 stop 工具复用无工具输出的收尾逻辑
@@ -835,12 +851,6 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 				ToolName: call.Name,
 				Success:  false,
 				Message:  fmt.Sprintf("未执行：前面的 reply 已选择 after_reply=%s。", replyPause),
-			}
-		} else if !e.PassiveReplyerEnabled() && (call.Name == "stop" || call.Name == "wait") {
-			result = ToolExecutionResult{
-				ToolName: call.Name,
-				Success:  false,
-				Message:  "普通模式不提供 stop/wait 工具；静默结束时不调用工具，回复后的行为使用 reply.after_reply。",
 			}
 		} else if e.PassiveReplyerEnabled() && call.Name == "reply" {
 			result = ToolExecutionResult{
