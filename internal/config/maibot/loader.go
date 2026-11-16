@@ -442,6 +442,15 @@ func loadModelConfigFile(path string, out *InstanceConfig) error {
 	out.Model.LegacyModelTypeKeySet = legacyModelTypeKeySet(raw)
 	applyAPIProviderPresence(&out.Model, raw)
 	applyModelPresence(&out.Model, raw)
+	for index := range out.Model.Models {
+		model := &out.Model.Models[index]
+		if model.ImageMaxSide <= 0 {
+			model.ImageMaxSide = 8000
+		}
+		if model.ImageMinSide <= 0 {
+			model.ImageMinSide = 1
+		}
+	}
 	return nil
 }
 

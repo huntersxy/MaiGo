@@ -696,6 +696,9 @@ type ModelInfo struct {
 	MaxTokens          any                `toml:"max_tokens,omitempty"`
 	ForceStreamMode    bool               `toml:"force_stream_mode,omitempty"`
 	Visual             bool               `toml:"visual,omitempty"`
+	MaxImages          int                `toml:"max_images,omitempty"`
+	ImageMaxSide       int                `toml:"image_max_side,omitempty"`
+	ImageMinSide       int                `toml:"image_min_side,omitempty"`
 	ExtraParams        map[string]any     `toml:"extra_params,omitempty"`
 	SendTemperatureSet bool               `toml:"-"`
 }

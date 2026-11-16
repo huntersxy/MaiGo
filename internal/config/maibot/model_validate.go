@@ -39,6 +39,9 @@ func ValidateModelConfig(file ModelConfigFile, log *zap.Logger) error {
 		if strings.TrimSpace(m.ModelIdentifier) == "" {
 			return fmt.Errorf("模型 %q 缺少 model_identifier", name)
 		}
+		if m.ImageMinSide > 0 && m.ImageMaxSide > 0 && m.ImageMinSide > m.ImageMaxSide {
+			return fmt.Errorf("模型 %q 的图片最小边长不得超过最大边长", name)
+		}
 		if err := validateModelInfo(name, m); err != nil {
 			return err
 		}
