@@ -74,7 +74,7 @@ func (s *MessageTurnScheduler) ScheduleMessageTurn() {
 		return
 	}
 
-	zap.L().Info(runtime.LogPrefix()+" 回复调度",
+	zap.L().Debug(runtime.LogPrefix()+" 回复调度",
 		zap.Int("待处理", pendingCount),
 		zap.String("detail", result.Detail),
 	)

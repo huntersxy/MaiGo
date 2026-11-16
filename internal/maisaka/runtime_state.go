@@ -335,7 +335,7 @@ func (r *Runtime) observeMessageDebounce(message ContextMessage, receivedAt time
 		if remain < 0 {
 			remain = 0
 		}
-		zap.L().Info(fmt.Sprintf("%s 消息防抖：档位=%s，规则=%s，剩余等待=%.3f 秒，待处理=%d 条，消息编号=%s",
+		zap.L().Debug(fmt.Sprintf("%s 消息防抖：档位=%s，规则=%s，剩余等待=%.3f 秒，待处理=%d 条，消息编号=%s",
 			r.logPrefix, debounceModeLabel(mode), reason, remain.Seconds(), r.PendingMessageCount()+1, message.MessageID))
 	}
 }

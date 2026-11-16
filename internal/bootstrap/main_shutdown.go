@@ -44,14 +44,14 @@ func newWorkerShutdownPlan(hooks workerShutdownHooks) runtime.ShutdownPlan {
 		StuckAfter:    3 * time.Second,
 		StuckInterval: 5 * time.Second,
 		OnStepStart: func(step runtime.ShutdownStep) {
-			zap.L().Info("关停步骤开始",
+			zap.L().Debug("关停步骤开始",
 				zap.String("step", step.Name),
 				zap.String("phase", string(step.Phase)),
 				zap.Duration("timeout", step.Timeout))
 		},
 		OnStep: func(result runtime.ShutdownStepResult) {
 			if result.Success {
-				zap.L().Info("关停步骤完成",
+				zap.L().Debug("关停步骤完成",
 					zap.String("step", result.Name),
 					zap.String("phase", string(result.Phase)),
 					zap.Duration("duration", result.Duration))
