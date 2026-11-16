@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 )
 
 // PluginSourceSettings 对齐 sources.PluginSourceSettings：信息源与下载源分别配置
@@ -18,19 +19,19 @@ type PluginSourceSettings struct {
 
 // DefaultSourceSettings 对齐 PluginSourceSettings 的默认值
 func DefaultSourceSettings() PluginSourceSettings {
-	return PluginSourceSettings{InformationSource: "official", DownloadSource: "cnb"}
+	return PluginSourceSettings{InformationSource: "cnb", DownloadSource: "cnb"}
 }
 
 // Normalize 校验并规范化设置，对齐 pydantic 的 Literal 与自定义下载源约束
 func (s *PluginSourceSettings) Normalize() error {
 	s.InformationSource = strings.TrimSpace(s.InformationSource)
 	if s.InformationSource == "" {
-		s.InformationSource = "official"
+		s.InformationSource = "cnb"
 	}
 	switch s.InformationSource {
-	case "official", "cnb", "github":
+	case "cnb", "github":
 	default:
-		return fmt.Errorf("插件市场信息源必须是 official、cnb 或 github 之一")
+		return fmt.Errorf("插件市场信息源必须是 cnb 或 github 之一")
 	}
 	s.DownloadSource = strings.TrimSpace(s.DownloadSource)
 	if s.DownloadSource == "" {
@@ -64,7 +65,16 @@ func settingsPath(instanceDir string) (string, error) {
 	return filepath.Join(root, "data", "plugin_market.json"), nil
 }
 
-// LoadSourceSettings 对齐 load_source_settings，并把旧 use_github 开关迁移为固定信息源
+// quarantineSettingsFile 保留损坏设置原文件，把正式路径释放给下一次写入
+func quarantineSettingsFile(path string) (string, error) {
+	backup := path + ".corrupt-" + randomHex(16)
+	if err := os.Rename(path, backup); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
+// LoadSourceSettings 对齐 load_source_settings：旧 use_github 与 official 源迁移为 CNB，损坏设置恢复默认
 func LoadSourceSettings(instanceDir string) (PluginSourceSettings, error) {
 	path, err := settingsPath(instanceDir)
 	if err != nil {
@@ -77,20 +87,28 @@ func LoadSourceSettings(instanceDir string) (PluginSourceSettings, error) {
 		}
 		return PluginSourceSettings{}, err
 	}
+	fallback := func(cause error) (PluginSourceSettings, error) {
+		backup, quarantineErr := quarantineSettingsFile(path)
+		if quarantineErr != nil {
+			return PluginSourceSettings{}, quarantineErr
+		}
+		zap.L().Warn("插件市场源设置损坏，已保留原文件并恢复默认源",
+			zap.String("backup", backup), zap.Error(cause))
+		return DefaultSourceSettings(), nil
+	}
 	var payload map[string]any
 	if err := sonic.Unmarshal(raw, &payload); err != nil {
-		return PluginSourceSettings{}, err
+		return fallback(err)
 	}
 	if legacy, ok := payload["use_github"]; ok {
-		flag, isBool := legacy.(bool)
-		if !isBool {
-			return PluginSourceSettings{}, fmt.Errorf("插件市场 use_github 设置必须为布尔值")
+		if _, isBool := legacy.(bool); !isBool {
+			return fallback(fmt.Errorf("插件市场 use_github 设置必须为布尔值"))
 		}
-		informationSource := "official"
-		if flag {
-			informationSource = "cnb"
-		}
-		payload = map[string]any{"information_source": informationSource}
+		// 已移除官方信息源，旧开关一律迁移为 CNB 信息源。
+		payload = map[string]any{"information_source": "cnb"}
+	}
+	if safeString(payload["information_source"]) == "official" {
+		payload["information_source"] = "cnb"
 	}
 	settings := PluginSourceSettings{
 		InformationSource: safeString(payload["information_source"]),
@@ -103,7 +121,7 @@ func LoadSourceSettings(instanceDir string) (PluginSourceSettings, error) {
 		}
 	}
 	if err := settings.Normalize(); err != nil {
-		return PluginSourceSettings{}, err
+		return fallback(err)
 	}
 	return settings, nil
 }

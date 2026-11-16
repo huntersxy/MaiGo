@@ -11,7 +11,7 @@ import (
 // Manager 加载内置多语言 prompt 模板并提供渲染与自定义覆盖
 //
 // 行为对齐 MaiBot PromptManager / prompt_i18n：
-//   - 内置模板来自 go:embed，按 locale 目录动态发现（不硬编码语言列表）
+//   - 内置模板来自 go:embed，按 locale 与 main/instructions 分类目录动态发现（不硬编码语言列表）
 //   - 实例 data/custom_prompts 按 locale + category 覆盖内置模板（见 overlay.go）
 //   - Render 递归解析同名字段 prompt；Prompt 对象支持 context 构造函数与保存
 //   - 占位符语法与 Python 一致：{name} 为字段，{{ / }} 转义为字面量大括号
@@ -20,6 +20,7 @@ type Manager struct {
 	mu sync.RWMutex
 
 	byLocale           map[string]map[string]string
+	byLocaleCategory   map[string]map[string]string
 	byLocaleMeta       map[string]map[string]PromptMetadata
 	customByLocale     map[string]map[string]string
 	customMetaByLocale map[string]map[string]PromptMetadata
@@ -42,19 +43,20 @@ type ContextFunc func(ctx context.Context) (string, error)
 
 // NewManager 从嵌入模板构建 Manager；locale 取 MAIBOT_LOCALE，未设置时用系统默认语言
 func NewManager() (*Manager, error) {
-	byLocale, err := loadEmbeddedLocales()
+	set, err := loadEmbeddedTemplateSet()
 	if err != nil {
 		return nil, err
 	}
 	m := &Manager{
-		byLocale:          byLocale,
-		byLocaleMeta:      loadEmbeddedMetadata(),
+		byLocale:          set.byLocale,
+		byLocaleCategory:  set.categoryByLocale,
+		byLocaleMeta:      set.metadataByLocale,
 		locale:            InitialLocale(),
 		prompts:           make(map[string]*Prompt),
 		contextFunctions:  make(map[string]ContextFunc),
 		promptSaveLocales: make(map[string]string),
 	}
-	m.merged = mergeLocaleLayers(byLocale, m.locale)
+	m.merged = mergeLocaleLayers(m.byLocale, m.locale)
 	return m, nil
 }
 

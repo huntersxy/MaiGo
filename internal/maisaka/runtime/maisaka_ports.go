@@ -531,7 +531,9 @@ func jsonSchemaToMap(params *schema.ParamsOneOf) (map[string]any, error) {
 func toolSpecsFromCatalog(catalog []tools.ToolCatalogEntry) []maisaka.ToolSpec {
 	specs := make([]maisaka.ToolSpec, 0, len(catalog))
 	for _, entry := range catalog {
-		spec := maisaka.AnnotateBuiltinToolSpec(maisaka.ToolSpec{Name: entry.Name, Description: entry.Description, Deferred: entry.Deferred})
+		spec := maisaka.AnnotateBuiltinToolSpec(maisaka.ToolSpec{
+			Name: entry.Name, Description: entry.Description, Parameters: entry.Parameters, Deferred: entry.Deferred,
+		})
 		switch maisaka.GetBuiltinToolVisibility(spec) {
 		case maisaka.BuiltinHidden:
 			continue
@@ -641,22 +643,50 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 	if t == nil || t.Agent == nil {
 		return maisaka.ToolExecutionResult{}, fmt.Errorf("工具运行时未绑定 Agent")
 	}
-	if invocation.ToolName == "wait" {
-		seconds := 30
-		if raw, ok := invocation.Arguments["seconds"]; ok {
-			switch value := raw.(type) {
-			case float64:
-				seconds = int(value)
-			case int:
-				seconds = value
-			case json.Number:
-				if parsed, err := value.Int64(); err == nil {
-					seconds = int(parsed)
+	if invocation.ToolName == maisaka.ToolToolSearchName && t.Runtime != nil {
+		defer func() {
+			if tc := tools.GetToolContext(ctx); tc != nil {
+				names := make([]string, 0, len(tc.DiscoveredTools))
+				for name := range tc.DiscoveredTools {
+					names = append(names, name)
 				}
+				t.Runtime.DiscoverDeferredTools(names)
 			}
+		}()
+	}
+	if invocation.ToolName == "wait" {
+		raw, hasSeconds := invocation.Arguments["seconds"]
+		if !hasSeconds {
+			return maisaka.ToolExecutionResult{
+				Success:   true,
+				ToolName:  "wait",
+				PauseTool: "wait",
+				Content:   "已结束本轮思考，等待新消息。",
+				Message:   "已结束本轮思考，等待新消息。",
+				Metadata:  map[string]any{"pause_execution": true},
+			}, nil
 		}
-		if seconds < 0 {
-			seconds = 0
+		seconds := 0
+		valid := true
+		switch value := raw.(type) {
+		case float64:
+			seconds = int(value)
+		case int:
+			seconds = value
+		case int64:
+			seconds = int(value)
+		case json.Number:
+			parsed, err := value.Int64()
+			if err != nil {
+				valid = false
+			} else {
+				seconds = int(parsed)
+			}
+		default:
+			valid = false
+		}
+		if !valid || seconds < 0 {
+			return maisaka.ToolExecutionResult{Success: false, ToolName: "wait", Message: "seconds 必须是非负整数"}, nil
 		}
 		count, err := t.Agent.beginConversationWaitCountedWithIDs(t.Kind, t.TargetID, seconds, invocation.CallID, invocation.LogicalTurnID)
 		if err != nil {
@@ -676,6 +706,7 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 			Metadata: map[string]any{
 				"pause_execution":        true,
 				"consecutive_wait_count": count,
+				"wait_seconds":           seconds,
 			},
 		}, nil
 	}
@@ -744,10 +775,6 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 		case "wait":
 			result.PauseTool = "wait"
 			result.Metadata = map[string]any{"pause_execution": true}
-		case "stop":
-			// 对齐 Python stop：立即暂停本轮（pause_execution），不是批次末 stop_after_execution
-			result.PauseTool = "stop"
-			result.Metadata = map[string]any{"pause_execution": true}
 		}
 		return result, nil
 	}
@@ -806,6 +833,7 @@ func maisakaBuiltinConfig(bot *maibotcfg.BotConfigFile, model *maibotcfg.ModelCo
 		ToolResultCondense:   bot.Capabilities.ToolResultCondense,
 		WebSearchEnabled:     webSearchEnabled,
 		MemoryQueryEnabled:   bot.AMemorix.Integration.EnableMemoryQueryTool,
+		AMemorixEnabled:      bot.AMemorix.Plugin.Enabled,
 		PersonProfileEnabled: bot.AMemorix.Integration.EnablePersonProfileQueryTool,
 		ImageMemoryEnabled:   imageMemoryEnabled(bot, model),
 	}
@@ -941,6 +969,11 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 		EnableJargonLearning: func() bool {
 			_, enabled := learners.DefaultRegistry().ChatConfig().GetJargonConfig(sessionID)
 			return enabled
+		},
+		Prompts: a.newMaisakaPromptSource(),
+		ToolSearchTailLoading: func() bool {
+			cfg := a.instanceBotConfig()
+			return cfg != nil && cfg.Experimental.ToolSearchTailLoading
 		},
 		Compactor: &AgentHistoryCompactor{
 			Agent: a,

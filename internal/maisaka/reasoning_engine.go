@@ -2,9 +2,11 @@ package maisaka
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	"math"
 	"strings"
 	"time"
 
@@ -66,9 +68,10 @@ type TurnStartContext struct {
 type ReasoningEngine struct {
 	runtime *Runtime
 
-	lastReasoningContent string
-	activeLogicalTurnID  string
-	turnPassiveReplyer   *bool
+	lastReasoningContent   string
+	activeLogicalTurnID    string
+	turnPassiveReplyer     *bool
+	turnLightweightPrivate bool
 }
 
 // NewReasoningEngine 创建推理引擎
@@ -108,13 +111,6 @@ func (e *ReasoningEngine) RunTurnOnce(ctx context.Context, trigger *ContextMessa
 	if runtime.IsReplyFrequencySilent() {
 		e.handleSilentTurn(ctx, startContext)
 		return nil
-	}
-	if e.turnPassiveReplyer == nil {
-		value := runtime.opts.PassiveReplyer
-		e.turnPassiveReplyer = &value
-		if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok && chatLoop != nil {
-			chatLoop.PassiveReplyerOverride = &value
-		}
 	}
 	return e.runTurn(ctx, startContext)
 }
@@ -172,10 +168,20 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 	triggerMessage := startContext.TriggerMessage
 
 	runtime.setRunning(true)
+	e.turnLightweightPrivate = runtime.LightweightPrivate()
+	passiveReplyer := runtime.opts.PassiveReplyer || e.turnLightweightPrivate
+	e.turnPassiveReplyer = &passiveReplyer
+	if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok {
+		chatLoop.PassiveReplyerOverride = &passiveReplyer
+		lightweight := e.turnLightweightPrivate
+		chatLoop.LightweightPrivateOverride = &lightweight
+	}
 	defer func() {
 		e.turnPassiveReplyer = nil
+		e.turnLightweightPrivate = false
 		if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok {
 			chatLoop.PassiveReplyerOverride = nil
+			chatLoop.LightweightPrivateOverride = nil
 		}
 		e.activeLogicalTurnID = ""
 		if runtime.AgentState() == turn_trigger.StateRunning {
@@ -479,17 +485,28 @@ func (e *ReasoningEngine) drainReadyTurnTriggers(queued TurnTriggerSource) (mess
 
 // BuildWaitCompletedMessage 构造 wait 完成后的工具结果消息
 func (e *ReasoningEngine) BuildWaitCompletedMessage(hasNewMessages bool) ContextMessage {
+	afterReply := e.runtime.PendingWaitAfterReply()
 	toolCallID, logicalTurnID, elapsed, requested, _ := e.runtime.ConsumePendingWaitState()
-	elapsedText := fmt.Sprintf("%.1f 秒", elapsed)
-	requestedText := ""
-	if requested != nil {
-		requestedText = fmt.Sprintf("，原计划等待 %.1f 秒", *requested)
-	}
-	var content string
-	if hasNewMessages {
-		content = fmt.Sprintf("等待已结束，实际等待 %s%s，期间收到了新的用户输入。请结合这些新消息继续下一轮思考。", elapsedText, requestedText)
-	} else {
-		content = fmt.Sprintf("等待已超时，实际等待 %s%s，期间没有收到新的用户输入。请基于现有上下文继续下一轮思考。", elapsedText, requestedText)
+	waitState, _ := json.Marshal(map[string]any{
+		"elapsed_seconds":   roundTo(elapsed, 1),
+		"requested_seconds": requested,
+		"has_new_messages":  hasNewMessages,
+	})
+	content := e.renderPlannerPrompt("planner_wait_completed", map[string]string{
+		"wait_state": string(waitState),
+	}, "等待结束，请基于现有上下文继续思考。")
+	if afterReply {
+		return ContextMessage{
+			Role:          RoleReference,
+			Content:       content,
+			Timestamp:     nowTime(),
+			Source:        SourceReference,
+			LogicalTurnID: logicalTurnID,
+			Metadata: map[string]any{
+				"display_prefix": "[回复后等待结束]",
+				"remaining_uses": nil,
+			},
+		}
 	}
 	return ContextMessage{
 		Role:          RoleTool,
@@ -596,6 +613,10 @@ func (e *ReasoningEngine) runPlannerRequest(ctx context.Context, trigger *Contex
 		setter.SetInterruptFlag(interrupt)
 		defer setter.SetInterruptFlag(nil)
 	}
+	if service, ok := loop.(*ChatLoopService); ok && service != nil {
+		service.LogicalTurnID = e.activeLogicalTurnID
+		defer func() { service.LogicalTurnID = "" }()
+	}
 	// 覆盖整理上下文到绑定中断标记之间收到消息的窗口
 	if runtime.PlannerMessageSteering() && runtime.HasPendingMessages() {
 		controller.Request()
@@ -605,36 +626,80 @@ func (e *ReasoningEngine) runPlannerRequest(ctx context.Context, trigger *Contex
 
 func (e *ReasoningEngine) buildActionToolDefinitions(ctx context.Context) ([]ToolSpec, string, error) {
 	runtime := e.runtime
+	if runtime.opts.ToolSearchTailLoading != nil {
+		runtime.SetToolSearchTailLoading(runtime.opts.ToolSearchTailLoading())
+	}
 	if runtime.opts.Tools == nil {
+		runtime.UpdateDeferredToolSpecs(nil)
+		runtime.SetCurrentActionTools(nil)
 		return nil, "", nil
 	}
 	tools, err := runtime.opts.Tools.AvailableTools(ctx)
 	if err != nil {
 		return nil, "", err
 	}
-	runtime.UpdateDeferredToolSpecs(tools)
-	runtime.SyncDiscoveredDeferredToolsWithContext(runtime.History())
-	discovered := map[string]struct{}{}
-	for _, spec := range runtime.DiscoveredDeferredToolSpecs() {
-		discovered[spec.Name] = struct{}{}
-	}
-	actionTools := make([]ToolSpec, 0, len(tools))
+	visibleBuiltin := make([]ToolSpec, 0, len(tools))
+	deferredSpecs := make([]ToolSpec, 0, len(tools))
+	passiveReplyer := e.PassiveReplyerEnabled()
 	for _, spec := range tools {
-		if spec.Deferred {
-			if _, ok := discovered[spec.Name]; !ok {
+		if e.turnLightweightPrivate {
+			if spec.Provider != BuiltinProviderName || spec.Name == "read_tool_result" {
+				// 扩展工具按需发现；原始结果回查供联网工具返回 result_id 后继续读取。
+				deferredSpecs = append(deferredSpecs, spec)
+			} else if IsLightweightTool(spec.Name) {
+				visibleBuiltin = append(visibleBuiltin, spec)
+			}
+			continue
+		}
+		if spec.Provider == BuiltinProviderName {
+			if !IsBuiltinToolInActionStage(spec, passiveReplyer) {
 				continue
 			}
+			switch GetBuiltinToolVisibility(spec) {
+			case BuiltinVisible:
+				visibleBuiltin = append(visibleBuiltin, spec)
+			case BuiltinDeferred:
+				deferredSpecs = append(deferredSpecs, spec)
+			}
+			continue
 		}
-		actionTools = append(actionTools, spec)
+		if visibility, _ := spec.Metadata["visibility"].(string); strings.EqualFold(strings.TrimSpace(visibility), "visible") {
+			visibleBuiltin = append(visibleBuiltin, spec)
+			continue
+		}
+		deferredSpecs = append(deferredSpecs, spec)
 	}
-	runtime.SetCurrentActionTools(actionTools)
-	return actionTools, runtime.BuildDeferredToolsReminder(), nil
+	runtime.UpdateDeferredToolSpecs(deferredSpecs)
+	selectedHistory := runtime.History()
+	if loop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok && loop != nil {
+		if selected, _ := loop.SelectLLMContextMessages(runtime.History(), "planner", runtime.MaxContextSize()); len(selected) > 0 {
+			selectedHistory = selected
+		}
+	}
+	runtime.SyncDiscoveredDeferredToolsWithContext(selectedHistory)
+	discoveredSpecs := runtime.DiscoveredDeferredToolSpecs()
+	activeSpecs := make([]ToolSpec, 0, len(visibleBuiltin)+len(discoveredSpecs))
+	activeSpecs = append(activeSpecs, visibleBuiltin...)
+	activeSpecs = append(activeSpecs, discoveredSpecs...)
+	runtime.SetCurrentActionTools(activeSpecs)
+
+	definitions := visibleBuiltin
+	if e.turnLightweightPrivate {
+		definitions = BuildLightweightToolSpecs(visibleBuiltin)
+	}
+	if !runtime.ToolSearchTailLoading() {
+		definitions = append(append([]ToolSpec(nil), definitions...), discoveredSpecs...)
+	}
+	return definitions, runtime.BuildDeferredToolsReminder(), nil
 }
 
 func (e *ReasoningEngine) buildPlannerInjectedUserMessages(ctx context.Context, trigger *ContextMessage, source []ContextMessage, deferredNotice, roundText string) []string {
 	injected := make([]string, 0, 6)
 	if deferredNotice != "" {
 		injected = append(injected, deferredNotice)
+	}
+	if e.turnLightweightPrivate {
+		return injected
 	}
 	if hook := e.runtime.opts.PlannerExtraInjections; hook != nil {
 		for _, extra := range hook(ctx, trigger, source) {
@@ -667,6 +732,23 @@ func (e *ReasoningEngine) chatLoop() ChatLoopRunner {
 	return defaultChatLoop{e.runtime}
 }
 
+// renderPlannerPrompt 读取并渲染 Planner 指令模板；缺失时使用兼容文案
+func (e *ReasoningEngine) renderPlannerPrompt(name string, vars map[string]string, fallback string) string {
+	source := e.runtime.opts.Prompts
+	if source == nil {
+		return fallback
+	}
+	if renderer, ok := source.(PromptRenderer); ok {
+		if text, err := renderer.Render(name, vars); err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	if text, err := source.Get(name); err == nil && strings.TrimSpace(text) != "" {
+		return strings.TrimSpace(text)
+	}
+	return fallback
+}
+
 // GetPlannerContent 只提取 Planner 正文，不将 Provider 原生 reasoning 传给工具和 replyer
 func GetPlannerContent(response ChatResponse) string {
 	return strings.TrimSpace(response.Content)
@@ -676,12 +758,12 @@ func cycleEndForPauseTool(pauseToolName string) CycleEnd {
 	switch pauseToolName {
 	case StopAfterExecutionPauseReason:
 		return CycleEnd{Reason: CycleEndToolStopAfterExec, Detail: "插件工具请求在当前批次执行完成后结束 Planner，并等待新消息。"}
-	case "stop":
-		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "Planner 调用 stop，已结束本轮思考并等待新消息。"}
+	case "wait:end":
+		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "暂时不行动，等待新消息"}
 	case "wait":
 		return CycleEnd{Reason: CycleEndToolPauseWait, Detail: "Planner 调用 wait，本轮暂停并在等待结束后继续判断。"}
-	case "reply:stop":
-		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "回复已发送，after_reply=stop 结束本轮思考。"}
+	case "reply:wait:end":
+		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "回复已发送，after_reply=wait 未指定时间，结束本轮思考。"}
 	case "reply:wait":
 		return CycleEnd{Reason: CycleEndToolPauseWait, Detail: "回复已发送，after_reply=wait 等待后继续判断。"}
 	case "":
@@ -695,6 +777,31 @@ func cycleEndForPauseTool(pauseToolName string) CycleEnd {
 func (e *ReasoningEngine) handlePlannerResponseActions(ctx context.Context, response ChatResponse, cycleDetail CycleDetail, state *CycleRuntimeState) bool {
 	runtime := e.runtime
 	plannerContent := GetPlannerContent(response)
+	// 新消息到达时必须先穿过防抖；旧的等待/静默决策不能盖过已就绪的新输入。
+	waitingDecision := len(response.ToolCalls) == 0 && !(e.PassiveReplyerEnabled() && plannerContent != "")
+	if !waitingDecision {
+		for _, call := range response.ToolCalls {
+			if call.Name == "wait" {
+				waitingDecision = true
+				break
+			}
+		}
+	}
+	if waitingDecision && runtime.HasPendingMessages() {
+		runtime.WaitForMessageQuietPeriod(ctx)
+		if runtime.HasPendingMessages() {
+			reminder := e.renderPlannerPrompt("planner_replan", nil, "有新消息，请根据新消息内容重新思考后规划新的行动")
+			runtime.AppendHistory(ContextMessage{
+				Role:          RoleUser,
+				Content:       reminder,
+				Timestamp:     nowTime(),
+				SessionID:     runtime.SessionID(),
+				LogicalTurnID: e.activeLogicalTurnID,
+			})
+			state.CycleEnd = CycleEnd{Reason: "tool_continue", Detail: "新消息已就绪，跳过等待决策并重新规划。"}
+			return false
+		}
+	}
 	if len(response.ToolCalls) > 0 && e.shouldReplaceReasoning(plannerContent) {
 		plannerContent = "我应该根据我上面思考的内容进行反思，重新思考我下一步的行动，我需要分析当前场景，对话，然后直接输出我的想法："
 		response.Content = plannerContent
@@ -702,11 +809,13 @@ func (e *ReasoningEngine) handlePlannerResponseActions(ctx context.Context, resp
 	}
 	e.lastReasoningContent = plannerContent
 	state.LastThought = plannerContent
-	// stop 是终止信号：不写入工具调用，也不执行同批其它工具
-	if hasStopToolCall(response.ToolCalls) {
+	// 无参数 wait 是终止信号：不写入工具调用，也不执行同批其它工具
+	if hasTerminalWaitToolCall(response.ToolCalls) {
 		e.endPlannerNoToolCycle(state, "状态：已结束本轮思考")
-		state.CycleEnd = cycleEndForPauseTool("stop")
+		state.CycleEnd = cycleEndForPauseTool("wait:end")
 		state.ToolResultSummaries = nil
+		state.ToolMonitorResults = nil
+		runtime.emitPlannerProgress(cycleDetail, state, nil, "")
 		return true
 	}
 	for _, message := range response.RawMessages {
@@ -748,16 +857,16 @@ func (e *ReasoningEngine) handlePlannerResponseActions(ctx context.Context, resp
 	return true
 }
 
-func hasStopToolCall(toolCalls []ToolCall) bool {
+func hasTerminalWaitToolCall(toolCalls []ToolCall) bool {
 	for _, call := range toolCalls {
-		if strings.TrimSpace(call.Name) == "stop" {
+		if strings.TrimSpace(call.Name) == "wait" && len(call.Arguments) == 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// EndPlannerNoToolCycle 供内置 stop 工具复用无工具输出的收尾逻辑
+// EndPlannerNoToolCycle 供无工具输出或终止型 wait 复用收尾逻辑
 func (e *ReasoningEngine) EndPlannerNoToolCycle(statusLine string) {
 	e.endPlannerNoToolCycle(nil, statusLine)
 }
@@ -828,7 +937,7 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 	// 同一批工具调用共用本轮 trace，供预览记录互相索引
 	traceCtx := reasoningtrace.WithTraceID(ctx, reasoningtrace.NewTraceID())
 	replyPause := ""
-	replyWaitSeconds := 30
+	var replyWaitSeconds *int
 	replyPauseCallID := ""
 
 	for index, call := range toolCalls {
@@ -845,6 +954,7 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		runtime.UpdateStageStatus("工具执行 · "+call.Name, fmt.Sprintf("第 %d/%d 个工具", index+1, len(toolCalls)))
 		started := time.Now()
 		result := ToolExecutionResult{Success: false, Content: "统一工具注册表尚未初始化。"}
+		isUnexpandedTool := !runtime.IsActionToolCurrentlyAvailable(call.Name)
 		if replyPause != "" {
 			// 同批调用都必须有回执，但回复要求结束后不能再执行其余工具
 			result = ToolExecutionResult{
@@ -858,10 +968,16 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 				Success:  false,
 				Message:  "被动式 replyer 不调用 reply；决定发言时请直接输出回复指导，不要调用工具。",
 			}
+		} else if e.turnLightweightPrivate && isUnexpandedTool {
+			result = ToolExecutionResult{
+				ToolName: call.Name,
+				Success:  false,
+				Message:  "轻量模式未提供该工具；请使用当前可用工具或输出回复指导。",
+			}
 		} else if runtime.opts.Tools != nil {
 			result = e.invokeTool(traceCtx, invocation)
 		}
-		if !runtime.IsActionToolCurrentlyAvailable(call.Name) && !result.Success {
+		if isUnexpandedTool && !result.Success && (!e.turnLightweightPrivate || runtime.HasDeferredToolSpec(call.Name)) {
 			result = appendDeferredToolParameterHint(result)
 		}
 		duration := time.Since(started).Milliseconds()
@@ -877,7 +993,7 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		condensed := ""
 		rawContent := result.Content
 		alreadyPreviewed, _ := result.Metadata["web_result_preview"].(bool)
-		if runtime.ShouldCondense(call.Name, rawContent, result.Success, alreadyPreviewed) {
+		if !e.turnLightweightPrivate && runtime.ShouldCondense(call.Name, rawContent, result.Success, alreadyPreviewed) {
 			runtime.UpdateStageStatus("工具结果整理 · "+call.Name, fmt.Sprintf("原始结果 %d 字", len([]rune(rawContent))))
 			condensed = CondenseToolResult(ctx, runtime, call, rawContent, latestThought)
 		}
@@ -898,11 +1014,19 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 			if value, ok := result.Metadata["after_reply"].(string); ok && strings.TrimSpace(value) != "" {
 				afterReply = strings.TrimSpace(value)
 			}
-			if afterReply == "stop" || afterReply == "wait" {
+			if afterReply == "wait" {
 				replyPause = afterReply
 				replyPauseCallID = call.CallID
-				if seconds, ok := result.Metadata["wait_seconds"].(int); ok && seconds >= 0 {
-					replyWaitSeconds = seconds
+				switch seconds := result.Metadata["wait_seconds"].(type) {
+				case int:
+					value := seconds
+					replyWaitSeconds = &value
+				case int64:
+					value := int(seconds)
+					replyWaitSeconds = &value
+				case float64:
+					value := int(seconds)
+					replyWaitSeconds = &value
 				}
 			}
 		}
@@ -920,16 +1044,16 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 	}
 	e.appendToolPostHistoryMessages(deferredPostHistory)
 	if replyPause != "" {
-		if replyPause == "stop" {
+		if replyWaitSeconds == nil {
 			runtime.EndPlannerContinuation()
 			runtime.EnterStopState()
-		} else {
-			seconds := float64(replyWaitSeconds)
-			if _, err := runtime.EnterCountedWaitState(&seconds, replyPauseCallID, e.activeLogicalTurnID); err != nil {
-				zap.L().Warn(runtime.logPrefix + " 进入 reply 等待状态失败: " + err.Error())
-			}
+			return true, "reply:wait:end", summaries, monitorResults
 		}
-		return true, "reply:" + replyPause, summaries, monitorResults
+		seconds := float64(*replyWaitSeconds)
+		if _, err := runtime.EnterCountedWaitState(&seconds, replyPauseCallID, e.activeLogicalTurnID, true); err != nil {
+			zap.L().Warn(runtime.logPrefix + " 进入 reply 等待状态失败: " + err.Error())
+		}
+		return true, "reply:wait", summaries, monitorResults
 	}
 	if shouldStopAfterExecution {
 		runtime.EndPlannerContinuation()
@@ -1473,6 +1597,11 @@ func findLongestMatch(a []rune, alo, ahi int, b []rune, blo, bhi int, b2j map[ru
 		previous = current
 	}
 	return bestI, bestJ, bestSize
+}
+
+func roundTo(value float64, places int) float64 {
+	factor := math.Pow(10, float64(places))
+	return math.Round(value*factor) / factor
 }
 
 // defaultChatLoop 未注入对话循环端口时的兜底：直接暴露协议错误

@@ -44,8 +44,8 @@ type BuiltinToolEntry struct {
 // BuiltinToolEntries 对齐 Python BUILTIN_TOOL_ENTRIES 的目录
 var BuiltinToolEntries = []BuiltinToolEntry{
 	{Name: ToolWait, Stage: BuiltinStageBoth, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
-	{Name: ToolStop, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolReply, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
+	{Name: ToolSchedule, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolViewForwardMessage, Stage: BuiltinStageAction, Visibility: BuiltinDeferred, ChatScope: BuiltinScopeAll},
 	{Name: ToolQueryMemory, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
 	{Name: ToolQueryImageMemory, Stage: BuiltinStageAction, Visibility: BuiltinVisible, ChatScope: BuiltinScopeAll},
@@ -123,6 +123,7 @@ type BuiltinToolConfig struct {
 	ToolResultCondense   bool
 	WebSearchEnabled     bool
 	MemoryQueryEnabled   bool
+	AMemorixEnabled      bool
 	PersonProfileEnabled bool
 	ImageMemoryEnabled   bool
 }
@@ -133,7 +134,8 @@ func BuiltinToolEnabledByConfig(name string, cfg BuiltinToolConfig) bool {
 	case string(ToolSubagent), string(ToolSubagentStatus), string(ToolSubagentStop):
 		return cfg.PlannerSubagent
 	case string(ToolReadToolResult):
-		return cfg.ToolResultCondense || cfg.WebSearchEnabled
+		// 记忆预览、长结果整理和统一联网工具都会暂存原文，需要保留回查入口。
+		return cfg.ToolResultCondense || cfg.WebSearchEnabled || (cfg.AMemorixEnabled && cfg.MemoryQueryEnabled)
 	case string(ToolQueryMemory):
 		return cfg.MemoryQueryEnabled
 	case string(ToolQueryImageMemory):

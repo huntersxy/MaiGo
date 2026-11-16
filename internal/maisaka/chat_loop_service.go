@@ -114,6 +114,10 @@ type ChatLoopService struct {
 	Prompts PromptSource
 	// Client 模型客户端
 	Client ChatClient
+	// JudgeClient 正文动作判断器使用的 fast_model 客户端；nil 时跳过判断
+	JudgeClient ChatClient
+	// LogicalTurnID 本轮逻辑轮次，供动作判断器生成工具调用
+	LogicalTurnID string
 	// ExtraTools 额外工具定义
 	ExtraTools []ToolSpec
 	// ToolRegistry 统一工具注册表
@@ -125,6 +129,8 @@ type ChatLoopService struct {
 	snapshotMu sync.Mutex
 	// PassiveReplyerOverride 单轮内固定的被动回复实验模式
 	PassiveReplyerOverride *bool
+	// LightweightPrivateOverride 单轮内固定的轻量私聊模式
+	LightweightPrivateOverride *bool
 	// FocusMode 使用 Focus 共享组提示词模板
 	FocusMode bool
 	// AttentionDriftBlock 注意力漂移提示词块，由宿主按配置渲染
@@ -207,6 +213,9 @@ func ResolveModelTaskName(requestKind, defaultTask string) string {
 
 // ChatPromptName 选择当前聊天使用的 Planner 模板
 func (s *ChatLoopService) ChatPromptName() string {
+	if s.LightweightPrivate() {
+		return "maisaka_chat_lightweight"
+	}
 	if s.FocusMode {
 		return "maisaka_chat_focus"
 	}
@@ -214,6 +223,14 @@ func (s *ChatLoopService) ChatPromptName() string {
 		return "maisaka_chat_passive"
 	}
 	return "maisaka_chat"
+}
+
+// LightweightPrivate 本轮是否使用轻量私聊模式
+func (s *ChatLoopService) LightweightPrivate() bool {
+	if s.LightweightPrivateOverride != nil {
+		return *s.LightweightPrivateOverride
+	}
+	return false
 }
 
 // PassiveReplyer 本轮是否使用被动回复器
@@ -231,6 +248,22 @@ func (s *ChatLoopService) localizedText(name string) string {
 	text, err := s.Prompts.Get(name)
 	if err != nil {
 		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
+func (s *ChatLoopService) renderLocalized(name string, vars map[string]string) string {
+	if s.Prompts == nil {
+		return ""
+	}
+	if renderer, ok := s.Prompts.(PromptRenderer); ok {
+		if text, err := renderer.Render(name, vars); err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	text := s.localizedText(name)
+	for key, value := range vars {
+		text = strings.ReplaceAll(text, "{"+key+"}", value)
 	}
 	return strings.TrimSpace(text)
 }
@@ -334,10 +367,22 @@ func (s *ChatLoopService) BuildBotNicknameNotice(history []ContextMessage) strin
 
 // BuildPlannerFinalUserReminder 构造每轮 Planner 请求末尾的一次性 user 提醒
 func (s *ChatLoopService) BuildPlannerFinalUserReminder() string {
-	if s.FocusMode {
+	promptName := s.ChatPromptName()
+	if promptName == "maisaka_chat_lightweight" {
+		return ""
+	}
+	instruction := map[string]string{
+		"maisaka_chat":         "planner_turn_action",
+		"maisaka_chat_passive": "planner_turn_passive",
+		"maisaka_chat_focus":   "planner_turn_focus",
+	}[promptName]
+	if text := s.renderLocalized(instruction, map[string]string{"bot_name": s.localizedText("bot_name")}); text != "" {
+		return text
+	}
+	if promptName == "maisaka_chat_focus" {
 		return fmt.Sprintf(FocusPlannerFinalUserReminderTemplate, s.localizedText("bot_name"))
 	}
-	if s.PassiveReplyer() {
+	if promptName == "maisaka_chat_passive" {
 		if text := PassivePlannerFinalUserReminders[s.Locale]; text != "" {
 			return text
 		}
@@ -371,6 +416,9 @@ func (s *ChatLoopService) localizedMap(texts map[string]string) string {
 }
 
 func (s *ChatLoopService) buildPlannerIdleFocusRule() string {
+	if text := s.renderLocalized("planner_turn_focus", map[string]string{"bot_name": s.localizedText("bot_name")}); text != "" {
+		return text
+	}
 	return s.localizedMap(map[string]string{
 		"en-US": "Consider all chats in the shared context. Every tool requires its target session_id. reply.after_reply controls the entire group: stop by default, continue for further actions, or wait with wait_seconds. To end the group turn silently, call stop on its own with a session_id from the group.",
 		"ja-JP": "共有コンテキスト内の全チャットを判断し、各ツールに対象の session_id を指定してください。reply.after_reply はグループ全体に適用され、既定は stop、行動を続けるなら continue、待機するなら wait と wait_seconds を使います。発言せずにグループのターンを終えるには、グループ内の session_id を指定して stop を単独で呼び出してください。",
@@ -379,6 +427,13 @@ func (s *ChatLoopService) buildPlannerIdleFocusRule() string {
 }
 
 func (s *ChatLoopService) buildQueryMemoryRule() string {
+	promptName := "planner_memory_private"
+	if s.IsGroupChat {
+		promptName = "planner_memory_group"
+	}
+	if text := s.localizedText(promptName); text != "" {
+		return text
+	}
 	if s.IsGroupChat {
 		return s.localizedMap(map[string]string{
 			"en-US": "- query_memory(): Use it only when the reply clearly depends on past group conversation, shared experiences, public agreements, task progress, or recent clues. Do not retrieve memory for greetings, immediate emotional responses, light banter, or content that can be answered from recent messages alone. Do not bring private-chat or personal-privacy memories into a group chat.",
@@ -396,6 +451,9 @@ func (s *ChatLoopService) buildQueryMemoryRule() string {
 func (s *ChatLoopService) buildSubagentRule() string {
 	if !s.PlannerSubagent {
 		return ""
+	}
+	if text := s.localizedText("planner_subagent_policy"); text != "" {
+		return "\n" + text
 	}
 	rule := s.localizedMap(map[string]string{
 		"en-US": "- subagent(): When something needs looking up before you can answer or judge it (reading docs, searching the web, checking version or plugin information, finding images, verifying a claim, and so on), prefer handing it to a sub-agent: state clearly what to find out and grant it the tools it may need. It only hands you its conclusion. Call a tool directly only for things that take a single step.",
@@ -923,6 +981,15 @@ func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []Contex
 	}
 	emitPlannerAfterResponse(ctx, s.SessionID, &response, len(selected), reason)
 	if requestKind == "planner" {
+		judgment, judgeErr := s.CompleteMissingPlannerAction(ctx, response, tools, selected)
+		if judgeErr != nil {
+			return ChatResponse{}, judgeErr
+		}
+		if judgment != nil {
+			response.ToolCalls = append(response.ToolCalls, judgment.ToolCall)
+			response.RawMessages = BuildRawMessagesFromResponse(response, s.SessionID, items)
+			response.PlannerActionJudge = judgment.Metadata
+		}
 		s.setPlannerSnapshot(&PlannerRequestSnapshot{
 			RequestKind:    requestKind,
 			ModelTask:      request.ModelTaskName,

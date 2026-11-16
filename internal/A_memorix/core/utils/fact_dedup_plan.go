@@ -29,73 +29,6 @@ func factDedupAllowedIDs(allowed map[string]factDedupCandidate) []string {
 	return ids
 }
 
-// factDedupResponseFormat 让候选枚举与每条事实绑定，对齐 _dedup_response_format
-func factDedupResponseFormat(batch []FactDedupFact, modelCandidates map[string]any, relations []map[string]string) map[string]any {
-	allFactIDs := make([]any, 0, len(batch))
-	for _, fact := range batch {
-		allFactIDs = append(allFactIDs, fact.FactID)
-	}
-	decisionSchemas := make([]any, 0, len(batch))
-	for _, fact := range batch {
-		targets := make([]any, 0)
-		if rows, ok := modelCandidates[fact.FactID].([]any); ok {
-			for _, row := range rows {
-				if candidate, ok := row.(map[string]any); ok {
-					targets = append(targets, candidate["id"])
-				}
-			}
-		}
-		candidateItems := map[string]any{"type": "string"}
-		if len(targets) > 0 {
-			candidateItems["enum"] = targets
-		}
-		actions := []any{"keep"}
-		if len(targets) > 0 {
-			actions = []any{"keep", "reuse", "possible_duplicate"}
-		}
-		targetEnum := append(append([]any{}, targets...), nil)
-		decisionSchemas = append(decisionSchemas, map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"fact_id":       map[string]any{"type": "string", "enum": []any{fact.FactID}},
-				"action":        map[string]any{"type": "string", "enum": actions},
-				"target_id":     map[string]any{"type": []any{"string", "null"}, "enum": targetEnum},
-				"candidate_ids": map[string]any{"type": "array", "items": candidateItems},
-			},
-			"required":             []any{"fact_id", "action", "target_id", "candidate_ids"},
-			"additionalProperties": false,
-		})
-	}
-	// strict 模式要求对象的属性全部声明并列为必填，无支持事实的关系返回空数组。
-	relationProperties := make(map[string]any, len(relations))
-	relationRequired := make([]any, 0, len(relations))
-	for index := range relations {
-		key := strconv.Itoa(index)
-		relationProperties[key] = map[string]any{
-			"type": "array", "items": map[string]any{"type": "string", "enum": allFactIDs},
-		}
-		relationRequired = append(relationRequired, key)
-	}
-	return map[string]any{
-		"name":   "fact_deduplication",
-		"strict": true,
-		"schema": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"decisions": map[string]any{"type": "array", "items": map[string]any{"anyOf": decisionSchemas}},
-				"relation_support": map[string]any{
-					"type": "object", "properties": relationProperties,
-					"required": relationRequired, "additionalProperties": false,
-				},
-			},
-			"required":             []any{"decisions", "relation_support"},
-			"additionalProperties": false,
-		},
-	}
-}
-
-
-
 var factDedupTemporalPattern = regexp.MustCompile(`(?i)今天|昨天|明天|刚刚|再次|每天|参加|跑了|买了|完成|出差|去了|\d{1,4}[-/年月日:]|today|yesterday|again|attended|ran|bought|今日|昨日|明日|参加|購入`)
 
 var factDedupDurablePattern = regexp.MustCompile(`(?i)喜欢|偏好|爱好|职业|常住|长期|惯用|偏爱|居住|prefers?|likes?|lives?|occupation|好き|好む|職業|住んで`)
@@ -156,6 +89,7 @@ func (d *FactDeduplicator) Plan(
 		fixed := make(map[string]FactDedupDecision, len(batch))
 		fixedOrder := make([]FactDedupDecision, 0, len(batch))
 		for index, fact := range batch {
+			vectorCandidates := make([]factDedupCandidate, 0, 8)
 			found, err := d.candidates(scopeType, scopeID, fact.Text, paragraphIDs)
 			if err != nil {
 				return nil, err
@@ -181,11 +115,10 @@ func (d *FactDeduplicator) Plan(
 				if err != nil {
 					return nil, err
 				}
-				extra, err := d.paragraphCandidates(hits, scopeType, scopeID)
+				vectorCandidates, err = d.paragraphCandidates(hits, scopeType, scopeID)
 				if err != nil {
 					return nil, err
 				}
-				found = append(found, extra...)
 			}
 			earlier := facts[:offset+index]
 			inputs := make([]factDedupCandidate, 0, 8)
@@ -210,7 +143,9 @@ func (d *FactDeduplicator) Plan(
 				rightRatio := pySequenceRatio(normalizedFact, NormalizedFact(inputs[right].Text))
 				return leftRatio > rightRatio
 			})
-			found = factDedupInterleave(found, inputs)
+			// 精确命中优先，其余名额由向量、关键词和同批输入轮流使用。
+			// 向量候选不能追加在已满的关键词列表后，否则截断时整路召回都会丢失。
+			found = factDedupInterleaveChannels(exact, vectorCandidates, found, inputs)
 			found = factDedupCompatibleCandidates(scopeType, fact, found)
 			found = factDedupUnique(found)
 			if len(found) > 8 {
@@ -301,11 +236,10 @@ func (d *FactDeduplicator) Plan(
 			return nil, fmt.Errorf("事实去重缺少模型服务")
 		}
 		response, err := d.llm.Generate(ctx, FactDedupLLMRequest{
-			TaskName:       d.taskName,
-			RequestType:    factDedupRequestType,
-			Prompt:         prompt,
-			Temperature:    0.0,
-			ResponseFormat: factDedupResponseFormat(batch, modelCandidates, relations),
+			TaskName:    d.taskName,
+			RequestType: factDedupRequestType,
+			Prompt:      prompt,
+			Temperature: 0.0,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("事实去重模型调用失败: %v", err)

@@ -15,8 +15,29 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// ContextItemsFromMessages 将 eino 消息投影为 Context Items
+// ContextItemsFromMessages 将 eino 消息投影为 Context Items，并按默认图片限制治理
 func ContextItemsFromMessages(messages []*schema.AgenticMessage) ([]ContextItem, error) {
+	items, err := projectContextItems(messages)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeContextImages(items), nil
+}
+
+// ContextItemsFromMessagesWithLimits 按模型图片限制投影和治理
+func ContextItemsFromMessagesWithLimits(messages []*schema.AgenticMessage, maxImages, maxSide, minSide int) ([]ContextItem, error) {
+	items, err := projectContextItems(messages)
+	if err != nil {
+		return nil, err
+	}
+	if ports.NormalizeContextImagesForModel == nil {
+		return normalizeContextImages(items), nil
+	}
+	return ports.NormalizeContextImagesForModel(items, maxImages, maxSide, minSide), nil
+}
+
+// projectContextItems 只做 eino 消息到 Context Item 的投影，不做图片治理
+func projectContextItems(messages []*schema.AgenticMessage) ([]ContextItem, error) {
 	items := make([]ContextItem, 0, len(messages))
 	callTurns := make(map[string]string)
 	// Gemini 的 thought_signature 可能在块级 Extra、也可能在消息级索引里
@@ -52,9 +73,7 @@ func ContextItemsFromMessages(messages []*schema.AgenticMessage) ([]ContextItem,
 			continue
 		}
 	}
-	// 与 MaiBot 在 _build_client_request 前调用 normalize_context_images 一致，
-	// 保证 chat/gemini/plugin 与失败快照消费同一份图片尺寸治理结果
-	return normalizeContextImages(items), nil
+	return items, nil
 }
 
 func projectUserMessage(message *schema.AgenticMessage, callTurns map[string]string) ([]ContextItem, error) {

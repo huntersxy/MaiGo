@@ -38,6 +38,13 @@ func buildToolMonitorResult(call ToolCall, invocation ToolInvocation, result Too
 		source = "reasoning"
 		sourceLabel = "推理中调用"
 	}
+	if value, ok := call.ExtraContent["tool_call_source"].(string); ok && strings.TrimSpace(value) != "" {
+		source = strings.TrimSpace(value)
+		sourceLabel = ""
+	}
+	if value, ok := call.ExtraContent["tool_call_source_label"].(string); ok && strings.TrimSpace(value) != "" {
+		sourceLabel = strings.TrimSpace(value)
+	}
 	toolTitle := ""
 	if spec != nil {
 		toolTitle = strings.TrimSpace(spec.Title)

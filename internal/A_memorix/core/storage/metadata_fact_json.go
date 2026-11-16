@@ -177,3 +177,13 @@ func factConflictGroup(scopeType, scopeID, factKey, valueNormalized, cardinality
 	}
 	return factStableHash(payload)
 }
+
+// ClaimIdentity 暴露事实声明标识，供聊天迁移复制 claims
+func ClaimIdentity(scopeType, scopeID, factKey, valueNormalized, polarity string) (string, error) {
+	return factClaimIdentity(scopeType, scopeID, factKey, valueNormalized, polarity)
+}
+
+// ConflictGroup 暴露事实冲突组标识，供聊天迁移重建目标 claims
+func ConflictGroup(scopeType, scopeID, factKey, valueNormalized, cardinality string) (string, error) {
+	return factConflictGroup(scopeType, scopeID, factKey, valueNormalized, cardinality)
+}

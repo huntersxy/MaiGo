@@ -384,7 +384,6 @@ var subagentForbiddenTools = map[string]struct{}{
 	"reply":           {},
 	"tool_search":     {},
 	"wait":            {},
-	"stop":            {},
 }
 
 func normalizeSubagentToolGrants(requested []string) (granted, rejected []string) {

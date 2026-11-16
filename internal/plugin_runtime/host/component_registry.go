@@ -220,11 +220,7 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 			zap.String("plugin_id", pluginID), zap.String("component", name))
 		return entry, nil
 	case ComponentTypeTool:
-		platforms, err := normalizeComponentPlatforms(metadata["platforms"], "Tool")
-		if err != nil {
-			return nil, err
-		}
-		entry.Platforms = platforms
+		entry.Platforms = normalizeDeclaredPlatforms(comp.Platforms)
 		entry.Description = firstNonEmpty(
 			metadataText(metadata, "description"),
 			metadataText(metadata, "brief_description"),
@@ -308,11 +304,7 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 		if name == "" || !isValidChatScope(comp.ChatScope) {
 			return nil, fmt.Errorf("回复扩展名称不能为空，chat_scope 必须是 all/group/private")
 		}
-		platforms, err := normalizeComponentPlatforms(metadata["platforms"], "ReplyExtension")
-		if err != nil {
-			return nil, err
-		}
-		entry.Platforms = platforms
+		entry.Platforms = normalizeDeclaredPlatforms(comp.Platforms)
 		schema, err := validateReplyParametersSchema(metadata["parameters_schema"])
 		if err != nil {
 			return nil, err
@@ -965,38 +957,19 @@ func normalizeComponentTimeoutMS(raw any) (int64, error) {
 	return timeout, nil
 }
 
-func normalizeComponentPlatforms(raw any, componentName string) ([]string, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	var items []any
-	switch typed := raw.(type) {
-	case string:
-		items = []any{typed}
-	case []string:
-		items = make([]any, 0, len(typed))
-		for _, item := range typed {
-			items = append(items, item)
+// normalizeDeclaredPlatforms 规范化组件声明中的平台列表
+func normalizeDeclaredPlatforms(raw []string) []string {
+	seen := make(map[string]bool, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, platform := range raw {
+		normalized := strings.ToLower(strings.TrimSpace(platform))
+		if normalized == "" || seen[normalized] {
+			continue
 		}
-	case []any:
-		items = typed
-	default:
-		return nil, fmt.Errorf("%s platforms 必须是非空平台名称字符串或字符串列表；省略、None 或 [] 表示不限平台", componentName)
+		seen[normalized] = true
+		out = append(out, normalized)
 	}
-	seen := make(map[string]bool, len(items))
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		text, ok := item.(string)
-		if !ok || strings.TrimSpace(text) == "" {
-			return nil, fmt.Errorf("%s platforms 必须是非空平台名称字符串或字符串列表；省略、None 或 [] 表示不限平台", componentName)
-		}
-		normalized := strings.ToLower(strings.TrimSpace(text))
-		if !seen[normalized] {
-			seen[normalized] = true
-			out = append(out, normalized)
-		}
-	}
-	return out, nil
+	return out
 }
 
 func normalizeMessageGatewayRouteType(raw any) (string, error) {

@@ -133,6 +133,8 @@ type GroupOptions struct {
 	StoreRoot      string
 	// Prompts 提示词来源，用于连续等待提醒
 	Prompts maisaka.PromptSource
+	// ToolSearchTailLoading 返回 deferred 工具定义末尾加载开关
+	ToolSearchTailLoading func() bool
 }
 
 // GroupRuntime 每个 Focus 共享组唯一的前台 Planner
@@ -831,18 +833,44 @@ func memberInstructions(member GroupMember) string {
 	return ""
 }
 
-// ExecuteControl 处理 wait / stop 控制工具
-func (g *GroupRuntime) ExecuteControl(name string, arguments map[string]any, sessionID string) maisaka.ToolExecutionResult {
+// ExecuteControl 处理 wait 控制工具；整组等待状态由 applyWaitControl 统一落地
+func (g *GroupRuntime) ExecuteControl(name string, arguments map[string]any, _ string) maisaka.ToolExecutionResult {
+	if name != "wait" {
+		return maisaka.ToolExecutionResult{ToolName: name, Success: false, Content: "当前只支持 wait 控制工具。", Message: "当前只支持 wait 控制工具。"}
+	}
 	result := maisaka.ToolExecutionResult{ToolName: name, Success: true, Metadata: map[string]any{"pause_execution": true}}
-	if name == "wait" {
-		raw, ok := arguments["seconds"]
+	if raw, exists := arguments["seconds"]; exists {
 		seconds, isInt := toInt(raw)
-		if !ok || !isInt || seconds < 0 {
+		if !isInt || seconds < 0 {
 			return maisaka.ToolExecutionResult{ToolName: name, Success: false, Content: "seconds 必须是非负整数。", Message: "seconds 必须是非负整数。"}
 		}
+		result.Metadata["wait_seconds"] = seconds
+	}
+	return result
+}
+
+// applyReplyControl 成功回复后的控制作用于整个共享组，复用 reply 已校验的行为与等待时长
+func (g *GroupRuntime) applyReplyControl(result maisaka.ToolExecutionResult, sessionID string) {
+	if !result.Success {
+		return
+	}
+	action, _ := result.Metadata["after_reply"].(string)
+	if strings.TrimSpace(action) == "" || strings.TrimSpace(action) == "continue" {
+		return
+	}
+	g.applyWaitControl(result, sessionID)
+}
+
+// applyWaitControl 将显式 wait 和回复后的暂停统一应用到整个共享组
+func (g *GroupRuntime) applyWaitControl(result maisaka.ToolExecutionResult, sessionID string) {
+	if !result.Success {
+		return
+	}
+	seconds, timed := metadataIntValue(result.Metadata["wait_seconds"])
+	if timed {
 		g.mu.Lock()
 		g.waits++
-		until := float64(time.Now().UnixNano())/1e9 + float64(seconds)
+		until := nowSeconds() + float64(seconds)
 		g.waitUntil = &until
 		g.waitSession = sessionID
 		g.waitToken = newRunID()
@@ -860,22 +888,47 @@ func (g *GroupRuntime) ExecuteControl(name string, arguments map[string]any, ses
 		content := fmt.Sprintf("已为整个 Focus 共享组登记等待 %d 秒；@ 可以提前唤醒。", seconds)
 		if hasPendingAt {
 			g.finishWaitLocked("等待登记前已有尚未提交的 @ 消息")
-			for sessionID := range g.pending {
-				g.ready[sessionID] = struct{}{}
+			for memberID := range g.pending {
+				g.ready[memberID] = struct{}{}
 			}
 			content = "已登记整组等待，但已有尚未提交的 @ 消息，立即继续下一次思考。"
 		}
 		g.mu.Unlock()
-		result.Content = content
-		result.Message = content
-		return result
+		result.Content = joinToolResultContent(result.Content, content)
+		result.Message = result.Content
+	} else {
+		g.mu.Lock()
+		g.waits = 0
+		g.mu.Unlock()
+		result.Content = joinToolResultContent(result.Content, "已结束整个 Focus 共享组的本轮思考。")
+		result.Message = result.Content
 	}
-	g.mu.Lock()
-	g.waits = 0
-	g.mu.Unlock()
-	result.Content = "已结束整个 Focus 共享组的本轮思考。"
-	result.Message = result.Content
-	return result
+	result.Metadata["pause_execution"] = true
+}
+
+func metadataIntValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	default:
+		return 0, false
+	}
+}
+
+func joinToolResultContent(current, extra string) string {
+	current = strings.TrimSpace(current)
+	extra = strings.TrimSpace(extra)
+	if current == "" {
+		return extra
+	}
+	if extra == "" {
+		return current
+	}
+	return current + "\n" + extra
 }
 
 // finishWait 结束整组等待并通知发起方

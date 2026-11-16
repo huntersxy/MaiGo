@@ -37,6 +37,15 @@ func lifecycleConfigInt(plugin LifecyclePlugin, key string, defaultValue int) in
 	return value
 }
 
+// lifecycleConfigBool 读取布尔配置，缺失时返回默认值
+func lifecycleConfigBool(plugin LifecyclePlugin, key string, defaultValue bool) bool {
+	value := plugin.GetConfig(key, defaultValue)
+	if value == nil {
+		return defaultValue
+	}
+	return PyTruthy(value)
+}
+
 // lifecycleConfigString 读取字符串配置
 func lifecycleConfigString(plugin LifecyclePlugin, key string, defaultValue string) string {
 	value := plugin.GetConfig(key, defaultValue)
@@ -121,6 +130,7 @@ func InitializeStorageAsync(ctx context.Context, plugin LifecyclePlugin, deps *L
 		BatchSize:            lifecycleConfigInt(plugin, "embedding.batch_size", lifecycleDefaultBatchSize),
 		MaxConcurrent:        lifecycleConfigInt(plugin, "embedding.max_concurrent", lifecycleDefaultMaxConcurrent),
 		DefaultDimension:     lifecycleConfigInt(plugin, "embedding.dimension", lifecycleDefaultEmbeddingDimension),
+		EnableCache:          lifecycleConfigBool(plugin, "embedding.enable_cache", false),
 		ModelName:            lifecycleConfigString(plugin, "embedding.model_name", lifecycleDefaultModelName),
 		DimensionRequestMode: lifecycleConfigString(plugin, "embedding.dimension_request_mode", lifecycleDefaultDimensionRequestMode),
 		RetryConfig:          lifecycleConfigDict(plugin, "embedding.retry"),

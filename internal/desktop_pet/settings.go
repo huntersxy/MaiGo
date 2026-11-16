@@ -15,21 +15,29 @@ import (
 
 // DesktopPetSettings 对齐 MaiBot DesktopPetConfig
 type DesktopPetSettings struct {
-	Enabled          bool
-	ChatToolsEnabled bool
-	SkinID           string
+	Enabled                      bool
+	ChatToolsEnabled             bool
+	SkinID                       string
+	ProactiveWakeEnabled         bool
+	ProactiveWakeIntervalMinutes int
 }
 
 // DefaultDesktopPetSettings 返回 Python 侧默认值
 func DefaultDesktopPetSettings() DesktopPetSettings {
-	return DesktopPetSettings{SkinID: "builtin"}
+	return DesktopPetSettings{SkinID: "builtin", ProactiveWakeIntervalMinutes: 30}
 }
 
-// Normalize 补齐空皮肤 ID
+// Normalize 补齐空皮肤 ID 与主动思考间隔
 func (s DesktopPetSettings) Normalize() DesktopPetSettings {
 	s.SkinID = strings.TrimSpace(s.SkinID)
 	if s.SkinID == "" {
 		s.SkinID = "builtin"
+	}
+	if s.ProactiveWakeIntervalMinutes <= 0 {
+		s.ProactiveWakeIntervalMinutes = 30
+	}
+	if s.ProactiveWakeIntervalMinutes > 1440 {
+		s.ProactiveWakeIntervalMinutes = 1440
 	}
 	return s
 }
@@ -56,6 +64,8 @@ func LoadDesktopPetSettings() DesktopPetSettings {
 				settings.Enabled = file.DesktopPet.Enabled
 				settings.ChatToolsEnabled = file.DesktopPet.ChatToolsEnabled
 				settings.SkinID = file.DesktopPet.SkinId
+				settings.ProactiveWakeEnabled = file.DesktopPet.ProactiveWakeEnabled
+				settings.ProactiveWakeIntervalMinutes = file.DesktopPet.ProactiveWakeIntervalMinutes
 			}
 		}
 	}

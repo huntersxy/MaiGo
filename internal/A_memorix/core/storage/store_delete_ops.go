@@ -152,35 +152,31 @@ func (s *Store) UpdateParagraphMetadata(paragraphHash string, patch map[string]a
 	if hashToken == "" {
 		return nil, errExternalParagraphHashEmpty
 	}
-	c, err := s.ResolveConn(nil)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := c.Query("SELECT metadata, is_deleted FROM paragraphs WHERE hash = ? LIMIT 1", hashToken)
-	if err != nil {
-		return nil, err
-	}
-	items, err := scanRowsToMaps(rows)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, nil
-	}
-	if intFromRow(items[0], "is_deleted") != 0 {
-		return nil, nil
-	}
-	metadata := decodeMetadata(stringFromRow(items[0], "metadata"))
 	var updated map[string]any
-	if merge {
-		updated = mergeParagraphMetadata(metadata, patch)
-	} else {
-		updated = make(map[string]any, len(patch))
-		for key, value := range patch {
-			updated[key] = value
+	var found bool
+	err := s.Transaction(true, func(tx *Tx) error {
+		// 在同一事务内校验删除状态并合并，防止写回并发更新前的旧 metadata。
+		rows, err := tx.Query("SELECT metadata, is_deleted FROM paragraphs WHERE hash = ? LIMIT 1", hashToken)
+		if err != nil {
+			return err
 		}
-	}
-	err = s.Transaction(true, func(tx *Tx) error {
+		items, err := scanRowsToMaps(rows)
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 || intFromRow(items[0], "is_deleted") != 0 {
+			return nil
+		}
+		metadata := decodeMetadata(stringFromRow(items[0], "metadata"))
+		if merge {
+			updated = mergeParagraphMetadata(metadata, patch)
+		} else {
+			updated = make(map[string]any, len(patch))
+			for key, value := range patch {
+				updated[key] = value
+			}
+		}
+		found = true
 		if _, err := tx.Exec("UPDATE paragraphs SET metadata = ?, updated_at = ? WHERE hash = ?",
 			encodeMetadata(updated), float64(time.Now().UnixNano())/1e9, hashToken); err != nil {
 			return err
@@ -191,6 +187,9 @@ func (s *Store) UpdateParagraphMetadata(paragraphHash string, patch map[string]a
 	})
 	if err != nil {
 		return nil, err
+	}
+	if !found {
+		return nil, nil
 	}
 	return updated, nil
 }

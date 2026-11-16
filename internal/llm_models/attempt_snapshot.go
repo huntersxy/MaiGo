@@ -37,7 +37,8 @@ func responseAttemptSnapshot(cfg ModelConfig, input []*schema.AgenticMessage, op
 	// eino 客户端会在真正发包前把五档/四档解析进 options；快照先按同样规则解析一份副本
 	resolved := *options
 	resolveEffectiveParams(cfg, &resolved)
-	items, err := ContextItemsFromMessages(input)
+	maxImages, maxSide, minSide := cfg.EffectiveImageLimits()
+	items, err := ContextItemsFromMessagesWithLimits(input, maxImages, maxSide, minSide)
 	if err != nil {
 		items = nil
 	}

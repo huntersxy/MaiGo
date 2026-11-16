@@ -29,6 +29,7 @@ var ErrNoModel = fmt.Errorf("尚未配置模型")
 // LLM 任务路由（对齐 MaiBot model_task_config，经 Router.NewClientForTaskWithFailover）：
 //   - model / modelName：replyer，主聊天 groupAgent 与 privateAgent
 //   - plannerModel / plannerModelName：planner，子代理单次调用（MaiBot run_sub_agent 默认任务）
+//   - fastModel / fastModelName：fast_model，Planner 正文动作判断器
 //   - utilsModel / utilsModelName：utils，子代理 planner 不可用时的回退及后续 utils 子任务
 //
 // 压缩仍共用 replyer 模型；Planner/Replyer 分环未拆
@@ -38,6 +39,8 @@ type Generation struct {
 	contextWindow    int
 	plannerModel     model.AgenticModel
 	plannerModelName string
+	fastModel        model.AgenticModel
+	fastModelName    string
 	utilsModel       model.AgenticModel
 	utilsModelName   string
 	groupAgent       *adk.TypedChatModelAgent[*schema.AgenticMessage]
@@ -74,6 +77,7 @@ func (a *Agent) buildGeneration() (*Generation, error) {
 		return nil, err
 	}
 	plannerModel, plannerModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskPlanner)
+	fastModel, fastModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskFastModel)
 	utilsModel, utilsModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskUtils)
 
 	servers, clientCfg, err := a.mcpRuntimeConfig(a.ctx)
@@ -115,6 +119,8 @@ func (a *Agent) buildGeneration() (*Generation, error) {
 		contextWindow:    contextWindow,
 		plannerModel:     plannerModel,
 		plannerModelName: plannerModelName,
+		fastModel:        fastModel,
+		fastModelName:    fastModelName,
 		utilsModel:       utilsModel,
 		utilsModelName:   utilsModelName,
 		groupTools:       groupTools,
@@ -123,10 +129,11 @@ func (a *Agent) buildGeneration() (*Generation, error) {
 		media:            mediaManager,
 		releaseMCP:       releaseMCP,
 	}
-	if plannerModelName != "" || utilsModelName != "" {
+	if plannerModelName != "" || utilsModelName != "" || fastModelName != "" {
 		zap.L().Debug("generation 任务模型快照",
 			zap.String("replyer", modelName),
 			zap.String("planner", plannerModelName),
+			zap.String("fast", fastModelName),
 			zap.String("utils", utilsModelName))
 	}
 	generation.groupAgent, err = a.newChatAgent(generation, groupTools, a.passthroughModelInput)
@@ -171,7 +178,7 @@ func (a *Agent) newChatAgent(generation *Generation, chatTools []tool.BaseTool, 
 					tools.ToolTranscriptMiddleware(),
 				},
 			},
-			ReturnDirectly: map[string]bool{"stayQuiet": true, "stop": true, "wait": true},
+			ReturnDirectly: map[string]bool{"stayQuiet": true, "wait": true},
 		},
 		MaxIterations: maxStep,
 		Handlers: []adk.TypedChatModelAgentMiddleware[*schema.AgenticMessage]{

@@ -144,11 +144,14 @@ func FilterVisibleToolInfos(tc *ToolContext, infos []*schema.ToolInfo) []*schema
 		if name == "" {
 			continue
 		}
-		if tc.IsDeferredTool(name) && !tc.IsToolDiscovered(name) {
+		if tc.IsDeferredTool(name) && (tc.ToolSearchTailLoading || !tc.IsToolDiscovered(name)) {
 			continue
 		}
 		visible = append(visible, info)
 		seen[name] = struct{}{}
+	}
+	if tc.ToolSearchTailLoading {
+		return visible
 	}
 	for _, info := range tc.DeferredToolInfos {
 		if info == nil {
@@ -177,7 +180,11 @@ func DeferredToolsReminder(tc *ToolContext) string {
 	}
 	var lines []string
 	for _, entry := range tc.ToolCatalog {
-		if !entry.Deferred || tc.IsToolDiscovered(entry.Name) {
+		if !entry.Deferred {
+			continue
+		}
+		// 末尾加载模式的目录不随激活改变；普通模式只列出尚未展开的工具。
+		if !tc.ToolSearchTailLoading && tc.IsToolDiscovered(entry.Name) {
 			continue
 		}
 		if desc := strings.TrimSpace(entry.Description); desc != "" {

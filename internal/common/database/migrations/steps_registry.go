@@ -1,6 +1,6 @@
 package migration
 
-// migrationSteps 按版本升序注册 v18..v54
+// migrationSteps 按版本升序注册 v18..v57
 // v19..v27 的行为学习表在 Python v42 被全部删除，Go v17 合并 schema 从未建模
 // 这里保留版本号与空实现，保证版本链连续且不创建最终不存在的表
 var migrationSteps = []migrationStep{
@@ -42,4 +42,6 @@ var migrationSteps = []migrationStep{
 	{53, "person_info_v53_python_types", "person_info 列类型对齐 Python 运行模型", migrateV53},
 	{54, "emoji_images_unify", "表情收敛到 Python 的 images 单表", migrateV54},
 	{55, "webui_help_history", "建立 WebUI 答疑会话与问答记录表", migrateV55},
+	{56, "sharing_groups", "建立独立相通组表", migrateV56},
+	{57, "chat_migration", "建立在线聊天流迁移任务与复制账本", migrateV57},
 }

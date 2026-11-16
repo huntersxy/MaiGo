@@ -48,6 +48,11 @@ type HostKernelStatusReporter interface {
 	HostStatusReport() map[string]any
 }
 
+// HostChatMemoryMigrator 可选能力：在线聊天流迁移复制长期记忆归属
+type HostChatMemoryMigrator interface {
+	ChatMemoryMigration(action string, args map[string]any) (map[string]any, error)
+}
+
 // HostKernelSearchRequest 对照 core/runtime.KernelSearchRequest
 // 不在本包直接引用 runtime 类型，避免 import 环
 type HostKernelSearchRequest struct {
@@ -131,11 +136,13 @@ type HostFileOps interface {
 // HostServiceOptions 宿主服务依赖
 // 默认值按 Python 的模块级单例尽量补齐；未注入的项会在报告中标注差异
 type HostServiceOptions struct {
-	ConfigStore           HostConfigStore
-	KernelFactory         KernelFactory
-	FileOps               HostFileOps
-	DefaultConfig         func() maibot.AMemorixConfig
-	SharedSessionIDs      func(sessionID string) []string
+	ConfigStore      HostConfigStore
+	KernelFactory    KernelFactory
+	FileOps          HostFileOps
+	DefaultConfig    func() maibot.AMemorixConfig
+	SharedSessionIDs func(sessionID string) []string
+	// SharedScope 返回会话可共享的记忆范围与是否全局共享，优先于 SharedSessionIDs
+	SharedScope           func(sessionID string) ([]string, bool)
 	RegisterRuntimeKernel func(kernel HostKernel)
 	PluginRoot            func() string
 	SchemaPath            func() string

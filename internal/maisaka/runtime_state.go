@@ -2,6 +2,7 @@ package maisaka
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,13 +12,6 @@ import (
 
 	"MaiGo/internal/maisaka/turn_trigger"
 )
-
-// scoredToolSpec tool_search 打分结果
-type scoredToolSpec struct {
-	score int
-	name  string
-	spec  ToolSpec
-}
 
 // RegisterMessage 缓存一条新消息并唤醒主循环
 func (r *Runtime) RegisterMessage(ctx context.Context, message ContextMessage) error {
@@ -412,8 +406,8 @@ func (r *Runtime) resetConsecutiveWaitCount(reason string) {
 }
 
 // EnterCountedWaitState 进入 wait 状态并返回连续次数；多次等待由下一轮上下文提醒
-func (r *Runtime) EnterCountedWaitState(seconds *float64, toolCallID, logicalTurnID string) (int, error) {
-	if err := r.EnterWaitState(seconds, toolCallID, logicalTurnID); err != nil {
+func (r *Runtime) EnterCountedWaitState(seconds *float64, toolCallID, logicalTurnID string, afterReply ...bool) (int, error) {
+	if err := r.EnterWaitState(seconds, toolCallID, logicalTurnID, afterReply...); err != nil {
 		return 0, err
 	}
 	r.mu.Lock()
@@ -432,7 +426,7 @@ func (r *Runtime) ResumeFromWaitForProactiveTrigger() {
 }
 
 // EnterWaitState 切换到等待状态
-func (r *Runtime) EnterWaitState(seconds *float64, toolCallID, logicalTurnID string) error {
+func (r *Runtime) EnterWaitState(seconds *float64, toolCallID, logicalTurnID string, afterReply ...bool) error {
 	if toolCallID == "" || logicalTurnID == "" {
 		return fmt.Errorf("进入 wait 状态必须绑定非空 tool_call_id 和 logical_turn_id")
 	}
@@ -443,6 +437,7 @@ func (r *Runtime) EnterWaitState(seconds *float64, toolCallID, logicalTurnID str
 	r.pendingWaitLogicalTurnID = logicalTurnID
 	r.pendingWaitStartedAt = &now
 	r.pendingWaitSeconds = seconds
+	r.pendingWaitAfterReply = len(afterReply) > 0 && afterReply[0]
 	r.messageTurnScheduled = false
 	r.mu.Unlock()
 	r.cancelDeferredMessageTurnTask()
@@ -498,6 +493,13 @@ func (r *Runtime) scheduleWaitTimeout(seconds float64, toolCallID string) {
 	}()
 }
 
+// PendingWaitAfterReply 当前等待是否由 reply.after_reply=wait 触发
+func (r *Runtime) PendingWaitAfterReply() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pendingWaitAfterReply
+}
+
 // ConsumePendingWaitState 消费当前 wait 挂起状态，供 wait 完成消息回填
 func (r *Runtime) ConsumePendingWaitState() (toolCallID, logicalTurnID string, elapsedSeconds float64, requestedSeconds *float64, err error) {
 	r.mu.Lock()
@@ -521,6 +523,7 @@ func (r *Runtime) ConsumePendingWaitState() (toolCallID, logicalTurnID string, e
 	r.pendingWaitLogicalTurnID = ""
 	r.pendingWaitStartedAt = nil
 	r.pendingWaitSeconds = nil
+	r.pendingWaitAfterReply = false
 	r.mu.Unlock()
 	return toolCallID, logicalTurnID, elapsedSeconds, requestedSeconds, nil
 }
@@ -597,6 +600,34 @@ func (r *Runtime) IsActionToolCurrentlyAvailable(toolName string) bool {
 	return ok
 }
 
+// SetToolSearchTailLoading 设置 deferred 工具定义末尾加载模式
+func (r *Runtime) SetToolSearchTailLoading(enabled bool) {
+	r.mu.Lock()
+	r.toolSearchTailLoading = enabled
+	r.mu.Unlock()
+}
+
+// ToolSearchTailLoading 当前是否启用 deferred 工具定义末尾加载
+func (r *Runtime) ToolSearchTailLoading() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.toolSearchTailLoading
+}
+
+// SetLightweightPrivate 设置当前轮次是否使用轻量私聊模式
+func (r *Runtime) SetLightweightPrivate(enabled bool) {
+	r.mu.Lock()
+	r.lightweightPrivate = enabled
+	r.mu.Unlock()
+}
+
+// LightweightPrivate 当前轮次是否使用轻量私聊模式
+func (r *Runtime) LightweightPrivate() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lightweightPrivate
+}
+
 // UpdateDeferredToolSpecs 刷新当前会话的 deferred tools 池，并清理失效的已发现工具
 func (r *Runtime) UpdateDeferredToolSpecs(specs []ToolSpec) {
 	next := map[string]ToolSpec{}
@@ -667,6 +698,17 @@ func (r *Runtime) parseToolSearchResultToolNames(content string) map[string]stru
 	r.mu.Lock()
 	specs := r.deferredToolSpecs
 	r.mu.Unlock()
+	var structured struct {
+		MatchedToolNames []string `json:"matched_tool_names"`
+	}
+	if err := json.Unmarshal([]byte(content), &structured); err == nil {
+		for _, raw := range structured.MatchedToolNames {
+			name := strings.TrimSpace(raw)
+			if _, ok := specs[name]; ok {
+				discovered[name] = struct{}{}
+			}
+		}
+	}
 	for _, rawLine := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(rawLine)
 		if !strings.HasPrefix(line, "- ") {
@@ -693,13 +735,28 @@ func (r *Runtime) DiscoveredDeferredToolSpecs() []ToolSpec {
 	return out
 }
 
+// HasDeferredToolSpec 判断名称是否存在于当前 deferred tools 池
+func (r *Runtime) HasDeferredToolSpec(name string) bool {
+	normalized := strings.TrimSpace(name)
+	if normalized == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.deferredToolSpecs[normalized]
+	return ok
+}
+
 // BuildDeferredToolsReminder 构造供 planner 使用的 deferred tools 提示消息
 func (r *Runtime) BuildDeferredToolsReminder() string {
 	r.mu.Lock()
+	// 末尾加载模式的目录不随激活改变；普通模式只列出尚未展开的工具。
 	undiscovered := make([]ToolSpec, 0, len(r.deferredToolSpecs))
 	for name, spec := range r.deferredToolSpecs {
-		if _, ok := r.discoveredToolNames[name]; ok {
-			continue
+		if !r.toolSearchTailLoading {
+			if _, ok := r.discoveredToolNames[name]; ok {
+				continue
+			}
 		}
 		undiscovered = append(undiscovered, spec)
 	}
@@ -707,6 +764,7 @@ func (r *Runtime) BuildDeferredToolsReminder() string {
 	if len(undiscovered) == 0 {
 		return ""
 	}
+	sort.SliceStable(undiscovered, func(i, j int) bool { return undiscovered[i].Name < undiscovered[j].Name })
 	lines := make([]string, 0, len(undiscovered)+5)
 	lines = append(lines, "<system-reminder>", "以下工具当前未直接暴露给你，但可以通过 tool_search 工具发现并在后续轮次中使用：")
 	for index, spec := range undiscovered {
@@ -724,65 +782,13 @@ func (r *Runtime) BuildDeferredToolsReminder() string {
 
 // SearchDeferredToolSpecs 按名称或简要描述搜索 deferred tools
 func (r *Runtime) SearchDeferredToolSpecs(query string, limit int) []ToolSpec {
-	normalizedQuery := strings.Join(strings.Fields(strings.ToLower(query)), " ")
-	if normalizedQuery == "" {
-		return nil
-	}
-	terms := strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(normalizedQuery))
 	r.mu.Lock()
-	specs := make(map[string]ToolSpec, len(r.deferredToolSpecs))
-	for name, spec := range r.deferredToolSpecs {
-		specs[name] = spec
+	specs := make([]ToolSpec, 0, len(r.deferredToolSpecs))
+	for _, spec := range r.deferredToolSpecs {
+		specs = append(specs, spec)
 	}
 	r.mu.Unlock()
-
-	matches := make([]scoredToolSpec, 0, len(specs))
-	for name, spec := range specs {
-		lowerName := strings.ToLower(name)
-		lowerDescription := strings.ToLower(spec.Description)
-		score := 0
-		if normalizedQuery == lowerName {
-			score += 1000
-		}
-		if strings.HasPrefix(lowerName, normalizedQuery) {
-			score += 300
-		}
-		if strings.Contains(lowerName, normalizedQuery) {
-			score += 200
-		}
-		if strings.Contains(lowerDescription, normalizedQuery) {
-			score += 100
-		}
-		for _, term := range terms {
-			if strings.Contains(lowerName, term) {
-				score += 25
-			}
-			if strings.Contains(lowerDescription, term) {
-				score += 10
-			}
-		}
-		if score <= 0 {
-			continue
-		}
-		matches = append(matches, scoredToolSpec{score: score, name: name, spec: spec})
-	}
-	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].score != matches[j].score {
-			return matches[i].score > matches[j].score
-		}
-		return matches[i].name < matches[j].name
-	})
-	if limit < 1 {
-		limit = 1
-	}
-	if len(matches) > limit {
-		matches = matches[:limit]
-	}
-	out := make([]ToolSpec, 0, len(matches))
-	for _, match := range matches {
-		out = append(out, match.spec)
-	}
-	return out
+	return SearchToolSpecs(specs, query, limit)
 }
 
 // DiscoverDeferredTools 将指定 deferred tools 标记为已发现，并返回本次新发现的工具名

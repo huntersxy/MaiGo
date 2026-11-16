@@ -15,11 +15,6 @@ import (
 // 调用方据此显式降级为规则分桶，而不是把空结果伪装成模型输出
 var ErrPersonProfileClassificationUnavailable = errors.New("人物画像分类模型未配置")
 
-// personProfileClassificationTaskPriority 对齐 Python 画像分类的 preferred 顺序
-var personProfileClassificationTaskPriority = []string{
-	"memory", "utils", "planner", "tool_use", "replyer",
-}
-
 // PersonProfileClassificationLLM 把宿主文本生成网关适配为画像分类端口
 type PersonProfileClassificationLLM struct {
 	gateway TextGenerationGateway
@@ -41,17 +36,16 @@ func NewPersonProfileClassificationLLM(
 	}
 }
 
-// ResolveModel 按 Python 的 preferred 顺序解析真实模型任务
+// ResolveModel 按 fast_model -> utils 解析轻量分类模型任务
 func (l *PersonProfileClassificationLLM) ResolveModel() (ResolvedLLMModel, error) {
 	if l == nil || l.gateway == nil {
 		return ResolvedLLMModel{}, fmt.Errorf("%w: LLM 网关未初始化", ErrPersonProfileClassificationUnavailable)
 	}
-	available := GetTextGenerationModelTasks(l.tasks, false)
-	taskName, taskConfig, ok := PickTextGenerationTask(available, personProfileClassificationTaskPriority)
-	if !ok {
-		return ResolvedLLMModel{}, fmt.Errorf("%w: 没有可用的文本生成模型配置", ErrPersonProfileClassificationUnavailable)
+	model, err := ResolveFastTextGenerationModel(l.tasks)
+	if err != nil {
+		return ResolvedLLMModel{}, fmt.Errorf("%w: %v", ErrPersonProfileClassificationUnavailable, err)
 	}
-	return ResolvedLLMModel{TaskName: taskName, TaskConfig: taskConfig}, nil
+	return model, nil
 }
 
 // GeneratePersonProfileClassification 按真实任务调用宿主 LLM 编排

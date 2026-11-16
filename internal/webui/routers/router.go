@@ -139,6 +139,21 @@ func Mount(r chi.Router, d Deps) {
 		})
 		// Python 的创建接口无尾斜杠
 		api.Post("/expression", d.requireAuthHandler(d.handleExpressionCreate))
+		api.Route("/sharing-groups", func(sr chi.Router) {
+			sr.Use(d.requireAuthMiddleware)
+			sr.Get("", d.handleSharingGroupList)
+			sr.Post("", d.handleSharingGroupCreate)
+			sr.Put("/{group_id}", d.handleSharingGroupUpdate)
+			sr.Delete("/{group_id}", d.handleSharingGroupDelete)
+		})
+		api.Route("/chat-migrations", func(cr chi.Router) {
+			cr.Use(d.requireAuthMiddleware)
+			cr.Get("", d.handleChatMigrationList)
+			cr.Post("/preview", d.handleChatMigrationPreview)
+			cr.Get("/{job_id}", d.handleChatMigrationGet)
+			cr.Post("/{job_id}/execute", d.handleChatMigrationExecute)
+			cr.Post("/{job_id}/recover", d.handleChatMigrationRecover)
+		})
 		api.Route("/mcp", func(mr chi.Router) {
 			mr.Get("/status", d.handleMCPStatus)
 			mr.Post("/test", d.handleMCPTest)

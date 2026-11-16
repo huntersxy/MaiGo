@@ -323,7 +323,8 @@ func (a *AutoImporter) extractChatTimeMeta(ctx context.Context, text string, gat
 	builder.WriteString("}\n\n")
 	builder.WriteString("Chat paragraph:\n\"\"\"" + text + "\"\"\"\n")
 
-	result, err := gateway.completion(ctx, builder.String())
+	// 时间字段抽取独立使用快速模型，不继承完整知识抽取的模型选择。
+	result, err := gateway.completionFast(ctx, builder.String())
 	if err != nil {
 		a.logger.Warning(fmt.Sprintf("chat_log 时间语义抽取失败: %v", err))
 		return nil

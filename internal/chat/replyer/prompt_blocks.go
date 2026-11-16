@@ -77,35 +77,17 @@ func (b *PromptBuilder) BuildTargetMessageBlock(target *ReplyTarget) string {
 	if targetMessageID == "" {
 		targetMessageID = "未知"
 	}
-	quoteIDs := quoteIDs(target.Quotes)
 	targetContent := normalizeReplyContent(b.BuildTargetMessageContent(target), 300)
 	if targetContent == "" {
 		targetContent = "[无可见文本内容]"
 	}
-	if target.IsBotSelf {
-		return strings.Join([]string{
-			fmt.Sprintf("你想要补充说明你自己（%s） 发送的 msg_id为 %s 的消息，你可以在这条目标消息的基础上补充发言，不要把你自己的发言当成别人的发言。", botName, targetMessageID),
-			"- 你之前的发言内容：" + targetContent,
-		}, "\n")
+	if !target.IsBotSelf {
+		return ""
 	}
-	lines := []string{
-		fmt.Sprintf("你想要回复的消息是 %s 发送的 msg_id为 %s 的消息，你这次要回复的就是这条目标消息，不要把其他历史消息当成当前回复对象。", senderName, targetMessageID),
-	}
-	if len(quoteIDs) > 0 {
-		lines = append(lines, "- quote="+strings.Join(quoteIDs, ","))
-	}
-	lines = append(lines, "- 发言内容："+targetContent)
-	return strings.Join(lines, "\n")
-}
-
-func quoteIDs(quotes []QuoteReference) []string {
-	ids := make([]string, 0, len(quotes))
-	for _, quote := range quotes {
-		if trimmed := strings.TrimSpace(quote.MessageID); trimmed != "" {
-			ids = append(ids, maisaka.ToDisplayMessageID(trimmed))
-		}
-	}
-	return ids
+	return strings.Join([]string{
+		fmt.Sprintf("你想要补充说明你自己（%s） 发送的 msg_id为 %s 的消息，你可以在这条目标消息的基础上补充发言，不要把你自己的发言当成别人的发言。", botName, targetMessageID),
+		"- 你之前的发言内容：" + targetContent,
+	}, "\n")
 }
 
 func normalizeAttachmentImages(raw []AttachmentImage) []AttachmentImage {

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -17,6 +18,9 @@ const (
 	reasonInitFailed   = "a_memorix_initialization_failed"
 	reasonQueued       = "a_memorix_initializing_queued"
 )
+
+// ChatActivityGate 聊天迁移期间暂停指定聊天流的记忆写入；由宿主注入，避免包循环
+var ChatActivityGate func(ctx context.Context, sessionID string, operation func() error) error
 
 // Invoke 对齐 host_service.invoke；timeout_ms 语义与 Python 一致
 func (s *AMemorixHostService) Invoke(ctx context.Context, component string, args map[string]any, timeoutMs *int) (any, error) {
@@ -40,6 +44,28 @@ func (s *AMemorixHostService) Invoke(ctx context.Context, component string, args
 }
 
 func (s *AMemorixHostService) invoke(ctx context.Context, component string, args map[string]any) (any, error) {
+	sessionID := ""
+	if args != nil {
+		sessionID = strings.TrimSpace(payloadString(args, "chat_id"))
+		if sessionID == "" {
+			sessionID = strings.TrimSpace(payloadString(args, "session_id"))
+		}
+	}
+	if sessionID != "" && component != "memory_chat_migration" && ChatActivityGate != nil {
+		var result any
+		var operationErr error
+		if gateErr := ChatActivityGate(ctx, sessionID, func() error {
+			result, operationErr = s.invokeWithoutGate(ctx, component, args)
+			return operationErr
+		}); gateErr != nil {
+			return nil, gateErr
+		}
+		return result, operationErr
+	}
+	return s.invokeWithoutGate(ctx, component, args)
+}
+
+func (s *AMemorixHostService) invokeWithoutGate(ctx context.Context, component string, args map[string]any) (any, error) {
 	payload := args
 	if payload == nil {
 		payload = map[string]any{}
@@ -59,6 +85,19 @@ func (s *AMemorixHostService) invoke(ctx context.Context, component string, args
 	}
 
 	switch component {
+	case "memory_chat_migration":
+		migrator, ok := kernel.(HostChatMemoryMigrator)
+		if !ok {
+			return nil, errors.New("当前 A_Memorix 内核不支持聊天流记忆迁移")
+		}
+		action := payloadString(payload, "action")
+		args := make(map[string]any, len(payload))
+		for key, value := range payload {
+			if key != "action" {
+				args[key] = value
+			}
+		}
+		return migrator.ChatMemoryMigration(action, args)
 	case "search_memory":
 		return s.invokeSearchMemory(ctx, kernel, payload)
 	case "enqueue_feedback_task":
@@ -115,15 +154,12 @@ func (s *AMemorixHostService) invoke(ctx context.Context, component string, args
 
 func (s *AMemorixHostService) invokeSearchMemory(ctx context.Context, kernel HostKernel, payload map[string]any) (any, error) {
 	chatID := strings.TrimSpace(payloadString(payload, "chat_id"))
-	config := s.readConfig()
-	global := payloadBool(config, "global_memory_sharing_enabled", false)
+	sharedChatIDs, global := s.sharedMemoryScope(chatID)
 
 	searchChatID := chatID
-	var sharedChatIDs []string
 	if global {
 		searchChatID = ""
-	} else {
-		sharedChatIDs = s.sharedSessionIDs(chatID)
+		sharedChatIDs = nil
 	}
 	limit := payloadInt(payload, "limit", 5)
 	if limit == 0 {
@@ -155,26 +191,32 @@ func (s *AMemorixHostService) invokeImageMemory(ctx context.Context, kernel Host
 	if action == "search" || action == "get" {
 		if _, has := scoped["chat_ids"]; !has {
 			chatID := strings.TrimSpace(payloadString(payload, "chat_id"))
-			config := s.readConfig()
-			if payloadBool(config, "global_memory_sharing_enabled", false) {
+			shared, global := s.sharedMemoryScope(chatID)
+			if global {
 				scoped["chat_ids"] = nil
 			} else {
-				shared := s.sharedSessionIDs(chatID)
-				chatIDs := make([]string, 0, 1+len(shared))
-				if chatID != "" {
-					chatIDs = append(chatIDs, chatID)
-				}
-				for _, item := range shared {
-					if strings.TrimSpace(item) != "" {
-						chatIDs = append(chatIDs, item)
-					}
-				}
-				scoped["chat_ids"] = chatIDs
+				sort.Strings(shared)
+				scoped["chat_ids"] = shared
 			}
 		}
 	}
 	delete(scoped, "action")
 	return kernel.ImageMemory(ctx, action, scoped)
+}
+
+// sharedMemoryScope 优先按相通组解析记忆范围；未注入时回退旧的单一会话范围
+func (s *AMemorixHostService) sharedMemoryScope(sessionID string) ([]string, bool) {
+	cleaned := strings.TrimSpace(sessionID)
+	if s.opts.SharedScope != nil {
+		return s.opts.SharedScope(cleaned)
+	}
+	if config := s.readConfig(); payloadBool(config, "global_memory_sharing_enabled", false) {
+		return nil, true
+	}
+	if cleaned == "" {
+		return nil, false
+	}
+	return []string{cleaned}, false
 }
 
 func (s *AMemorixHostService) sharedSessionIDs(sessionID string) []string {

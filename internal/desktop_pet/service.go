@@ -22,9 +22,11 @@ const stderrTailLines = 30
 
 // Config 对齐 global_config.desktop_pet 子集
 type Config struct {
-	Enabled          bool
-	ChatToolsEnabled bool
-	SkinID           string
+	Enabled                      bool
+	ChatToolsEnabled             bool
+	SkinID                       string
+	ProactiveWakeEnabled         bool
+	ProactiveWakeIntervalMinutes int
 }
 
 // Status 对齐 DesktopPetService.status
@@ -70,6 +72,12 @@ type Service struct {
 	buttonSyncing  bool
 
 	chatRelay ChatRelay
+
+	proactiveWake     func(ctx context.Context) error
+	proactiveCancel   context.CancelFunc
+	proactiveInterval int
+	lastOwnerActivity time.Time
+	unansweredWakes   int
 }
 
 // NewService 创建桌宠服务；未显式指定皮肤时读取 desktop_pet 配置段
@@ -81,15 +89,23 @@ func NewService(cfg Config, spawn SpawnEnv) *Service {
 	if !cfg.ChatToolsEnabled {
 		cfg.ChatToolsEnabled = settings.ChatToolsEnabled
 	}
+	if !cfg.ProactiveWakeEnabled {
+		cfg.ProactiveWakeEnabled = settings.ProactiveWakeEnabled
+	}
+	if cfg.ProactiveWakeIntervalMinutes <= 0 {
+		cfg.ProactiveWakeIntervalMinutes = settings.ProactiveWakeIntervalMinutes
+	}
 	skin := cfg.SkinID
 	if skin == "" {
 		skin = "builtin"
 	}
 	return &Service{
-		cfg:     cfg,
-		spawn:   spawn,
-		skinID:  skin,
-		pending: make(map[string]chan callResult),
+		cfg:               cfg,
+		spawn:             spawn,
+		skinID:            skin,
+		pending:           make(map[string]chan callResult),
+		proactiveInterval: cfg.ProactiveWakeIntervalMinutes,
+		lastOwnerActivity: time.Now(),
 	}
 }
 
@@ -222,8 +238,11 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	}
 	if running && ready {
 		if cfg.SkinID != currentSkin {
-			return s.ApplySkin(ctx, cfg.SkinID)
+			if err := s.ApplySkin(ctx, cfg.SkinID); err != nil {
+				return err
+			}
 		}
+		s.restartProactiveWake()
 		return nil
 	}
 	if running {
@@ -242,9 +261,11 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 func (s *Service) Reload(ctx context.Context) error {
 	settings := LoadDesktopPetSettings()
 	return s.ApplyConfig(ctx, Config{
-		Enabled:          settings.Enabled,
-		ChatToolsEnabled: settings.ChatToolsEnabled,
-		SkinID:           settings.SkinID,
+		Enabled:                      settings.Enabled,
+		ChatToolsEnabled:             settings.ChatToolsEnabled,
+		SkinID:                       settings.SkinID,
+		ProactiveWakeEnabled:         settings.ProactiveWakeEnabled,
+		ProactiveWakeIntervalMinutes: settings.ProactiveWakeIntervalMinutes,
 	})
 }
 
@@ -389,6 +410,7 @@ func (s *Service) Stop(ctx context.Context) error {
 	if ctx != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
+	s.stopProactiveWake()
 	zap.L().Info("桌宠 Python 子进程已停止", zap.Int("pid", pid))
 	return nil
 }

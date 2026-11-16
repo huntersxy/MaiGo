@@ -269,6 +269,8 @@ type ChatResponse struct {
 	Usage       ChatUsage
 	// ProviderActivity 原生工具调用摘要
 	NativeToolCalls []NativeToolCallSummary
+	// PlannerActionJudge 正文动作补全的独立请求开销
+	PlannerActionJudge map[string]any
 	// FinishReason 结束原因
 	FinishReason string
 	// ModelName 实际调用的模型标识，供终端面板展示

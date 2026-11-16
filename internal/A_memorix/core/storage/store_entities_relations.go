@@ -18,36 +18,44 @@ func (s *Store) MergeExistingParagraphMetadata(paragraphHash string, metadataPat
 	if err != nil {
 		return nil, err
 	}
-	var rawMetadata sql.NullString
-	err = c.QueryRow(`SELECT metadata
-		FROM paragraphs
-		WHERE hash = ?
-		LIMIT 1`, paragraphHash).Scan(&rawMetadata)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	metadata := decodeMetadata(rawMetadata.String)
-	updated := mergeParagraphMetadata(metadata, metadataPatch)
-	if metadataEqual(updated, metadata) {
-		return metadata, nil
-	}
-	encoded := encodeMetadata(updated)
-	err = s.Transaction(true, func(tx *Tx) error {
+	var result map[string]any
+	var found bool
+	err = TransactionOn(c, true, func(tx *Tx) error {
+		// 读取和合并也必须持有写事务，避免并发补丁基于同一旧值互相覆盖。
+		var rawMetadata sql.NullString
+		err := tx.QueryRow(`SELECT metadata
+			FROM paragraphs
+			WHERE hash = ?
+			LIMIT 1`, paragraphHash).Scan(&rawMetadata)
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		found = true
+		metadata := decodeMetadata(rawMetadata.String)
+		updated := mergeParagraphMetadata(metadata, metadataPatch)
+		if metadataEqual(updated, metadata) {
+			result = metadata
+			return nil
+		}
 		if _, err := tx.Exec("UPDATE paragraphs SET metadata = ?, updated_at = ? WHERE hash = ?",
-			encoded, nowTimestamp(), paragraphHash); err != nil {
+			encodeMetadata(updated), nowTimestamp(), paragraphHash); err != nil {
 			return err
 		}
 		sources := s.GetSourcesForParagraphHashes([]string{paragraphHash}, true, tx.Conn())
 		s.EnqueueEpisodeSourceRebuilds(sources, "paragraph_metadata_merged", EpisodeEnqueueOptions{Conn: tx.Conn()})
+		result = updated
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return updated, nil
+	if !found {
+		return nil, nil
+	}
+	return result, nil
 }
 
 // metadataEqual 比较两份 metadata 是否等价（JSON 序列化后比较）

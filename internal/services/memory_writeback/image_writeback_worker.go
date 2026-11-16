@@ -423,21 +423,47 @@ func (s *ImageWritebackService) processDescriptionCompensations(ctx context.Cont
 		return
 	}
 	leaseToken := imageWritebackString(claimed["lease_token"])
+	// 同一消息的多张图片共享聊天窗口，合并本批已领取任务后只补偿一次摘要。
+	// 消息或时间不同的任务保持独立，避免跨窗口遗漏事实。
+	type compensationGroupKey struct {
+		chatID     string
+		messageID  string
+		occurredAt float64
+		externalID string
+	}
+	grouped := map[compensationGroupKey][]map[string]any{}
 	for _, item := range imageWritebackItems(claimed["items"]) {
-		s.completeDescriptionCompensation(ctx, leaseToken, item)
+		key := compensationGroupKey{
+			chatID:     strings.TrimSpace(imageWritebackString(item["chat_id"])),
+			messageID:  strings.TrimSpace(imageWritebackString(item["message_id"])),
+			occurredAt: imageWritebackFloat(item["occurred_at"]),
+			externalID: strings.TrimSpace(imageWritebackString(item["summary_external_id"])),
+		}
+		grouped[key] = append(grouped[key], item)
+	}
+	for key, items := range grouped {
+		success := false
+		failure := ""
+		if err := s.ingestCompensation(ctx, items[0], key.externalID); err != nil {
+			failure = err.Error()
+		} else {
+			success = true
+		}
+		for _, item := range items {
+			s.completeDescriptionCompensationStatus(ctx, leaseToken, item, success, failure)
+		}
 	}
 }
 
-func (s *ImageWritebackService) completeDescriptionCompensation(ctx context.Context, leaseToken string, item map[string]any) {
+func (s *ImageWritebackService) completeDescriptionCompensationStatus(
+	ctx context.Context,
+	leaseToken string,
+	item map[string]any,
+	success bool,
+	failure string,
+) {
 	occurrenceID := strings.TrimSpace(imageWritebackString(item["occurrence_id"]))
 	descriptionHash := strings.TrimSpace(imageWritebackString(item["description_hash"]))
-	success := false
-	failure := ""
-	if err := s.ingestCompensation(ctx, item); err != nil {
-		failure = err.Error()
-	} else {
-		success = true
-	}
 	payload := map[string]any{
 		"occurrence_id":    occurrenceID,
 		"description_hash": descriptionHash,
@@ -456,7 +482,7 @@ func (s *ImageWritebackService) completeDescriptionCompensation(ctx context.Cont
 }
 
 // ingestCompensation 用描述补偿元数据触发摘要写回，对齐 Python :895-921
-func (s *ImageWritebackService) ingestCompensation(ctx context.Context, item map[string]any) error {
+func (s *ImageWritebackService) ingestCompensation(ctx context.Context, item map[string]any, externalID string) error {
 	kernel := s.kernel()
 	if kernel == nil {
 		return errors.New("记忆内核未就绪")
@@ -464,9 +490,7 @@ func (s *ImageWritebackService) ingestCompensation(ctx context.Context, item map
 	settings := s.settings()
 	timeEnd := imageWritebackFloat(item["occurred_at"]) + 0.001
 	params := memruntime.IngestSummaryParams{
-		ExternalID: fmt.Sprintf("image_description_compensation:%s:%s",
-			strings.TrimSpace(imageWritebackString(item["occurrence_id"])),
-			strings.TrimSpace(imageWritebackString(item["description_hash"]))),
+		ExternalID:   externalID,
 		ChatID:       strings.TrimSpace(imageWritebackString(item["chat_id"])),
 		Text:         "",
 		Participants: []string{},

@@ -255,6 +255,7 @@ const ddlImageDescriptionCompensations = `
 CREATE TABLE IF NOT EXISTS image_description_compensations (
     occurrence_id TEXT NOT NULL,
     description_hash TEXT NOT NULL,
+    summary_external_id TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     lease_token TEXT NOT NULL DEFAULT '',
     lease_until REAL NOT NULL DEFAULT 0,

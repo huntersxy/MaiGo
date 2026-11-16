@@ -175,8 +175,7 @@ func (s *Service) marketRequest(ctx context.Context, method, path string, payloa
 	}
 	if method != http.MethodGet && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if success, ok := data["success"].(bool); !ok || success {
-			s.cache.Invalidate(marketBaseURL() + "/stats/")
-			s.cache.Invalidate(marketBaseURL() + "/api/v2/market/plugins/summary")
+			s.cache.Invalidate(marketBaseURL() + "/stats/") // 含 /stats/summary
 		}
 	}
 	return MarketReply{StatusCode: resp.StatusCode, Data: data}, nil

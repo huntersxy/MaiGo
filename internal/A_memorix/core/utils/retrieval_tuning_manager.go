@@ -73,6 +73,11 @@ type RetrievalTuningLLM interface {
 	Generate(ctx context.Context, requestType string, prompt string) (string, error)
 }
 
+// RetrievalTuningFastLLM 可选端口：轻量任务优先使用 fast_model，未实现时沿用原任务
+type RetrievalTuningFastLLM interface {
+	GenerateFast(ctx context.Context, requestType string, prompt string) (string, error)
+}
+
 // RetrievalTuningManagerOptions 检索调优管理器依赖
 type RetrievalTuningManagerOptions struct {
 	Config             ConfigGetter

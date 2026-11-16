@@ -22,6 +22,10 @@ import (
 type Ports struct {
 	// NormalizeContextImages 规范化上下文里的图片（尺寸/格式）
 	NormalizeContextImages func(items []ContextItem) []ContextItem
+	// NormalizeContextImagesForModel 按模型图片数量与边长限制规范化上下文图片
+	NormalizeContextImagesForModel func(items []ContextItem, maxImages, maxSide, minSide int) []ContextItem
+	// NormalizeAgenticMessageImages 按模型限制改写 eino 消息里的图片，供 Responses 直接消费
+	NormalizeAgenticMessageImages func(messages []*schema.AgenticMessage, maxImages, maxSide, minSide int) []*schema.AgenticMessage
 	// CompressContextImages 按目标体积压缩图片，用于 413 重试
 	CompressContextImages func(items []ContextItem, targetSize int) []ContextItem
 	// ImageCompressionTargetForError 判断错误是否属于「图片过大」并给出目标体积
@@ -63,6 +67,21 @@ func normalizeContextImages(items []ContextItem) []ContextItem {
 		return items
 	}
 	return ports.NormalizeContextImages(items)
+}
+
+// contextItemsForConfig 投影 eino 消息并按模型图片限制治理；限制缺省时沿用默认行为
+func contextItemsForConfig(input []*schema.AgenticMessage, cfg ModelConfig) ([]ContextItem, error) {
+	maxImages, maxSide, minSide := cfg.EffectiveImageLimits()
+	return ContextItemsFromMessagesWithLimits(input, maxImages, maxSide, minSide)
+}
+
+// agenticMessagesForConfig 按模型图片限制改写 eino 消息；未注入时保持原消息
+func agenticMessagesForConfig(input []*schema.AgenticMessage, cfg ModelConfig) []*schema.AgenticMessage {
+	if ports.NormalizeAgenticMessageImages == nil {
+		return input
+	}
+	maxImages, maxSide, minSide := cfg.EffectiveImageLimits()
+	return ports.NormalizeAgenticMessageImages(input, maxImages, maxSide, minSide)
 }
 
 func compressContextImages(items []ContextItem, targetSize int) []ContextItem {

@@ -31,7 +31,6 @@ var subagentRunnerForbidden = map[string]struct{}{
 	"reply":           {},
 	"tool_search":     {},
 	"wait":            {},
-	"stop":            {},
 }
 
 // runMaisakaSubagent 在独立上下文里执行多轮工具调用，返回最终结论与工具使用统计

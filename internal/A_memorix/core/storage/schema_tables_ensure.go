@@ -201,7 +201,7 @@ func ensureKnowledgePackageTables(conn *Conn) error {
 // ensureImageMemoryTables 创建图片记忆的权威记录和可恢复嵌入任务
 // Python 侧用 executescript 一次执行，这里按同一顺序逐条执行
 func ensureImageMemoryTables(conn *Conn) error {
-	return execAll(conn,
+	if err := execAll(conn,
 		ddlImageAssets,
 		ddlIdxImageAssetsStatusUpdated,
 		ddlImageOccurrences,
@@ -219,7 +219,22 @@ func ensureImageMemoryTables(conn *Conn) error {
 		ddlImageEmbeddingJobs,
 		ddlIdxImageEmbeddingJobsClaim,
 		ddlImageRuntimeState,
-	)
+	); err != nil {
+		return err
+	}
+	columns, err := tableColumnSet(conn, "image_description_compensations")
+	if err != nil {
+		return err
+	}
+	if _, ok := columns["summary_external_id"]; !ok {
+		_, err = conn.Exec(
+			"ALTER TABLE image_description_compensations ADD COLUMN summary_external_id TEXT NOT NULL DEFAULT ''",
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureMemoryFeedbackTaskColumns 补齐 memory_feedback_tasks 历史库缺失的 rollback_* 列

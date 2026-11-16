@@ -98,8 +98,10 @@ planner_subagent = false
 advanced_sub_agent = false
 
 [experimental]
+tool_search_tail_loading = false
 desktop_pet_exploration_enabled = false
 passive_replyer = false
+lightweight_private_chats = []
 focus_mode = false
 focus_on_private = false
 focus_chat_whitelist = []

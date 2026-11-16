@@ -154,6 +154,33 @@ func (h *Host) GetConfigReloadSubscribers(scope string) []string {
 	return out
 }
 
+// SetAdapterMigrationErrors 记录适配器迁移失败原因，只隔离相关插件
+func (h *Host) SetAdapterMigrationErrors(reasons map[string]string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.adapterMigrationErrors = make(map[string]string, len(reasons))
+	for pluginID, reason := range reasons {
+		h.adapterMigrationErrors[pluginID] = reason
+	}
+	h.mu.Unlock()
+}
+
+// adapterMigrationReasons 返回迁移失败原因副本
+func (h *Host) adapterMigrationReasons() map[string]string {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make(map[string]string, len(h.adapterMigrationErrors))
+	for pluginID, reason := range h.adapterMigrationErrors {
+		out[pluginID] = reason
+	}
+	return out
+}
+
 // SetBlockedPluginReasons 记录依赖阻塞原因，对齐 set_blocked_plugin_reasons
 func (h *Host) SetBlockedPluginReasons(reasons map[string]string) {
 	if h == nil {

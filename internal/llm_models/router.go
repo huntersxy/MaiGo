@@ -218,6 +218,9 @@ func (r *Router) modelConfigFromProfile(profile modelprofiles.Profile) (ModelCon
 		ThinkingType:     profile.ThinkingType,
 		ReasoningEffort:  profile.ReasoningEffort,
 		ExtraParams:      nil,
+		// 数据库档案没有图片限制字段；按 Python ModelInfo 默认值处理
+		ImageMaxSide: 8000,
+		ImageMinSide: 1,
 		// 数据库档案没有 send_temperature 开关；按 Python ModelInfo 默认 true 处理
 		SendTemperature:    true,
 		SendTemperatureSet: true,

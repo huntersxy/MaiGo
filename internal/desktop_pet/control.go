@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"go.uber.org/zap"
+
+	"MaiGo/internal/services/schedules"
 )
 
 // Control 对齐 DesktopPetService.control：仅接受已校验的公开操作
@@ -95,7 +97,13 @@ func (s *Service) Animation(ctx context.Context, owner, action string, args map[
 	return payload, nil
 }
 
-// TodoCommand 下发待办指令并返回窗口结果，对齐 todo_tools 经 _command 的调用
+// RefreshTodos 通知窗口重新读取主程序事项，对齐 todo_refresh
+func (s *Service) RefreshTodos(ctx context.Context) error {
+	_, err := s.call(ctx, map[string]any{"type": "todo_refresh"})
+	return err
+}
+
+// TodoCommand 执行主程序事项指令，不依赖桌宠窗口，对齐 _command 的 todo 分支
 func (s *Service) TodoCommand(ctx context.Context, action, todoID, text string) (map[string]any, error) {
 	text = strings.TrimSpace(text)
 	todoID = strings.TrimSpace(todoID)
@@ -137,15 +145,11 @@ func (s *Service) TodoCommand(ctx context.Context, action, todoID, text string) 
 	default:
 		return nil, fmt.Errorf("未知待办操作: %s", action)
 	}
-	result, err := s.call(ctx, command)
+	result, err := schedules.Default().Command(ctx, command, "")
 	if err != nil {
 		return nil, err
 	}
-	payload, _ := result.(map[string]any)
-	if payload == nil {
-		return nil, fmt.Errorf("桌宠待办未返回结果")
-	}
-	return payload, nil
+	return result, nil
 }
 
 // ChatRelay 把桌宠消息投递到内部聊天，返回消息 ID
@@ -221,6 +225,7 @@ func (s *Service) NotifyThinking() {
 // text 仅为调用方兼容保留，气泡内容与 Python 一样只看 raw_message 段
 func (s *Service) NotifyReply(segments []map[string]any, text string) {
 	_ = text
+	s.NotifyOwnerChatActivity()
 	s.mu.RLock()
 	ready := s.ready && !s.closing
 	s.mu.RUnlock()

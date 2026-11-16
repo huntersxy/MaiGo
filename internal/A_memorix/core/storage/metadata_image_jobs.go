@@ -2,6 +2,14 @@ package storage
 
 // A_memorix 图片描述补偿与任务生命周期，对齐 Python core/storage/metadata_image.py 的描述补偿/失效部分
 
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // EnqueueImageDescriptionCompensation 入队描述补偿，对齐 Python enqueue_image_description_compensation
 // 已完成的任务保持 done，其余重置为 pending 并清空租约
 func (s *Store) EnqueueImageDescriptionCompensation(occurrenceID, descriptionHash string, conn *Conn) error {
@@ -142,14 +150,64 @@ func (s *Store) ClaimImageDescriptionCompensations(leaseToken string, leaseSecon
 			return err
 		}
 		leaseUntil := imageLeaseDeadline(now, leaseSeconds)
+		// 批次身份在首次领取时落盘。重试保留旧身份，后来到达的描述另建批次。
+		type compensationGroupKey struct {
+			chatID     string
+			messageID  string
+			occurredAt float64
+		}
+		groups := map[compensationGroupKey][]map[string]any{}
 		for _, row := range rows {
+			if strings.TrimSpace(stringFromRow(row, "summary_external_id")) != "" {
+				continue
+			}
+			occurredAt := 0.0
+			if parsed := floatPtrFromRow(row, "occurred_at"); parsed != nil {
+				occurredAt = *parsed
+			}
+			key := compensationGroupKey{
+				chatID:     stringFromRow(row, "chat_id"),
+				messageID:  stringFromRow(row, "message_id"),
+				occurredAt: occurredAt,
+			}
+			groups[key] = append(groups[key], row)
+		}
+		batchIDs := map[string]string{}
+		for _, group := range groups {
+			references := make([][2]string, 0, len(group))
+			for _, row := range group {
+				references = append(references, [2]string{
+					stringFromRow(row, "occurrence_id"), stringFromRow(row, "description_hash"),
+				})
+			}
+			sort.Slice(references, func(left, right int) bool {
+				if references[left][0] != references[right][0] {
+					return references[left][0] < references[right][0]
+				}
+				return references[left][1] < references[right][1]
+			})
+			externalID := ""
+			if len(references) == 1 {
+				externalID = fmt.Sprintf("image_description_compensation:%s:%s", references[0][0], references[0][1])
+			} else {
+				externalID = "image_description_compensation_batch:" + imageCompensationBatchFingerprint(references)
+			}
+			for _, reference := range references {
+				batchIDs[reference[0]+"\x00"+reference[1]] = externalID
+			}
+		}
+		for _, row := range rows {
+			externalID := strings.TrimSpace(stringFromRow(row, "summary_external_id"))
+			if externalID == "" {
+				externalID = batchIDs[stringFromRow(row, "occurrence_id")+"\x00"+stringFromRow(row, "description_hash")]
+			}
 			result, err := tx.Exec(`
 				UPDATE image_description_compensations
-				SET status='running', lease_token=?, lease_until=?,
+				SET status='running', lease_token=?, lease_until=?, summary_external_id=?,
 					attempt_count=attempt_count+1, updated_at=?
 				WHERE occurrence_id=? AND description_hash=?
 				  AND status IN ('pending', 'failed')
-			`, leaseToken, leaseUntil, now,
+			`, leaseToken, leaseUntil, externalID, now,
 				stringFromRow(row, "occurrence_id"), stringFromRow(row, "description_hash"))
 			if err != nil {
 				return err
@@ -159,7 +217,12 @@ func (s *Store) ClaimImageDescriptionCompensations(leaseToken string, leaseSecon
 				return err
 			}
 			if affected == 1 {
-				claimed = append(claimed, row)
+				claimedRow := make(map[string]any, len(row)+1)
+				for key, value := range row {
+					claimedRow[key] = value
+				}
+				claimedRow["summary_external_id"] = externalID
+				claimed = append(claimed, claimedRow)
 			}
 		}
 		return nil
@@ -281,4 +344,32 @@ func (s *Store) AbortImageJobsIfUnreferenced(assetID string, conn *Conn) (bool, 
 		return false, err
 	}
 	return true, nil
+}
+
+// imageCompensationBatchFingerprint 对齐 hashlib.sha256(json.dumps(references))
+func imageCompensationBatchFingerprint(references [][2]string) string {
+	var builder strings.Builder
+	builder.WriteString("[")
+	for index, reference := range references {
+		if index > 0 {
+			builder.WriteString(", ")
+		}
+		builder.WriteString("[")
+		builder.WriteString(imageJSONQuoted(reference[0]))
+		builder.WriteString(", ")
+		builder.WriteString(imageJSONQuoted(reference[1]))
+		builder.WriteString("]")
+	}
+	builder.WriteString("]")
+	sum := sha256.Sum256([]byte(builder.String()))
+	return fmt.Sprintf("%x", sum)
+}
+
+// imageJSONQuoted 输出 JSON 字符串字面量
+func imageJSONQuoted(value string) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "\"\""
+	}
+	return string(encoded)
 }

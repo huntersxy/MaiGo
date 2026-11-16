@@ -151,6 +151,8 @@ type ToolContext struct {
 	ToolCatalog       []ToolCatalogEntry
 	DeferredToolInfos []*schema.ToolInfo  // deferred 工具的模型定义，用于发现后恢复
 	DiscoveredTools   map[string]struct{} // deferred 工具发现状态（供后续轮次过滤）
+	// ToolSearchTailLoading 搜索命中的工具定义仅追加到搜索结果，不扩展顶层工具声明
+	ToolSearchTailLoading bool
 	// AgentFilesHost 当前会话的 agent_* 工具宿主
 	AgentFilesHost agentfiles.Host
 	// FileToolHost 当前会话的 files_* 工具宿主

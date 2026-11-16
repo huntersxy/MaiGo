@@ -1,6 +1,8 @@
 package webuiapi
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/learners"
+	botservices "MaiGo/internal/services"
 )
 
 // loadJargonGroupsForWebUI 只读取 bot_config 的黑话共享组，避免依赖完整配置校验
@@ -110,27 +113,16 @@ func (d Deps) handleJargonGroups(w http.ResponseWriter, r *http.Request) {
 	for _, chat := range chats {
 		chatByID[chat.SessionID] = chat
 	}
-	groups, err := loadJargonGroupsForWebUI(d.InstanceDir)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "获取黑话共享组失败: "+err.Error())
-		return
-	}
+	groups := botservices.ListSharingGroups(r.Context())
 	data := make([]map[string]any, 0, len(groups))
 	for index, group := range groups {
+		if !group.Enabled || !group.Capabilities["jargon"] {
+			continue
+		}
+		isGlobal := botservices.SharingGroupIsGlobal(group)
 		ids := map[string]struct{}{}
-		isGlobal := false
-		for _, target := range group.Targets {
-			platform := strings.TrimSpace(target.Platform)
-			item := strings.TrimSpace(target.ItemId)
-			if platform == "" || item == "" {
-				continue
-			}
-			if platform == "*" && item == "*" {
-				isGlobal = true
-			}
-			for _, id := range jargonTargetSessionIDs(chatByID, target) {
-				ids[id] = struct{}{}
-			}
+		for id := range botservices.SharingResolvedMembers(r.Context(), group) {
+			ids[id] = struct{}{}
 		}
 		resolved := make([]string, 0, len(ids))
 		for id := range ids {
@@ -144,12 +136,47 @@ func (d Deps) handleJargonGroups(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		data = append(data, map[string]any{
-			"index":       index,
-			"name":        fmt.Sprintf("共享组 %d", index+1),
-			"session_ids": resolved,
-			"members":     members,
-			"is_global":   isGlobal,
+			"id":           group.ID,
+			"color":        group.Color,
+			"index":        index,
+			"name":         group.Name,
+			"session_ids":  resolved,
+			"members":      members,
+			"jargon_count": jargonGroupCount(r.Context(), d, resolved, isGlobal),
+			"is_global":    isGlobal,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
+}
+
+// jargonGroupCount 统计组范围内命中的黑话条数，全局组统计全部记录
+func jargonGroupCount(ctx context.Context, d Deps, sessionIDs []string, isGlobal bool) int {
+	if d.Memory == nil || d.Memory.GetDB() == nil {
+		return 0
+	}
+	var dicts []string
+	if err := d.Memory.GetDB().WithContext(ctx).Model(&learners.Jargon{}).Pluck("session_id_dict", &dicts).Error; err != nil {
+		return 0
+	}
+	if isGlobal {
+		return len(dicts)
+	}
+	scope := make(map[string]struct{}, len(sessionIDs))
+	for _, id := range sessionIDs {
+		scope[id] = struct{}{}
+	}
+	count := 0
+	for _, dict := range dicts {
+		var mapping map[string]any
+		if err := json.Unmarshal([]byte(dict), &mapping); err != nil {
+			continue
+		}
+		for id := range mapping {
+			if _, ok := scope[id]; ok {
+				count++
+				break
+			}
+		}
+	}
+	return count
 }

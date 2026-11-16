@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"MaiGo/internal/prompt"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 const legacyCustomPromptVersionID = "legacy-current"
@@ -49,6 +47,66 @@ func (d Deps) customPromptsRoot() (string, bool) {
 		return "", false
 	}
 	return filepath.Join(filepath.Clean(dir), "data", "custom_prompts"), true
+}
+
+// promptFileEntry 描述 locale 目录内的一个内置模板文件
+type promptFileEntry struct {
+	Path     string // 相对资源根，形如 zh-CN/main/x.prompt
+	Category string // main、instructions 或更深的嵌套目录
+}
+
+// walkPromptFiles 递归列出 locale 目录下的模板，按模板文件名排序（对齐 iter_prompt_files）
+func walkPromptFiles(resource fs.FS, language string) ([]promptFileEntry, error) {
+	entries := make([]promptFileEntry, 0)
+	seen := make(map[string]string)
+	err := fs.WalkDir(resource, language, func(filePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".prompt") {
+			return nil
+		}
+		if previous, exists := seen[entry.Name()]; exists {
+			return fmt.Errorf("locale %q 下重复的 prompt 名称 %q（%s 与 %s）",
+				language, strings.TrimSuffix(entry.Name(), ".prompt"), previous, filePath)
+		}
+		seen[entry.Name()] = filePath
+		relDir := path.Dir(strings.TrimPrefix(filePath, language+"/"))
+		if relDir == "." {
+			relDir = ""
+		}
+		entries = append(entries, promptFileEntry{Path: filePath, Category: relDir})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := path.Base(entries[i].Path), path.Base(entries[j].Path)
+		if left != right {
+			return left < right
+		}
+		return entries[i].Path < entries[j].Path
+	})
+	return entries, nil
+}
+
+// resolvePromptResourcePath 在指定 locale 目录内按名称递归定位内置模板
+func resolvePromptResourcePath(resource fs.FS, language, name string) (string, error) {
+	entries, err := walkPromptFiles(resource, language)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	target := name + ".prompt"
+	for _, entry := range entries {
+		if path.Base(entry.Path) == target {
+			return entry.Path, nil
+		}
+	}
+	return "", nil
 }
 
 func safePromptSegment(language, filename string) error {
@@ -433,38 +491,6 @@ func ensurePromptParametersMatch(resource fs.FS, resourcePath, customContent str
 		return validation, fmt.Errorf("%s", validation.Message)
 	}
 	return validation, nil
-}
-
-type promptMetadata struct {
-	DisplayName string
-	Advanced    bool
-	Description string
-}
-
-func readPromptMetadata(resource fs.FS, language string) map[string]promptMetadata {
-	out := make(map[string]promptMetadata)
-	raw, err := fs.ReadFile(resource, path.Join(language, ".meta.toml"))
-	if err != nil {
-		return out
-	}
-	var doc map[string]map[string]any
-	if err := toml.Unmarshal(raw, &doc); err != nil {
-		return out
-	}
-	for name, entry := range doc {
-		meta := promptMetadata{}
-		if text, ok := entry["display_name"].(string); ok {
-			meta.DisplayName = text
-		}
-		if value, ok := entry["advanced"].(bool); ok {
-			meta.Advanced = value
-		}
-		if text, ok := entry["description"].(string); ok {
-			meta.Description = text
-		}
-		out[name] = meta
-	}
-	return out
 }
 
 func pathExists(path string) bool {

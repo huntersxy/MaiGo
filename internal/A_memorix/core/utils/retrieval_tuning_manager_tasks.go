@@ -304,22 +304,28 @@ func (m *RetrievalTuningManager) StartWorker(ctx context.Context) {
 	}()
 }
 
-// Shutdown 停止后台协程
+// Shutdown 停止后台协程；超时保留 worker 引用，允许稍后重试关闭
 func (m *RetrievalTuningManager) Shutdown() {
 	m.mu.Lock()
 	cancel := m.workerCancel
 	done := m.workerDone
-	m.workerCancel = nil
-	m.workerDone = nil
 	m.stopping = true
 	m.mu.Unlock()
 	if cancel == nil {
 		return
 	}
-	cancel()
-	if done != nil {
-		<-done
+	task := StoppableTask{Name: "retrieval_tuning_worker", Cancel: cancel, Done: done}
+	if err := CancelAndWaitForTasks(context.Background(), "关闭检索调优任务", []StoppableTask{task}, func(message string) {
+		OrLogger(m.logger).Error(message)
+	}); err != nil {
+		return
 	}
+	m.mu.Lock()
+	if m.workerDone == done {
+		m.workerCancel = nil
+		m.workerDone = nil
+	}
+	m.mu.Unlock()
 }
 
 // RunNext 取出一个排队任务并执行，返回是否执行了任务

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 
 	"MaiGo/internal/llm_models/model_client"
 )
@@ -20,6 +21,8 @@ import (
 func init() {
 	model_client.Configure(model_client.Ports{
 		NormalizeContextImages:            normalizeContextImages,
+		NormalizeContextImagesForModel:    normalizeContextImagesForModel,
+		NormalizeAgenticMessageImages:     normalizeAgenticMessageImages,
 		CompressContextImages:             compressContextImages,
 		ImageCompressionTargetForError:    imageCompressionTargetForError,
 		CaptureRequestSnapshot:            captureRequestSnapshot,
@@ -36,13 +39,15 @@ func init() {
 
 // 编译期断言：注入的函数签名与父包实现一致，改动任一侧都会立刻报错
 var (
-	_ func([]ContextItem) []ContextItem                               = normalizeContextImages
-	_ func([]ContextItem, int) []ContextItem                          = compressContextImages
-	_ func(error) (int, bool)                                         = imageCompressionTargetForError
-	_ func(requestSnapshotSpec) error                                 = captureRequestSnapshot
-	_ func(*snapshotAttemptRecorder, *requestSnapshotSpec, time.Time) = recordSnapshotAttempt
-	_ func(AudioTranscriber, ModelConfig) AudioTranscriber            = newUsageRecordingAudioTranscriber
-	_ func(EmbeddingClient, ModelConfig) EmbeddingClient              = newUsageRecordingEmbeddingClient
+	_ func([]ContextItem) []ContextItem                                      = normalizeContextImages
+	_ func([]ContextItem, int, int, int) []ContextItem                       = normalizeContextImagesForModel
+	_ func([]*schema.AgenticMessage, int, int, int) []*schema.AgenticMessage = normalizeAgenticMessageImages
+	_ func([]ContextItem, int) []ContextItem                                 = compressContextImages
+	_ func(error) (int, bool)                                                = imageCompressionTargetForError
+	_ func(requestSnapshotSpec) error                                        = captureRequestSnapshot
+	_ func(*snapshotAttemptRecorder, *requestSnapshotSpec, time.Time)        = recordSnapshotAttempt
+	_ func(AudioTranscriber, ModelConfig) AudioTranscriber                   = newUsageRecordingAudioTranscriber
+	_ func(EmbeddingClient, ModelConfig) EmbeddingClient                     = newUsageRecordingEmbeddingClient
 )
 
 var _ func(ModelConfig) (model.AgenticModel, error) = NewClient

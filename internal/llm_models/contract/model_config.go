@@ -39,9 +39,9 @@ type ModelConfig struct {
 	AuthHeaderPrefix string
 	// AuthHeaderPrefixSet 区分未配置（默认 Bearer）与显式空串（裸 key）
 	AuthHeaderPrefixSet bool
-	AuthQueryName      string
-	DefaultHeaders     map[string]string
-	DefaultQuery       map[string]string
+	AuthQueryName       string
+	DefaultHeaders      map[string]string
+	DefaultQuery        map[string]string
 
 	// PluginID 插件 Provider 的归属插件；留空时由 PluginProviderResolver 解析
 	PluginID string
@@ -54,6 +54,10 @@ type ModelConfig struct {
 	SendTemperature  bool   // models[].send_temperature
 	ModelTemperature any    // models[].temperature
 	ModelMaxTokens   any    // models[].max_tokens
+	// MaxImages/ImageMaxSide/ImageMinSide 对齐 models[].max_images/image_max_side/image_min_side
+	MaxImages    int // 0 表示不限制
+	ImageMaxSide int // 0 表示未配置，按 MaiBot 默认 8000
+	ImageMinSide int // 0 表示未配置，按 MaiBot 默认 1
 	// SendTemperatureSet 区分 TOML 未写 send_temperature（Python 默认 true）与显式 false
 	SendTemperatureSet bool
 	// TaskTemperature/TaskMaxTokens 是 model_task_config 的任务默认档（Python TaskConfig 默认 0.7/4096）
@@ -86,4 +90,29 @@ type ModelPricePeriod struct {
 	PriceIn      float64
 	PriceOut     float64
 	CachePriceIn float64
+}
+
+const (
+	// DefaultModelImageMaxSide 对齐 MaiBot ModelInfo.image_max_side 默认值
+	DefaultModelImageMaxSide = 8000
+	// DefaultModelImageMinSide 对齐 MaiBot ModelInfo.image_min_side 默认值
+	DefaultModelImageMinSide = 1
+)
+
+// EffectiveImageLimits 返回图片限制的实际值；数量 0 表示不限，边长未配置时取 MaiBot 默认值
+func (c ModelConfig) EffectiveImageLimits() (maxImages, maxSide, minSide int) {
+	maxImages = max(0, c.MaxImages)
+	maxSide = c.ImageMaxSide
+	if maxSide <= 0 {
+		maxSide = DefaultModelImageMaxSide
+	}
+	minSide = c.ImageMinSide
+	if minSide <= 0 {
+		minSide = DefaultModelImageMinSide
+	}
+	if minSide > maxSide {
+		maxSide = DefaultModelImageMaxSide
+		minSide = DefaultModelImageMinSide
+	}
+	return maxImages, maxSide, minSide
 }

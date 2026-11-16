@@ -52,6 +52,7 @@ import (
 	memorywriteback "MaiGo/internal/services/memory_writeback"
 	"MaiGo/internal/services/model_stats"
 	"MaiGo/internal/services/news"
+	"MaiGo/internal/services/schedules"
 	goruntime "runtime"
 
 	"MaiGo/internal/common/secrets"
@@ -467,6 +468,40 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		}
 	}
 
+	var sharingBotConfig *maibotcfg.BotConfigFile
+	if instHolder != nil {
+		sharingBotConfig = &instHolder.Config().Bot
+	}
+	if err := startup.RunStage("startup.sharing_groups", 1*time.Minute, func(ctx context.Context) error {
+		return botservices.InitializeSharingGroups(ctx, db, sharingBotConfig)
+	}); err != nil {
+		zap.L().Error("初始化相通组失败", zap.Error(err))
+		return 1
+	}
+	if !startup.Check("相通组初始化") {
+		return 1
+	}
+	migrationConfigPath := filepath.Join(memory.InstanceRoot(), "config", "bot_config.toml")
+	if instHolder != nil {
+		migrationConfigPath = filepath.Join(instHolder.Dir(), "config", "bot_config.toml")
+		botservices.ReloadChatMigrationConfig = func(context.Context) error {
+			return instHolder.ReloadFromDisk([]maibotcfg.ReloadScope{maibotcfg.ReloadScopeBot})
+		}
+	}
+	botservices.ChatMigrationConfigPath = migrationConfigPath
+	botservices.ChatMigrationNotifyExpressionIndex = learners.DefaultRegistry().NotifyExpressionVectorBackfill
+	memorix.ChatActivityGate = func(ctx context.Context, sessionID string, operation func() error) error {
+		return botservices.ChatMigrationGateInstance.Activity(ctx, sessionID, operation)
+	}
+	if err := startup.RunStage("startup.chat_migrations", 1*time.Minute, func(ctx context.Context) error {
+		return botservices.InitializeChatMigrations(ctx, db)
+	}); err != nil {
+		zap.L().Error("初始化聊天迁移失败", zap.Error(err))
+		return 1
+	}
+	if !startup.Check("聊天迁移初始化") {
+		return 1
+	}
 	promptMgr, err := prompt.NewManager()
 	if err != nil {
 		zap.L().Warn("Prompt 模板管理器创建失败", zap.Error(err))
@@ -958,6 +993,23 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	if !startup.Check("Agent 启动") {
 		return 1
 	}
+	startScheduleService(instanceDir, db, maiAgent, desktopPetSvc, promptMgr)
+	desktopPetSvc.SetProactiveWake(func(ctx context.Context) error {
+		text, err := promptMgr.Render("desktop_pet_proactive_wake", nil)
+		if err != nil {
+			return err
+		}
+		kind, targetID, err := resolveOwnerAgentTarget(ctx, db)
+		if err != nil {
+			return err
+		}
+		_, err = maiAgent.EnqueueInternalTask(ctx, kind, targetID, strings.TrimSpace(text), "desktop_pet_proactive_wake", "桌宠定期主动思考")
+		return err
+	})
+	startup.AddCleanup("停止日程服务", func(context.Context) error {
+		schedules.Default().Stop()
+		return nil
+	})
 	// 记忆自动化：入站身份观察 + 发送后人物事实写回，历史重分类后台循环随宿主启停
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer automationCancel()
@@ -1307,20 +1359,26 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 				}
 			}
 		}
-		// 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局
+		// 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局。
+		// 单个适配器迁移失败只隔离对应插件，其余插件继续启动。
+		adapterMigrationErrors := map[string]string{}
 		backup, migrateErr := pluginruntime.MigrateQQOfficialAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
 		if migrateErr != nil {
-			zap.L().Error("QQ 官方适配器迁移失败", zap.Error(migrateErr))
-			return 1
+			reason := "适配器迁移失败，请修复后重启 Bot：" + migrateErr.Error()
+			zap.L().Error("QQ 官方适配器迁移失败，已隔离该适配器", zap.Error(migrateErr))
+			adapterMigrationErrors["Mai-with-u.qq-adapter"] = reason
 		}
 		if backup != "" {
 			zap.L().Info("QQ 官方适配器旧安装已备份", zap.String("backup", backup))
 		}
 		telegramBackup, telegramErr := pluginruntime.MigrateTelegramAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
 		if telegramErr != nil {
-			zap.L().Error("Telegram 适配器迁移失败", zap.Error(telegramErr))
-			return 1
+			reason := "适配器迁移失败，请修复后重启 Bot：" + telegramErr.Error()
+			zap.L().Error("Telegram 适配器迁移失败，已隔离该适配器", zap.Error(telegramErr))
+			adapterMigrationErrors["maibot-team.telegram-adapter"] = reason
+			adapterMigrationErrors["Sengoku.telegram-adapter"] = reason
 		}
+		pluginHost.SetAdapterMigrationErrors(adapterMigrationErrors)
 		if telegramBackup != "" {
 			zap.L().Info("Telegram 适配器旧安装已备份", zap.String("backup", telegramBackup))
 		}
@@ -2240,25 +2298,20 @@ func newAMemorixHostService(holder *maibotcfg.InstanceHolder, db *gorm.DB, kerne
 	if kernelFactory == nil {
 		return nil, fmt.Errorf("A_Memorix 原生内核工厂未注入")
 	}
-	// 对齐 Python utils_config.py:623-640：按 a_memorix.shared_memory_groups 解析共享检索范围
-	sharedResolver := memorix.SharedMemorySessionResolver{
-		ResolveSessionIDs: func(ctx context.Context, platform, targetID, chatType string) ([]string, error) {
-			if db == nil {
-				return nil, nil
-			}
-			return chatsession.NewManager(db).ResolveSessionIDsByTarget(ctx, platform, targetID, chatType)
-		},
-	}
+	// 对齐 Python host_service.py：按相通组解析长期记忆共享范围
 	return memorix.NewAMemorixHostService(memorix.HostServiceOptions{
 		ConfigStore:   memorix.NewHolderHostConfigStore(holder),
 		KernelFactory: kernelFactory(),
-		SharedSessionIDs: func(sessionID string) []string {
-			cfg := holder.Config()
-			if cfg == nil {
-				return nil
+		SharedScope: func(sessionID string) ([]string, bool) {
+			ids, global, err := botservices.ResolveSharingScope(sessionID, "memory")
+			if err != nil {
+				return nil, false
 			}
-			sharedResolver.Groups = cfg.Bot.AMemorix.SharedMemoryGroups
-			return sharedResolver.Resolve(context.Background(), sessionID)
+			list := make([]string, 0, len(ids))
+			for id := range ids {
+				list = append(list, id)
+			}
+			return list, global
 		},
 	}), nil
 }
@@ -2358,4 +2411,158 @@ func stopNativeAMemorixHost(service *memorix.AMemorixHostService) {
 	if err := service.Stop(stopCtx); err != nil {
 		zap.L().Warn("关闭 A_Memorix 原生内核失败", zap.Error(err))
 	}
+}
+
+// startScheduleService 装配聊天日程：加载待办存储，按相交组定时投递内部任务
+func startScheduleService(
+	instanceDir string,
+	db *gorm.DB,
+	agent *maisaruntime.Agent,
+	pet *desktoppet.Service,
+	prompts *prompt.Manager,
+) {
+	if db == nil {
+		return
+	}
+	hooks := schedules.Hooks{
+		OwnerCheck: func(ctx context.Context, sessionID string) bool {
+			var record chatsession.Record
+			if err := db.WithContext(ctx).Where("session_id = ?", sessionID).First(&record).Error; err != nil {
+				return false
+			}
+			return scheduleIsOwnerRecord(record)
+		},
+		DesktopReady: func() bool {
+			return pet != nil && pet.Status().Ready
+		},
+		DesktopReminder: func(ctx context.Context, text string) error {
+			if pet == nil {
+				return fmt.Errorf("桌宠服务未初始化")
+			}
+			if _, err := pet.Control(ctx, "show", "", false); err != nil {
+				return err
+			}
+			_, err := pet.Control(ctx, "say", "⏰ 提醒："+text, false)
+			return err
+		},
+		RefreshDesktop: func() {
+			if pet == nil || !pet.Status().Ready {
+				return
+			}
+			refreshCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := pet.RefreshTodos(refreshCtx); err != nil {
+				zap.L().Debug("刷新桌宠待办失败", zap.Error(err))
+			}
+		},
+		Dispatch: func(ctx context.Context, item map[string]any) error {
+			return dispatchScheduleItem(ctx, db, agent, prompts, item)
+		},
+	}
+	path := filepath.Join(instanceDir, "data", "plugins", "sengokucola.desktop-pet", "todos.json")
+	if err := schedules.Default().Start(context.Background(), path, hooks); err != nil {
+		zap.L().Error("启动日程服务失败", zap.Error(err))
+	}
+}
+
+// dispatchScheduleItem 解析日程所属真实聊天流并投递内部任务
+func dispatchScheduleItem(
+	ctx context.Context,
+	db *gorm.DB,
+	agent *maisaruntime.Agent,
+	prompts *prompt.Manager,
+	item map[string]any,
+) error {
+	if agent == nil || prompts == nil {
+		return fmt.Errorf("日程投递依赖未就绪")
+	}
+	sessionID := strings.TrimSpace(anyString(item["session_id"]))
+	var record chatsession.Record
+	if sessionID != "" {
+		if err := db.WithContext(ctx).Where("session_id = ?", sessionID).First(&record).Error; err != nil {
+			return fmt.Errorf("日程所属聊天流已不存在")
+		}
+	} else {
+		kind, targetID, resolveErr := resolveOwnerAgentTarget(ctx, db)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		payload, err := sonic.Marshal(map[string]any{
+			"id": anyString(item["id"]), "text": anyString(item["text"]), "due_at": item["due_at"],
+		})
+		if err != nil {
+			return err
+		}
+		text, err := prompts.Render("schedule_due", map[string]string{"schedule": string(payload)})
+		if err != nil {
+			return err
+		}
+		_, err = agent.EnqueueInternalTask(ctx, kind, targetID, strings.TrimSpace(text), "schedule", "日程到期")
+		return err
+	}
+	kind, targetID, ok := scheduleConversationTarget(record)
+	if !ok {
+		return fmt.Errorf("当前聊天平台暂不支持日程投递")
+	}
+	payload, err := sonic.Marshal(map[string]any{
+		"id": anyString(item["id"]), "text": anyString(item["text"]), "due_at": item["due_at"],
+	})
+	if err != nil {
+		return err
+	}
+	text, err := prompts.Render("schedule_due", map[string]string{"schedule": string(payload)})
+	if err != nil {
+		return err
+	}
+	_, err = agent.EnqueueInternalTask(ctx, kind, targetID, strings.TrimSpace(text), "schedule", "日程到期")
+	return err
+}
+
+func scheduleIsOwnerRecord(record chatsession.Record) bool {
+	if record.Platform != internalchat.Platform || record.IsGroup() || record.UserID == nil {
+		return false
+	}
+	userID := strings.TrimSpace(*record.UserID)
+	return userID == internalchat.OwnerUserID || userID == strconv.FormatInt(internalchat.OwnerNumericID, 10)
+}
+
+func scheduleConversationTarget(record chatsession.Record) (string, int64, bool) {
+	if record.IsGroup() {
+		if record.GroupID == nil {
+			return "", 0, false
+		}
+		targetID, err := strconv.ParseInt(strings.TrimSpace(*record.GroupID), 10, 64)
+		if err != nil || targetID <= 0 {
+			return "", 0, false
+		}
+		return memory.ConversationKindGroup, targetID, true
+	}
+	if scheduleIsOwnerRecord(record) {
+		return memory.ConversationKindPrivate, internalchat.OwnerNumericID, true
+	}
+	if record.UserID == nil {
+		return "", 0, false
+	}
+	targetID, err := strconv.ParseInt(strings.TrimSpace(*record.UserID), 10, 64)
+	if err != nil || targetID <= 0 {
+		return "", 0, false
+	}
+	return memory.ConversationKindPrivate, targetID, true
+}
+
+// resolveOwnerAgentTarget 解析主人内部私聊对应的 Agent 会话目标
+func resolveOwnerAgentTarget(ctx context.Context, db *gorm.DB) (string, int64, error) {
+	ownerID := strconv.FormatInt(internalchat.OwnerNumericID, 10)
+	var record chatsession.Record
+	if err := db.WithContext(ctx).
+		Where("platform = ? AND (group_id IS NULL OR group_id = '') AND (user_id = ? OR user_id = ?)",
+			internalchat.Platform, internalchat.OwnerUserID, ownerID).
+		First(&record).Error; err != nil {
+		return "", 0, fmt.Errorf("无法确定主人聊天流，请先建立唯一的主人会话")
+	}
+	kind, targetID, ok := scheduleConversationTarget(record)
+	if !ok {
+		return "", 0, fmt.Errorf("主人聊天流缺少可投递身份")
+	}
+	return kind, targetID, nil
 }

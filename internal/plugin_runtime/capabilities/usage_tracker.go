@@ -6,9 +6,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // pluginUsageFileRecord 磁盘记录，字段对齐 Python {"version":1,"usage_seconds":{...}}
@@ -45,7 +48,20 @@ func (t *PluginUsageTracker) SetClock(clock func() float64) {
 	}
 }
 
-// Load 从磁盘读取累计时长
+// quarantineUsageFile 保留损坏记录原文件，并把正式路径释放给下一次写入
+func (t *PluginUsageTracker) quarantineUsageFile(cause error) error {
+	backup := t.path + ".corrupt-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err := os.Rename(t.path, backup); err != nil {
+		return err
+	}
+	t.totals = map[string]float64{}
+	t.activeSince = map[string]float64{}
+	zap.L().Warn("插件累计使用时长记录损坏，已保留原文件并重新计时",
+		zap.String("backup", backup), zap.Error(cause))
+	return nil
+}
+
+// Load 从磁盘读取累计时长；损坏记录隔离后重新计时，不阻止启动
 func (t *PluginUsageTracker) Load() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -60,15 +76,15 @@ func (t *PluginUsageTracker) Load() error {
 	}
 	var record pluginUsageFileRecord
 	if err := json.Unmarshal(raw, &record); err != nil {
-		return fmt.Errorf("插件使用时长记录格式错误: %s", t.path)
+		return t.quarantineUsageFile(err)
 	}
 	if record.Version != 1 || record.Usage == nil {
-		return fmt.Errorf("插件使用时长记录格式错误: %s", t.path)
+		return t.quarantineUsageFile(fmt.Errorf("插件使用时长记录格式错误: %s", t.path))
 	}
 	totals := make(map[string]float64, len(record.Usage))
 	for pluginID, seconds := range record.Usage {
 		if strings.TrimSpace(pluginID) == "" || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
-			return fmt.Errorf("插件 %q 的累计使用时长无效: %s", pluginID, t.path)
+			return t.quarantineUsageFile(fmt.Errorf("插件 %q 的累计使用时长无效: %s", pluginID, t.path))
 		}
 		totals[pluginID] = seconds
 	}

@@ -13,7 +13,7 @@ import (
 
 const (
 	// SchemaVersion 当前 metadata schema 版本，对齐 Python SCHEMA_VERSION
-	SchemaVersion = 29
+	SchemaVersion = 31
 	// RuntimeAutoMigrationMinSchemaVersion 允许运行时自动迁移的最低版本
 	// 对齐 Python RUNTIME_AUTO_MIGRATION_MIN_SCHEMA_VERSION
 	RuntimeAutoMigrationMinSchemaVersion = 9

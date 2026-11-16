@@ -90,11 +90,14 @@ type Host struct {
 	webuiExtensions map[string]map[string]any
 	runnerReady     protocol.RunnerReadyPayload
 	blockedReasons  map[string]string
+	// adapterMigrationErrors 适配器迁移失败原因，随每次依赖同步并入阻止列表
+	adapterMigrationErrors map[string]string
 
 	externalAvailablePlugins map[string]string
 	forcePluginCompatibility bool
 	usage                    *PluginUsageTracker
 	usageTracking            bool
+	usageError               error
 	usageCancel              context.CancelFunc
 	usageWG                  sync.WaitGroup
 	logSink                  func(pluginID string, entry protocol.RunnerLogEntry)

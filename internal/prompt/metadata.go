@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
-	"go.uber.org/zap"
 )
 
 // PromptMetadata 对齐 MaiBot PromptMetadata；WebUI catalog 使用
@@ -41,72 +40,6 @@ type ResolvedTemplate struct {
 	Customized bool
 }
 
-func loadEmbeddedMetadata() map[string]map[string]PromptMetadata {
-	out := make(map[string]map[string]PromptMetadata)
-	root := "templates"
-	entries, err := fs.ReadDir(embeddedTemplates, root)
-	if err != nil {
-		return out
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		locale := entry.Name()
-		if _, normErr := NormalizeLocale(locale); normErr != nil {
-			continue
-		}
-		layer := scanEmbeddedMetadata(locale)
-		if len(layer) > 0 {
-			out[locale] = layer
-		}
-	}
-	return out
-}
-
-func scanEmbeddedMetadata(locale string) map[string]PromptMetadata {
-	layer := make(map[string]PromptMetadata)
-	base := rootJoin("templates", locale)
-	// 嵌入文件系统遍历失败不应静默：返回已收集部分并记录告警
-	if walkErr := fs.WalkDir(embeddedTemplates, base, func(filePath string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
-			return walkErr
-		}
-		if !strings.HasSuffix(filePath, ".prompt") {
-			return nil
-		}
-		rel := strings.TrimPrefix(filePath, base+"/")
-		name := strings.TrimSuffix(path.Base(rel), ".prompt")
-		category := ""
-		if index := strings.LastIndex(rel, "/"); index >= 0 {
-			category = rel[:index]
-		}
-		key := name
-		if category != "" {
-			key = category + "/" + name
-		}
-		dir := path.Dir(filePath)
-		layer[key] = loadPromptMetadata(name, func(fileName string) map[string]any {
-			return readEmbeddedMetadataFile(rootJoin(dir, fileName))
-		})
-		if category != "" {
-			// 兼容按扁平名称查询带 category 的模板元信息
-			if _, exists := layer[name]; !exists {
-				layer[name] = layer[key]
-			}
-		}
-		return nil
-	}); walkErr != nil {
-		zap.L().Warn("扫描嵌入 Prompt 元信息失败，返回已收集部分",
-			zap.String("locale", locale), zap.Error(walkErr))
-	}
-	return layer
-}
-
-func rootJoin(parts ...string) string {
-	return strings.Join(parts, "/")
-}
-
 // loadPromptMetadata 对齐 MaiBot _load_prompt_metadata 的合并顺序：
 // 父目录 .meta.json -> 父目录 .meta.toml -> 模板同名 .meta.json -> 模板同名 .meta.toml
 func loadPromptMetadata(promptName string, read func(fileName string) map[string]any) PromptMetadata {
@@ -124,6 +57,20 @@ func readEmbeddedMetadataFile(filePath string) map[string]any {
 		return nil
 	}
 	return parsePromptMetadata(raw, strings.ToLower(path.Ext(filePath)))
+}
+
+// ReadTemplateMetadata 读取 fs.FS 中模板文件的元信息：
+// 模板所在目录的 .meta.json/.meta.toml 与模板同名 .meta.json/.meta.toml
+func ReadTemplateMetadata(resource fs.FS, templatePath string) PromptMetadata {
+	dir := path.Dir(templatePath)
+	name := strings.TrimSuffix(path.Base(templatePath), ".prompt")
+	return loadPromptMetadata(name, func(fileName string) map[string]any {
+		raw, err := fs.ReadFile(resource, path.Join(dir, fileName))
+		if err != nil {
+			return nil
+		}
+		return parsePromptMetadata(raw, strings.ToLower(path.Ext(fileName)))
+	})
 }
 
 // readPromptMetadataFile 读取实例目录下的 .meta.toml/.meta.json
@@ -215,16 +162,19 @@ func (m *Manager) ListTemplates(locale string, includeCustom bool) []TemplateInf
 
 	seen := make(map[string]TemplateInfo)
 	for _, layerLocale := range LocaleFallbacks(requested) {
-		for key := range m.byLocale[layerLocale] {
-			if _, exists := seen[key]; exists {
+		for name := range m.byLocale[layerLocale] {
+			if _, exists := seen[name]; exists {
 				continue
+			}
+			category := ""
+			if layer := m.byLocaleCategory[layerLocale]; layer != nil {
+				category = layer[name]
 			}
 			meta := PromptMetadata{}
 			if layer := m.byLocaleMeta[layerLocale]; layer != nil {
-				meta = layer[key]
+				meta = layer[name]
 			}
-			name, category := splitTemplateKey(key)
-			seen[key] = TemplateInfo{
+			seen[name] = TemplateInfo{
 				Name: name, Category: category, Locale: layerLocale,
 				Path:     embeddedPromptPath(layerLocale, category, name),
 				Metadata: meta,
@@ -340,14 +290,21 @@ func (m *Manager) ResolveTemplate(name, locale, category string, includeCustom b
 	for _, candidateLocale := range LocaleFallbacks(requested) {
 		if includeCustom {
 			if layer := customLayer[candidateLocale]; layer != nil {
-				if key := templateKey(normalizedCategory, normalizedName); key != "" {
-					if tpl, ok := layer[key]; ok {
+				if normalizedCategory != "" {
+					if tpl, ok := layer[normalizedCategory+"/"+normalizedName]; ok {
 						return ResolvedTemplate{
 							Name: normalizedName, Category: normalizedCategory, Locale: candidateLocale,
-							Path:     "custom_prompts/" + candidateLocale + "/" + key + ".prompt",
+							Path:     "custom_prompts/" + candidateLocale + "/" + normalizedCategory + "/" + normalizedName + ".prompt",
 							Template: tpl, Customized: true,
 						}, nil
 					}
+				}
+				if tpl, ok := layer[normalizedName]; ok {
+					return ResolvedTemplate{
+						Name: normalizedName, Locale: candidateLocale,
+						Path:     "custom_prompts/" + candidateLocale + "/" + normalizedName + ".prompt",
+						Template: tpl, Customized: true,
+					}, nil
 				}
 			}
 			if tpl, ok := legacy[normalizedName]; ok {
@@ -358,26 +315,20 @@ func (m *Manager) ResolveTemplate(name, locale, category string, includeCustom b
 			}
 		}
 		if layer := m.byLocale[candidateLocale]; layer != nil {
-			if key := templateKey(normalizedCategory, normalizedName); key != "" {
-				if tpl, ok := layer[key]; ok {
-					return ResolvedTemplate{
-						Name: normalizedName, Category: normalizedCategory, Locale: candidateLocale,
-						Path:     embeddedPromptPath(candidateLocale, normalizedCategory, normalizedName),
-						Template: tpl,
-					}, nil
+			if tpl, ok := layer[normalizedName]; ok {
+				category := ""
+				if categories := m.byLocaleCategory[candidateLocale]; categories != nil {
+					category = categories[normalizedName]
 				}
+				return ResolvedTemplate{
+					Name: normalizedName, Category: category, Locale: candidateLocale,
+					Path:     embeddedPromptPath(candidateLocale, category, normalizedName),
+					Template: tpl,
+				}, nil
 			}
 		}
 	}
 	return ResolvedTemplate{}, fmt.Errorf("prompt 模板不存在: %q (locale=%q category=%q)", normalizedName, requested, normalizedCategory)
-}
-
-func templateKey(category, name string) string {
-	category = strings.Trim(category, "/")
-	if category == "" {
-		return name
-	}
-	return category + "/" + name
 }
 
 // NormalizePromptName 对齐 MaiBot normalize_prompt_name：去 .prompt 后缀并校验安全字符

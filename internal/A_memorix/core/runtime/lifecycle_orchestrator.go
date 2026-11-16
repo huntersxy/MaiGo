@@ -264,7 +264,7 @@ func (m lifecycleEmbeddingManager) DetectDimension(ctx context.Context) (int, er
 
 // Encode 对齐 encode(str) 的单条分支
 func (m lifecycleEmbeddingManager) Encode(ctx context.Context, text string) ([]float32, error) {
-	return m.adapter.EncodeOne(ctx, text, nil)
+	return m.adapter.EncodeOneUncached(ctx, text)
 }
 
 // resolveLifecycleDataDir 对齐 resolve_repo_path(get_config("storage.data_dir","./data"), fallback=default_data_dir())

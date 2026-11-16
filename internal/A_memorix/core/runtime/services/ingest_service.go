@@ -205,7 +205,38 @@ func (s *IngestService) IngestText(ctx context.Context, params IngestTextParams)
 	return s.ingestTextRaw(ctx, params, metadata)
 }
 
+// ingestTextRaw 对齐 _ingest_text_raw：同一外部来源的检查与派生写入串行执行
 func (s *IngestService) ingestTextRaw(ctx context.Context, params IngestTextParams, metadata map[string]any) (map[string]any, error) {
+	content := utils.NormalizeText(params.Text)
+	externalToken := strings.TrimSpace(params.ExternalID)
+	if externalToken == "" {
+		hashValue, err := utils.ComputeHash(fmt.Sprintf("%s:%s:%s", params.SourceType, params.ChatID, content))
+		if err != nil {
+			return nil, err
+		}
+		externalToken = hashValue
+	}
+	if s.deps.IsChatFiltered != nil && s.deps.IsChatFiltered(params.RespectFilter, params.ChatID, params.GroupID, params.UserID) {
+		return map[string]any{"success": true, "stored_ids": []string{}, "skipped_ids": []string{externalToken}, "detail": "chat_filtered"}, nil
+	}
+	if err := s.initialize(ctx); err != nil {
+		return nil, err
+	}
+	store := s.store()
+	if store == nil {
+		return nil, fmt.Errorf("元数据存储未初始化")
+	}
+	release, err := utils.AcquireFactScopeLock(ctx, ingestFactDedupStore{store: store}, "external", externalToken)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	params.ExternalID = externalToken
+	return s.ingestTextUnlocked(ctx, params, metadata)
+}
+
+// ingestTextUnlocked 执行外部来源写入；调用方必须已持有 external_id 作用域锁
+func (s *IngestService) ingestTextUnlocked(ctx context.Context, params IngestTextParams, metadata map[string]any) (map[string]any, error) {
 	content := utils.NormalizeText(params.Text)
 	externalToken := strings.TrimSpace(params.ExternalID)
 	if externalToken == "" {
@@ -231,6 +262,18 @@ func (s *IngestService) ingestTextRaw(ctx context.Context, params IngestTextPara
 	existingRef, err := store.GetExternalMemoryRef(externalToken)
 	if err != nil {
 		return nil, err
+	}
+	if existingRef != nil {
+		paragraph, err := store.GetParagraph(asString(existingRef["paragraph_hash"]))
+		if err != nil {
+			return nil, err
+		}
+		if !ingestSourceAttributionMatches(existingRef, params) {
+			return nil, fmt.Errorf("external_id=%s 与已保存的来源归属不一致", externalToken)
+		}
+		if paragraph == nil || pyTruthy(paragraph["is_deleted"]) || utils.NormalizeText(asString(paragraph["content"])) != content {
+			return nil, fmt.Errorf("external_id=%s 与已保存的段落正文不一致或段落已删除", externalToken)
+		}
 	}
 	if existingRef != nil && asString(asMap(existingRef["metadata"])["dedup_phase"]) != "pending" {
 		if strings.TrimSpace(params.SourceType) == "person_fact" {
@@ -968,6 +1011,71 @@ func resolveKnowledgeType(sourceType string) string {
 	default:
 		return "mixed"
 	}
+}
+
+// ingestSourceAttributionMatches 校验外部来源的归属字段，避免同一 external_id 被不同来源覆盖
+func ingestSourceAttributionMatches(ref map[string]any, params IngestTextParams) bool {
+	if strings.TrimSpace(asString(ref["source_type"])) != strings.TrimSpace(params.SourceType) {
+		return false
+	}
+	saved := asMap(ref["metadata"])
+	if value, ok := saved["chat_id"]; ok && asString(value) != strings.TrimSpace(params.ChatID) {
+		return false
+	}
+	expected := uniqueStringTokens(params.PersonIDs)
+	if value, ok := saved["person_ids"]; ok && !sameStringSet(stringTokens(value), expected) {
+		return false
+	}
+	if value, ok := saved["person_id"]; ok && !equalStringSlices([]string{asString(value)}, expected) {
+		return false
+	}
+	return true
+}
+
+// uniqueStringTokens 去空白并去重，保留首次出现顺序
+func uniqueStringTokens(value any) []string {
+	tokens := stringTokens(value)
+	out := make([]string, 0, len(tokens))
+	seen := make(map[string]struct{}, len(tokens))
+	for _, token := range tokens {
+		if _, exists := seen[token]; exists {
+			continue
+		}
+		seen[token] = struct{}{}
+		out = append(out, token)
+	}
+	return out
+}
+
+// sameStringSet 忽略顺序比较两个字符串集合
+func sameStringSet(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := make(map[string]int, len(left))
+	for _, item := range left {
+		seen[item]++
+	}
+	for _, item := range right {
+		if seen[item] == 0 {
+			return false
+		}
+		seen[item]--
+	}
+	return true
+}
+
+// equalStringSlices 按顺序比较字符串切片
+func equalStringSlices(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func stringTokens(value any) []string {

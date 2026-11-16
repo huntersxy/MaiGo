@@ -42,21 +42,15 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 	languages := make([]string, 0, len(languageDirs))
 	files := make(map[string]any, len(languageDirs))
 	for _, language := range languageDirs {
-		promptEntries, err := fs.ReadDir(root, language)
+		promptFiles, err := walkPromptFiles(root, language)
 		if err != nil {
-			continue
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "列出 Prompt 文件失败: " + err.Error()})
+			return
 		}
-		names := make([]string, 0)
-		for _, entry := range promptEntries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".prompt") {
-				names = append(names, entry.Name())
-			}
-		}
-		sort.Strings(names)
-		metadata := readPromptMetadata(root, language)
-		infos := make([]any, 0, len(names))
-		for _, name := range names {
-			defaultPath := path.Join(language, name)
+		infos := make([]any, 0, len(promptFiles))
+		for _, file := range promptFiles {
+			name := path.Base(file.Path)
+			defaultPath := file.Path
 			customPath, err := safePromptPath(customRoot, language, name)
 			if err != nil {
 				continue
@@ -80,7 +74,11 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				versions = nil
 			}
-			meta := metadata[strings.TrimSuffix(name, ".prompt")]
+			meta := prompt.ReadTemplateMetadata(root, defaultPath)
+			kind := "main"
+			if isInstructionPromptCategory(file.Category) {
+				kind = "instruction"
+			}
 			// 内嵌模板没有真实 mtime，零值时间转 epoch 会得到负数，按 0 上报
 			modifiedAt := float64(stat.ModTime().UnixNano()) / 1e9
 			if stat.ModTime().IsZero() {
@@ -89,8 +87,9 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 			infos = append(infos, map[string]any{
 				"name": name, "size": stat.Size(),
 				"modified_at":  modifiedAt,
-				"display_name": meta.DisplayName, "advanced": meta.Advanced, "description": meta.Description,
-				"customized": customized, "custom_version_count": len(versions),
+				"display_name": meta.DisplayName, "advanced": meta.Advanced, "kind": kind,
+				"description": meta.Description,
+				"customized":  customized, "custom_version_count": len(versions),
 				"validation": buildPromptValidation(string(defaultContent), string(effectiveContent)),
 			})
 		}
@@ -98,6 +97,16 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 		files[language] = infos
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "languages": languages, "files": files})
+}
+
+// isInstructionPromptCategory 判断模板相对目录是否属于 instructions（对齐 PromptFileInfo.kind）
+func isInstructionPromptCategory(category string) bool {
+	for _, part := range strings.Split(category, "/") {
+		if part == "instructions" {
+			return true
+		}
+	}
+	return false
 }
 
 type promptFilePayload struct {
@@ -116,9 +125,16 @@ func (d Deps) loadPromptFile(language, filename string) (*promptFilePayload, int
 		return nil, http.StatusBadRequest, err
 	}
 	customRoot, _ := d.customPromptsRoot()
-	builtinFilename := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt")) + ".prompt"
-	resourcePath := path.Join(strings.TrimSpace(language), builtinFilename)
-	defaultRaw, err := fs.ReadFile(d.promptResource(), resourcePath)
+	builtinName := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt"))
+	resource := d.promptResource()
+	resourcePath, err := resolvePromptResourcePath(resource, strings.TrimSpace(language), builtinName)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	if resourcePath == "" {
+		return nil, http.StatusNotFound, errors.New("Prompt 文件不存在")
+	}
+	defaultRaw, err := fs.ReadFile(resource, resourcePath)
 	if err != nil {
 		return nil, http.StatusNotFound, errors.New("Prompt 文件不存在")
 	}
@@ -207,8 +223,13 @@ func (d Deps) handleConfigPromptVersions(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
 	}
-	builtinFilename := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt")) + ".prompt"
-	if _, err := fs.Stat(d.promptResource(), path.Join(strings.TrimSpace(language), builtinFilename)); err != nil {
+	builtinName := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt"))
+	resourcePath, err := resolvePromptResourcePath(d.promptResource(), strings.TrimSpace(language), builtinName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
+		return
+	}
+	if resourcePath == "" {
 		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "Prompt 文件不存在"})
 		return
 	}

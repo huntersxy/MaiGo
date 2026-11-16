@@ -135,6 +135,21 @@ func ValidateRemoteEvent(event map[string]any) error {
 			return fmt.Errorf("未知桌面读取操作")
 		}
 		return nil
+	case "todo_request":
+		if err := remoteTextField(event, "request_id", 64, false); err != nil {
+			return err
+		}
+		command, ok := event["command"].(map[string]any)
+		if !ok {
+			return fmt.Errorf("待办请求缺少 command")
+		}
+		action := asString(command["action"])
+		switch action {
+		case "list", "image", "add", "update", "complete", "delete":
+		default:
+			return fmt.Errorf("不允许窗口调用此事项操作")
+		}
+		return ValidateRemoteTodoPayload(action, command)
 	case "exploration_tasks":
 		if err := remoteTextField(event, "task_id", 64, true); err != nil {
 			return err
@@ -156,6 +171,9 @@ func ValidateRemoteTodoPayload(action string, payload map[string]any) error {
 			}
 		}
 		return nil
+	}
+	if action == "image" {
+		return remoteTextField(payload, "image_id", 64, false)
 	}
 	if action == "update" || action == "complete" || action == "delete" {
 		if err := remoteTextField(payload, "todo_id", 128, false); err != nil {

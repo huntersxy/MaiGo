@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"MaiGo/internal/chat/session"
+	"MaiGo/internal/services"
 
 	"gorm.io/gorm"
 )
@@ -151,90 +152,32 @@ func (r *Registry) LearningSessionDisplayName(ctx context.Context, sessionID str
 
 // ResolveJargonRelatedSessionIDs 对齐 JargonConfigUtils.resolve_jargon_group_scope
 func (r *Registry) ResolveJargonRelatedSessionIDs(ctx context.Context, sessionID string) []string {
-	return r.resolveRelatedSessionIDs(ctx, sessionID, r.LearningSettings().JargonGroups)
+	return sharingRelatedSessionIDs(sessionID, "jargon")
 }
 
 // ResolveExpressionRelatedSessionIDs 对齐 _resolve_expression_group_scope
 func (r *Registry) ResolveExpressionRelatedSessionIDs(ctx context.Context, sessionID string) []string {
-	return r.resolveRelatedSessionIDs(ctx, sessionID, r.LearningSettings().ExpressionGroups)
+	return sharingRelatedSessionIDs(sessionID, "expression")
 }
 
-func (r *Registry) resolveRelatedSessionIDs(ctx context.Context, sessionID string, groups []LearningGroup) []string {
+// sharingRelatedSessionIDs 从相通组读取当前会话可共享的聊天流范围
+func sharingRelatedSessionIDs(sessionID, capability string) []string {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil
 	}
-	related := map[string]struct{}{sessionID: {}}
-	if len(groups) == 0 {
-		return []string{sessionID}
-	}
-	directory := r.sessionDirectory()
-	if directory == nil {
-		return []string{sessionID}
-	}
-	scope, hasScope, err := directory.LearningSessionScope(ctx, sessionID)
+	ids, _, err := services.ResolveSharingScope(sessionID, capability)
 	if err != nil {
 		return []string{sessionID}
 	}
-	for _, group := range groups {
-		groupSessionIDs := map[string]struct{}{}
-		containsCurrent := false
-		for _, target := range group.Targets {
-			platform := strings.TrimSpace(target.Platform)
-			itemID := strings.TrimSpace(target.ItemID)
-			ruleType := strings.ToLower(strings.TrimSpace(target.RuleType))
-			if platform == "" || itemID == "" {
-				continue
-			}
-			ids, err := directory.ResolveLearningSessionIDs(ctx, platform, itemID, ruleType)
-			if err != nil {
-				continue
-			}
-			for _, id := range ids {
-				id = strings.TrimSpace(id)
-				if id != "" {
-					groupSessionIDs[id] = struct{}{}
-				}
-			}
-			if hasScope && learningTargetMatchesScope(scope, platform, itemID, ruleType) {
-				containsCurrent = true
-			}
-			if !hasScope && platform != "*" && itemID != "*" {
-				if _, ok := groupSessionIDs[sessionID]; ok {
-					containsCurrent = true
-				}
-			}
-		}
-		if containsCurrent {
-			for id := range groupSessionIDs {
-				related[id] = struct{}{}
-			}
-		}
-	}
-	rest := make([]string, 0, len(related)-1)
-	for id := range related {
+	rest := make([]string, 0, len(ids)-1)
+	for id := range ids {
 		if id != sessionID {
 			rest = append(rest, id)
 		}
 	}
 	sort.Strings(rest)
 	return append([]string{sessionID}, rest...)
-}
-
-func learningTargetMatchesScope(scope LearningSessionScope, platform, itemID, ruleType string) bool {
-	if scope.Platform == "" || scope.TargetID == "" || scope.ChatType == "" {
-		return false
-	}
-	if ruleType != scope.ChatType {
-		return false
-	}
-	if platform != "*" && platform != scope.Platform {
-		return false
-	}
-	if itemID != "*" && itemID != scope.TargetID {
-		return false
-	}
-	return true
 }
 
 // LearningSessionScope 按 session_id 解析平台目标

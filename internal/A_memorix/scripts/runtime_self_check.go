@@ -159,7 +159,7 @@ func (m scriptSelfCheckEmbedding) DetectDimension(ctx context.Context) (int, err
 
 // Encode 对齐 encode(str) 的单条分支
 func (m scriptSelfCheckEmbedding) Encode(ctx context.Context, text string) ([]float32, error) {
-	return m.adapter.EncodeOne(ctx, text, nil)
+	return m.adapter.EncodeOneUncached(ctx, text)
 }
 
 // GetRequestedDimension 对齐 _get_requested_dimension 读到的配置维度

@@ -24,8 +24,9 @@ type ToolRoute struct {
 
 // FocusToolRouter 合并各会话工具，保留权限差异与同名工具的来源身份
 type FocusToolRouter struct {
-	group  *GroupRuntime
-	routes map[string]*ToolRoute
+	group       *GroupRuntime
+	routes      map[string]*ToolRoute
+	tailLoading bool
 }
 
 // NewFocusToolRouter 构造组级工具路由
@@ -66,6 +67,7 @@ func (r *FocusToolRouter) Refresh(ctx context.Context) ([]maisaka.ToolSpec, erro
 	if r == nil || r.group == nil {
 		return nil, nil
 	}
+	r.tailLoading = r.group.opts.ToolSearchTailLoading != nil && r.group.opts.ToolSearchTailLoading()
 	identities := map[string]string{}
 	routes := map[string]*ToolRoute{}
 	members := r.group.ValidMembers()
@@ -256,7 +258,7 @@ func (r *FocusToolRouter) Definitions() []map[string]any {
 	for _, name := range names {
 		route := r.routes[name]
 		visible := r.IsDefaultVisible(route.Spec)
-		if !visible {
+		if !visible && !r.tailLoading {
 			for sessionID := range route.Variants {
 				member, ok := r.group.Members()[sessionID]
 				if !ok {
@@ -372,7 +374,7 @@ func (r *FocusToolRouter) Invoke(
 	}
 	invocation.Metadata["focus_scope_id"] = r.group.ScopeID()
 	invocation.Metadata["session_id"] = sessionID
-	control := (toolName == "wait" || toolName == "stop") && original.Provider == maisaka.BuiltinProviderName
+	control := toolName == "wait" && original.Provider == maisaka.BuiltinProviderName
 	var result maisaka.ToolExecutionResult
 	if control {
 		result = r.group.ExecuteControl(toolName, nativeArguments, sessionID)

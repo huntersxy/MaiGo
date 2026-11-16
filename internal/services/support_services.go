@@ -53,18 +53,26 @@ func (s *InternalChatProfileService) Get(initialName string) (string, error) {
 		var payload struct {
 			UserName string `json:"user_name"`
 		}
-		if err := json.Unmarshal(raw, &payload); err != nil {
-			return "", fmt.Errorf("读取内部聊天昵称失败: %w", err)
+		if unmarshalErr := json.Unmarshal(raw, &payload); unmarshalErr != nil {
+			quarantineInternalChatProfile(path)
+		} else if name, validateErr := validateInternalChatName(payload.UserName); validateErr == nil {
+			return name, nil
+		} else {
+			quarantineInternalChatProfile(path)
 		}
-		return validateInternalChatName(payload.UserName)
 	}
-	if !errors.Is(err, os.ErrNotExist) {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("读取内部聊天昵称失败: %w", err)
 	}
 	if strings.TrimSpace(initialName) != "" {
 		return s.Set(initialName)
 	}
 	return internalChatDefaultUserName, nil
+}
+
+// quarantineInternalChatProfile 保留损坏文件，并把正式路径释放给下一次写入
+func quarantineInternalChatProfile(path string) {
+	_ = os.Rename(path, fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano()))
 }
 
 // Set 原子写入昵称

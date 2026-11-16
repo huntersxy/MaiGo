@@ -96,7 +96,7 @@ func (c *geminiClient) Generate(ctx context.Context, input []*schema.AgenticMess
 	defer cancel()
 
 	modelName, enableGoogleSearch := c.resolveModel(options)
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		return nil, c.snapshotFailure(recorder, started, input, options, nil, false, err)
 	}
@@ -133,7 +133,7 @@ func (c *geminiClient) Stream(ctx context.Context, input []*schema.AgenticMessag
 	modelName, enableGoogleSearch := c.resolveModel(options)
 	// 超时上下文必须覆盖建流与读取整条 SSE；先建上下文再发请求，避免只约束读取
 	streamCtx, cancel := c.requestContext(ctx)
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		cancel()
 		return nil, c.snapshotFailure(recorder, started, input, options, nil, true, err)

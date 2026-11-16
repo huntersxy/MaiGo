@@ -5,8 +5,8 @@ type BuiltinToolName string
 
 const (
 	ToolWait               BuiltinToolName = "wait"
-	ToolStop               BuiltinToolName = "stop"
 	ToolReply              BuiltinToolName = "reply"
+	ToolSchedule           BuiltinToolName = "schedule"
 	ToolViewForwardMessage BuiltinToolName = "view_forward_message"
 	ToolQueryMemory        BuiltinToolName = "query_memory"
 	ToolQueryImageMemory   BuiltinToolName = "query_image_memory"
@@ -21,9 +21,9 @@ const (
 
 // GoToolMapping 记录 MaiGo 当前对等或桥接关系，供迁移与提示词对照
 var GoToolMapping = map[BuiltinToolName]string{
-	ToolStop:               "stop → stayQuiet（结束本轮）",
 	ToolReply:              "reply → speak（仅 content/text 直发；完整 replyer 未迁移）",
-	ToolWait:               "wait → 待 chat_loop 等待状态",
+	ToolSchedule:           "schedule → services/schedules Command",
+	ToolWait:               "wait → 无参数结束本轮；指定 seconds 进入计数等待",
 	ToolQueryMemory:        "query_memory → memorix Host Search（Bridge）；mode=episode 为话题/knowledge 替身；aggregate/纯 time 未迁移",
 	ToolQueryImageMemory:   "query_image_memory → memory.SearchStickerPage 关键词（无 A_Memorix 同图向量）",
 	ToolQueryPersonProfile: "query_person_profile → personinfo.GetProfile",

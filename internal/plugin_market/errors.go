@@ -9,6 +9,8 @@ import (
 type MarketError struct {
 	StatusCode int
 	Message    string
+	// Payload 非空时作为响应 detail 的结构化内容，用于强制更新冲突等前端约定
+	Payload any
 }
 
 // Error 输出业务错误文案

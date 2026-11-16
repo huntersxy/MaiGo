@@ -100,7 +100,7 @@ func (c *geminiClient) buildRequestBody(
 	options *model.Options,
 	enableGoogleSearch bool,
 ) (map[string]any, error) {
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		return nil, err
 	}

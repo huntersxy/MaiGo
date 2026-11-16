@@ -11,6 +11,7 @@ import (
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
+	builtin_tool "MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/person_info"
 	"MaiGo/internal/platform_io/drivers/onebot"
 	"MaiGo/internal/services/statistics"
@@ -32,6 +33,7 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 		msg.ConversationKind = memory.ConversationKindGroup
 	}
 	a.noteConversationPlatform(msg)
+	builtin_tool.NotifyDesktopPetUserMessage(msg.Platform, msg.UserID, msg.GroupKey != "")
 	a.applyConversationRouteIdentity(msg)
 	a.rememberExternalIdentities(msg)
 	ctx, cancel := a.persistenceContext()

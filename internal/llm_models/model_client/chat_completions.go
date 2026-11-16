@@ -140,7 +140,7 @@ func (c *chatCompletionsClient) Generate(ctx context.Context, input []*schema.Ag
 	recorder := snapshotAttemptRecorderFromContext(ctx)
 	options := model.GetCommonOptions(&model.Options{}, opts...)
 	resolveEffectiveParams(c.cfg, options)
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		return nil, c.snapshotFailure(recorder, started, input, options, nil, false, err)
 	}
@@ -193,7 +193,7 @@ func (c *chatCompletionsClient) Stream(ctx context.Context, input []*schema.Agen
 	recorder := snapshotAttemptRecorderFromContext(ctx)
 	options := model.GetCommonOptions(&model.Options{}, opts...)
 	resolveEffectiveParams(c.cfg, options)
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		return nil, c.snapshotFailure(recorder, started, input, options, nil, true, err)
 	}

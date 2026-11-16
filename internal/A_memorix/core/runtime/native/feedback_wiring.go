@@ -49,7 +49,7 @@ func (r *Runtime) feedbackServiceDeps(target *memruntime.KernelServices) service
 				return "", fmt.Errorf("反馈分类 LLM 未接入")
 			}
 			result, err := r.llmGateway.Generate(ctx, utils.TextGenerationRequest{
-				TaskName: "utils", RequestType: "memory_feedback_correction", Prompt: prompt,
+				TaskName: "fast_model", RequestType: "memory_feedback_correction", Prompt: prompt,
 			})
 			if err != nil {
 				return "", err

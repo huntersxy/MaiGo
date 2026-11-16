@@ -155,7 +155,13 @@ func (m *WebImportManager) extractChatTimeMetaWithLLM(ctx context.Context, text 
 		"}",
 	}
 	prompt := strings.Join(lines, "\n")
-	result, err := m.llmCall(ctx, prompt, model)
+	// 时间字段抽取独立使用快速模型，不继承完整知识抽取的模型选择。
+	timeModel, err := ResolveFastTextGenerationModel(m.deps.ModelTasks)
+	if err != nil {
+		m.deps.Logger.Warning(fmt.Sprintf("chat_log 时间语义抽取失败: %v", err))
+		return nil, nil
+	}
+	result, err := m.llmCall(ctx, prompt, timeModel)
 	if err != nil {
 		m.deps.Logger.Warning(fmt.Sprintf("chat_log 时间语义抽取失败: %v", err))
 		return nil, nil

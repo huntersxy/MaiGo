@@ -26,7 +26,9 @@ func registerDefaultUpgrades(r *UpgradeRegistry) {
 	r.Register("8.16.15", "8.16.16", noopBotUpgrade)
 	r.Register("8.16.16", "8.16.17", noopBotUpgrade)
 	r.Register("8.16.17", "8.16.18", upgradeGroupTalkValueRules)
-	r.Register("8.16.18", BotConfigTargetVersion, noopBotUpgrade)
+	r.Register("8.16.18", "8.16.25", noopBotUpgrade)
+	r.Register("8.16.19", "8.16.25", noopBotUpgrade)
+	r.Register("8.16.25", BotConfigTargetVersion, noopBotUpgrade)
 
 	// model_config：锚点 1.17.17（MODEL_CONFIG_UPGRADE_HOOKS）
 	r.RegisterModel("0.0.0", "1.17.17", upgradeLabelLegacyModelTypes)

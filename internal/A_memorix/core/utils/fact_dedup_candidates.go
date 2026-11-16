@@ -270,19 +270,23 @@ func factDedupFindExact(rows []factDedupCandidate, text string) *factDedupCandid
 	return nil
 }
 
-// factDedupInterleave 对齐 zip_longest 交错合并
-func factDedupInterleave(found []factDedupCandidate, inputs []factDedupCandidate) []factDedupCandidate {
-	total := len(found)
-	if len(inputs) > total {
-		total = len(inputs)
-	}
-	out := make([]factDedupCandidate, 0, len(found)+len(inputs))
-	for index := 0; index < total; index++ {
-		if index < len(found) {
-			out = append(out, found[index])
+// factDedupInterleaveChannels 对齐 zip_longest 多路交错，精确命中固定排在最前
+func factDedupInterleaveChannels(exact *factDedupCandidate, channels ...[]factDedupCandidate) []factDedupCandidate {
+	total := 0
+	for _, channel := range channels {
+		if len(channel) > total {
+			total = len(channel)
 		}
-		if index < len(inputs) {
-			out = append(out, inputs[index])
+	}
+	out := make([]factDedupCandidate, 0, total*len(channels)+1)
+	if exact != nil {
+		out = append(out, *exact)
+	}
+	for index := 0; index < total; index++ {
+		for _, channel := range channels {
+			if index < len(channel) {
+				out = append(out, channel[index])
+			}
 		}
 	}
 	return out

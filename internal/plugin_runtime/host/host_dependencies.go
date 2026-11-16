@@ -25,11 +25,13 @@ func (h *Host) SyncPluginDependencies(
 		// 未注入流水线时只做冲突扫描，返回空结果而不是 panic：
 		// 单测与最小化部署不加载依赖流水线，插件仍应能按现状启动。
 		blocked := mergeBlockedReasons(initialBlockedPluginReasons, h.conflictBlockedReasons(pluginDirs))
+		blocked = mergeBlockedReasons(blocked, h.adapterMigrationReasons())
 		h.SetBlockedPluginReasons(blocked)
 		return DependencySyncResult{BlockedPluginReasons: blocked}, nil
 	}
 	// 对齐 Python integration.py:639-663：先扫重复插件 ID 与 LLM Provider 冲突，再交给依赖流水线
 	merged := mergeBlockedReasons(initialBlockedPluginReasons, h.conflictBlockedReasons(pluginDirs))
+	merged = mergeBlockedReasons(merged, h.adapterMigrationReasons())
 	result := runner.SyncBlockedReasons(ctx, pluginDirs, merged)
 	previous := h.BlockedPluginReasons()
 	next := result.BlockedPluginReasons

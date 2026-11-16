@@ -140,26 +140,30 @@ func normalizeSummaryRelationItems(raw any) []map[string]string {
 	return relations
 }
 
-// normalizeSummaryFacts 对齐 _normalize_summary_facts
-func normalizeSummaryFacts(raw any) []summaryPayloadFact {
+// normalizeSummaryFacts 对齐 _normalize_summary_facts；非法事实直接拒绝，避免跳过事实去重
+func normalizeSummaryFacts(raw any) ([]summaryPayloadFact, error) {
 	items, ok := raw.([]any)
 	if !ok {
-		return []summaryPayloadFact{}
+		return nil, fmt.Errorf("增量总结 facts 必须是数组")
 	}
 	facts := make([]summaryPayloadFact, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		mapping, ok := importObjectMap(item)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("增量总结 facts 的每一项必须是对象")
 		}
-		factID := importValueText(mapping["fact_id"])
-		text := importValueText(mapping["text"])
+		factIDValue, factIDOK := mapping["fact_id"].(string)
+		textValue, textOK := mapping["text"].(string)
+		if !factIDOK || !textOK {
+			return nil, fmt.Errorf("增量总结事实的 fact_id 和 text 必须是字符串")
+		}
+		factID, text := pyStrip(factIDValue), pyStrip(textValue)
 		if factID == "" || text == "" {
-			continue
+			return nil, fmt.Errorf("增量总结事实的 fact_id 和 text 不能为空，fact_id 不得重复")
 		}
 		if _, exists := seen[factID]; exists {
-			continue
+			return nil, fmt.Errorf("增量总结事实的 fact_id 和 text 不能为空，fact_id 不得重复")
 		}
 		evidence := make([]summaryImageEvidence, 0, 2)
 		rawEvidence, _ := mapping["image_evidence"].([]any)
@@ -178,7 +182,7 @@ func normalizeSummaryFacts(raw any) []summaryPayloadFact {
 		seen[factID] = struct{}{}
 		facts = append(facts, summaryPayloadFact{FactID: factID, Text: text, ImageEvidence: evidence})
 	}
-	return facts
+	return facts, nil
 }
 
 // summaryMetadata 对齐 coerce_metadata_dict

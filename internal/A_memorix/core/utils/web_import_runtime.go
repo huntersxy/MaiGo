@@ -65,14 +65,14 @@ func (m *WebImportManager) timeoutConfig() map[string]float64 {
 	}
 }
 
-// llmRetryConfig 对齐 _llm_retry_config
+// llmRetryConfig 对齐 _llm_retry_config；max_attempts 包含首次调用
 func (m *WebImportManager) llmRetryConfig() map[string]float64 {
 	timeout := m.timeoutConfig()
-	retries := max(0, m.cfgInt("web.import.llm_retry.max_attempts", 4))
+	maxAttempts := max(1, m.cfgInt("web.import.llm_retry.max_attempts", 4))
 	minWait := math.Max(0.1, webImportCoerceFloat(m.cfg("web.import.llm_retry.min_wait_seconds", 3), 3))
 	maxWait := math.Max(minWait, webImportCoerceFloat(m.cfg("web.import.llm_retry.max_wait_seconds", 40), 40))
 	multiplier := math.Max(1, webImportCoerceFloat(m.cfg("web.import.llm_retry.backoff_multiplier", 3), 3))
-	return map[string]float64{"retries": float64(retries), "min_wait": minWait, "max_wait": maxWait, "multiplier": multiplier, "llm_call_seconds": timeout["llm_call_seconds"]}
+	return map[string]float64{"retries": float64(maxAttempts - 1), "min_wait": minWait, "max_wait": maxWait, "multiplier": multiplier, "llm_call_seconds": timeout["llm_call_seconds"]}
 }
 
 // isEnabled 对齐 _is_enabled

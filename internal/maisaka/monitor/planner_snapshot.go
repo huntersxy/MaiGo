@@ -12,32 +12,33 @@ type PlannerRequest struct {
 
 // PlannerSnapshotInput 一次 Planner 快照的全部输入
 type PlannerSnapshotInput struct {
-	SessionID        string
-	RunID            string
-	CycleID          int
-	ScopeID          string
-	SessionIDs       []string
-	Request          *PlannerRequest
-	Content          string
-	Reasoning        string
-	ModelName        string
-	ToolCalls        []map[string]any
-	NativeToolCalls  []map[string]any
-	PromptTokens     int
-	CompletionTokens int
-	PromptCacheHit   int
-	PromptCacheMiss  int
-	DurationMS       float64
-	PromptHTMLURI    string
-	StartedAt        *float64
-	EndedAt          *float64
-	Tools            []map[string]any
-	TimeRecords      map[string]any
-	AgentState       string
-	EndReason        string
-	EndDetail        string
-	ActiveToolCallID string
-	Interrupted      bool
+	SessionID          string
+	RunID              string
+	CycleID            int
+	ScopeID            string
+	SessionIDs         []string
+	Request            *PlannerRequest
+	Content            string
+	Reasoning          string
+	ModelName          string
+	ToolCalls          []map[string]any
+	NativeToolCalls    []map[string]any
+	PromptTokens       int
+	CompletionTokens   int
+	PromptCacheHit     int
+	PromptCacheMiss    int
+	DurationMS         float64
+	PlannerActionJudge map[string]any
+	PromptHTMLURI      string
+	StartedAt          *float64
+	EndedAt            *float64
+	Tools              []map[string]any
+	TimeRecords        map[string]any
+	AgentState         string
+	EndReason          string
+	EndDetail          string
+	ActiveToolCallID   string
+	Interrupted        bool
 }
 
 // BuildPlannerSnapshotPayload 构造 emit_planner_snapshot 的载荷
@@ -81,6 +82,9 @@ func BuildPlannerSnapshotPayload(in PlannerSnapshotInput, finalized bool) map[st
 		"prompt_cache_miss_tokens": in.PromptCacheMiss,
 		"duration_ms":              in.DurationMS,
 		"prompt_html_uri":          in.PromptHTMLURI,
+	}
+	if in.PlannerActionJudge != nil {
+		payload["planner"].(map[string]any)["planner_action_judge"] = in.PlannerActionJudge
 	}
 	if finalized {
 		payload["final_state"] = map[string]any{

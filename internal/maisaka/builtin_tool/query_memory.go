@@ -157,9 +157,11 @@ func runQueryMemory(ctx context.Context, input *QueryMemoryInput) (StructuredToo
 	}
 
 	content := buildQueryMemorySuccessContent(result, limit)
+	notice := ""
 	if fallbackApplied {
-		content = "提示：人物定向检索未命中，已自动降级为关键词检索。\n" + content
+		notice = "提示：人物定向检索未命中，已自动降级为关键词检索。"
 	}
+	content = buildMemoryResultPreview(result, content, sessionID, limit, notice)
 	metadata := map[string]any{
 		"memory_feedback_task": map[string]any{"enabled": true},
 	}

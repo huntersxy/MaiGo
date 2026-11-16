@@ -9,7 +9,6 @@ import (
 func MaisakaCompatToolBuilders() []func() (tool.BaseTool, error) {
 	return []func() (tool.BaseTool, error){
 		maisakaSpecBuilder("wait", NewWaitTool),
-		maisakaSpecBuilder("stop", NewStopTool),
 		maisakaSpecBuilder("reply", NewReplyTool),
 		maisakaSpecBuilder("view_forward_message", NewViewForwardMessageTool),
 		func() (tool.BaseTool, error) { return NewQueryMemoryTool() },
@@ -20,5 +19,6 @@ func MaisakaCompatToolBuilders() []func() (tool.BaseTool, error) {
 		maisakaSpecBuilder("subagent_status", NewSubagentStatusTool),
 		maisakaSpecBuilder("subagent_stop", NewSubagentStopTool),
 		maisakaSpecBuilder("read_tool_result", NewReadToolResultMaisakaTool),
+		maisakaSpecBuilder("schedule", NewScheduleTool),
 	}
 }

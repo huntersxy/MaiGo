@@ -485,17 +485,19 @@ type EmojiConfig struct {
 }
 
 type ExperimentalConfig struct {
-	DesktopPetExplorationEnabled bool   `toml:"desktop_pet_exploration_enabled,omitempty"`
-	PassiveReplyer               bool   `toml:"passive_replyer,omitempty"`
-	ReplyCache                   bool   `toml:"reply_cache,omitempty"`
-	SuperCreativeMode            bool   `toml:"super_creative_mode,omitempty"`
-	SuperCreativeLanguage        string `toml:"super_creative_language,omitempty"`
-	GroupAttentionDrift          any    `toml:"group_attention_drift,omitempty"`
-	PrivateAttentionDrift        any    `toml:"private_attention_drift,omitempty"`
-	FocusMode                    bool   `toml:"focus_mode,omitempty"`
-	FocusOnPrivate               bool   `toml:"focus_on_private,omitempty"`
-	FocusChatWhitelist           []any  `toml:"focus_chat_whitelist,omitempty"`
-	FocusGroups                  []any  `toml:"focus_groups,omitempty"`
+	ToolSearchTailLoading        bool         `toml:"tool_search_tail_loading,omitempty"`
+	DesktopPetExplorationEnabled bool         `toml:"desktop_pet_exploration_enabled,omitempty"`
+	PassiveReplyer               bool         `toml:"passive_replyer,omitempty"`
+	LightweightPrivateChats      []TargetItem `toml:"lightweight_private_chats,omitempty"`
+	ReplyCache                   bool         `toml:"reply_cache,omitempty"`
+	SuperCreativeMode            bool         `toml:"super_creative_mode,omitempty"`
+	SuperCreativeLanguage        string       `toml:"super_creative_language,omitempty"`
+	GroupAttentionDrift          any          `toml:"group_attention_drift,omitempty"`
+	PrivateAttentionDrift        any          `toml:"private_attention_drift,omitempty"`
+	FocusMode                    bool         `toml:"focus_mode,omitempty"`
+	FocusOnPrivate               bool         `toml:"focus_on_private,omitempty"`
+	FocusChatWhitelist           []any        `toml:"focus_chat_whitelist,omitempty"`
+	FocusGroups                  []any        `toml:"focus_groups,omitempty"`
 	// PlannerMessageSteering 旧位置（8.15.37 前）；升级后迁至 chat.reply_timing
 	PlannerMessageSteering *bool `toml:"planner_message_steering,omitempty"`
 }

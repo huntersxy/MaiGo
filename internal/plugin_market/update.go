@@ -12,25 +12,30 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 )
 
 // UpdateRequest 对齐 routers/plugin/schemas.UpdatePluginRequest
 type UpdateRequest struct {
-	PluginID      string
-	RepositoryURL string
-	Branch        *string
-	MirrorID      string
-	Version       *string
+	Force          bool
+	ExpectedCommit *string
+	PluginID       string
+	RepositoryURL  string
+	Branch         *string
+	MirrorID       string
+	Version        *string
 }
 
 // pullOutcome 对齐 GitMirrorService.pull_repository 的返回结构
 type pullOutcome struct {
 	Success    bool
 	Error      string
+	Payload    any
 	StatusCode int
 	Branch     string
 	MirrorUsed string
+	BackupPath string
 	Commands   []string
 }
 
@@ -53,7 +58,7 @@ func (s *Service) Update(ctx context.Context, request UpdateRequest) (map[string
 			return nil, err
 		}
 		if release != nil {
-			result, err := s.InstallRelease(ctx, pluginID, entry, release, true, *request.Version == "latest", request.MirrorID)
+			result, err := s.InstallRelease(ctx, pluginID, entry, release, true, *request.Version == "latest", request.MirrorID, request.Force, request.ExpectedCommit)
 			if err != nil {
 				return nil, err
 			}
@@ -100,14 +105,14 @@ func (s *Service) Update(ctx context.Context, request UpdateRequest) (map[string
 	if sourceURL == "" {
 		sourceURL = updateSourceURL(manifest)
 	}
-	outcome := s.pullRepository(ctx, pluginPath, request.branchName(), sourceURL)
+	outcome := s.pullRepository(ctx, pluginPath, request.branchName(), sourceURL, request.Force, request.ExpectedCommit)
 	if !outcome.Success {
 		s.reportProgressError("update", pluginID, "Git 拉取新版本失败", outcome.Error)
 		status := outcome.StatusCode
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
-		return nil, &MarketError{StatusCode: status, Message: outcome.Error}
+		return nil, &MarketError{StatusCode: status, Message: outcome.Error, Payload: outcome.Payload}
 	}
 
 	s.reportStep("update", pluginID, 90, "验证新版本...")
@@ -135,7 +140,16 @@ func (s *Service) Update(ctx context.Context, request UpdateRequest) (map[string
 		"old_version": oldVersion,
 		"new_version": newVersion,
 		"update_mode": "git_pull",
+		"backup_path": optionalEmptyString(outcome.BackupPath),
 	}, nil
+}
+
+// optionalEmptyString 对齐 Python dict.get 的空值输出
+func optionalEmptyString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // updateNonGitPlugin 对齐 _update_non_git_plugin：克隆到 .update_tmp，校验后备份并替换原目录
@@ -212,7 +226,7 @@ func (s *Service) updateNonGitPlugin(ctx context.Context, pluginID, pluginPath, 
 }
 
 // pullRepository 对齐 GitMirrorService.pull_repository：保留配置文件与未跟踪文件，只做快进更新
-func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, remoteURL string) pullOutcome {
+func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, remoteURL string, force bool, expectedCommit *string) pullOutcome {
 	if info, err := os.Stat(repositoryPath); err != nil || !info.IsDir() {
 		return pullOutcome{Error: "插件目录不存在", StatusCode: http.StatusNotFound}
 	}
@@ -241,11 +255,11 @@ func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, re
 		path := strings.TrimSuffix(strings.Trim(parsed.Path, "/"), ".git")
 		parts := strings.Split(path, "/")
 		if strings.EqualFold(parsed.Scheme, "https") && strings.EqualFold(parsed.Host, "github.com") && len(parts) == 2 {
-			return s.pullGitHubRepository(ctx, repositoryPath, branch, parts[0], parts[1])
+			return s.pullGitHubRepository(ctx, repositoryPath, branch, parts[0], parts[1], force, expectedCommit)
 		}
 	}
 
-	commands := make([][]string, 0, 4)
+	commands := make([][]string, 0, 2)
 	if strings.TrimSpace(remoteURL) != "" {
 		validated, validateErr := s.validateDownloadURL(remoteURL, "自定义源")
 		if validateErr != nil {
@@ -255,12 +269,6 @@ func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, re
 		commands = append(commands, []string{"remote", "set-url", "origin", remoteURL})
 	}
 	commands = append(commands, []string{"fetch", "origin", "--prune"})
-	if branch != "" {
-		commands = append(commands, []string{"checkout", branch})
-		commands = append(commands, []string{"pull", "--ff-only", "origin", branch})
-	} else {
-		commands = append(commands, []string{"pull", "--ff-only"})
-	}
 
 	executed := make([]string, 0, len(commands))
 	for _, args := range commands {
@@ -281,11 +289,17 @@ func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, re
 			StatusCode: http.StatusInternalServerError,
 		}
 	}
-	return pullOutcome{Success: true, Branch: branch, Commands: executed}
+	target := "@{upstream}"
+	if branch != "" {
+		target = "origin/" + branch
+	}
+	outcome := s.applyPluginCode(ctx, repositoryPath, target, force, expectedCommit, branch)
+	outcome.Commands = append(executed, outcome.Commands...)
+	return outcome
 }
 
-// pullGitHubRepository 对齐 _pull_github_repository：从当前下载源取分支并快进合并 FETCH_HEAD
-func (s *Service) pullGitHubRepository(ctx context.Context, repositoryPath, branch, owner, repo string) pullOutcome {
+// pullGitHubRepository 对齐 _pull_github_repository：从当前下载源取分支后应用固定提交
+func (s *Service) pullGitHubRepository(ctx context.Context, repositoryPath, branch, owner, repo string, force bool, expectedCommit *string) pullOutcome {
 	executed := make([]string, 0, 4)
 	if branch == "" {
 		stdout, _, runErr := runGitCommand(ctx, repositoryPath, updateGitTimeout, "symbolic-ref", "--short", "HEAD")
@@ -322,26 +336,86 @@ func (s *Service) pullGitHubRepository(ctx context.Context, repositoryPath, bran
 			StatusCode: http.StatusBadGateway,
 		}
 	}
-	for _, args := range [][]string{{"checkout", branch}, {"merge", "--ff-only", "FETCH_HEAD"}} {
-		executed = append(executed, "git "+strings.Join(args, " "))
-		stdout, stderrText, runErr := runGitCommand(ctx, repositoryPath, updateGitTimeout, args...)
-		if runErr == nil {
-			continue
-		}
-		if errors.Is(runErr, errGitNotFound) {
-			return pullOutcome{Error: "Git 未安装或不在 PATH 中", MirrorUsed: source.ID, Commands: executed}
-		}
-		if errors.Is(runErr, context.DeadlineExceeded) {
-			return pullOutcome{Error: "Git 命令超时: git " + strings.Join(args, " "), MirrorUsed: source.ID, Commands: executed}
-		}
+	outcome := s.applyPluginCode(ctx, repositoryPath, "FETCH_HEAD", force, expectedCommit, branch)
+	outcome.MirrorUsed = source.ID
+	outcome.Commands = append(executed, outcome.Commands...)
+	return outcome
+}
+
+// applyPluginCode 对齐 _apply_plugin_code：固定本次目标提交后再快进或强制替换
+func (s *Service) applyPluginCode(ctx context.Context, repositoryPath, target string, force bool, expectedCommit *string, branch string) pullOutcome {
+	// 一旦开始写文件，即使请求取消也要等待替换或恢复完成。
+	applyCtx := context.WithoutCancel(ctx)
+	commitOutput, err := gitOutput(applyCtx, repositoryPath, "rev-parse", target)
+	if err != nil {
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	commit := strings.TrimSpace(commitOutput)
+	if force && (expectedCommit == nil || commit != *expectedCommit) {
+		return pullOutcome{Error: "目标版本已变化，请重新发起更新并确认", StatusCode: http.StatusConflict}
+	}
+	selected := commit
+	installedRaw, err := os.ReadFile(filepath.Join(repositoryPath, "_manifest.json"))
+	if err != nil {
+		return pullOutcome{Error: "读取已安装插件清单失败: " + err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	var installed map[string]any
+	if err := sonic.Unmarshal(installedRaw, &installed); err != nil {
+		return pullOutcome{Error: "读取已安装插件清单失败: " + err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	manifestOutput, err := gitOutput(applyCtx, repositoryPath, "show", selected+":_manifest.json")
+	if err != nil {
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	var manifest map[string]any
+	if err := sonic.UnmarshalString(manifestOutput, &manifest); err != nil {
+		return pullOutcome{Error: "解析新版本插件清单失败: " + err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	if safeString(manifest["id"]) != safeString(installed["id"]) {
+		return pullOutcome{Error: "新版本插件 ID 与已安装插件不一致", StatusCode: http.StatusBadRequest}
+	}
+	conflict, err := updateConflict(applyCtx, repositoryPath, selected)
+	if err != nil {
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
+	}
+	if conflict != nil && !force {
 		return pullOutcome{
-			Error:      "Git 更新失败: " + gitFailureDetail(stdout, stderrText),
-			Commands:   executed,
-			MirrorUsed: source.ID,
-			StatusCode: http.StatusConflict,
+			Error: conflict.Message, Payload: conflict, StatusCode: http.StatusConflict,
 		}
 	}
-	return pullOutcome{Success: true, Branch: branch, MirrorUsed: source.ID, Commands: executed}
+	executed := make([]string, 0, 2)
+	if !force {
+		if branch != "" {
+			args := []string{"checkout", branch}
+			executed = append(executed, "git "+strings.Join(args, " "))
+			if stdout, stderrText, runErr := runGitCommand(applyCtx, repositoryPath, updateGitTimeout, args...); runErr != nil {
+				return pullOutcome{
+					Error:    "Git 更新失败: " + gitFailureDetail(stdout, stderrText),
+					Commands: executed, StatusCode: http.StatusInternalServerError,
+				}
+			}
+		}
+		args := []string{"merge", "--ff-only", selected}
+		executed = append(executed, "git "+strings.Join(args, " "))
+		if stdout, stderrText, runErr := runGitCommand(applyCtx, repositoryPath, updateGitTimeout, args...); runErr != nil {
+			return pullOutcome{
+				Error:    "Git 更新失败: " + gitFailureDetail(stdout, stderrText),
+				Commands: executed, StatusCode: http.StatusInternalServerError,
+			}
+		}
+		return pullOutcome{Success: true, Branch: branch, Commands: executed}
+	}
+	backup := filepath.Join(filepath.Dir(repositoryPath), ".update_backups", filepath.Base(repositoryPath)+"."+randomHex(16))
+	if err := backupCode(applyCtx, repositoryPath, backup, selected); err != nil {
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError, Commands: executed}
+	}
+	if err := replaceCode(applyCtx, repositoryPath, selected); err != nil {
+		if restoreErr := restoreCode(applyCtx, repositoryPath, backup); restoreErr != nil {
+			zap.L().Error("恢复插件代码备份失败", zap.String("path", repositoryPath), zap.Error(restoreErr))
+		}
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError, Commands: executed}
+	}
+	return pullOutcome{Success: true, Branch: branch, BackupPath: backup, Commands: executed}
 }
 
 // gitFailureDetail 对齐 stderr.strip() or stdout.strip()

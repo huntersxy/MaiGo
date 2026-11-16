@@ -2,8 +2,6 @@ package pluginmarket
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 
@@ -41,47 +39,12 @@ func (r *orderedRecords) list() []map[string]any {
 	return out
 }
 
-// loadSnapshot 对齐 service._snapshot：按信息源拉取并合并市场数据
+// loadSnapshot 对齐 service._snapshot：所有信息源都从 release index 与清单文件读取
 func (s *Service) loadSnapshot(ctx context.Context, forceRefresh bool) (*CatalogSnapshot, error) {
 	source, err := s.informationSource()
 	if err != nil {
 		return nil, err
 	}
-	if source == "official" {
-		params := url.Values{}
-		params.Set("maibot_version", DefaultMaibotVersion())
-		params.Set("compatible_only", "false")
-		data, err := s.requestMarket(ctx, "plugins/summary", params, forceRefresh)
-		if err != nil {
-			return nil, err
-		}
-		rawItems, ok := anyList(data.Data["plugins"])
-		if !ok {
-			return nil, &MarketError{StatusCode: 502, Message: "插件市场响应缺少 plugins"}
-		}
-		items := make([]map[string]any, 0, len(rawItems))
-		for _, raw := range rawItems {
-			item, ok := anyMap(raw)
-			if !ok {
-				return nil, &MarketError{StatusCode: 502, Message: "插件市场列表包含非对象条目"}
-			}
-			items = append(items, item)
-		}
-		plugins, err := s.buildCatalog(ctx, items, source, nil)
-		if err != nil {
-			return nil, err
-		}
-		meta := map[string]any{
-			"source":         source,
-			"source_url":     data.SourceURL,
-			"cache":          data.Cache,
-			"stats_as_of":    data.Data["stats_as_of"],
-			"growth_ranking": data.Data["growth_ranking"],
-			"features":       MarketFeatures{Stats: true, Releases: true},
-		}
-		return &CatalogSnapshot{Meta: meta, Plugins: plugins}, nil
-	}
-
 	var (
 		details InformationFile
 		index   *PluginReleaseIndex
@@ -121,11 +84,12 @@ func (s *Service) loadSnapshot(ctx context.Context, forceRefresh bool) (*Catalog
 	for _, raw := range list {
 		item, ok := anyMap(raw)
 		if !ok {
-			return nil, &MarketError{StatusCode: 502, Message: "插件市场列表包含非对象条目"}
+			zap.L().Warn("跳过插件市场列表中的非对象条目")
+			continue
 		}
 		items = append(items, item)
 	}
-	plugins, err := s.buildCatalog(ctx, items, source, index)
+	plugins, err := s.buildCatalog(ctx, items, index)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +97,7 @@ func (s *Service) loadSnapshot(ctx context.Context, forceRefresh bool) (*Catalog
 		"source":     source,
 		"source_url": details.URL,
 		"cache":      details.Cache,
-		"features":   MarketFeatures{Stats: false, Releases: true},
+		"features":   MarketFeatures{Stats: true, Releases: true},
 	}
 	return &CatalogSnapshot{Meta: meta, Plugins: plugins}, nil
 }
@@ -161,16 +125,14 @@ func hasUsableManifest(record map[string]any) bool {
 }
 
 // buildCatalog 对齐 service._catalog：合并索引、规范化条目并解析图标
-func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, source string, index *PluginReleaseIndex) ([]PluginCatalogItem, error) {
+func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, index *PluginReleaseIndex) ([]PluginCatalogItem, error) {
 	iconSource, err := s.downloadSource()
 	if err != nil {
 		return nil, err
 	}
 	records := newOrderedRecords()
-	if source != "official" {
-		for _, item := range items {
-			records.set(safeString(item["id"]), item)
-		}
+	for _, item := range items {
+		records.set(safeString(item["id"]), item)
 	}
 	entries := map[string]*PluginReleaseEntry{}
 	if index != nil {
@@ -208,23 +170,8 @@ func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, sour
 
 	plugins := make([]PluginCatalogItem, 0, len(items))
 	for _, item := range items {
-		var entry *PluginReleaseEntry
-		var raw map[string]any
-		if source == "official" {
-			versions := []any{}
-			if release, ok := item["release"]; ok && release != nil {
-				versions = append(versions, release)
-			}
-			parsedEntry, err := ParseMarketReleaseEntry(mergeAnyMap(item, "versions", versions), "")
-			if err != nil {
-				return nil, err
-			}
-			entry = parsedEntry
-			raw = map[string]any{"id": item["marketplace_id"], "manifest": item["manifest"]}
-		} else {
-			entry = entries[safeString(item["id"])]
-			raw = item
-		}
+		entry := entries[safeString(item["id"])]
+		raw := item
 		if entry != nil {
 			description := describeEntry(entry)
 			if description.RecommendedVersion != nil {
@@ -237,23 +184,13 @@ func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, sour
 		if !ok {
 			continue
 		}
-		if source == "official" {
-			if rawStats := item["stats"]; rawStats != nil {
-				stats, ok := anyMap(rawStats)
-				if !ok {
-					return nil, &MarketError{StatusCode: 502, Message: "插件 " + plugin.ID + " 的统计数据格式无效"}
-				}
-				normalized, normalizeErr := NormalizeStatistics(stats)
-				if normalizeErr != nil {
-					return nil, fmt.Errorf("插件 %s 的统计数据格式无效: %w", plugin.ID, normalizeErr)
-				}
-				plugin.Stats = normalized
-			}
-		}
+		// 统计由官方统计服务单独读取，见 Search()
+		plugin.Stats = nil
 		if entry == nil {
-			repositoryURL := safeString(item["repository_url"])
+			// manifest.repository_url 与 urls.repository 双地址回退，并兼容清单条目自带地址
+			repositoryURL := plugin.RepositoryURL
 			if repositoryURL == "" {
-				repositoryURL = plugin.RepositoryURL
+				repositoryURL = safeString(item["repository_url"])
 			}
 			if !pluginRepositoryPattern.MatchString(repositoryURL) {
 				zap.L().Warn("跳过无法构造回退发布信息的插件市场条目",
@@ -271,9 +208,7 @@ func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, sour
 		}
 		plugin.Releases = releaseDescription(entry, plugin.Manifest)
 		icon := ""
-		if source == "official" {
-			icon = safeString(item["icon_url"])
-		} else if assets, ok := anyMap(item["assets"]); ok {
+		if assets, ok := anyMap(item["assets"]); ok {
 			icon = safeString(assets["icon_64"])
 		}
 		if icon != "" {

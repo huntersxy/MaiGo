@@ -138,14 +138,12 @@ func (s *Service) Search(ctx context.Context, request SearchRequest) (SearchResp
 	}
 	plugins := pluginsFromSnapshot(snapshot)
 	if request.IncludeStats || request.SortBy != SortName {
-		if snapshot.Source() != "official" {
-			summary, _, summaryErr := s.statisticsSnapshot(ctx, request.ForceRefresh)
-			if summaryErr != nil {
-				return SearchResponse{}, summaryErr
-			}
-			// 统计只按规范化后的 manifest.id 对应；没有记录时保留空值。
-			plugins = attachStatistics(plugins, summary)
+		summary, _, _, summaryErr := s.statisticsSnapshot(ctx, request.ForceRefresh)
+		if summaryErr != nil {
+			return SearchResponse{}, summaryErr
 		}
+		// 统计只按规范化后的 manifest.id 对应；没有记录时保留空值。
+		plugins = attachStatistics(plugins, summary)
 	}
 	candidates := plugins
 	if request.CompatibleOnly {
@@ -281,47 +279,20 @@ func (s *Service) Detail(ctx context.Context, pluginID string, forceRefresh bool
 	}
 	metadata := copyAnyMap(snapshot.Meta)
 	source := catalogSource(metadata)
-	var entry *PluginReleaseEntry
 	pluginMap := normalizedCatalogMap(plugin, true)
-	if source == "official" {
-		data, err := s.requestMarketDetail(ctx, plugin.ID, DefaultMaibotVersion(), forceRefresh)
-		if err != nil {
-			return DetailResponse{}, err
+	index, err := s.loadReleaseIndexWithSource(ctx, source, forceRefresh)
+	if err != nil {
+		return DetailResponse{}, err
+	}
+	var entry *PluginReleaseEntry
+	for i := range index.Plugins {
+		if index.Plugins[i].ID == plugin.MarketplaceID {
+			entry = &index.Plugins[i]
+			break
 		}
-		entry, err = ParseMarketReleaseEntry(data.Data, plugin.ID)
-		if err != nil {
-			return DetailResponse{}, err
-		}
-		manifest, ok := anyMap(data.Data["manifest"])
-		if !ok || safeString(manifest["id"]) != plugin.ID {
-			return DetailResponse{}, fmt.Errorf("插件中心返回的 manifest ID 与请求不一致")
-		}
-		metadata["cache"] = data.Cache
-		metadata["source_url"] = data.SourceURL
-		detail, ok := normalizeCatalogItem(map[string]any{
-			"id":       data.Data["marketplace_id"],
-			"manifest": manifest,
-		}, true)
-		if !ok {
-			return DetailResponse{}, fmt.Errorf("插件中心返回了无效的插件清单")
-		}
-		pluginMap = normalizedCatalogMap(detail, true)
-		pluginMap["stats"] = plugin.Stats
-		plugin = detail
-	} else {
-		index, err := s.loadReleaseIndexWithSource(ctx, source, forceRefresh)
-		if err != nil {
-			return DetailResponse{}, err
-		}
-		for i := range index.Plugins {
-			if index.Plugins[i].ID == plugin.MarketplaceID {
-				entry = &index.Plugins[i]
-				break
-			}
-		}
-		if entry == nil {
-			return DetailResponse{}, fmt.Errorf("版本索引中没有插件 %s", plugin.MarketplaceID)
-		}
+	}
+	if entry == nil {
+		return DetailResponse{}, fmt.Errorf("版本索引中没有插件 %s", plugin.MarketplaceID)
 	}
 	releases := releaseDescription(entry, plugin.Manifest)
 	return DetailResponse{Success: true, Metadata: metadata, Plugin: pluginMap, Releases: releases}, nil
@@ -357,31 +328,21 @@ func (s *Service) LoadPluginReleaseEntry(ctx context.Context, pluginID string, f
 	if err != nil {
 		return nil, err
 	}
-	if source != "official" {
-		index, err := s.loadReleaseIndexWithSource(ctx, source, forceRefresh)
-		if err != nil {
-			return nil, err
-		}
-		folded := strings.ToLower(pluginID)
-		for i := range index.Plugins {
-			entry := &index.Plugins[i]
-			if strings.ToLower(entry.ID) == folded {
-				return entry, nil
-			}
-			if entry.ManifestID != nil && strings.ToLower(*entry.ManifestID) == folded {
-				return entry, nil
-			}
-		}
-		return nil, nil
-	}
-	data, err := s.requestMarketDetail(ctx, pluginID, DefaultMaibotVersion(), forceRefresh)
+	index, err := s.loadReleaseIndexWithSource(ctx, source, forceRefresh)
 	if err != nil {
-		if httpErr, ok := AsHTTPStatusError(err); ok && httpErr.Code == 404 {
-			return nil, nil
-		}
-		return nil, &MarketError{StatusCode: 502, Message: "获取插件中心版本失败：" + err.Error()}
+		return nil, err
 	}
-	return ParseMarketReleaseEntry(data.Data, pluginID)
+	folded := strings.ToLower(pluginID)
+	for i := range index.Plugins {
+		entry := &index.Plugins[i]
+		if strings.ToLower(entry.ID) == folded {
+			return entry, nil
+		}
+		if entry.ManifestID != nil && strings.ToLower(*entry.ManifestID) == folded {
+			return entry, nil
+		}
+	}
+	return nil, nil
 }
 
 // ResolveRelease 对齐 service.resolve_release：安装前强制刷新远端发布状态
@@ -455,6 +416,7 @@ func normalizedCatalogMap(plugin PluginCatalogItem, includeManifest bool) map[st
 		"default_locale":    plugin.DefaultLocale,
 		"locales_path":      plugin.LocalesPath,
 		"source":            plugin.Source,
+		"stats":             plugin.Stats,
 	}
 	if includeManifest {
 		out["manifest"] = plugin.Manifest
@@ -472,12 +434,12 @@ func pluginToMap(plugin PluginCatalogItem, dropFields ...string) map[string]any 
 	if _, ok := dropped["manifest"]; ok {
 		delete(out, "manifest")
 	}
-	if _, ok := dropped["stats"]; !ok {
-		if plugin.Stats == nil {
-			out["stats"] = nil
-		} else {
-			out["stats"] = plugin.Stats
-		}
+	if _, ok := dropped["stats"]; ok {
+		delete(out, "stats")
+	} else if plugin.Stats == nil {
+		out["stats"] = nil
+	} else {
+		out["stats"] = plugin.Stats
 	}
 	if _, ok := dropped["releases"]; !ok {
 		out["releases"] = plugin.Releases

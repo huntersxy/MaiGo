@@ -16,6 +16,7 @@ import (
 
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/learners"
+	botservices "MaiGo/internal/services"
 )
 
 // loadExpressionGroupsForWebUI 只读取 bot_config 的表达共享组，避免依赖完整配置校验
@@ -207,26 +208,16 @@ func (d Deps) handleExpressionGroups(w http.ResponseWriter, r *http.Request) {
 	for _, chat := range chats {
 		chatByID[chat.SessionID] = chat
 	}
-	expressionGroups, err := loadExpressionGroupsForWebUI(d.InstanceDir)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "获取表达共享组失败: "+err.Error())
-		return
-	}
+	expressionGroups := botservices.ListSharingGroups(r.Context())
 	groups := make([]map[string]any, 0)
 	for index, group := range expressionGroups {
+		if !group.Enabled || !group.Capabilities["expression"] {
+			continue
+		}
+		isGlobal := botservices.SharingGroupIsGlobal(group)
 		ids := map[string]struct{}{}
-		// Python 语义：空 targets 表示全量共享；显式 platform/item 通配才额外标记 global
-		isGlobal := len(group.Targets) == 0
-		for _, target := range group.Targets {
-			platform := strings.TrimSpace(target.Platform)
-			item := strings.TrimSpace(target.ItemId)
-			if platform == "" || item == "" {
-				continue
-			}
-			if platform == "*" && item == "*" {
-				isGlobal = true
-			}
-			for _, id := range expressionTargetSessionIDs(chatByID, target) {
+		for id := range botservices.SharingResolvedMembers(r.Context(), group) {
+			if _, ok := chatByID[id]; ok {
 				ids[id] = struct{}{}
 			}
 		}
@@ -245,8 +236,10 @@ func (d Deps) handleExpressionGroups(w http.ResponseWriter, r *http.Request) {
 			members = append(members, expressionChatInfoPayload(chatByID[id]))
 		}
 		groups = append(groups, map[string]any{
+			"id":        group.ID,
+			"color":     group.Color,
 			"index":     index,
-			"name":      fmt.Sprintf("共享组 %d", index+1),
+			"name":      group.Name,
 			"chat_ids":  resolved,
 			"members":   members,
 			"is_global": isGlobal,

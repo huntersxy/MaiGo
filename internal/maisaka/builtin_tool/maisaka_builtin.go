@@ -28,6 +28,8 @@ type maisakaStubOutput struct {
 	Content string `json:"content,omitempty"`
 	// ConsecutiveWaitCount 对齐 Python wait 的连续 wait 次数
 	ConsecutiveWaitCount int `json:"consecutive_wait_count,omitempty"`
+	// WaitSeconds 定时等待秒数；nil 表示无参数 wait 结束本轮
+	WaitSeconds *int `json:"wait_seconds,omitempty"`
 	// PlannerMessageSteering 对齐 chat.reply_timing.planner_message_steering
 	PlannerMessageSteering bool `json:"planner_message_steering,omitempty"`
 }
@@ -37,28 +39,6 @@ func maisakaNotImplemented(capability string) (*maisakaStubOutput, error) {
 		Success: false,
 		Message: fmt.Sprintf("%s 尚未在 MaiGo 实现；参见 internal/maisaka/builtin_catalog.go 中的 Go 对等工具", capability),
 	}, nil
-}
-
-// ==================== stop（Maisaka）→ stayQuiet ====================
-
-type StopInput struct {
-	Reason string `json:"reason,omitempty" jsonschema:"description=结束思考的原因（笔记）"`
-}
-
-func stopFunc(ctx context.Context, input *StopInput) (*StayQuietOutput, error) {
-	reason := ""
-	if input != nil {
-		reason = input.Reason
-	}
-	return stayQuietFunc(ctx, &StayQuietInput{Reason: reason})
-}
-
-func NewStopTool() (tool.InvokableTool, error) {
-	return utils.InferTool(
-		"stop",
-		"结束本轮思考并等待新消息，与不调用任何工具时一致；无需继续行动时调用。",
-		stopFunc,
-	)
 }
 
 // ==================== reply（Maisaka）→ speak 桥接 ====================
@@ -97,10 +77,12 @@ func (p ReplyAttachPicture) pictureIndex() int {
 
 type ReplyInput struct {
 	MsgID string `json:"msg_id,omitempty" jsonschema:"description=要回复的消息 msg_id"`
-	// AfterReply 回复成功后的行为：continue/stop/wait
-	AfterReply *string `json:"after_reply,omitempty" jsonschema:"description=回复发送成功后的行为：continue 继续思考；stop 结束本轮（默认）；wait 等待后再判断"`
-	// WaitSeconds after_reply=wait 时的等待秒数
-	WaitSeconds      *int                 `json:"wait_seconds,omitempty" jsonschema:"description=after_reply=wait 时的等待秒数，默认 30"`
+	// AfterReply 回复成功后的行为：continue/wait
+	AfterReply *string `json:"after_reply,omitempty" jsonschema:"description=回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断"`
+	// WaitSeconds after_reply=wait 时的等待秒数；nil 表示结束本轮
+	WaitSeconds *int `json:"wait_seconds,omitempty" jsonschema:"description=可选。after_reply=wait 时最多等待的秒数，到期后即使没有新消息也会继续思考。不填表示结束本轮。"`
+	// WaitUntil 已移除的绝对时间参数，出现时直接拒绝
+	WaitUntil        any                  `json:"wait_until,omitempty" jsonschema:"-"`
 	ReplyReference   string               `json:"reply_reference,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
 	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
@@ -147,8 +129,8 @@ type ReplyOutput struct {
 	ReplySupplement map[string]any `json:"reply_supplement,omitempty"`
 	// AfterReply 回复成功后的行为，对齐 reply 工具 after_reply
 	AfterReply string `json:"after_reply,omitempty"`
-	// WaitSeconds after_reply=wait 时的等待秒数
-	WaitSeconds int `json:"wait_seconds,omitempty"`
+	// WaitSeconds after_reply=wait 时的等待秒数；nil 表示结束本轮
+	WaitSeconds *int `json:"wait_seconds,omitempty"`
 	// ReplyExtensions 插件回复扩展参数，对齐 Python reply_metadata.reply_extensions
 	ReplyExtensions map[string]any `json:"reply_extensions,omitempty"`
 	// ReplyID 插件回复编号，对齐 Python reply_metadata.reply_id
@@ -159,19 +141,21 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	if input == nil {
 		return nil, fmt.Errorf("reply 参数不能为空")
 	}
-	afterReply := "stop"
+	afterReply := "wait"
 	if input.AfterReply != nil {
 		afterReply = strings.TrimSpace(*input.AfterReply)
 	}
-	if afterReply != "continue" && afterReply != "stop" && afterReply != "wait" {
-		return &maisakaStubOutput{Success: false, Message: "after_reply 必须为 continue、stop 或 wait。"}, nil
+	if afterReply != "continue" && afterReply != "wait" {
+		return &maisakaStubOutput{Success: false, Message: "after_reply 必须为 continue 或 wait。"}, nil
 	}
-	waitSeconds := 30
-	if input.WaitSeconds != nil {
-		waitSeconds = *input.WaitSeconds
+	if input.WaitUntil != nil {
+		return &maisakaStubOutput{Success: false, Message: "不支持 wait_until，请使用 wait_seconds 指定等待秒数。"}, nil
 	}
-	if waitSeconds < 0 {
-		return &maisakaStubOutput{Success: false, Message: "wait_seconds 必须为非负整数。"}, nil
+	if input.WaitSeconds != nil && *input.WaitSeconds < 0 {
+		return &maisakaStubOutput{Success: false, Message: "wait_seconds 必须是非负整数"}, nil
+	}
+	if afterReply == "continue" && input.WaitSeconds != nil {
+		return &maisakaStubOutput{Success: false, Message: "after_reply=continue 时不能填写等待时间。"}, nil
 	}
 	reference := strings.TrimSpace(input.ReplyReference)
 	if reference == "" {
@@ -346,7 +330,7 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	}
 	out.AfterReply = afterReply
 	if afterReply == "wait" {
-		out.WaitSeconds = waitSeconds
+		out.WaitSeconds = input.WaitSeconds
 	}
 	return out, nil
 }
@@ -499,40 +483,48 @@ type WaitInput struct {
 }
 
 func waitFunc(ctx context.Context, input *WaitInput) (*maisakaStubOutput, error) {
-	seconds := 30
-	if input != nil && input.Seconds != nil {
-		seconds = *input.Seconds
-		if seconds < 0 {
-			seconds = 0
-		}
+	var waitSeconds *int
+	if input != nil {
+		waitSeconds = input.Seconds
+	}
+	if waitSeconds != nil && *waitSeconds < 0 {
+		return &maisakaStubOutput{Success: false, Message: "seconds 必须是非负整数"}, nil
+	}
+	if waitSeconds == nil {
+		return &maisakaStubOutput{
+			Success: true,
+			Content: "已结束本轮思考，等待新消息。",
+			Message: "已结束本轮思考，等待新消息。",
+		}, nil
 	}
 	tc := GetToolContext(ctx)
 	if tc == nil || (tc.BeginWait == nil && tc.BeginWaitCounted == nil) {
 		return &maisakaStubOutput{
 			Success: false,
-			Message: fmt.Sprintf("wait(%d) 会话 wait 状态未接入 Agent", seconds),
+			Message: fmt.Sprintf("wait(%d) 会话 wait 状态未接入 Agent", *waitSeconds),
 		}, nil
 	}
 	count := 0
 	if tc.BeginWaitCounted != nil {
 		var err error
-		count, err = tc.BeginWaitCounted(seconds)
+		count, err = tc.BeginWaitCounted(*waitSeconds)
 		if err != nil {
 			return nil, err
 		}
-	} else if err := tc.BeginWait(seconds); err != nil {
+	} else if err := tc.BeginWait(*waitSeconds); err != nil {
 		return nil, err
 	}
 	detail := "当前对话循环进入等待状态，将固定等待 %d 秒；期间收到的新消息不会提前打断本次等待。"
 	if tc.PlannerMessageSteering {
 		detail = "当前对话循环进入等待状态，最多等待 %d 秒；新消息可提前结束等待并继续思考。"
 	}
-	content := fmt.Sprintf(detail, seconds) + fmt.Sprintf("连续 wait 次数：%d。", count)
+	content := fmt.Sprintf(detail, *waitSeconds) + fmt.Sprintf("连续 wait 次数：%d。", count)
 	return &maisakaStubOutput{
 		Success:                true,
 		Content:                content,
 		Message:                content,
 		ConsecutiveWaitCount:   count,
+		WaitSeconds:            waitSeconds,
 		PlannerMessageSteering: tc.PlannerMessageSteering,
 	}, nil
 }
@@ -540,7 +532,7 @@ func waitFunc(ctx context.Context, input *WaitInput) (*maisakaStubOutput, error)
 func NewWaitTool() (tool.InvokableTool, error) {
 	return utils.InferTool(
 		"wait",
-		"等待一段时间；期间不查看聊天，用于一段时间后再次查看聊天内容。不适用于正在进行的聊天。",
+		"暂停当前思考，不发送消息。不填 seconds 表示结束本轮，等待新消息；填写 seconds 表示定时等待，到期后即使没有新消息也会继续思考。定时等待可能被新消息提前唤醒。",
 		waitFunc,
 	)
 }
@@ -1132,7 +1124,7 @@ func NewViewForwardMessageTool() (tool.InvokableTool, error) {
 
 type ToolSearchInput struct {
 	Query string `json:"query" jsonschema:"description=工具名、前缀或关键词"`
-	Limit int    `json:"limit,omitempty" jsonschema:"description=最多返回多少个工具，默认 5"`
+	Limit *int   `json:"limit,omitempty" jsonschema:"description=最多返回多少个工具，默认 5"`
 }
 
 type ToolSearchMatch struct {
@@ -1141,14 +1133,23 @@ type ToolSearchMatch struct {
 	Deferred    bool   `json:"deferred,omitempty"`
 }
 
+type ToolSearchToolDefinition struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
 type ToolSearchOutput struct {
-	Success                  bool              `json:"success"`
-	Message                  string            `json:"message,omitempty"`
-	Query                    string            `json:"query,omitempty"`
-	MatchedToolNames         []string          `json:"matched_tool_names,omitempty"`
-	NewlyDiscoveredToolNames []string          `json:"newly_discovered_tool_names,omitempty"`
-	Matches                  []ToolSearchMatch `json:"matches,omitempty"`
-	Note                     string            `json:"note,omitempty"`
+	Success                  bool                       `json:"success"`
+	Message                  string                     `json:"message,omitempty"`
+	Query                    string                     `json:"query,omitempty"`
+	MatchedToolNames         []string                   `json:"matched_tool_names,omitempty"`
+	NewlyDiscoveredToolNames []string                   `json:"newly_discovered_tool_names,omitempty"`
+	Status                   string                     `json:"status,omitempty"`
+	Instruction              string                     `json:"instruction,omitempty"`
+	Tools                    []ToolSearchToolDefinition `json:"tools,omitempty"`
+	Matches                  []ToolSearchMatch          `json:"matches,omitempty"`
+	Note                     string                     `json:"note,omitempty"`
 }
 
 func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOutput, error) {
@@ -1156,8 +1157,11 @@ func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOut
 	limit := 5
 	if input != nil {
 		rawQuery = strings.TrimSpace(input.Query)
-		if input.Limit > 0 {
-			limit = input.Limit
+		if input.Limit != nil {
+			if *input.Limit < 1 {
+				return &ToolSearchOutput{Success: false, Message: "tool_search 的 `limit` 必须是正整数。"}, nil
+			}
+			limit = *input.Limit
 		}
 	}
 	if rawQuery == "" {
@@ -1168,15 +1172,8 @@ func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOut
 	}
 
 	tc := GetToolContext(ctx)
+	tailLoading := tc != nil && tc.ToolSearchTailLoading
 	catalog := catalogForToolSearch(tc)
-	if len(catalog) == 0 {
-		return &ToolSearchOutput{
-			Success: true,
-			Query:   rawQuery,
-			Message: "未找到匹配的 deferred tools，请尝试更完整的工具名、前缀或其他关键词。",
-		}, nil
-	}
-
 	matched := SearchToolCatalog(catalog, rawQuery, limit)
 	matchedNames := make([]string, 0, len(matched))
 	matches := make([]ToolSearchMatch, 0, len(matched))
@@ -1194,6 +1191,44 @@ func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOut
 		newlyDiscovered = tc.DiscoverDeferredTools(matchedNames)
 	}
 
+	if tailLoading {
+		structured := ToolSearchOutput{
+			Success:                  true,
+			Query:                    rawQuery,
+			MatchedToolNames:         matchedNames,
+			NewlyDiscoveredToolNames: newlyDiscovered,
+			Status:                   "not_found",
+			Instruction:              "未找到匹配工具，请换用工具名或其他关键词重新搜索。",
+		}
+		if len(matched) > 0 {
+			structured.Status = "loaded"
+			structured.Instruction = "本次返回的工具定义已经加载，现在可直接按定义的名称和参数发起工具调用；无需等待顶层 tools 数组更新，也不要再次搜索已返回的工具。"
+			structured.Tools = make([]ToolSearchToolDefinition, 0, len(matched))
+			for _, entry := range matched {
+				parameters := entry.Parameters
+				if len(parameters) == 0 {
+					parameters = map[string]any{"type": "object", "properties": map[string]any{}}
+				}
+				structured.Tools = append(structured.Tools, ToolSearchToolDefinition{
+					Name:        entry.Name,
+					Description: entry.Description,
+					Parameters:  parameters,
+				})
+			}
+		}
+		return &structured, nil
+	}
+
+	if len(catalog) == 0 || len(matchedNames) == 0 {
+		return &ToolSearchOutput{
+			Success:                  true,
+			Query:                    rawQuery,
+			MatchedToolNames:         matchedNames,
+			NewlyDiscoveredToolNames: newlyDiscovered,
+			Message:                  "未找到匹配的 deferred tools，请尝试更完整的工具名、前缀或其他关键词。",
+		}, nil
+	}
+
 	note := "按当前会话 deferred tools 检索；命中的工具会在后续模型轮次加入可用工具列表"
 	structured := ToolSearchOutput{
 		Success:                  true,
@@ -1202,11 +1237,6 @@ func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOut
 		NewlyDiscoveredToolNames: newlyDiscovered,
 		Matches:                  matches,
 		Note:                     note,
-	}
-
-	if len(matchedNames) == 0 {
-		structured.Message = "未找到匹配的 deferred tools，请尝试更完整的工具名、前缀或其他关键词。"
-		return &structured, nil
 	}
 
 	newSet := map[string]struct{}{}

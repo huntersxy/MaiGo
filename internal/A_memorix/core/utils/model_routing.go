@@ -243,6 +243,18 @@ func GenerateWithResolvedModel(
 // ErrNoTextGenerationModel 对齐 Python RuntimeError("没有可用的文本生成模型配置")
 var ErrNoTextGenerationModel = fmt.Errorf("没有可用的文本生成模型配置")
 
+// ResolveFastTextGenerationModel 轻量任务只选择快速模型或 utils，避免落到记忆总结、规划等任务
+func ResolveFastTextGenerationModel(tasks map[string]TextGenerationTaskConfig) (ResolvedLLMModel, error) {
+	available := GetTextGenerationModelTasks(tasks, false)
+	for _, taskName := range []string{"fast_model", "utils"} {
+		taskConfig, ok := available[taskName]
+		if ok && TaskHasModelList(taskConfig) {
+			return ResolvedLLMModel{TaskName: taskName, TaskConfig: taskConfig}, nil
+		}
+	}
+	return ResolvedLLMModel{}, fmt.Errorf("快速记忆任务需要配置 fast_model 或 utils 模型")
+}
+
 // ResolveDefaultTextGenerationTask 解析默认文本生成任务，避免落到 embedding
 func ResolveDefaultTextGenerationTask(tasks map[string]TextGenerationTaskConfig) (string, error) {
 	available := GetTextGenerationModelTasks(tasks, false)

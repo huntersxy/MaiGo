@@ -22,6 +22,8 @@ import (
 type EncodeOptions struct {
 	BatchSize  int
 	Dimensions *int
+	// UseCache 为 nil 时按 true 处理，对齐 Python 的 use_cache 默认值
+	UseCache *bool
 }
 
 // EncodeBatchOptions EncodeBatch 的选项，对应 Python 可选参数
@@ -30,6 +32,12 @@ type EncodeBatchOptions struct {
 	NumWorkers   int
 	ShowProgress bool
 	Dimensions   *int
+	UseCache     *bool
+}
+
+// encodeUseCache 解析 use_cache 默认值
+func encodeUseCache(value *bool) bool {
+	return value == nil || *value
 }
 
 // Encode 生成文本嵌入，对齐 EmbeddingAPIAdapter.encode
@@ -65,7 +73,7 @@ func (a *EmbeddingAPIAdapter) Encode(
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
-	embeddings, err := a.encodeBatchInternal(ctx, texts, batchSize, requestedDimension)
+	embeddings, err := a.encodeBatchInternal(ctx, texts, batchSize, requestedDimension, encodeUseCache(options.UseCache))
 	if err != nil {
 		a.totalErrors.Add(1)
 		adapterLogger.Error(fmt.Sprintf("编码失败: %v", err))
@@ -99,6 +107,12 @@ func (a *EmbeddingAPIAdapter) EncodeOne(
 	return embeddings[0], nil
 }
 
+// EncodeOneUncached 绕过文本缓存，供自检等必须请求真实服务的路径使用
+func (a *EmbeddingAPIAdapter) EncodeOneUncached(ctx context.Context, text string) ([]float32, error) {
+	useCache := false
+	return a.EncodeOne(ctx, text, &EncodeOptions{UseCache: &useCache})
+}
+
 // EncodeBatch 批量生成嵌入，对齐 encode_batch 的临时并发调整
 func (a *EmbeddingAPIAdapter) EncodeBatch(
 	ctx context.Context,
@@ -120,6 +134,7 @@ func (a *EmbeddingAPIAdapter) EncodeBatch(
 	return a.Encode(ctx, texts, &EncodeOptions{
 		BatchSize:  options.BatchSize,
 		Dimensions: options.Dimensions,
+		UseCache:   options.UseCache,
 	})
 }
 
@@ -136,19 +151,12 @@ func (a *EmbeddingAPIAdapter) encodeBatchInternal(
 	texts []string,
 	batchSize int,
 	dimensions *int,
+	useCache bool,
 ) ([][]float32, error) {
 	if batchSize < 1 {
 		batchSize = 1
 	}
-	configKey := ""
-	cacheDimension := a.resolveCanonicalDimension(dimensions)
-	if a.enableCache {
-		key, err := a.dimensionCacheKey()
-		if err != nil {
-			return nil, err
-		}
-		configKey = key
-	}
+	cacheEnabled := a.enableCache && useCache
 
 	allEmbeddings := make([][]float32, 0, len(texts))
 	for start := 0; start < len(texts); start += batchSize {
@@ -159,23 +167,8 @@ func (a *EmbeddingAPIAdapter) encodeBatchInternal(
 		batch := texts[start:end]
 		batchResults := make([][]float32, len(batch))
 		pending := make([]pendingText, 0, len(batch))
-		if a.enableCache {
-			for offset, text := range batch {
-				cacheKey := newEmbeddingTextCacheKey(configKey, cacheDimension, text)
-				if vector, ok := lookupGlobalTextEmbedding(cacheKey); ok {
-					batchResults[offset] = vector
-					continue
-				}
-				pending = append(pending, pendingText{localIndex: offset, absoluteIndex: start + offset, text: text})
-			}
-		} else {
-			for offset, text := range batch {
-				pending = append(pending, pendingText{localIndex: offset, absoluteIndex: start + offset, text: text})
-			}
-		}
-		if len(pending) == 0 {
-			allEmbeddings = append(allEmbeddings, batchResults...)
-			continue
+		for offset, text := range batch {
+			pending = append(pending, pendingText{localIndex: offset, absoluteIndex: start + offset, text: text})
 		}
 
 		concurrency := a.currentMaxConcurrent()
@@ -195,7 +188,7 @@ func (a *EmbeddingAPIAdapter) encodeBatchInternal(
 					sem.Release(1)
 					waitGroup.Done()
 				}()
-				vector, ok, err := a.getEmbeddingDirect(ctx, pending[index].text, dimensions, true)
+				vector, ok, err := a.getEmbeddingDirect(ctx, pending[index].text, dimensions, true, cacheEnabled)
 				if err != nil {
 					errorsByIndex[index] = err
 					return
@@ -221,12 +214,6 @@ func (a *EmbeddingAPIAdapter) encodeBatchInternal(
 		for index := range pending {
 			if errorsByIndex[index] != nil {
 				continue
-			}
-			if a.enableCache {
-				storeGlobalTextEmbedding(
-					newEmbeddingTextCacheKey(configKey, cacheDimension, pending[index].text),
-					vectors[index],
-				)
 			}
 			batchResults[pending[index].localIndex] = cloneVector(vectors[index])
 		}
@@ -264,6 +251,7 @@ func (a *EmbeddingAPIAdapter) getEmbeddingDirect(
 	text string,
 	dimensions *int,
 	includeDimension bool,
+	useCache bool,
 ) ([]float32, bool, error) {
 	file, err := a.modelConfigFile()
 	if err != nil {
@@ -297,30 +285,51 @@ func (a *EmbeddingAPIAdapter) getEmbeddingDirect(
 			value := a.resolveCanonicalDimension(dimensions)
 			requestedDimension = &value
 		}
-		extraParams := a.buildRequestExtraParams(provider, modelInfo.ExtraParams, requestedDimension, include)
-		vector, err := a.requestWithRetry(ctx, EmbeddingRequest{
-			ModelInfo:   modelInfo,
-			Provider:    provider,
-			Input:       text,
-			ExtraParams: extraParams,
-		})
-		if err == nil && vector == nil {
-			err = fmt.Errorf("模型 %s 未返回 embedding", candidate)
+		// 每个响应使用自己的模型身份，缓存键不能归到候选列表的共享配置。
+		cacheEnabled := a.enableCache && useCache
+		var vector []float32
+		var cacheKey embeddingTextCacheKey
+		if cacheEnabled {
+			cacheKey, err = a.embeddingCacheKey(text, dimensions, candidate, includeDimension)
+			if err != nil {
+				adapterLogger.Warn(fmt.Sprintf("embedding 模型 %s 缓存键计算失败: %v", candidate, err))
+				lastError = err
+				continue
+			}
+			if cached, ok := lookupGlobalTextEmbedding(cacheKey); ok {
+				vector = cached
+			}
 		}
-		if err == nil {
-			err = validateEmbeddingVector(vector, fmt.Sprintf("embedding 模型 %s", candidate))
+		if vector == nil {
+			extraParams := a.buildRequestExtraParams(provider, modelInfo.ExtraParams, requestedDimension, include)
+			vector, err = a.requestWithRetry(ctx, EmbeddingRequest{
+				ModelInfo:   modelInfo,
+				Provider:    provider,
+				Input:       text,
+				ExtraParams: extraParams,
+			})
+			if err == nil && vector == nil {
+				err = fmt.Errorf("模型 %s 未返回 embedding", candidate)
+			}
+			if err == nil {
+				err = validateEmbeddingVector(vector, fmt.Sprintf("embedding 模型 %s", candidate))
+			}
+			if err != nil {
+				adapterLogger.Warn(fmt.Sprintf("embedding 模型 %s 请求失败: %v", candidate, err))
+				lastError = err
+				continue
+			}
+			if cacheEnabled {
+				storeGlobalTextEmbedding(cacheKey, vector)
+			}
 		}
-		if err == nil {
-			a.stateMu.Lock()
-			a.lastModel = strings.TrimSpace(candidate)
-			a.lastPrimary = candidates[0]
-			a.lastProvider = strings.TrimSpace(modelInfo.ApiProvider)
-			a.lastDimension = len(vector)
-			a.stateMu.Unlock()
-			return vector, true, nil
-		}
-		adapterLogger.Warn(fmt.Sprintf("embedding 模型 %s 请求失败: %v", candidate, err))
-		lastError = err
+		a.stateMu.Lock()
+		a.lastModel = strings.TrimSpace(candidate)
+		a.lastPrimary = candidates[0]
+		a.lastProvider = strings.TrimSpace(modelInfo.ApiProvider)
+		a.lastDimension = len(vector)
+		a.stateMu.Unlock()
+		return vector, true, nil
 	}
 	adapterLogger.Error(fmt.Sprintf("通过直接 Client 获取 Embedding 失败: %v", lastError))
 	return nil, false, nil
@@ -449,7 +458,7 @@ func (a *EmbeddingAPIAdapter) DetectDimension(ctx context.Context) (int, error) 
 	if a.dimensionRequestMode == "always" {
 		target := a.defaultDimension
 		adapterLogger.Debug(fmt.Sprintf("尝试请求指定维度: %d", target))
-		vector, ok, err := a.getEmbeddingDirect(ctx, "test", &target, true)
+		vector, ok, err := a.getEmbeddingDirect(ctx, "test", &target, true, false)
 		if err == nil && ok && len(vector) > 0 {
 			detected := len(vector)
 			if detected == target {
@@ -469,7 +478,7 @@ func (a *EmbeddingAPIAdapter) DetectDimension(ctx context.Context) (int, error) 
 		}
 	}
 
-	vector, ok, err := a.getEmbeddingDirect(ctx, "test", nil, false)
+	vector, ok, err := a.getEmbeddingDirect(ctx, "test", nil, false, false)
 	if err != nil {
 		adapterLogger.Error(fmt.Sprintf(
 			"嵌入维度检测异常: %v，使用 configured_dimension: %d",

@@ -30,7 +30,8 @@ func (m *ResponsesResponseFormatModel) Generate(ctx context.Context, input []*sc
 	recorder := snapshotAttemptRecorderFromContext(ctx)
 	options := model.GetCommonOptions(&model.Options{}, opts...)
 	resolveEffectiveParams(m.cfg, options)
-	items, err := ContextItemsFromMessages(input)
+	input = agenticMessagesForConfig(input, m.cfg)
+	items, err := contextItemsForConfig(input, m.cfg)
 	if err != nil {
 		return nil, m.snapshotFailure(recorder, started, input, nil, options, nil, false, err)
 	}
@@ -60,7 +61,8 @@ func (m *ResponsesResponseFormatModel) Stream(ctx context.Context, input []*sche
 	recorder := snapshotAttemptRecorderFromContext(ctx)
 	options := model.GetCommonOptions(&model.Options{}, opts...)
 	resolveEffectiveParams(m.cfg, options)
-	items, err := ContextItemsFromMessages(input)
+	input = agenticMessagesForConfig(input, m.cfg)
+	items, err := contextItemsForConfig(input, m.cfg)
 	if err != nil {
 		return nil, m.snapshotFailure(recorder, started, input, nil, options, nil, true, err)
 	}

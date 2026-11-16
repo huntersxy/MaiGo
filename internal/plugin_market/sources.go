@@ -2,8 +2,6 @@ package pluginmarket
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -51,13 +49,6 @@ type InformationFile struct {
 	Cache      CacheInfo
 }
 
-// marketResponse 对齐 request_market 的返回结构
-type marketResponse struct {
-	Data      map[string]any
-	Cache     CacheInfo
-	SourceURL string
-}
-
 // selectSource 选择 Git 源；测试可用前缀覆盖把请求指向本地服务
 func (s *Service) selectSource(sourceID, customPrefix string) (GitSource, error) {
 	source, err := SelectGitSource(sourceID, customPrefix)
@@ -93,14 +84,6 @@ func (s *Service) informationSource() (string, error) {
 	return settings.InformationSource, nil
 }
 
-// sourceByInformationSource 把 official 信息源映射到 GitHub 原始文件源
-func (s *Service) sourceByInformationSource(source string) (GitSource, error) {
-	if source == "official" {
-		source = "github"
-	}
-	return s.selectSource(source, "")
-}
-
 // fetchInformationFile 对齐 sources.fetch_information_file
 func (s *Service) fetchInformationFile(ctx context.Context, filePath, source string, forceRefresh bool) (InformationFile, error) {
 	selected := strings.TrimSpace(source)
@@ -133,37 +116,4 @@ func (s *Service) fetchInformationFile(ctx context.Context, filePath, source str
 	zap.L().Debug("插件市场索引已加载",
 		zap.String("source", selected), zap.Bool("cache_hit", info.Hit), zap.String("url", targetURL))
 	return InformationFile{Success: true, Data: data, MirrorUsed: selected, Attempts: 1, URL: targetURL, Cache: info}, nil
-}
-
-// requestMarket 对齐 sources.request_market：市场接口响应合并 cache 与 source_url
-func (s *Service) requestMarket(ctx context.Context, path string, params url.Values, forceRefresh bool) (marketResponse, error) {
-	targetURL := fmt.Sprintf("%s/api/v2/market/%s?%s", marketBaseURL(), path, params.Encode())
-	loader := func() (any, error) {
-		payload, err := GitSource{}.ReadJSON(ctx, targetURL, requestTimeout)
-		if err != nil {
-			return nil, err
-		}
-		return payload, nil
-	}
-	started := time.Now()
-	data, info, err := s.cache.Get(targetURL, loader, marketTTL, forceRefresh)
-	if err != nil {
-		zap.L().Warn("插件市场请求失败",
-			zap.String("url", targetURL), zap.Duration("elapsed", time.Since(started)), zap.Error(err))
-		return marketResponse{}, err
-	}
-	payload, ok := data.(map[string]any)
-	if !ok {
-		return marketResponse{}, fmt.Errorf("插件市场响应不是对象")
-	}
-	zap.L().Debug("插件市场请求完成",
-		zap.String("url", targetURL), zap.Bool("cache_hit", info.Hit), zap.Duration("elapsed", time.Since(started)))
-	return marketResponse{Data: payload, Cache: info, SourceURL: targetURL}, nil
-}
-
-// RequestMarketDetail 对齐 sources.request_market_detail
-func (s *Service) requestMarketDetail(ctx context.Context, pluginID, maibotVersion string, forceRefresh bool) (marketResponse, error) {
-	params := url.Values{}
-	params.Set("maibot_version", maibotVersion)
-	return s.requestMarket(ctx, "plugins/"+quoteSegment(pluginID), params, forceRefresh)
 }

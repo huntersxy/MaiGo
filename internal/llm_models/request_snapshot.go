@@ -6,6 +6,7 @@ package llm
 // schema_version=6 与 MaiBot v6 只读兼容；replay 字段指向 Go 重放工具，不伪造
 // Python replay_llm_request.py。同一逻辑请求的后续失败追加 .events.jsonl。
 import (
+	"MaiGo/internal/llm_models/contract"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -13,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"MaiGo/internal/llm_models/contract"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -430,7 +430,7 @@ func serializeSnapshotRequestItemsForSpec(spec requestSnapshotSpec, assets *snap
 		}
 		return out
 	}
-	return serializeSnapshotRequestItems(spec.Input, assets, spec.LogicalTurnID)
+	return serializeSnapshotRequestItems(spec.Input, spec.Config, assets, spec.LogicalTurnID)
 }
 
 func snapshotModelInfo(spec requestSnapshotSpec) map[string]any {
@@ -439,11 +439,15 @@ func snapshotModelInfo(spec requestSnapshotSpec) map[string]any {
 	if displayName == "" {
 		displayName = strings.TrimSpace(spec.Model)
 	}
+	maxImages, imageMaxSide, imageMinSide := cfg.EffectiveImageLimits()
 	info := map[string]any{
 		// Python ModelInfo.api_provider 是 Provider 名称字符串，不是对象
 		"api_provider":      trimTask(cfg.ProviderName),
 		"extra_params":      cloneAnyMap(cfg.ExtraParams),
 		"force_stream_mode": cfg.ForceStreamMode,
+		"max_images":        maxImages,
+		"image_max_side":    imageMaxSide,
+		"image_min_side":    imageMinSide,
 		"max_tokens":        nil,
 		"model_identifier":  strings.TrimSpace(spec.Model),
 		"model_type":        strings.TrimSpace(cfg.ModelType),

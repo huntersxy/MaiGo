@@ -6,11 +6,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"MaiGo/internal/A_memorix/core/storage"
+	"MaiGo/internal/A_memorix/core/utils"
 )
 
 // BackgroundTaskDeps 后台任务依赖端口
@@ -78,12 +80,16 @@ type BackgroundTaskService struct {
 
 	lock  sync.Mutex
 	tasks map[string]context.CancelFunc
+	done  map[string]chan struct{}
 	wg    sync.WaitGroup
 }
 
 // NewBackgroundTaskService 构造后台任务服务
 func NewBackgroundTaskService(base *Base, deps BackgroundTaskDeps) *BackgroundTaskService {
-	return &BackgroundTaskService{Base: base, deps: deps, tasks: map[string]context.CancelFunc{}}
+	return &BackgroundTaskService{
+		Base: base, deps: deps,
+		tasks: map[string]context.CancelFunc{}, done: map[string]chan struct{}{},
+	}
 }
 
 func (s *BackgroundTaskService) cfg(key string, fallback any) any {
@@ -117,13 +123,17 @@ func (s *BackgroundTaskService) EnsureBackgroundTask(ctx context.Context, name s
 		return nil
 	}
 	child, cancel := context.WithCancel(context.Background())
+	taskDone := make(chan struct{})
 	s.tasks[name] = cancel
+	s.done[name] = taskDone
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		defer close(taskDone)
 		defer func() {
 			s.lock.Lock()
 			delete(s.tasks, name)
+			delete(s.done, name)
 			s.lock.Unlock()
 			if recovered := recover(); recovered != nil {
 				s.Logger().Error(fmt.Sprintf("后台任务 panic: name=%s error=%v", name, recovered))
@@ -212,30 +222,30 @@ func (s *BackgroundTaskService) StartBackgroundTasks(ctx context.Context) error 
 	return nil
 }
 
-// StopBackgroundTasks 对齐 _stop_background_tasks
+// StopBackgroundTasks 对齐 _stop_background_tasks：有界等待，超时保留任务引用与存储
 func (s *BackgroundTaskService) StopBackgroundTasks(ctx context.Context) error {
 	s.lock.Lock()
 	s.setStopping(true)
-	cancels := make([]context.CancelFunc, 0, len(s.tasks))
-	for _, cancel := range s.tasks {
-		cancels = append(cancels, cancel)
+	names := make([]string, 0, len(s.tasks))
+	for name := range s.tasks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	tasks := make([]utils.StoppableTask, 0, len(names))
+	for _, name := range names {
+		tasks = append(tasks, utils.StoppableTask{
+			Name: name, Cancel: s.tasks[name], Done: s.done[name],
+		})
 	}
 	s.lock.Unlock()
-	for _, cancel := range cancels {
-		cancel()
-	}
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-ctx.Done():
-		return ctx.Err()
+	if err := utils.CancelAndWaitForTasks(ctx, "关闭记忆后台任务", tasks, func(message string) {
+		s.Logger().Error(message)
+	}); err != nil {
+		return err
 	}
 	s.lock.Lock()
 	s.tasks = map[string]context.CancelFunc{}
+	s.done = map[string]chan struct{}{}
 	s.lock.Unlock()
 	return nil
 }
@@ -260,12 +270,13 @@ func (s *BackgroundTaskService) CancelAllBackgroundTasks() {
 	}()
 	select {
 	case <-done:
+		s.lock.Lock()
+		s.tasks = map[string]context.CancelFunc{}
+		s.done = map[string]chan struct{}{}
+		s.lock.Unlock()
 	case <-time.After(5 * time.Second):
 		s.LoggerWarn("取消后台任务超时，剩余循环将在退出时回收")
 	}
-	s.lock.Lock()
-	s.tasks = map[string]context.CancelFunc{}
-	s.lock.Unlock()
 }
 
 // AutoSaveLoop 对齐 _auto_save_loop

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+
+	pluginruntime "MaiGo/internal/plugin_runtime"
 )
 
 // DocumentKind 对齐 documents.DocumentKind
@@ -22,9 +24,9 @@ const (
 	documentCacheTTL               = 30 * time.Minute
 )
 
-// findLocalPlugin 对齐 documents._find_local_plugin
-func findLocalPlugin(instanceDir, reference string) (string, map[string]any, bool, error) {
-	root, err := ResolvePluginsDir(instanceDir)
+// findLocalPlugin 对齐 documents._find_local_plugin：在指定插件根目录内按 ID、名称或目录名匹配
+func findLocalPlugin(root, reference string) (string, map[string]any, bool, error) {
+	root, err := filepath.Abs(root)
 	if err != nil {
 		return "", nil, false, err
 	}
@@ -42,12 +44,19 @@ func findLocalPlugin(instanceDir, reference string) (string, map[string]any, boo
 		manifest map[string]any
 	}
 	matches := make([]match, 0, 1)
+	resolvedRoot := root
+	if resolved, resolveErr := filepath.EvalSymlinks(root); resolveErr == nil {
+		resolvedRoot = resolved
+	}
 	for _, entry := range entries {
 		name := entry.Name()
 		if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "__") || !entry.IsDir() {
 			continue
 		}
 		folder := filepath.Join(root, name)
+		if resolved, resolveErr := filepath.EvalSymlinks(folder); resolveErr != nil || !isPathWithin(resolvedRoot, resolved) {
+			continue
+		}
 		manifestPath := filepath.Join(folder, "_manifest.json")
 		if stat, statErr := os.Stat(manifestPath); statErr != nil || stat.IsDir() {
 			continue
@@ -172,11 +181,7 @@ func (s *Service) remoteDocument(ctx context.Context, plugin PluginCatalogItem, 
 			// README 跟随下载源，并保留所选发布版本的提交
 			gitSource, err = s.downloadSource()
 		} else {
-			selected := source
-			if selected == "official" {
-				selected = "github"
-			}
-			gitSource, err = s.selectSource(selected, "")
+			gitSource, err = s.selectSource(source, "")
 		}
 		if err != nil {
 			return nil, err
@@ -249,29 +254,54 @@ func (s *Service) getDocument(ctx context.Context, pluginID string, kind Documen
 		plugin PluginCatalogItem
 		source string
 	)
-	if preferLocal {
-		folder, manifest, found, err := findLocalPlugin(s.instanceDirectory(), strings.TrimSpace(pluginID))
-		if err != nil {
-			return DocumentResponse{}, err
+	// 内置插件始终优先读取本地文档；第三方插件只在 prefer_local 时读取。
+	builtinRoot := pluginruntime.BuiltinPluginDir()
+	var (
+		folder   string
+		manifest map[string]any
+		found    bool
+	)
+	if strings.TrimSpace(builtinRoot) != "" {
+		var localErr error
+		folder, manifest, found, localErr = findLocalPlugin(builtinRoot, strings.TrimSpace(pluginID))
+		if localErr != nil {
+			return DocumentResponse{}, localErr
 		}
-		if found {
-			plugin = PluginCatalogItem{
-				ID:            safeString(manifest["id"]),
-				Name:          safeString(manifest["name"]),
-				Manifest:      manifest,
-				RepositoryURL: manifestRepositoryURL(manifest),
+	}
+	fromBuiltin := found
+	if !found && preferLocal {
+		thirdPartyRoot, rootErr := ResolvePluginsDir(s.instanceDirectory())
+		if rootErr != nil {
+			return DocumentResponse{}, rootErr
+		}
+		var localErr error
+		folder, manifest, found, localErr = findLocalPlugin(thirdPartyRoot, strings.TrimSpace(pluginID))
+		if localErr != nil {
+			return DocumentResponse{}, localErr
+		}
+	}
+	if found {
+		plugin = PluginCatalogItem{
+			ID:            safeString(manifest["id"]),
+			Name:          safeString(manifest["name"]),
+			Manifest:      manifest,
+			RepositoryURL: manifestRepositoryURL(manifest),
+		}
+		content, ok, readErr := readLocalDocument(folder, manifest, kind)
+		if readErr != nil {
+			return DocumentResponse{}, readErr
+		}
+		if ok || fromBuiltin {
+			sourceType := "local"
+			if !ok {
+				sourceType = "missing"
 			}
-			content, ok, err := readLocalDocument(folder, manifest, kind)
-			if err != nil {
-				return DocumentResponse{}, err
-			}
-			if ok {
-				return buildDocumentResponse(plugin, content, folder, "local", nil, maxChars), nil
-			}
-			source, err = s.informationSource()
-			if err != nil {
-				return DocumentResponse{}, err
-			}
+			return buildDocumentResponse(plugin, content, folder, sourceType, nil, maxChars), nil
+		}
+		var sourceErr error
+		source, sourceErr = s.informationSource()
+		if sourceErr != nil {
+			return DocumentResponse{}, sourceErr
 		}
 	}
 	if plugin.ID == "" {

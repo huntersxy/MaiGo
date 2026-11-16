@@ -10,6 +10,7 @@ import (
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services"
 
 	"go.uber.org/zap"
 )
@@ -20,6 +21,10 @@ func (a *Agent) onPrivateMessage(msg *onebot.ConversationMessage, mediaRefs []me
 
 func (a *Agent) schedulePrivateThink(targetID int64, receivedAt time.Time) {
 	if a.privateStopped || a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsRunning(targetID) {
+		return
+	}
+	if sessionID := a.resolveMaiBotSessionID(context.Background(), memory.ConversationKindPrivate, targetID); sessionID != "" &&
+		services.ChatMigrationGateInstance.Blocked(sessionID) {
 		return
 	}
 	quiet := a.messageQuietRemaining(memory.ConversationKindPrivate, targetID, receivedAt)

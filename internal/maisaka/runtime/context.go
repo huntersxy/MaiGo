@@ -232,6 +232,9 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 	if instance := a.instanceBotConfig(); instance != nil {
 		tc.BotName = strings.TrimSpace(instance.Bot.Nickname)
 	}
+	if instance != nil {
+		tc.ToolSearchTailLoading = instance.Bot.Experimental.ToolSearchTailLoading
+	}
 	if generation := generationFrom(ctx); generation != nil {
 		var chatTools []tool.BaseTool
 		if kind == memory.ConversationKindPrivate {

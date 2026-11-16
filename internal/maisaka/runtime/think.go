@@ -9,6 +9,7 @@ import (
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services"
 
 	"go.uber.org/zap"
 )
@@ -84,6 +85,10 @@ func (a *Agent) scheduleGroupThink(groupID int64, receivedAt time.Time) {
 		return
 	}
 	if a.stopping.Load() || a.ctx.Err() != nil || a.groupConcurrency.IsRunning(groupID) {
+		return
+	}
+	if sessionID := a.resolveMaiBotSessionID(context.Background(), memory.ConversationKindGroup, groupID); sessionID != "" &&
+		services.ChatMigrationGateInstance.Blocked(sessionID) {
 		return
 	}
 	delay := a.planGroupThinkDelay(groupID, receivedAt)

@@ -108,12 +108,17 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 	if runtime == nil || runtime.Engine() == nil || generation == nil || generation.model == nil {
 		return false
 	}
-	if a.routeFocusMessage(ctx, kind, targetID, session, runtime) {
+	lightweight := a.isLightweightPrivateSession(kind, targetID)
+	if lightweight {
+		// 轻量私聊优先于 Focus，不进入共享上下文。
+		a.detachFocusSession(ctx, session, runtime)
+	} else if a.routeFocusMessage(ctx, kind, targetID, session, runtime) {
 		return true
 	}
 	session.mu.Lock()
 	session.maisakaFocusGroup = nil
 	session.mu.Unlock()
+	runtime.SetLightweightPrivate(lightweight)
 	if a.maisakaBackgroundLoop.Load() {
 		if loop := a.ensureMaisakaTurnLoop(session); loop != nil {
 			jobGeneration := generation
@@ -197,6 +202,7 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 	if len(history) == 0 {
 		return false
 	}
+	runtime.SetLightweightPrivate(a.isLightweightPrivateSession(kind, targetID))
 	promptSource := a.newMaisakaPromptSource()
 	plannerModel := generation.plannerModel
 	plannerName := generation.plannerModelName
@@ -208,6 +214,9 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 		model:     plannerModel,
 		modelName: plannerName,
 	})
+	if generation.fastModel != nil {
+		loop.JudgeClient = &maisakaChatClient{model: generation.fastModel, modelName: generation.fastModelName}
+	}
 	loop.MaxContextSize = runtime.MaxContextSize()
 	// 对齐 Python _resolve_enable_visual_message("planner")：按 planner 任务的模型视觉能力决定
 	loop.EnableVisualMessage = a.plannerVisualEnabled()
@@ -693,10 +702,14 @@ func (s *Session) MaisakaRuntimeSessionName() string {
 // newFocusGroupRuntime 构造共享组 Planner、工具路由与检查点
 func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 	options := focus.GroupOptions{
-		MaxContextSize:  func() int { return a.maisakaMaxContextSize(true) },
-		Summary:         a.buildFocusSummary,
-		StoreRoot:       focus.DefaultCheckpointRoot,
-		Prompts:         a.newMaisakaPromptSource(),
+		MaxContextSize: func() int { return a.maisakaMaxContextSize(true) },
+		Summary:        a.buildFocusSummary,
+		StoreRoot:      focus.DefaultCheckpointRoot,
+		Prompts:        a.newMaisakaPromptSource(),
+		ToolSearchTailLoading: func() bool {
+			settings, _, ok := a.focusExperimentalSnapshot()
+			return ok && settings.ToolSearchTailLoading
+		},
 		Planner: func(ctx context.Context, request focus.PlannerRequest) (maisaka.ChatResponse, error) {
 			generation := a.currentGeneration()
 			if generation == nil || generation.model == nil {
@@ -705,6 +718,10 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 			loop := maisaka.NewChatLoopService(scopeID, true, a.newMaisakaPromptSource(), &maisakaChatClient{
 				model: generation.model, modelName: generation.modelName,
 			})
+			if generation.fastModel != nil {
+				loop.JudgeClient = &maisakaChatClient{model: generation.fastModel, modelName: generation.fastModelName}
+			}
+			loop.LogicalTurnID = request.LogicalTurnID
 			loop.MaxContextSize = request.MaxContextSize
 			loop.FocusMode = true
 			loop.EnableVisualMessage = a.plannerVisualEnabled()

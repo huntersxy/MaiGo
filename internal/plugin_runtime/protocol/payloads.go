@@ -63,6 +63,7 @@ type ComponentDeclaration struct {
 	ComponentType  string         `msgpack:"component_type" json:"component_type"`
 	PluginID       string         `msgpack:"plugin_id" json:"plugin_id"`
 	ChatScope      string         `msgpack:"chat_scope" json:"chat_scope"`
+	Platforms      []string       `msgpack:"platforms" json:"platforms"`
 	AllowedSession []string       `msgpack:"allowed_session" json:"allowed_session"`
 	Metadata       map[string]any `msgpack:"metadata" json:"metadata"`
 }

@@ -255,7 +255,7 @@ func (m *pluginModel) snapshotFailure(recorder *snapshotAttemptRecorder, started
 
 // buildResponseRequest 构造 MaiBot context_items 请求载荷
 func (m *pluginModel) buildResponseRequest(ctx context.Context, input []*schema.AgenticMessage, options *model.Options, logicalTurnID string) (map[string]any, []ContextItem, error) {
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, m.cfg)
 	if err != nil {
 		return nil, nil, &ParseError{Message: "构造 Context Items 失败: " + err.Error()}
 	}
@@ -334,10 +334,14 @@ func ModelInfoSnapshotForConfig(cfg ModelConfig) map[string]any {
 	if providerName == "" {
 		providerName = cfg.ClientType
 	}
+	maxImages, imageMaxSide, imageMinSide := cfg.EffectiveImageLimits()
 	snapshot := map[string]any{
 		"api_provider":      providerName,
 		"extra_params":      cloneAnyMap(cfg.ExtraParams),
 		"force_stream_mode": cfg.ForceStreamMode,
+		"max_images":        maxImages,
+		"image_max_side":    imageMaxSide,
+		"image_min_side":    imageMinSide,
 		"max_tokens":        nil,
 		"model_identifier":  cfg.Model,
 		"model_type":        cfg.ModelType,

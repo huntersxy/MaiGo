@@ -1,11 +1,12 @@
 package plugin
 
 import (
+	"MaiGo/internal/webui/httputil"
 	"context"
 	"errors"
 	"io"
-	"MaiGo/internal/webui/httputil"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -31,11 +32,13 @@ type marketplaceUninstallRequest struct {
 
 // marketplaceUpdateRequest 对齐 routers/plugin/schemas.UpdatePluginRequest
 type marketplaceUpdateRequest struct {
-	PluginID      string  `json:"plugin_id"`
-	RepositoryURL string  `json:"repository_url"`
-	Branch        *string `json:"branch"`
-	MirrorID      *string `json:"mirror_id"`
-	Version       *string `json:"version"`
+	Force          bool    `json:"force"`
+	ExpectedCommit *string `json:"expected_commit"`
+	PluginID       string  `json:"plugin_id"`
+	RepositoryURL  string  `json:"repository_url"`
+	Branch         *string `json:"branch"`
+	MirrorID       *string `json:"mirror_id"`
+	Version        *string `json:"version"`
 }
 
 // marketplaceSourceRequest 对齐 PluginSourceSettings 请求体
@@ -45,9 +48,16 @@ type marketplaceSourceRequest struct {
 	CustomDownloadPrefix *string `json:"custom_download_prefix"`
 }
 
+// expectedCommitPattern 对齐 UpdatePluginRequest.expected_commit 的 pydantic 约束
+var expectedCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 // writeMarketFailure 对齐 routers/plugin/marketplace.MarketRoute 的错误映射
 func writeMarketFailure(w http.ResponseWriter, err error, fallbackPrefix string) {
 	if marketErr, ok := pluginmarket.AsMarketError(err); ok {
+		if marketErr.Payload != nil {
+			httputil.WriteJSON(w, marketErr.StatusCode, map[string]any{"detail": marketErr.Payload})
+			return
+		}
 		httputil.WriteJSON(w, marketErr.StatusCode, map[string]any{"detail": marketErr.Message})
 		return
 	}
@@ -130,7 +140,7 @@ func (d Deps) handlePluginMarketplaceInstall(w http.ResponseWriter, r *http.Requ
 				mirrorID = *body.MirrorID
 			}
 			result, err := service.InstallRelease(
-				r.Context(), pluginID, entry, target, false, *body.Version == "latest", mirrorID)
+				r.Context(), pluginID, entry, target, false, *body.Version == "latest", mirrorID, false, nil)
 			if err != nil {
 				writeInstallFailure(w, err)
 				return
@@ -203,6 +213,10 @@ func (d Deps) handlePluginMarketplaceUpdate(w http.ResponseWriter, r *http.Reque
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"detail": "请求参数无效"})
 		return
 	}
+	if body.ExpectedCommit != nil && !expectedCommitPattern.MatchString(*body.ExpectedCommit) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"detail": "expected_commit 必须为 40 位小写十六进制"})
+		return
+	}
 	pluginID := strings.TrimSpace(body.PluginID)
 	if pluginID == "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, map[string]any{"detail": "plugin_id 为必填"})
@@ -244,11 +258,13 @@ func (d Deps) handlePluginMarketplaceUpdate(w http.ResponseWriter, r *http.Reque
 		mirrorID = *body.MirrorID
 	}
 	result, err := service.Update(r.Context(), pluginmarket.UpdateRequest{
-		PluginID:      pluginID,
-		RepositoryURL: body.RepositoryURL,
-		Branch:        &branch,
-		MirrorID:      mirrorID,
-		Version:       body.Version,
+		Force:          body.Force,
+		ExpectedCommit: body.ExpectedCommit,
+		PluginID:       pluginID,
+		RepositoryURL:  body.RepositoryURL,
+		Branch:         &branch,
+		MirrorID:       mirrorID,
+		Version:        body.Version,
 	})
 	if err != nil {
 		if errors.Is(r.Context().Err(), context.Canceled) {
@@ -264,6 +280,10 @@ func (d Deps) handlePluginMarketplaceUpdate(w http.ResponseWriter, r *http.Reque
 // writeInstallFailure 对齐 management.install_plugin 的异常映射
 func writeInstallFailure(w http.ResponseWriter, err error) {
 	if marketErr, ok := pluginmarket.AsMarketError(err); ok {
+		if marketErr.Payload != nil {
+			httputil.WriteJSON(w, marketErr.StatusCode, map[string]any{"detail": marketErr.Payload})
+			return
+		}
 		httputil.WriteJSON(w, marketErr.StatusCode, map[string]any{"detail": marketErr.Message})
 		return
 	}

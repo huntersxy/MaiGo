@@ -13,7 +13,7 @@ import (
 )
 
 // callLLMText 对齐 _llm_call_text，带指数退避重试
-func (m *RetrievalTuningManager) callLLMText(ctx context.Context, prompt string, requestType string) (string, error) {
+func (m *RetrievalTuningManager) callLLMText(ctx context.Context, prompt string, requestType string, useFastModel bool) (string, error) {
 	if m.llm == nil {
 		return "", fmt.Errorf("llm_api unavailable")
 	}
@@ -25,7 +25,17 @@ func (m *RetrievalTuningManager) callLLMText(ctx context.Context, prompt string,
 
 	lastError := ""
 	for index := 0; index < maxAttempts; index++ {
-		text, err := m.llm.Generate(ctx, requestType, prompt)
+		var text string
+		var err error
+		if useFastModel {
+			if fast, ok := m.llm.(RetrievalTuningFastLLM); ok {
+				text, err = fast.GenerateFast(ctx, requestType, prompt)
+			} else {
+				text, err = m.llm.Generate(ctx, requestType, prompt)
+			}
+		} else {
+			text, err = m.llm.Generate(ctx, requestType, prompt)
+		}
 		if err == nil {
 			trimmed := pyStrip(text)
 			if trimmed != "" {
@@ -93,7 +103,7 @@ func (m *RetrievalTuningManager) generateNLQueriesWithLLM(ctx context.Context, a
 		"请基于给定 SPO 与简短上下文，为每条样本生成 1 条自然语言检索问题，返回 JSON：" +
 		"{\"items\":[{\"anchor_id\":\"...\",\"query\":\"...\"}]}。\n" +
 		"样本：\n" + retrievalTuningJSONDumps(payload, 0)
-	raw, err := m.callLLMText(ctx, prompt, "A_Memorix.RetrievalTuning.NLCaseGen")
+	raw, err := m.callLLMText(ctx, prompt, "A_Memorix.RetrievalTuning.NLCaseGen", true)
 	if err != nil {
 		m.logger.Warning("检索调优 NL 用例生成失败: " + err.Error())
 		return result
@@ -152,7 +162,7 @@ func (m *RetrievalTuningManager) suggestProfilesWithLLM(ctx context.Context, bas
 	builder.WriteString("objective=" + objective + "\n")
 	builder.WriteString("base=" + retrievalTuningJSONDumps(baseProfile, 0) + "\n")
 	builder.WriteString("failure_summary=" + retrievalTuningJSONDumps(failureSummary, 0))
-	raw, err := m.callLLMText(ctx, builder.String(), "A_Memorix.RetrievalTuning.ProfileSuggest")
+	raw, err := m.callLLMText(ctx, builder.String(), "A_Memorix.RetrievalTuning.ProfileSuggest", false)
 	if err != nil {
 		m.logger.Warning("检索调优参数建议失败: " + err.Error())
 		return nil

@@ -11,12 +11,13 @@ import (
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services"
 
+	"MaiGo/internal/platform_io"
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"MaiGo/internal/platform_io"
 )
 
 const (
@@ -153,11 +154,27 @@ func (a *Agent) commitConversationMessage(item commitItem) {
 	}
 	ctx, cancel := a.persistenceContext()
 	defer cancel()
+	sessionID := a.ensureChatSession(ctx, msg)
+	// 迁移暂停期间等待在途消息，避免迁移快照后继续写入旧聊天流
+	if sessionID != "" && services.ChatMigrationGateInstance != nil {
+		if err := services.ChatMigrationGateInstance.Activity(ctx, sessionID, func() error {
+			a.commitConversationMessageLocked(ctx, item, sessionID)
+			return nil
+		}); err != nil {
+			zap.L().Warn("等待聊天迁移完成失败，丢弃入站消息",
+				zap.String("session_id", sessionID), zap.Error(err))
+		}
+		return
+	}
+	a.commitConversationMessageLocked(ctx, item, sessionID)
+}
+
+func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commitItem, sessionID string) {
+	msg := item.msg
 	replyErr := a.refreshReplyRecall(ctx, msg)
 	if replyErr != nil {
 		zap.L().Warn("核对引用撤回状态失败，省略引用原文", zap.String("conversation_kind", msg.ConversationKind), zap.Int64("target_id", msg.TargetID), zap.Int64("message_id", msg.MessageID), zap.Error(replyErr))
 	}
-	sessionID := a.ensureChatSession(ctx, msg)
 	ingestor := a.fileIngestorPort()
 	if ingestor != nil {
 		if err := ingestor(ctx, msg, sessionID); err != nil {

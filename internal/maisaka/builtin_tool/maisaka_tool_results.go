@@ -22,8 +22,6 @@ func convertMaisakaToolResult(ctx context.Context, toolName, raw string) (Struct
 	switch toolName {
 	case "wait":
 		return convertWaitResult(output), nil
-	case "stop":
-		return convertStopResult(output), nil
 	case "tool_search":
 		return convertToolSearchResult(output), nil
 	case "read_tool_result":
@@ -53,28 +51,25 @@ func convertWaitResult(output map[string]any) StructuredToolResult {
 	if content == "" {
 		content = maisakaStringValue(output["message"])
 	}
+	metadata := map[string]any{
+		"pause_execution":        true,
+		"consecutive_wait_count": count,
+	}
+	if value, exists := output["wait_seconds"]; exists {
+		switch typed := value.(type) {
+		case int:
+			metadata["wait_seconds"] = typed
+		case int64:
+			metadata["wait_seconds"] = int(typed)
+		case float64:
+			metadata["wait_seconds"] = int(typed)
+		}
+	}
 	return StructuredToolResult{
-		Success: true,
-		Content: content,
-		Metadata: map[string]any{
-			"pause_execution":        true,
-			"consecutive_wait_count": count,
-		},
+		Success:   true,
+		Content:   content,
+		Metadata:  metadata,
 		PauseTool: "wait",
-	}
-}
-
-func convertStopResult(output map[string]any) StructuredToolResult {
-	if success, ok := output["success"].(bool); ok && !success {
-		return StructuredToolResult{Success: false, ErrorMessage: maisakaFirstNonEmpty(maisakaStringValue(output["message"]), "stop 执行失败。")}
-	}
-	return StructuredToolResult{
-		Success: true,
-		Content: "已结束本轮思考，等待新消息。",
-		Metadata: map[string]any{
-			"pause_execution": true,
-		},
-		PauseTool: "stop",
 	}
 }
 
@@ -95,17 +90,36 @@ func convertToolSearchResult(output map[string]any) StructuredToolResult {
 		"matched_tool_names":          matched,
 		"newly_discovered_tool_names": newly,
 	}
+	if status := maisakaStringValue(output["status"]); status != "" {
+		structured["status"] = status
+		structured["instruction"] = maisakaStringValue(output["instruction"])
+		tools := make([]any, 0)
+		if rawTools, ok := output["tools"].([]any); ok {
+			tools = append(tools, rawTools...)
+		}
+		structured["tools"] = tools
+	}
+	if content == "" {
+		// 对齐 Python get_history_content：正文为空时序列化 structured_content
+		if encoded, err := sonic.MarshalString(structured); err == nil {
+			content = encoded
+		}
+	}
+	monitorDetail := structured
+	if _, hasStatus := structured["status"]; !hasStatus {
+		monitorDetail = map[string]any{
+			"query":                       query,
+			"matched_tool_names":          matched,
+			"newly_discovered_tool_names": newly,
+			"content":                     content,
+		}
+	}
 	return StructuredToolResult{
 		Success:           true,
 		Content:           content,
 		StructuredContent: structured,
 		Metadata: map[string]any{
-			"monitor_detail": map[string]any{
-				"query":                       query,
-				"matched_tool_names":          matched,
-				"newly_discovered_tool_names": newly,
-				"content":                     content,
-			},
+			"monitor_detail":              monitorDetail,
 			"matched_tool_names":          matched,
 			"newly_discovered_tool_names": newly,
 		},

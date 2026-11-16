@@ -3,6 +3,7 @@ package embedding
 // 配置指纹与进程级缓存，对齐 api_adapter.py 的指纹与全局缓存逻辑
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +12,9 @@ import (
 
 	"MaiGo/internal/llm_models"
 )
+
+// textEmbeddingCacheMaxEntries 文本向量缓存上限，对齐 TEXT_EMBEDDING_CACHE_MAX_ENTRIES
+const textEmbeddingCacheMaxEntries = 2048
 
 // dimensionCacheEntry 进程级维度缓存条目，对应 (dimension, model_name, provider_name)
 type dimensionCacheEntry struct {
@@ -24,14 +28,21 @@ var (
 	globalDimensionCache   = map[string]dimensionCacheEntry{}
 
 	globalTextEmbeddingCacheMu sync.Mutex
-	globalTextEmbeddingCache   = map[embeddingTextCacheKey][]float32{}
+	globalTextEmbeddingCache   = map[embeddingTextCacheKey]*list.Element{}
+	globalTextEmbeddingOrder   = list.New()
 )
 
-// embeddingTextCacheKey 文本向量缓存键，对应 (配置键, 维度, 文本)
+// embeddingTextCacheKey 文本向量缓存键，对应 (模型身份, 维度, 文本)
 type embeddingTextCacheKey struct {
-	configKey string
+	identity  string
 	dimension int
 	text      string
+}
+
+// embeddingTextCacheEntry LRU 链表中的缓存值
+type embeddingTextCacheEntry struct {
+	key    embeddingTextCacheKey
+	vector []float32
 }
 
 // EmbeddingFingerprintOptions 指纹选项，对应 get_embedding_fingerprint 的关键字参数
@@ -80,26 +91,67 @@ func (a *EmbeddingAPIAdapter) dimensionCacheKey() (string, error) {
 }
 
 // newEmbeddingTextCacheKey 构造文本向量缓存键，对齐 _embedding_cache_key
-func newEmbeddingTextCacheKey(configKey string, dimension int, text string) embeddingTextCacheKey {
-	return embeddingTextCacheKey{configKey: configKey, dimension: dimension, text: text}
+func newEmbeddingTextCacheKey(identity string, dimension int, text string) embeddingTextCacheKey {
+	return embeddingTextCacheKey{identity: identity, dimension: dimension, text: text}
 }
 
-// lookupGlobalTextEmbedding 查询进程级文本向量缓存
+// embeddingCacheKey 按实际模型、请求维度语义和正文隔离缓存
+func (a *EmbeddingAPIAdapter) embeddingCacheKey(
+	text string,
+	dimensions *int,
+	modelName string,
+	includeDimension bool,
+) (embeddingTextCacheKey, error) {
+	requestedDimension := a.resolveCanonicalDimension(dimensions)
+	fingerprint, err := a.GetEmbeddingFingerprint(&EmbeddingFingerprintOptions{
+		Dimension: &requestedDimension,
+		ModelName: &modelName,
+	})
+	if err != nil {
+		return embeddingTextCacheKey{}, err
+	}
+	identity, err := fingerprintHash(map[string]any{
+		"model":             fingerprint["hash"],
+		"include_dimension": a.shouldIncludeDimension(dimensions, includeDimension),
+	})
+	if err != nil {
+		return embeddingTextCacheKey{}, err
+	}
+	return newEmbeddingTextCacheKey(identity, requestedDimension, text), nil
+}
+
+// lookupGlobalTextEmbedding 查询进程级文本向量缓存，命中时刷新最近使用顺序
 func lookupGlobalTextEmbedding(key embeddingTextCacheKey) ([]float32, bool) {
 	globalTextEmbeddingCacheMu.Lock()
 	defer globalTextEmbeddingCacheMu.Unlock()
-	vector, ok := globalTextEmbeddingCache[key]
+	element, ok := globalTextEmbeddingCache[key]
 	if !ok {
 		return nil, false
 	}
-	return cloneVector(vector), true
+	globalTextEmbeddingOrder.MoveToBack(element)
+	entry, _ := element.Value.(embeddingTextCacheEntry)
+	return cloneVector(entry.vector), true
 }
 
-// storeGlobalTextEmbedding 写入进程级文本向量缓存
+// storeGlobalTextEmbedding 写入进程级文本向量缓存，按最近使用顺序淘汰
 func storeGlobalTextEmbedding(key embeddingTextCacheKey, vector []float32) {
 	globalTextEmbeddingCacheMu.Lock()
 	defer globalTextEmbeddingCacheMu.Unlock()
-	globalTextEmbeddingCache[key] = cloneVector(vector)
+	if element, ok := globalTextEmbeddingCache[key]; ok {
+		globalTextEmbeddingOrder.Remove(element)
+		delete(globalTextEmbeddingCache, key)
+	}
+	element := globalTextEmbeddingOrder.PushBack(embeddingTextCacheEntry{key: key, vector: cloneVector(vector)})
+	globalTextEmbeddingCache[key] = element
+	for len(globalTextEmbeddingCache) > textEmbeddingCacheMaxEntries {
+		oldest := globalTextEmbeddingOrder.Front()
+		if oldest == nil {
+			break
+		}
+		entry, _ := oldest.Value.(embeddingTextCacheEntry)
+		globalTextEmbeddingOrder.Remove(oldest)
+		delete(globalTextEmbeddingCache, entry.key)
+	}
 }
 
 // getGlobalDimensionCache 查询进程级维度缓存
@@ -123,7 +175,8 @@ func resetGlobalEmbeddingCaches() {
 	globalDimensionCache = map[string]dimensionCacheEntry{}
 	globalDimensionCacheMu.Unlock()
 	globalTextEmbeddingCacheMu.Lock()
-	globalTextEmbeddingCache = map[embeddingTextCacheKey][]float32{}
+	globalTextEmbeddingCache = map[embeddingTextCacheKey]*list.Element{}
+	globalTextEmbeddingOrder = list.New()
 	globalTextEmbeddingCacheMu.Unlock()
 }
 

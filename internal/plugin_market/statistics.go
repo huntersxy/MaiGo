@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -83,52 +82,71 @@ func attachStatistics(plugins []PluginCatalogItem, summary map[string]map[string
 	return out
 }
 
-// statisticsSnapshot 读取官方统计摘要；解析失败时让缓存失效，避免脏数据滞留
-func (s *Service) statisticsSnapshot(ctx context.Context, forceRefresh bool) (map[string]map[string]any, marketResponse, error) {
-	params := url.Values{}
-	params.Set("maibot_version", DefaultMaibotVersion())
-	params.Set("compatible_only", "false")
-	response, err := s.requestMarket(ctx, "plugins/summary", params, forceRefresh)
-	if err != nil {
-		return nil, marketResponse{}, err
+// parseStatisticsSummary 对齐 _parse_summary：统计汇总按插件 ID 返回对象映射
+func parseStatisticsSummary(data map[string]any) (map[string]map[string]any, error) {
+	success, _ := data["success"].(bool)
+	records, ok := anyMap(data["stats"])
+	if !success || !ok {
+		return nil, fmt.Errorf("官方统计汇总接口返回格式无效：%v", data)
 	}
-	fail := func(err error) (map[string]map[string]any, marketResponse, error) {
-		s.cache.Invalidate(response.SourceURL)
-		return nil, marketResponse{}, err
-	}
-	rawItems, ok := anyList(response.Data["plugins"])
-	if !ok {
-		return fail(&MarketError{StatusCode: http.StatusBadGateway, Message: "官方统计快照缺少 plugins"})
-	}
-	stats := make(map[string]map[string]any, len(rawItems))
-	for _, raw := range rawItems {
-		item, ok := anyMap(raw)
+	stats := make(map[string]map[string]any, len(records))
+	for pluginID, raw := range records {
+		record, ok := anyMap(raw)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("官方统计汇总包含无效的插件记录：%s", pluginID)
 		}
-		manifest, _ := anyMap(item["manifest"])
-		if safeInt(manifest["manifest_version"], 0) != minPluginManifestVersion {
-			continue
-		}
-		record, exists := item["stats"]
-		if !exists || record == nil {
-			continue
-		}
-		recordMap, ok := anyMap(record)
-		if !ok {
-			return fail(fmt.Errorf("官方统计快照包含无效记录"))
-		}
-		normalized, err := NormalizeStatistics(recordMap)
+		normalized, err := NormalizeStatistics(record)
 		if err != nil {
-			return fail(err)
+			return nil, err
 		}
-		pluginID := safeString(normalized["plugin_id"])
-		if _, duplicate := stats[pluginID]; duplicate {
-			return fail(fmt.Errorf("官方统计快照中的插件 ID 重复：%s", pluginID))
+		if safeString(normalized["plugin_id"]) != pluginID {
+			return nil, fmt.Errorf("官方统计汇总返回了不一致的插件记录：%s / %s",
+				pluginID, safeString(normalized["plugin_id"]))
 		}
 		stats[pluginID] = normalized
 	}
-	return stats, response, nil
+	return stats, nil
+}
+
+// statisticsSnapshot 读取独立统计汇总；只有验证成功的数据才能进入缓存
+func (s *Service) statisticsSnapshot(ctx context.Context, forceRefresh bool) (map[string]map[string]any, CacheInfo, string, error) {
+	targetURL := marketBaseURL() + "/stats/summary"
+	loader := func() (any, error) {
+		data, err := (GitSource{}).ReadJSON(ctx, targetURL, requestTimeout)
+		if err != nil {
+			return nil, err
+		}
+		return parseStatisticsSummary(data)
+	}
+	data, info, err := s.cache.Get(targetURL, loader, marketTTL, forceRefresh)
+	if err != nil {
+		return nil, CacheInfo{}, "", err
+	}
+	stats, err := statisticsSummaryMap(data)
+	if err != nil {
+		return nil, CacheInfo{}, "", err
+	}
+	return stats, info, targetURL, nil
+}
+
+// statisticsSummaryMap 缓存命中时 JSON 副本会变成 map[string]any，这里恢复按插件 ID 的映射
+func statisticsSummaryMap(data any) (map[string]map[string]any, error) {
+	switch typed := data.(type) {
+	case map[string]map[string]any:
+		return typed, nil
+	case map[string]any:
+		stats := make(map[string]map[string]any, len(typed))
+		for pluginID, raw := range typed {
+			record, ok := anyMap(raw)
+			if !ok {
+				return nil, fmt.Errorf("官方统计汇总响应格式无效")
+			}
+			stats[pluginID] = record
+		}
+		return stats, nil
+	default:
+		return nil, fmt.Errorf("官方统计汇总响应格式无效")
+	}
 }
 
 // statisticsPlugin 读取单个插件的官方统计，独立缓存评论与计数

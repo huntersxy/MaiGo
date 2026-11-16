@@ -89,8 +89,8 @@ func rejectUnknownKeys(raw map[string]any, allowed []string, model string) error
 // ParseReleaseIndex 对齐 parse_release_index：校验 schema_version、别名冲突与条目规则
 func ParseReleaseIndex(content string) (*PluginReleaseIndex, error) {
 	var raw struct {
-		SchemaVersion any              `json:"schema_version"`
-		Plugins       []map[string]any `json:"plugins"`
+		SchemaVersion any   `json:"schema_version"`
+		Plugins       []any `json:"plugins"`
 	}
 	if err := sonic.UnmarshalString(content, &raw); err != nil {
 		return nil, err
@@ -100,9 +100,18 @@ func ParseReleaseIndex(content string) (*PluginReleaseIndex, error) {
 	}
 	index := &PluginReleaseIndex{SchemaVersion: 1, Plugins: make([]PluginReleaseEntry, 0, len(raw.Plugins))}
 	aliases := map[string]string{}
-	for _, item := range raw.Plugins {
+	for _, rawItem := range raw.Plugins {
+		item, ok := anyMap(rawItem)
+		if !ok {
+			zap.L().Warn("跳过无效的插件版本索引条目", zap.String("reason", "条目不是对象"))
+			continue
+		}
 		entry, err := parseReleaseEntry(item)
 		if err != nil {
+			zap.L().Warn("跳过无效的插件版本索引条目", zap.Error(err))
+			continue
+		}
+		if err := validateReleaseEntry(*entry); err != nil {
 			zap.L().Warn("跳过无效的插件版本索引条目", zap.Error(err))
 			continue
 		}
@@ -116,10 +125,6 @@ func ParseReleaseIndex(content string) (*PluginReleaseIndex, error) {
 			}
 			aliases[key] = entry.ID
 		}
-		if err := validateReleaseEntry(*entry); err != nil {
-			zap.L().Warn("跳过无效的插件版本索引条目", zap.Error(err))
-			continue
-		}
 		index.Plugins = append(index.Plugins, *entry)
 	}
 	return index, nil
@@ -131,39 +136,6 @@ func releaseAliases(entry PluginReleaseEntry) []string {
 		aliases = append(aliases, *entry.ManifestID)
 	}
 	return aliases
-}
-
-// ParseMarketReleaseEntry 对齐 parse_market_release_entry：可由市场响应或索引条目构造
-func ParseMarketReleaseEntry(data map[string]any, pluginID string) (*PluginReleaseEntry, error) {
-	raw := map[string]any{
-		"id":                data["marketplace_id"],
-		"manifest_id":       data["id"],
-		"repositoryUrl":     data["repository_url"],
-		"mode":              data["install_mode"],
-		"versions":          data["versions"],
-		"sync_error":        data["sync_error"],
-		"rejected_releases": data["rejected_releases"],
-	}
-	if raw["rejected_releases"] == nil {
-		raw["rejected_releases"] = []any{}
-	}
-	entry, err := parseReleaseEntry(raw)
-	if err != nil {
-		return nil, err
-	}
-	if pluginID != "" {
-		matched := strings.EqualFold(entry.ID, pluginID)
-		if !matched && entry.ManifestID != nil && strings.EqualFold(*entry.ManifestID, pluginID) {
-			matched = true
-		}
-		if !matched {
-			return nil, fmt.Errorf("插件中心返回的插件 ID 与请求不一致")
-		}
-	}
-	if err := validateReleaseEntry(*entry); err != nil {
-		return nil, err
-	}
-	return entry, nil
 }
 
 func parseReleaseEntry(raw map[string]any) (*PluginReleaseEntry, error) {

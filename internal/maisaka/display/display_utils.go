@@ -11,11 +11,13 @@ import (
 
 // 工具调用来源常量
 const (
-	ToolCallSourceExtraKey      = "tool_call_source"
-	ToolCallSourceReasoning     = "reasoning"
-	ToolCallSourceResponse      = "response"
-	ToolCallSourceProvider      = "provider"
-	ToolCallSourceProviderLabel = "Provider 原生调用"
+	ToolCallSourceExtraKey         = "tool_call_source"
+	ToolCallSourceReasoning        = "reasoning"
+	ToolCallSourceResponse         = "response"
+	ToolCallSourceProvider         = "provider"
+	ToolCallSourceProviderLabel    = "Provider 原生调用"
+	ToolCallSourceActionJudge      = "action_judge"
+	ToolCallSourceActionJudgeLabel = "轻量判断器补全"
 )
 
 var requestPanelStyleMap = map[string][2]string{
@@ -114,6 +116,8 @@ func NormalizeToolCallSource(source string) string {
 		return ToolCallSourceResponse
 	case ToolCallSourceProvider, "native", "provider_native":
 		return ToolCallSourceProvider
+	case ToolCallSourceActionJudge:
+		return ToolCallSourceActionJudge
 	}
 	return ""
 }
@@ -127,6 +131,8 @@ func FormatToolCallSourceLabel(source string) string {
 		return "正文调用"
 	case ToolCallSourceProvider:
 		return ToolCallSourceProviderLabel
+	case ToolCallSourceActionJudge:
+		return ToolCallSourceActionJudgeLabel
 	}
 	return "未知来源"
 }

@@ -202,7 +202,7 @@ func chatToolChoiceFromSchema(value schema.ToolChoice) string {
 // buildRequestBody 构造 Chat Completions 请求体（测试与兼容入口）
 // 返回是否发送了旧式 max_tokens，供 400 回退判断
 func (c *chatCompletionsClient) buildRequestBody(input []*schema.AgenticMessage, options *model.Options, stream bool, useMaxCompletionTokens bool) (map[string]any, bool, error) {
-	items, err := ContextItemsFromMessages(input)
+	items, err := contextItemsForConfig(input, c.cfg)
 	if err != nil {
 		return nil, false, err
 	}

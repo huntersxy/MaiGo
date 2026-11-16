@@ -5495,9 +5495,8 @@
    "schema": {
     "properties": {
      "information_source": {
-      "default": "official",
+      "default": "cnb",
       "enum": [
-       "official",
        "cnb",
        "github"
       ],
@@ -5591,6 +5590,26 @@
    "required": true,
    "schema": {
     "properties": {
+     "force": {
+      "default": false,
+      "description": "备份代码和配置后强制更新，保留运行数据",
+      "title": "Force",
+      "type": "boolean"
+     },
+     "expected_commit": {
+      "anyOf": [
+       {
+        "pattern": "^[0-9a-f]{40}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "用户确认强制更新的目标提交",
+      "title": "Expected Commit"
+     },
      "plugin_id": {
       "description": "插件 ID",
       "title": "Plugin Id",
@@ -5648,6 +5667,8 @@
     "title": "UpdatePluginRequest",
     "type": "object",
     "x-order": [
+     "force",
+     "expected_commit",
      "plugin_id",
      "repository_url",
      "branch",

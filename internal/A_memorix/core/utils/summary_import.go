@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
-	"unicode/utf8"
 )
 
 // importFromStreamScoped 对齐 _import_from_stream_scoped
@@ -178,9 +177,19 @@ func (i *SummaryImporter) importFromStreamScoped(ctx context.Context, stream str
 	}
 	entities := normalizeSummaryEntityItems(data["entities"])
 	relations := normalizeSummaryRelationItems(data["relations"])
-	facts := normalizeSummaryFacts(data["facts"])
+	rawFacts, hasFacts := data["facts"]
+	if !hasFacts {
+		rawFacts = []any{}
+	}
+	facts, err := normalizeSummaryFacts(rawFacts)
+	if err != nil {
+		return SummaryImportResult{}, err
+	}
 	stripped := pyStrip(summaryText)
 	triggerCount := summaryIntValue(metadata["trigger_message_count"], 0)
+	if stripped != "" && len(facts) == 0 {
+		return SummaryImportResult{Success: false, Detail: "非空增量总结必须提供非空 facts，不能跳过事实去重"}, nil
+	}
 	if stripped == "" {
 		if !summaryPyEmptyList(data["entities"]) || !summaryPyEmptyList(data["relations"]) || len(facts) > 0 {
 			return SummaryImportResult{Success: false, Detail: "空增量必须同时返回空实体、空关系和空事实数组"}, nil
@@ -210,8 +219,7 @@ func (i *SummaryImporter) importFromStreamScoped(ctx context.Context, stream str
 	if err != nil {
 		return SummaryImportResult{}, err
 	}
-	restoredSummary, err := identityContext.RestoreText(stripped)
-	if err != nil {
+	if _, err := identityContext.RestoreText(stripped); err != nil {
 		return SummaryImportResult{}, err
 	}
 	for index := range entities {
@@ -278,80 +286,45 @@ func (i *SummaryImporter) importFromStreamScoped(ctx context.Context, stream str
 			}
 		}
 	}
-	if len(facts) > 0 {
-		source := map[string]any{
-			"platform":    pyStr(messages[0].Platform),
-			"chat_id":     stream,
-			"message_ids": messageIDs,
-			"observed_at": observedAt,
-		}
-		for key, value := range timeMeta {
-			source[key] = value
-		}
-		observationID, err := ObservationID(messages[0].Platform, stream, messageIDs, importValueText(metadata["external_id"]))
-		if err != nil {
-			return SummaryImportResult{}, err
-		}
-		source["observation_id"] = observationID
-		if externalID == "" {
-			externalID = "summary:" + observationID
-			metadata["external_id"] = externalID
-		}
-		planFacts := make([]FactDedupFact, 0, len(facts))
-		for _, fact := range facts {
-			planFacts = append(planFacts, FactDedupFact{FactID: fact.FactID, Text: fact.Text, PersonIDs: append([]string{}, fact.PersonIDs...)})
-		}
-		dedup := i.newDeduplicator(taskName)
-		if dedup == nil {
-			return SummaryImportResult{}, fmt.Errorf("事实去重器未初始化")
-		}
-		plan, err := dedup.Plan(ctx, "chat", stream, planFacts, source, relations)
-		if err != nil {
-			return SummaryImportResult{}, err
-		}
-		payload := summaryPayloadFromPlan(plan, facts, metadata, entities, relations, timeMeta, allowedImages)
-		resultMap, err := summaryPayloadResultMap(payload)
-		if err != nil {
-			return SummaryImportResult{}, err
-		}
-		if err := i.store.RecordSummaryCheckpoint(externalID, stream, triggerCount, "pending", resultMap); err != nil {
-			return SummaryImportResult{}, err
-		}
-		return i.finishFactSummary(ctx, payload)
+	source := map[string]any{
+		"platform":    pyStr(messages[0].Platform),
+		"chat_id":     stream,
+		"message_ids": messageIDs,
+		"observed_at": observedAt,
 	}
-	paragraphHash, err := i.executeImport(ctx, restoredSummary, entities, relations, stream, timeMeta, metadata)
+	for key, value := range timeMeta {
+		source[key] = value
+	}
+	observationID, err := ObservationID(messages[0].Platform, stream, messageIDs, importValueText(metadata["external_id"]))
 	if err != nil {
 		return SummaryImportResult{}, err
 	}
-	if _, err := i.linkSummaryImageEvidence(stream, paragraphHash, facts, allowedImages); err != nil {
+	source["observation_id"] = observationID
+	if externalID == "" {
+		externalID = "summary:" + observationID
+		metadata["external_id"] = externalID
+	}
+	planFacts := make([]FactDedupFact, 0, len(facts))
+	for _, fact := range facts {
+		planFacts = append(planFacts, FactDedupFact{FactID: fact.FactID, Text: fact.Text, PersonIDs: append([]string{}, fact.PersonIDs...)})
+	}
+	dedup := i.newDeduplicator(taskName)
+	if dedup == nil {
+		return SummaryImportResult{}, fmt.Errorf("事实去重器未初始化")
+	}
+	plan, err := dedup.Plan(ctx, "chat", stream, planFacts, source, relations)
+	if err != nil {
 		return SummaryImportResult{}, err
 	}
-	if err := i.persistVectorStore(i.vectorStore); err != nil {
+	payload := summaryPayloadFromPlan(plan, facts, metadata, entities, relations, timeMeta, allowedImages)
+	resultMap, err := summaryPayloadResultMap(payload)
+	if err != nil {
 		return SummaryImportResult{}, err
 	}
-	if i.graphStore != nil {
-		if err := i.graphStore.Save(); err != nil {
-			return SummaryImportResult{}, err
-		}
+	if err := i.store.RecordSummaryCheckpoint(externalID, stream, triggerCount, "pending", resultMap); err != nil {
+		return SummaryImportResult{}, err
 	}
-	if externalID != "" {
-		if _, err := i.store.UpsertExternalMemoryRef(externalID, paragraphHash, "chat_summary", map[string]any{
-			"chat_id":               stream,
-			"person_ids":            summaryPersonIDsFromMetadata(metadata),
-			"trigger_message_count": triggerCount,
-		}); err != nil {
-			return SummaryImportResult{}, err
-		}
-		if err := i.store.RecordSummaryCheckpoint(externalID, stream, triggerCount, "complete", nil); err != nil {
-			return SummaryImportResult{}, err
-		}
-	}
-	return SummaryImportResult{
-		Success:       true,
-		Detail:        fmt.Sprintf("总结导入成功|长度: %d|实体: %d|关系: %d", utf8.RuneCountInString(restoredSummary), len(entities), len(relations)),
-		ParagraphHash: paragraphHash,
-		Source:        "chat_summary:" + stream,
-	}, nil
+	return i.finishFactSummary(ctx, payload)
 }
 
 // summaryStringList 把任意列表转为字符串切片

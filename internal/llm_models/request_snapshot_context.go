@@ -21,8 +21,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func serializeSnapshotRequestItems(messages []*schema.AgenticMessage, assets *snapshotAssetCollector, logicalTurnID string) []any {
-	items, err := ContextItemsFromMessages(messages)
+func serializeSnapshotRequestItems(messages []*schema.AgenticMessage, cfg ModelConfig, assets *snapshotAssetCollector, logicalTurnID string) []any {
+	maxImages, maxSide, minSide := cfg.EffectiveImageLimits()
+	items, err := ContextItemsFromMessagesWithLimits(messages, maxImages, maxSide, minSide)
 	if err != nil || len(items) == 0 {
 		return serializeSnapshotRequestItemsLegacy(messages, assets, logicalTurnID)
 	}

@@ -145,6 +145,7 @@ func (r *Runtime) buildPlannerMonitorPayload(cycleDetail CycleDetail, state *Cyc
 		input.PromptCacheHit = response.Usage.CacheHitTokens
 		input.PromptCacheMiss = response.Usage.CacheMissTokens
 		input.DurationMS = float64(state.PlannerDurationMs)
+		input.PlannerActionJudge = response.PlannerActionJudge
 		input.Interrupted = state.PlannerInterrupted
 		input.StartedAt = monitor.Seconds(derefTime(state.PlannerStartedAt))
 		input.EndedAt = monitor.Seconds(derefTime(state.PlannerEndedAt))
@@ -182,13 +183,24 @@ func plannerToolCallObjects(calls []ToolCall) []map[string]any {
 			source = "reasoning"
 			sourceLabel = "推理中调用"
 		}
-		out = append(out, map[string]any{
+		if value, ok := call.ExtraContent["tool_call_source"].(string); ok && strings.TrimSpace(value) != "" {
+			source = strings.TrimSpace(value)
+			sourceLabel = ""
+		}
+		if value, ok := call.ExtraContent["tool_call_source_label"].(string); ok && strings.TrimSpace(value) != "" {
+			sourceLabel = strings.TrimSpace(value)
+		}
+		entry := map[string]any{
 			"id":           call.CallID,
 			"name":         call.Name,
 			"arguments":    call.Arguments,
 			"source":       source,
 			"source_label": sourceLabel,
-		})
+		}
+		if len(call.ExtraContent) > 0 {
+			entry["extra_content"] = call.ExtraContent
+		}
+		out = append(out, entry)
 	}
 	return out
 }

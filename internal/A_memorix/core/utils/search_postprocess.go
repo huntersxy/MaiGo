@@ -38,7 +38,7 @@ func (r RetrievalResult) ToDict() map[string]any {
 	}
 }
 
-// ApplySafeContentDedup 对齐 apply_safe_content_dedup，按哈希和内容去重
+// ApplySafeContentDedup 对齐 apply_safe_content_dedup，仅合并相同哈希或全文相等的结果
 // Python 的 hash(content) 回退依赖进程随机种子，Go 侧改用内容本身作为回退键
 func ApplySafeContentDedup(results []RetrievalResult) ([]RetrievalResult, int) {
 	if len(results) == 0 {
@@ -47,7 +47,7 @@ func ApplySafeContentDedup(results []RetrievalResult) ([]RetrievalResult, int) {
 
 	uniqueResults := make([]RetrievalResult, 0, len(results))
 	seenHashes := make(map[string]struct{}, len(results))
-	seenContents := make([]string, 0, len(results))
+	seenContents := make(map[string]struct{}, len(results))
 
 	for _, item := range results {
 		content := pyStrip(item.Content)
@@ -62,19 +62,13 @@ func ApplySafeContentDedup(results []RetrievalResult) ([]RetrievalResult, int) {
 			continue
 		}
 
-		duplicate := false
-		for _, seen := range seenContents {
-			if strings.Contains(content, seen) || strings.Contains(seen, content) {
-				duplicate = true
-				break
-			}
-		}
-		if duplicate {
+		// 文本包含不等于事实等价，不能据此删除带有独立新增信息的结果。
+		if _, ok := seenContents[content]; ok {
 			continue
 		}
 
 		seenHashes[hashValue] = struct{}{}
-		seenContents = append(seenContents, content)
+		seenContents[content] = struct{}{}
 		uniqueResults = append(uniqueResults, item)
 	}
 

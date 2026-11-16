@@ -398,10 +398,23 @@ func (g *GroupRuntime) executeTools(ctx context.Context, response maisaka.ChatRe
 						condensed = condensedText
 					}
 				}
-				if call.Name != "wait" {
+				isTimedWait := false
+				if spec != nil && spec.Provider == maisaka.BuiltinProviderName &&
+					(spec.Name == "reply" || spec.Name == "wait") && result.Success {
+					_, isTimedWait = metadataIntValue(result.Metadata["wait_seconds"])
+				}
+				if !isTimedWait {
 					g.mu.Lock()
 					g.waits = 0
 					g.mu.Unlock()
+				}
+				if spec != nil && spec.Provider == maisaka.BuiltinProviderName {
+					switch spec.Name {
+					case "reply":
+						g.applyReplyControl(result, member.SessionID())
+					case "wait":
+						g.applyWaitControl(result, member.SessionID())
+					}
 				}
 			}
 		}

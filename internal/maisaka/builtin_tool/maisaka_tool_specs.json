@@ -90,6 +90,20 @@
     "name": "reply",
     "parameters_schema": {
       "properties": {
+        "after_reply": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "wait"
+          ],
+          "default": "wait",
+          "description": "回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断。wait 会取消同批后续工具。"
+        },
+        "wait_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "可选。after_reply=wait 时最多等待的秒数，到期后即使没有新消息也会继续思考。不填表示结束本轮。"
+        },
         "attach_emoji": {
           "anyOf": [
             {
@@ -226,12 +240,56 @@
     "provider_name": "maisaka_builtin",
     "provider_type": "builtin"
   },
-  "stop": {
-    "description": "结束本轮思考并等待新消息，与不调用任何工具时一致；无需继续行动时调用。",
-    "name": "stop",
+  "schedule": {
+    "description": "创建，查询或者修改日程，日程可以在定时唤起提醒，当需要在特定时间点做事时使用。新增必须填写 text 和未来时间：delay_seconds 或 ISO 8601 due_at 二选一。修改前先查询真实 todo_id；update 省略时间保留计划。创建日程只登记任务。",
+    "name": "schedule",
     "parameters_schema": {
-      "properties": {},
-      "required": [],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "delay_seconds",
+          "due_at"
+        ]
+      },
+      "properties": {
+        "action": {
+          "enum": [
+            "add",
+            "list",
+            "update",
+            "cancel",
+            "complete"
+          ],
+          "type": "string"
+        },
+        "delay_seconds": {
+          "description": "从现在起多少秒后唤醒",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "due_at": {
+          "description": "未来 ISO 8601 时间，建议携带时区，如 2026-11-14T09:00:00+08:00",
+          "type": "string"
+        },
+        "include_completed": {
+          "description": "list 时包含已完成或取消的历史，默认 false",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "到期要执行的任务",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "todo_id": {
+          "description": "查询返回的真实日程 id",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
       "type": "object"
     },
     "provider_name": "maisaka_builtin",
@@ -349,19 +407,18 @@
     "provider_type": "builtin"
   },
   "wait": {
-    "description": "等待一段时间；期间不查看聊天，用于一段时间后再次查看聊天内容。不适用于正在进行的聊天。",
+    "description": "暂停当前思考，不发送消息。不填 seconds 表示结束本轮，等待新消息；填写 seconds 表示定时等待，到期后即使没有新消息也会继续思考。定时等待可能被新消息提前唤醒。",
     "name": "wait",
     "parameters_schema": {
+      "type": "object",
       "properties": {
         "seconds": {
-          "description": "等待秒数。",
-          "type": "integer"
+          "type": "integer",
+          "minimum": 0,
+          "description": "等待秒数。"
         }
       },
-      "required": [
-        "seconds"
-      ],
-      "type": "object"
+      "additionalProperties": false
     },
     "provider_name": "maisaka_builtin",
     "provider_type": "builtin"

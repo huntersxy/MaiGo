@@ -157,7 +157,7 @@ func (a selfCheckEmbeddingAdapter) Encode(ctx context.Context, text string) ([]f
 	if a.inner == nil {
 		return nil, errors.New("嵌入管理器未初始化")
 	}
-	return a.inner.EncodeOne(ctx, text, nil)
+	return a.inner.EncodeOneUncached(ctx, text)
 }
 
 // vectorSnapshotSource 避免 typed-nil 进入自检接口
@@ -346,16 +346,14 @@ func (r *Runtime) startTaskWorkers() {
 
 // shutdownImportManager 停止导入消费协程并关闭管理器
 func (r *Runtime) shutdownImportManager(ctx context.Context) error {
-	if r.importCancel != nil {
-		r.importCancel()
-		r.importCancel = nil
-	}
-	if r.importDone != nil {
-		select {
-		case <-r.importDone:
-		case <-ctx.Done():
-			return ctx.Err()
+	if r.importDone != nil || r.importCancel != nil {
+		task := utils.StoppableTask{Name: "web_import_worker", Cancel: r.importCancel, Done: r.importDone}
+		if err := utils.CancelAndWaitForTasks(ctx, "关闭 Web 导入任务", []utils.StoppableTask{task}, func(message string) {
+			r.logger.Error(message)
+		}); err != nil {
+			return err
 		}
+		r.importCancel = nil
 		r.importDone = nil
 	}
 	if r.importManager != nil {

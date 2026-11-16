@@ -17,6 +17,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
+
+	"MaiGo/internal/services/schedules"
 )
 
 const (
@@ -187,7 +189,10 @@ func (s *Service) handleEvent(ctx context.Context, event map[string]any) error {
 		return nil
 	case "chat":
 		requestID, _ := event["request_id"].(string)
-		s.handleChat(ctx, requestID)
+		go s.handleChat(ctx, requestID)
+		return nil
+	case "todo_request":
+		go s.handleTodoRequest(ctx, event)
 		return nil
 	case "ack":
 		s.deliverAck(event)
@@ -214,6 +219,44 @@ func (s *Service) markReady(ctx context.Context) {
 	}()
 	s.emitHook(ctx, "ready", nil)
 	s.buttonsChanged()
+	s.restartProactiveWake()
+}
+
+// sendEvent 直接写入窗口管道，不等待回执
+func (s *Service) sendEvent(ctx context.Context, payload map[string]any) error {
+	s.mu.Lock()
+	ready, closing, stdin := s.ready, s.closing, s.stdin
+	s.mu.Unlock()
+	if !ready || closing || stdin == nil {
+		return errIPCNotReady
+	}
+	encoded, err := sonic.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if _, err := stdin.Write(encoded); err != nil {
+		return errIPCClosed
+	}
+	return nil
+}
+
+// handleTodoRequest 执行窗口的事项管理请求，所有持久化由主程序完成
+func (s *Service) handleTodoRequest(ctx context.Context, event map[string]any) {
+	requestID := asString(event["request_id"])
+	command, _ := event["command"].(map[string]any)
+	response := map[string]any{"type": "todo_response", "request_id": requestID}
+	result, err := schedules.Default().Command(ctx, command, "")
+	if err != nil {
+		response["error"] = err.Error()
+	} else {
+		response["result"] = result
+	}
+	if sendErr := s.sendEvent(ctx, response); sendErr != nil {
+		zap.L().Warn("回传桌宠事项结果失败", zap.Error(sendErr))
+	}
 }
 
 // deliverAck 把回执交给等待方；超时或已取消的迟到回执直接丢弃

@@ -4,13 +4,16 @@ import (
 	"context"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 )
 
 // ToolCatalogEntry 当前会话 Generation 已注册的工具名与描述
 type ToolCatalogEntry struct {
 	Name        string
 	Description string
+	Parameters  map[string]any
 	Deferred    bool
 }
 
@@ -41,6 +44,7 @@ func BuildToolCatalog(ctx context.Context, chatTools []tool.BaseTool) []ToolCata
 		}
 		seen[name] = struct{}{}
 		desc := strings.TrimSpace(info.Desc)
+		parameters := toolCatalogParameters(info)
 		deferred := false
 		if marker, ok := item.(deferredToolMarker); ok && marker.IsDeferredTool() {
 			deferred = true
@@ -48,10 +52,31 @@ func BuildToolCatalog(ctx context.Context, chatTools []tool.BaseTool) []ToolCata
 		out = append(out, ToolCatalogEntry{
 			Name:        name,
 			Description: desc,
+			Parameters:  parameters,
 			Deferred:    deferred,
 		})
 	}
 	return out
+}
+
+// toolCatalogParameters 提取工具参数 JSON Schema，供末尾加载结果携带完整定义
+func toolCatalogParameters(info *schema.ToolInfo) map[string]any {
+	if info == nil || info.ParamsOneOf == nil {
+		return nil
+	}
+	jsonSchema, err := info.ParamsOneOf.ToJSONSchema()
+	if err != nil {
+		return nil
+	}
+	raw, err := sonic.MarshalString(jsonSchema)
+	if err != nil {
+		return nil
+	}
+	parameters := map[string]any{}
+	if err := sonic.UnmarshalString(raw, &parameters); err != nil {
+		return nil
+	}
+	return parameters
 }
 
 // SearchToolCatalog 按 MaiBot tool_search 同款打分规则在目录中检索

@@ -23,9 +23,36 @@ func (h *Host) StartUsageTracking(path string) error {
 	}
 	tracker := NewPluginUsageTracker(path)
 	if err := tracker.Load(); err != nil {
-		return err
+		// 计时记录不可读时只停用计时，不阻止插件运行时启动。
+		h.mu.Lock()
+		h.usage = nil
+		h.usageTracking = false
+		h.usageError = err
+		h.mu.Unlock()
+		zap.L().Warn("读取插件累计使用时长失败，已停用计时", zap.String("path", path), zap.Error(err))
+		return nil
 	}
 	return h.attachUsageTracking(tracker, DefaultPluginUsageCheckpointInterval)
+}
+
+// UsageAvailable 返回累计使用时长是否可用；记录损坏时前端省略 usage_seconds
+func (h *Host) UsageAvailable() bool {
+	if h == nil {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.usage != nil && h.usageError == nil
+}
+
+// UsageError 返回停用计时的原因
+func (h *Host) UsageError() error {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.usageError
 }
 
 // StopUsageTracking 停止周期 checkpoint，结算当前运行区间并落盘
@@ -44,6 +71,7 @@ func (h *Host) attachUsageTracking(tracker *PluginUsageTracker, interval time.Du
 	h.mu.Lock()
 	h.usage = tracker
 	h.usageTracking = true
+	h.usageError = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	h.usageCancel = cancel
 	h.usageWG.Add(1)

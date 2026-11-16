@@ -32,6 +32,9 @@ type scriptLLMGateway struct {
 	temperature *float64
 	maxTokens   *int
 	logger      utils.Logger
+	// fast 轻量任务专用网关，对齐 resolve_fast_text_generation_model
+	fast    *scriptLLMGateway
+	fastErr error
 }
 
 // newScriptLLMGateway 构造脚本 LLM 网关，无可路由模型时返回 No LLM models
@@ -89,7 +92,43 @@ func newScriptLLMGateway(ctx context.Context, pluginConfig map[string]any, logge
 		value := taskConfig.MaxTokens
 		gateway.maxTokens = &value
 	}
+	fastModel, fastErr := utils.ResolveFastTextGenerationModel(available)
+	if fastErr == nil {
+		resolvedFast, fastClient, err := router.NewClientForTaskWithFailover(ctx, llm.TaskName(fastModel.TaskName))
+		if err != nil {
+			fastErr = err
+		} else {
+			fast := &scriptLLMGateway{
+				router:     router,
+				client:     fastClient,
+				taskName:   resolvedFast.Task,
+				taskConfig: fastModel.TaskConfig,
+				logger:     logger,
+			}
+			if fastModel.TaskConfig.Temperature > 0 {
+				value := fastModel.TaskConfig.Temperature
+				fast.temperature = &value
+			}
+			if fastModel.TaskConfig.MaxTokens > 0 {
+				value := fastModel.TaskConfig.MaxTokens
+				fast.maxTokens = &value
+			}
+			gateway.fast = fast
+		}
+	}
+	gateway.fastErr = fastErr
 	return gateway, nil
+}
+
+// completionFast 对齐轻量任务走 fast_model，未配置时不回退主任务
+func (g *scriptLLMGateway) completionFast(ctx context.Context, prompt string) (map[string]any, error) {
+	if g.fast != nil {
+		return g.fast.completion(ctx, prompt)
+	}
+	if g.fastErr != nil {
+		return nil, g.fastErr
+	}
+	return nil, errors.New("快速记忆任务需要配置 fast_model 或 utils 模型")
 }
 
 // completion 对齐 _llm_call：最多 3 次重试并解析 JSON 响应

@@ -45,12 +45,12 @@ func ReadReleaseReceipt(pluginPath string) (map[string]any, error) {
 }
 
 // InstallRelease 对齐 release_install.install_release：失败时上报 error 进度
-func (s *Service) InstallRelease(ctx context.Context, pluginID string, entry *PluginReleaseEntry, release *PluginRelease, updating, automatic bool, mirrorID string) (InstallResult, error) {
+func (s *Service) InstallRelease(ctx context.Context, pluginID string, entry *PluginReleaseEntry, release *PluginRelease, updating, automatic bool, mirrorID string, force bool, expectedCommit *string) (InstallResult, error) {
 	operation := "install"
 	if updating {
 		operation = "update"
 	}
-	result, err := s.installRelease(ctx, pluginID, entry, release, updating, automatic, mirrorID)
+	result, err := s.installRelease(ctx, pluginID, entry, release, updating, automatic, mirrorID, force, expectedCommit)
 	if err != nil {
 		message := err.Error()
 		if marketErr, ok := AsMarketError(err); ok {
@@ -63,10 +63,13 @@ func (s *Service) InstallRelease(ctx context.Context, pluginID string, entry *Pl
 }
 
 // installRelease 对齐 release_install._install_release
-func (s *Service) installRelease(ctx context.Context, pluginID string, entry *PluginReleaseEntry, release *PluginRelease, updating, automatic bool, mirrorID string) (InstallResult, error) {
+func (s *Service) installRelease(ctx context.Context, pluginID string, entry *PluginReleaseEntry, release *PluginRelease, updating, automatic bool, mirrorID string, force bool, expectedCommit *string) (InstallResult, error) {
 	operation := "install"
 	if updating {
 		operation = "update"
+	}
+	if force && (expectedCommit == nil || release.Commit != *expectedCommit) {
+		return InstallResult{}, conflictError("目标版本已变化，请重新发起更新并确认")
 	}
 	canonicalID := pluginID
 	if entry.ManifestID != nil && *entry.ManifestID != "" {
@@ -111,8 +114,11 @@ func (s *Service) installRelease(ctx context.Context, pluginID string, entry *Pl
 			return InstallResult{}, err
 		}
 	}
-	if automatic && oldVersion != nil && compareReleaseVersions(release.Version, *oldVersion) <= 0 {
-		return InstallResult{}, conflictError("当前已是最新兼容版本，不会自动降级或重装")
+	if automatic && oldVersion != nil {
+		comparison := compareReleaseVersions(release.Version, *oldVersion)
+		if comparison < 0 || (comparison == 0 && !force) {
+			return InstallResult{}, conflictError("当前已是最新兼容版本，不会自动降级或重装")
+		}
 	}
 	tmpDirectory, err := workDirectory(filepath.Dir(target), updateTmpDirectory)
 	if err != nil {
@@ -141,9 +147,16 @@ func (s *Service) installRelease(ctx context.Context, pluginID string, entry *Pl
 	if !clone.Success {
 		return InstallResult{}, &MarketError{StatusCode: 502, Message: clone.Error}
 	}
-	warnings, err := s.validateCandidate(ctx, candidate, entry, release)
+	// 文件校验与替换一旦开始就收尾完成，避免请求取消后留下半更新的插件目录。
+	commitCtx := context.WithoutCancel(ctx)
+	warnings, err := s.validateCandidate(commitCtx, candidate, entry, release)
 	if err != nil {
 		return InstallResult{}, err
+	}
+	if existing != "" {
+		if err := s.checkExistingCode(commitCtx, target, candidate, force); err != nil {
+			return InstallResult{}, err
+		}
 	}
 	s.reportStep(operation, pluginID, 85, "文件校验通过，等待其他插件操作或运行环境重启完成...")
 
@@ -156,25 +169,27 @@ func (s *Service) installRelease(ctx context.Context, pluginID string, entry *Pl
 				return err
 			}
 			s.reportStep(operation, pluginID, 90, "正在停止旧版本插件，等待插件退出...")
-			unloaded, err := s.unloadRuntime(ctx, canonicalID)
+			unloaded, err := s.unloadRuntime(commitCtx, canonicalID)
 			if err != nil {
 				return err
 			}
 			stopped = unloaded
 			s.reportStep(operation, pluginID, 92, "正在保留插件配置和本地数据...")
-			if err := preserveUserFiles(ctx, target, candidate); err != nil {
-				return err
+			if !force {
+				if err := preserveUserFiles(commitCtx, target, candidate); err != nil {
+					return err
+				}
 			}
 		}
 		s.reportStep(operation, pluginID, 95, "正在替换插件版本文件...")
-		if err := replaceFiles(candidate, target, backup, existing != "", canonicalID, entry, release); err != nil {
+		if err := s.replaceFiles(commitCtx, candidate, target, backup, existing != "", force, canonicalID, entry, release); err != nil {
 			return err
 		}
 		swapped = true
 		if existing == "" {
 			// 整个目录移入时可能没有源码事件，首次安装必须主动同步运行时
 			s.reportStep(operation, pluginID, 98, "正在同步插件依赖并加载插件...")
-			if err := s.activateRuntime(ctx, canonicalID); err != nil {
+			if err := s.activateRuntime(commitCtx, canonicalID); err != nil {
 				return &MarketError{StatusCode: 409, Message: "插件文件已安装，但运行时加载失败：" + err.Error()}
 			}
 		}
@@ -184,7 +199,7 @@ func (s *Service) installRelease(ctx context.Context, pluginID string, entry *Pl
 	failure := replaceAndReload()
 	if len(stopped) > 0 {
 		s.reportStep(operation, pluginID, 98, "正在加载新版本插件...")
-		resumeError := s.resumeRuntime(ctx, stopped)
+		resumeError := s.resumeRuntime(commitCtx, stopped)
 		if failure == nil && resumeError != nil {
 			failure = resumeError
 		} else if failure != nil && resumeError != nil {
@@ -224,7 +239,7 @@ func (s *Service) installRelease(ctx context.Context, pluginID string, entry *Pl
 }
 
 // replaceFiles 对齐 replace_files：写入安装记录并原子替换目录
-func replaceFiles(candidate, target, backup string, existing bool, canonicalID string, entry *PluginReleaseEntry, release *PluginRelease) error {
+func (s *Service) replaceFiles(ctx context.Context, candidate, target, backup string, existing, force bool, canonicalID string, entry *PluginReleaseEntry, release *PluginRelease) error {
 	receipt := map[string]any{
 		"plugin_id":      canonicalID,
 		"version":        release.Version,
@@ -236,7 +251,14 @@ func replaceFiles(candidate, target, backup string, existing bool, canonicalID s
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(candidate, releaseReceiptName), append(raw, '\n'), 0o644); err != nil {
+	receiptPayload := append(raw, '\n')
+	if existing && force {
+		if err := s.replaceExistingCode(ctx, target, candidate, backup, force); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(target, releaseReceiptName), receiptPayload, 0o644)
+	}
+	if err := os.WriteFile(filepath.Join(candidate, releaseReceiptName), receiptPayload, 0o644); err != nil {
 		return err
 	}
 	if existing {
@@ -258,6 +280,66 @@ func replaceFiles(candidate, target, backup string, existing bool, canonicalID s
 		return err
 	}
 	return nil
+}
+
+// checkExistingCode 对齐 check_existing_code：检测已安装插件代码冲突，强制更新时允许覆盖
+func (s *Service) checkExistingCode(ctx context.Context, target, candidate string, force bool) error {
+	if !isGitRepository(target) {
+		return nil
+	}
+	commitOutput, err := runPluginGit(ctx, candidate, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	commit := strings.TrimSpace(commitOutput)
+	candidateResolved, err := filepath.Abs(candidate)
+	if err != nil {
+		return err
+	}
+	if _, err := runPluginGit(ctx, target, "fetch", "--no-tags", candidateResolved, commit); err != nil {
+		return err
+	}
+	conflict, err := updateConflict(ctx, target, commit)
+	if err != nil {
+		return err
+	}
+	if conflict != nil && !force {
+		return conflictPayloadError(conflict)
+	}
+	return nil
+}
+
+// replaceExistingCode 对齐 replace_existing_code：只备份插件代码与配置，原地保留配置和数据
+func (s *Service) replaceExistingCode(ctx context.Context, target, candidate, backup string, force bool) error {
+	if err := checkTree(target); err != nil {
+		return err
+	}
+	if err := s.checkExistingCode(ctx, target, candidate, force); err != nil {
+		return err
+	}
+	if !isGitRepository(target) {
+		return badRequestError("无 Git 安装不需要处理本地提交冲突")
+	}
+	commitOutput, err := runPluginGit(ctx, candidate, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	commit := strings.TrimSpace(commitOutput)
+	if err := backupCode(ctx, target, backup, commit); err != nil {
+		return err
+	}
+	if err := replaceCode(ctx, target, commit); err != nil {
+		if restoreErr := restoreCode(ctx, target, backup); restoreErr != nil {
+			zap.L().Error("恢复插件代码备份失败", zap.String("path", target), zap.Error(restoreErr))
+		}
+		return err
+	}
+	return nil
+}
+
+// conflictPayloadError 把代码冲突作为结构化 409 返回给前端确认流程
+func conflictPayloadError(conflict *CodeConflict) error {
+	return &MarketError{StatusCode: 409, Message: conflict.Message, Payload: conflict}
 }
 
 // unloadRuntime 对齐 _stop_runtime

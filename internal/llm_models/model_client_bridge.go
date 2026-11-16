@@ -57,6 +57,7 @@ var (
 
 	// 上下文项投影与请求构造
 	ContextItemsFromMessages            = model_client.ContextItemsFromMessages
+	ContextItemsFromMessagesWithLimits  = model_client.ContextItemsFromMessagesWithLimits
 	AgenticMessageFromContextItems      = model_client.AgenticMessageFromContextItems
 	buildChatMessagesFromContextItems   = model_client.BuildChatMessagesFromContextItems
 	buildChatToolDefinitions            = model_client.BuildChatToolDefinitions

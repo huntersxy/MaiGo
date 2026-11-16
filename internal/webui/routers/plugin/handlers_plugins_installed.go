@@ -23,10 +23,14 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			records[record.PluginID] = pluginmarketHostRecord{loaded: true, configError: record.ConfigError}
 		}
 	}
+	usageAvailable := true
 	usage := map[string]float64{}
 	if d.PluginHost != nil {
-		if snapshot := d.PluginHost.UsageSnapshot(); snapshot != nil {
-			usage = snapshot
+		usageAvailable = d.PluginHost.UsageAvailable()
+		if usageAvailable {
+			if snapshot := d.PluginHost.UsageSnapshot(); snapshot != nil {
+				usage = snapshot
+			}
 		}
 	}
 	circuits := circuitbreaker.Default().Statuses()
@@ -112,15 +116,11 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			effectiveStatus = "disabled"
 		}
 		release, _ := pluginmarket.ReadReleaseReceipt(pluginPath)
-		usageSeconds := float64(0)
-		if seconds, ok := usage[pluginID]; ok {
-			usageSeconds = seconds
-		}
 		var circuitStatus any
 		if status, ok := circuits[pluginID]; ok {
 			circuitStatus = status
 		}
-		plugins = append(plugins, map[string]any{
+		plugin := map[string]any{
 			"id":             pluginID,
 			"manifest":       manifest,
 			"builtin":        candidate.builtin,
@@ -130,12 +130,15 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			"loaded":         effectiveStatus == "success",
 			"load_status":    effectiveStatus,
 			"status_badges":  pluginStatusBadges(d.PluginHost, pluginID, effectiveStatus),
-			"usage_seconds":  usageSeconds,
 			"load_error":     loadErrorOrEmpty(loadError, effectiveStatus),
 			"circuit_status": circuitStatus,
 			"changelog":      readLocalPluginChangelog(pluginPath),
 			"release":        release,
-		})
+		}
+		if usageAvailable {
+			plugin["usage_seconds"] = usage[pluginID]
+		}
+		plugins = append(plugins, plugin)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"success": true, "plugins": plugins, "total": len(plugins)})
 }
@@ -166,6 +169,10 @@ func pluginStatusBadges(host *pluginruntime.Host, pluginID, status string) []map
 
 // handlePluginUsage 对齐 GET /plugins/usage
 func (d Deps) handlePluginUsage(w http.ResponseWriter, r *http.Request) {
+	if d.PluginHost != nil && !d.PluginHost.UsageAvailable() {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"usage_seconds": nil})
+		return
+	}
 	usage := map[string]float64{}
 	if d.PluginHost != nil {
 		if snapshot := d.PluginHost.UsageSnapshot(); snapshot != nil {
