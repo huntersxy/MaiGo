@@ -53,7 +53,7 @@ func PrivateDebounceMode(rt ChatReplyTimingConfig) string {
 // GroupTalkFrequency 群聊 talk_value，含时段规则（对齐 ChatConfigUtils.get_talk_value 群聊分支）
 func GroupTalkFrequency(rt ChatReplyTimingConfig, platform string, groupID int64) float64 {
 	base := rt.TalkValue
-	if !rt.EnableTalkValueRules || len(rt.TalkValueRules) == 0 {
+	if len(rt.TalkValueRules) == 0 {
 		return base
 	}
 	nowMin := time.Now().Hour()*60 + time.Now().Minute()

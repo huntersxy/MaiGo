@@ -294,14 +294,13 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 			label = "已暂停"
 		}
 		return map[string]any{
-			"enabled": false, "base_value": value, "base_value_label": label,
+			"base_value": value, "base_value_label": label,
 			"effective_value": value, "effective_value_label": label,
 			"current_time": currentTime, "matched_rules": []any{},
 		}
 	}
 	baseValue := chatConfigFloat(replyTiming["talk_value"], 1.0)
 	effectiveValue := baseValue
-	enabled := chatConfigBool(replyTiming["enable_talk_value_rules"], false)
 	rules := chatConfigRules(replyTiming["talk_value_rules"])
 	details := make([]map[string]any, 0, len(rules))
 	selectedIndex := -1
@@ -322,7 +321,7 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 		}
 		details = append(details, detail)
 	}
-	if enabled && selectedIndex >= 0 {
+	if selectedIndex >= 0 {
 		details[selectedIndex]["is_effective"] = true
 		effectiveValue = selectedValue
 	}
@@ -339,7 +338,7 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 		return left["time_priority"].(int) > right["time_priority"].(int)
 	})
 	return map[string]any{
-		"enabled": enabled, "base_value": baseValue, "base_value_label": formatChatFrequency(baseValue),
+		"base_value": baseValue, "base_value_label": formatChatFrequency(baseValue),
 		"effective_value": effectiveValue, "effective_value_label": formatChatFrequency(effectiveValue),
 		"current_time": currentTime, "matched_rules": details,
 	}

@@ -31,7 +31,6 @@ func (a *Agent) SetInstanceHolder(holder *maibotcfg.InstanceHolder) {
 	if cfg := holder.Config(); cfg != nil {
 		a.applyReplyTimingFromInstance(cfg)
 	}
-	a.warmReplyerTypoData()
 	a.wireLearnersEmbedding(context.Background())
 	a.wireNativeImageEmbedding()
 	a.wireLearnersJargonRouter()
@@ -56,7 +55,6 @@ func (a *Agent) onInstanceConfigReload(cfg *maibotcfg.InstanceConfig, scopes []m
 	}
 	if botChanged {
 		a.applyReplyTimingFromInstance(cfg)
-		a.warmReplyerTypoData()
 		// bot_config 可能切换 use_vector_expression 或索引路径，需要重新启动或唤醒补建循环
 		reg := learners.DefaultRegistry()
 		// bot 作用域只关心学习配置签名；embedding 路由签名由 wireLearnersEmbedding 负责

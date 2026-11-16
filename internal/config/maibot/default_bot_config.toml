@@ -75,23 +75,6 @@ no_action_backoff_base_seconds = 15
 no_action_backoff_cap_seconds = 300
 no_action_backoff_start_count = 2
 no_action_backoff_bypass_pending_count = 6
-enable_talk_value_rules = false
-
-[[chat.reply_timing.talk_value_rules]]
-platform = ""
-item_id = ""
-rule_type = "group"
-time = "00:00-08:59"
-value = 0.8
-
-
-[[chat.reply_timing.talk_value_rules]]
-platform = ""
-item_id = ""
-rule_type = "group"
-time = "09:00-18:59"
-value = 1.0
-
 
 [chat.reply_style]
 group_quote_frequency = "occasionally"
@@ -436,15 +419,6 @@ regex_rules = []
 [response_post_process]
 enable_response_post_process = true
 typing_speed = 1.0
-
-[chinese_typo]
-enable = true
-enable_correction_quote = true
-correction_quote_probability = 1.0
-error_rate = 0.01
-min_freq = 9
-tone_error_rate = 0.1
-word_replace_rate = 0.006
 
 [response_splitter]
 mode = "rule"

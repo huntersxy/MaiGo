@@ -434,7 +434,7 @@ func upgradeSplitChatConfigSections(bot *BotConfigFile) []string {
 	})
 	moveRootToTiming("enable_talk_value_rules", func() {
 		if legacy.EnableTalkValueRules != nil {
-			rt.EnableTalkValueRules = *legacy.EnableTalkValueRules
+			rt.EnableTalkValueRules = legacy.EnableTalkValueRules
 		}
 	})
 	moveRootToTiming("talk_value_rules", func() {

@@ -14,7 +14,7 @@ import (
 // 默认在版本升级或旧版迁移后写回磁盘；MAIBOT_CONFIG_WRITEBACK=0/false 可显式关闭（见 writeback.go）
 // 见 MaiBot src/config/config.py CONFIG_VERSION / MODEL_CONFIG_VERSION
 const (
-	BotConfigTargetVersion   = "8.16.7"
+	BotConfigTargetVersion   = "8.16.11"
 	ModelConfigTargetVersion = "1.17.25"
 )
 
@@ -277,12 +277,37 @@ func loadBotConfigFile(path, root string, out *InstanceConfig, opts LoadOptions)
 	applyLearningItemDefaults(&doc, decodedRaw)
 	out.BotInner = doc.Inner
 	out.Bot = doc.BotConfigFile
+	var legacyTypo struct {
+		ChineseTypo *ChineseTypoConfig `toml:"chinese_typo"`
+	}
+	if err := toml.Unmarshal(decodedRaw, &legacyTypo); err == nil {
+		out.Bot.LegacyChineseTypo = legacyTypo.ChineseTypo
+	}
 	out.LegacyMigration = report
-	out.BotUnknownKeys = unknownTopLevelKeys(finalRaw, BotConfigFile{})
+	out.BotUnknownKeys = filterLegacyUnknownKeys(unknownTopLevelKeys(finalRaw, BotConfigFile{}), "chinese_typo")
 	out.botRaw = botConfigKeyTree(decodedRaw)
 	out.Bot.LoadMeta = parseBotConfigLoadMeta(finalRaw)
 	captureJargonGroupsLegacyRaw(finalRaw, &out.Bot)
 	return nil
+}
+
+// filterLegacyUnknownKeys 排除已删除但仍用于迁移的旧根级表
+func filterLegacyUnknownKeys(keys []string, legacy ...string) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+	skip := make(map[string]struct{}, len(legacy))
+	for _, key := range legacy {
+		skip[key] = struct{}{}
+	}
+	filtered := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := skip[key]; ok {
+			continue
+		}
+		filtered = append(filtered, key)
+	}
+	return filtered
 }
 
 // normalizeAMemorixImportRaw 把 TOML 的 a_memorix.web.import 映射到 Python 属性 import_config

@@ -1,4 +1,4 @@
-// 已安装的 QQ 官方适配器迁入内置配置布局，对齐 src/plugin_runtime/builtin_adapter_migration.py
+// 已安装的官方适配器迁入内置配置布局，对齐 src/plugin_runtime/builtin_adapter_migration.py
 package pluginruntime
 
 import (
@@ -18,18 +18,28 @@ import (
 )
 
 const (
-	qqOfficialAdapterPluginID   = "Mai-with-u.qq-adapter"
-	qqOfficialAdapterDirName    = "qq_official_adapter"
-	qqOfficialAdapterBackupRoot = ".builtin-backups"
+	qqOfficialAdapterPluginID = "Mai-with-u.qq-adapter"
+	telegramAdapterPluginID   = "maibot-team.telegram-adapter"
+	telegramAdapterLegacyID   = "Sengoku.telegram-adapter"
+	builtinAdapterBackupRoot  = ".builtin-backups"
 )
 
-// MigrateQQOfficialAdapter 在索引和加载前迁移；配置不覆盖，数据目录因插件 ID 不变而无需搬动
+// MigrateQQOfficialAdapter 迁移 QQ 官方适配器的外部安装
 func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) {
+	return migrateBuiltinAdapter(projectRoot, instanceRoot, qqOfficialAdapterPluginID, "qq_official_adapter", "QQ 官方适配器")
+}
+
+// MigrateTelegramAdapter 迁移 Telegram 适配器及曾使用个人作者 ID 的版本
+func MigrateTelegramAdapter(projectRoot, instanceRoot string) (string, error) {
+	return migrateBuiltinAdapter(projectRoot, instanceRoot, telegramAdapterPluginID, "telegram_adapter", "Telegram 适配器", telegramAdapterLegacyID)
+}
+
+func migrateBuiltinAdapter(projectRoot, instanceRoot, pluginID, directoryName, displayName string, legacyIDs ...string) (string, error) {
 	builtinRoot := runner.DefaultBuiltinPluginDir(projectRoot)
 	if strings.TrimSpace(builtinRoot) == "" {
 		return "", nil
 	}
-	builtin := filepath.Join(builtinRoot, qqOfficialAdapterDirName)
+	builtin := filepath.Join(builtinRoot, directoryName)
 	if !isRegularFile(filepath.Join(builtin, "_manifest.json")) {
 		return "", nil
 	}
@@ -37,8 +47,19 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 	if strings.TrimSpace(root) == "" {
 		return "", nil
 	}
-	if err := migrateQQOfficialLegacyData(root, instanceRoot); err != nil {
-		return "", err
+	for _, oldID := range append([]string{pluginID}, legacyIDs...) {
+		if err := migrateBuiltinLegacyData(root, instanceRoot, oldID, pluginID, directoryName, displayName); err != nil {
+			return "", err
+		}
+	}
+	for _, oldID := range legacyIDs {
+		if err := migrateBuiltinLegacyData(filepath.Join(instanceRoot, "data", "plugins"), instanceRoot, oldID, pluginID, directoryName, displayName); err != nil {
+			return "", err
+		}
+	}
+	accepted := make(map[string]struct{}, 1+len(legacyIDs))
+	for _, id := range append([]string{pluginID}, legacyIDs...) {
+		accepted[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -65,12 +86,12 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 		if json.Unmarshal(raw, &metadata) != nil {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(metadata.ID), qqOfficialAdapterPluginID) {
+		if _, ok := accepted[strings.ToLower(strings.TrimSpace(metadata.ID))]; ok {
 			if err := ensureContainedDirectory(root, directory); err != nil {
 				return "", err
 			}
 			if isSymlink(manifest) {
-				return "", fmt.Errorf("QQ 官方适配器迁移目录包含链接或越界: %s", directory)
+				return "", fmt.Errorf("%s迁移目录包含链接或越界: %s", displayName, directory)
 			}
 			candidates = append(candidates, directory)
 		}
@@ -79,14 +100,14 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 		return "", nil
 	}
 	if len(candidates) != 1 {
-		return "", fmt.Errorf("QQ 官方适配器存在多个旧安装，请先处理重复目录: %v", candidates)
+		return "", fmt.Errorf("%s存在多个旧安装，请先处理重复目录: %v", displayName, candidates)
 	}
 
 	source := candidates[0]
 	oldConfig := filepath.Join(source, "config.toml")
 	config := filepath.Join(builtin, "config.toml")
 	if isSymlink(oldConfig) {
-		return "", fmt.Errorf("QQ 官方适配器配置不能是符号链接: %s", oldConfig)
+		return "", fmt.Errorf("%s配置不能是符号链接: %s", displayName, oldConfig)
 	}
 	if isRegularFile(oldConfig) && !pathExists(config) {
 		raw, readErr := os.ReadFile(oldConfig)
@@ -95,7 +116,7 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 		}
 		var parsed map[string]any
 		if err := toml.Unmarshal(raw, &parsed); err != nil {
-			return "", fmt.Errorf("QQ 官方适配器配置无效: %w", err)
+			return "", fmt.Errorf("%s配置无效: %w", displayName, err)
 		}
 		if err := copyFileAtomic(oldConfig, config); err != nil {
 			return "", err
@@ -103,17 +124,17 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 	}
 
 	// 隐藏目录不参与插件扫描；完整保留旧安装、配置备份及可能的历史数据
-	backup, err := backupPluginDirectory(root, source, "qq_official_adapter")
+	backup, err := backupPluginDirectory(root, source, directoryName)
 	if err != nil {
 		return "", err
 	}
 	return backup, nil
 }
 
-// migrateQQOfficialLegacyData 兼容旧 Docker 把持久数据挂在插件扫描目录的布局
-func migrateQQOfficialLegacyData(root, instanceRoot string) error {
-	source := filepath.Join(root, qqOfficialAdapterPluginID)
-	target := filepath.Join(instanceRoot, "data", "plugins", qqOfficialAdapterPluginID)
+// migrateBuiltinLegacyData 迁移历史插件 ID 的数据，兼容旧 Docker 把数据挂在插件扫描目录的布局
+func migrateBuiltinLegacyData(root, instanceRoot, pluginID, targetID, directoryName, displayName string) error {
+	source := filepath.Join(root, pluginID)
+	target := filepath.Join(instanceRoot, "data", "plugins", targetID)
 	if !pathExists(source) {
 		return nil
 	}
@@ -126,17 +147,31 @@ func migrateQQOfficialLegacyData(root, instanceRoot string) error {
 		}
 	}
 	if isSymlink(source) {
-		return fmt.Errorf("QQ 官方适配器旧数据目录无效: %s", source)
+		return fmt.Errorf("%s旧数据目录无效: %s", displayName, source)
 	}
 	info, err := os.Stat(source)
 	if err != nil || !info.IsDir() {
-		return fmt.Errorf("QQ 官方适配器旧数据目录无效: %s", source)
+		return fmt.Errorf("%s旧数据目录无效: %s", displayName, source)
 	}
 	if err := ensureWithin(instanceRoot, target); err != nil {
-		return fmt.Errorf("QQ 官方适配器数据目录越界: %s", target)
+		return fmt.Errorf("%s数据目录越界: %s", displayName, target)
 	}
 	if isSymlink(target) {
-		return fmt.Errorf("QQ 官方适配器数据目录越界: %s", target)
+		return fmt.Errorf("%s数据目录越界: %s", displayName, target)
+	}
+
+	// 改名后的版本已写入当前数据库时，整套保留该库，避免混用两个库的游标或 SQLite 日志文件
+	if pluginID == telegramAdapterLegacyID && targetID == telegramAdapterPluginID {
+		oldDatabase := filepath.Join(source, "telegram.sqlite3")
+		currentDatabase := filepath.Join(target, "telegram.sqlite3")
+		if isRegularFile(oldDatabase) && isRegularFile(currentDatabase) {
+			backup, backupErr := backupPluginDirectory(root, source, directoryName+"-data")
+			if backupErr != nil {
+				return backupErr
+			}
+			_ = backup
+			return nil
+		}
 	}
 
 	type entry struct {
@@ -158,10 +193,10 @@ func migrateQQOfficialLegacyData(root, instanceRoot string) error {
 		}
 		destination := filepath.Join(target, relative)
 		if item.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("QQ 官方适配器旧数据包含链接: %s", path)
+			return fmt.Errorf("%s旧数据包含链接: %s", displayName, path)
 		}
 		if err := ensureWithin(target, destination); err != nil {
-			return fmt.Errorf("QQ 官方适配器数据路径越界: %s", destination)
+			return fmt.Errorf("%s数据路径越界: %s", displayName, destination)
 		}
 		files = append(files, entry{source: path, destination: destination, directory: item.IsDir()})
 		return nil
@@ -180,12 +215,12 @@ func migrateQQOfficialLegacyData(root, instanceRoot string) error {
 		}
 		if item.directory {
 			if !destinationInfo.IsDir() {
-				return fmt.Errorf("QQ 官方适配器新旧数据冲突，请核对后再启动: %s -> %s", item.source, item.destination)
+				return fmt.Errorf("%s新旧数据冲突，请核对后再启动: %s -> %s", displayName, item.source, item.destination)
 			}
 			continue
 		}
 		if destinationInfo.IsDir() {
-			return fmt.Errorf("QQ 官方适配器新旧数据冲突，请核对后再启动: %s -> %s", item.source, item.destination)
+			return fmt.Errorf("%s新旧数据冲突，请核对后再启动: %s -> %s", displayName, item.source, item.destination)
 		}
 		sourceBytes, readErr := os.ReadFile(item.source)
 		if readErr != nil {
@@ -196,7 +231,7 @@ func migrateQQOfficialLegacyData(root, instanceRoot string) error {
 			return readErr
 		}
 		if !bytes.Equal(sourceBytes, destinationBytes) {
-			return fmt.Errorf("QQ 官方适配器新旧数据冲突，请核对后再启动: %s -> %s", item.source, item.destination)
+			return fmt.Errorf("%s新旧数据冲突，请核对后再启动: %s -> %s", displayName, item.source, item.destination)
 		}
 	}
 	for _, item := range files {
@@ -213,16 +248,16 @@ func migrateQQOfficialLegacyData(root, instanceRoot string) error {
 			return err
 		}
 	}
-	if _, err := backupPluginDirectory(root, source, "qq_official_adapter-data"); err != nil {
+	if _, err := backupPluginDirectory(root, source, directoryName+"-data"); err != nil {
 		return err
 	}
 	return nil
 }
 
 func backupPluginDirectory(root, source, label string) (string, error) {
-	backups := filepath.Join(root, qqOfficialAdapterBackupRoot)
+	backups := filepath.Join(root, builtinAdapterBackupRoot)
 	if isSymlink(backups) {
-		return "", fmt.Errorf("QQ 官方适配器备份目录包含链接或越界: %s", backups)
+		return "", fmt.Errorf("内置适配器备份目录包含链接或越界: %s", backups)
 	}
 	absoluteBackups, err := filepath.Abs(backups)
 	if err != nil {
@@ -233,7 +268,7 @@ func backupPluginDirectory(root, source, label string) (string, error) {
 		return "", err
 	}
 	if filepath.Dir(absoluteBackups) != filepath.Clean(absoluteRoot) {
-		return "", fmt.Errorf("QQ 官方适配器备份目录包含链接或越界: %s", backups)
+		return "", fmt.Errorf("内置适配器备份目录包含链接或越界: %s", backups)
 	}
 	if err := os.MkdirAll(backups, 0o755); err != nil {
 		return "", err
@@ -250,7 +285,7 @@ func backupPluginDirectory(root, source, label string) (string, error) {
 
 func ensureContainedDirectory(root, directory string) error {
 	if isSymlink(directory) {
-		return fmt.Errorf("QQ 官方适配器待备份目录越界: %s", directory)
+		return fmt.Errorf("内置适配器待备份目录越界: %s", directory)
 	}
 	absoluteDirectory, err := filepath.Abs(directory)
 	if err != nil {
@@ -261,7 +296,7 @@ func ensureContainedDirectory(root, directory string) error {
 		return err
 	}
 	if filepath.Dir(filepath.Clean(absoluteDirectory)) != filepath.Clean(absoluteRoot) {
-		return fmt.Errorf("QQ 官方适配器待备份目录越界: %s", directory)
+		return fmt.Errorf("内置适配器待备份目录越界: %s", directory)
 	}
 	return nil
 }

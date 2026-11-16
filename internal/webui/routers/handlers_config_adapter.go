@@ -103,15 +103,29 @@ func readWebUIData(path string) map[string]any {
 	return data
 }
 
+func (d Deps) adapterConfigPreferencePath() (string, bool) {
+	webuiPath, ok := d.webuiDataPath()
+	if !ok {
+		return "", false
+	}
+	return filepath.Join(filepath.Dir(webuiPath), "adapter_config_path.txt"), true
+}
+
 // handleConfigAdapterPathGet 对应 GET /api/webui/config/adapter-config/path
 func (d Deps) handleConfigAdapterPathGet(w http.ResponseWriter, r *http.Request) {
-	webuiPath, ok := d.webuiDataPath()
+	preferencePath, ok := d.adapterConfigPreferencePath()
 	if !ok {
 		writeInstanceDirMissing(w, r.URL.Path)
 		return
 	}
-	data := readWebUIData(webuiPath)
-	stored, _ := data["adapter_config_path"].(string)
+	stored := ""
+	if raw, err := os.ReadFile(preferencePath); err == nil {
+		stored = strings.TrimSpace(string(raw))
+	} else if webuiPath, webuiOK := d.webuiDataPath(); webuiOK {
+		// 旧版把路径偏好保存在 data/webui.json；首次启动仍按原值展示
+		data := readWebUIData(webuiPath)
+		stored, _ = data["adapter_config_path"].(string)
+	}
 	if strings.TrimSpace(stored) == "" {
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "path": nil})
 		return
@@ -133,7 +147,7 @@ func (d Deps) handleConfigAdapterPathGet(w http.ResponseWriter, r *http.Request)
 
 // handleConfigAdapterPathSave 对应 POST /api/webui/config/adapter-config/path
 func (d Deps) handleConfigAdapterPathSave(w http.ResponseWriter, r *http.Request) {
-	webuiPath, ok := d.webuiDataPath()
+	preferencePath, ok := d.adapterConfigPreferencePath()
 	if !ok {
 		writeInstanceDirMissing(w, r.URL.Path)
 		return
@@ -152,14 +166,7 @@ func (d Deps) handleConfigAdapterPathSave(w http.ResponseWriter, r *http.Request
 		writeJSON(w, status, map[string]any{"detail": err.Error()})
 		return
 	}
-	data := readWebUIData(webuiPath)
-	data["adapter_config_path"] = d.toRelativeAdapterPath(absPath)
-	raw, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "保存路径失败: " + err.Error()})
-		return
-	}
-	if err := writeFileAtomic(webuiPath, append(raw, '\n'), 0o644); err != nil {
+	if err := writeFileAtomic(preferencePath, []byte(d.toRelativeAdapterPath(absPath)), 0o600); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "保存路径失败: " + err.Error()})
 		return
 	}

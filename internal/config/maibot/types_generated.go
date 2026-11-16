@@ -413,8 +413,9 @@ type ChatReplyTimingConfig struct {
 	NoActionBackoffCapSeconds         float64                 `toml:"no_action_backoff_cap_seconds,omitempty"`
 	NoActionBackoffStartCount         int                     `toml:"no_action_backoff_start_count,omitempty"`
 	NoActionBackoffBypassPendingCount int                     `toml:"no_action_backoff_bypass_pending_count,omitempty"`
-	EnableTalkValueRules              bool                    `toml:"enable_talk_value_rules,omitempty"`
-	TalkValueRules                    []TalkRulesItem         `toml:"talk_value_rules,omitempty"`
+	// EnableTalkValueRules 8.16.11 前；规则开关移除后由升级链消费
+	EnableTalkValueRules *bool           `toml:"enable_talk_value_rules,omitempty"`
+	TalkValueRules       []TalkRulesItem `toml:"talk_value_rules,omitempty"`
 }
 
 type ChatStreamGroup struct {
@@ -908,16 +909,17 @@ type BotConfigFile struct {
 	Emoji               EmojiConfig               `toml:"emoji,omitempty"`
 	KeywordReaction     KeywordReactionConfig     `toml:"keyword_reaction,omitempty"`
 	ResponsePostProcess ResponsePostProcessConfig `toml:"response_post_process,omitempty"`
-	ChineseTypo         ChineseTypoConfig         `toml:"chinese_typo,omitempty"`
-	ResponseSplitter    ResponseSplitterConfig    `toml:"response_splitter,omitempty"`
-	Telemetry           TelemetryConfig           `toml:"telemetry,omitempty"`
-	Log                 LogConfig                 `toml:"log,omitempty"`
-	Debug               DebugConfig               `toml:"debug,omitempty"`
-	MaimMessage         MaimMessageConfig         `toml:"maim_message,omitempty"`
-	Webui               WebUIConfig               `toml:"webui,omitempty"`
-	Mcp                 MCPConfig                 `toml:"mcp,omitempty"`
-	Plugin              PluginConfig              `toml:"plugin,omitempty"`
-	PluginRuntime       PluginRuntimeConfig       `toml:"plugin_runtime,omitempty"`
+	// LegacyChineseTypo 8.16.11 前的错字配置；启动时迁入内置 chinese_typo 插件
+	LegacyChineseTypo *ChineseTypoConfig     `toml:"-"`
+	ResponseSplitter  ResponseSplitterConfig `toml:"response_splitter,omitempty"`
+	Telemetry         TelemetryConfig        `toml:"telemetry,omitempty"`
+	Log               LogConfig              `toml:"log,omitempty"`
+	Debug             DebugConfig            `toml:"debug,omitempty"`
+	MaimMessage       MaimMessageConfig      `toml:"maim_message,omitempty"`
+	Webui             WebUIConfig            `toml:"webui,omitempty"`
+	Mcp               MCPConfig              `toml:"mcp,omitempty"`
+	Plugin            PluginConfig           `toml:"plugin,omitempty"`
+	PluginRuntime     PluginRuntimeConfig    `toml:"plugin_runtime,omitempty"`
 
 	// LoadMeta 加载 bot_config 时从原始 TOML 提取的键存在信息（不参与序列化）
 	LoadMeta BotConfigLoadMeta `toml:"-"`

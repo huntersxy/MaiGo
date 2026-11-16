@@ -2,8 +2,8 @@ package maibot
 
 import "fmt"
 
-// ReplyPostProcessSettings 是 bot_config 中回复后处理三个子表的合并视图
-// 默认值逐项对齐 official_configs.py：ResponsePostProcessConfig / ChineseTypoConfig / ResponseSplitterConfig
+// ReplyPostProcessSettings 是 bot_config 中回复后处理子表的合并视图
+// 默认值逐项对齐 official_configs.py：ResponsePostProcessConfig / ResponseSplitterConfig
 type ReplyPostProcessSettings struct {
 	Enable      bool
 	TypingSpeed float64
@@ -15,14 +15,6 @@ type ReplyPostProcessSettings struct {
 	MaxSplitNum             int
 	EnableKaomojiProtection bool
 	EnableOverflowReturnAll bool
-
-	TypoEnable                     bool
-	TypoEnableCorrectionQuote      bool
-	TypoCorrectionQuoteProbability float64
-	TypoErrorRate                  float64
-	TypoMinFreq                    int
-	TypoToneErrorRate              float64
-	TypoWordReplaceRate            float64
 }
 
 // DefaultReplyPostProcessSettings 对齐 MaiBot 官方默认配置
@@ -38,14 +30,6 @@ func DefaultReplyPostProcessSettings() ReplyPostProcessSettings {
 		MaxSplitNum:             3,
 		EnableKaomojiProtection: false,
 		EnableOverflowReturnAll: false,
-
-		TypoEnable:                     true,
-		TypoEnableCorrectionQuote:      true,
-		TypoCorrectionQuoteProbability: 1.0,
-		TypoErrorRate:                  0.01,
-		TypoMinFreq:                    9,
-		TypoToneErrorRate:              0.1,
-		TypoWordReplaceRate:            0.006,
 	}
 }
 
@@ -83,28 +67,6 @@ func (b BotConfigFile) ReplyPostProcessSettings() ReplyPostProcessSettings {
 	if hasKey(m.ResponseSplitterKeys, "enable_overflow_return_all") {
 		s.EnableOverflowReturnAll = b.ResponseSplitter.EnableOverflowReturnAll
 	}
-
-	if hasKey(m.ChineseTypoKeys, "enable") {
-		s.TypoEnable = b.ChineseTypo.Enable
-	}
-	if hasKey(m.ChineseTypoKeys, "enable_correction_quote") {
-		s.TypoEnableCorrectionQuote = b.ChineseTypo.EnableCorrectionQuote
-	}
-	if hasKey(m.ChineseTypoKeys, "correction_quote_probability") {
-		s.TypoCorrectionQuoteProbability = b.ChineseTypo.CorrectionQuoteProbability
-	}
-	if hasKey(m.ChineseTypoKeys, "error_rate") {
-		s.TypoErrorRate = b.ChineseTypo.ErrorRate
-	}
-	if hasKey(m.ChineseTypoKeys, "min_freq") {
-		s.TypoMinFreq = b.ChineseTypo.MinFreq
-	}
-	if hasKey(m.ChineseTypoKeys, "tone_error_rate") {
-		s.TypoToneErrorRate = b.ChineseTypo.ToneErrorRate
-	}
-	if hasKey(m.ChineseTypoKeys, "word_replace_rate") {
-		s.TypoWordReplaceRate = b.ChineseTypo.WordReplaceRate
-	}
 	return s
 }
 
@@ -119,18 +81,6 @@ func ValidateReplyPostProcess(b BotConfigFile) error {
 	}
 	if s.MaxSplitNum < 1 {
 		return fmt.Errorf("response_splitter.max_split_num 必须大于等于 1")
-	}
-	if s.TypoCorrectionQuoteProbability < 0 || s.TypoCorrectionQuoteProbability > 1 {
-		return fmt.Errorf("chinese_typo.correction_quote_probability 必须在 0 到 1 之间")
-	}
-	if s.TypoErrorRate < 0 || s.TypoErrorRate > 1 {
-		return fmt.Errorf("chinese_typo.error_rate 必须在 0 到 1 之间")
-	}
-	if s.TypoToneErrorRate < 0 || s.TypoToneErrorRate > 1 {
-		return fmt.Errorf("chinese_typo.tone_error_rate 必须在 0 到 1 之间")
-	}
-	if s.TypoWordReplaceRate < 0 || s.TypoWordReplaceRate > 1 {
-		return fmt.Errorf("chinese_typo.word_replace_rate 必须在 0 到 1 之间")
 	}
 	return nil
 }

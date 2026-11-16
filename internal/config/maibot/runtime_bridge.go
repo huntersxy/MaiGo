@@ -64,8 +64,8 @@ func mergeChatFromReplyTiming(cfg *config.RuntimeConfig, rt ChatReplyTimingConfi
 	if rt.TalkValue >= 0 && rt.TalkValue <= 1 {
 		cfg.Chat.TalkFrequency = rt.TalkValue
 	}
-	cfg.Chat.EnableTimeRules = rt.EnableTalkValueRules
-	if rt.EnableTalkValueRules && len(rt.TalkValueRules) > 0 {
+	cfg.Chat.EnableTimeRules = len(rt.TalkValueRules) > 0
+	if cfg.Chat.EnableTimeRules {
 		cfg.Chat.TimeRules = talkRulesForRuntime(rt.TalkValueRules, platform)
 	}
 }

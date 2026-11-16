@@ -110,6 +110,16 @@ func validateChatConfig(cfg ChatConfig) error {
 			return fmt.Errorf("chat.reply_style.private_quote_frequency 非法: %s", value)
 		}
 	}
+	for index, rule := range cfg.ReplyTiming.TalkValueRules {
+		if strings.TrimSpace(rule.RuleType) != "group" {
+			continue
+		}
+		platformGlobal := strings.TrimSpace(rule.Platform) == "" || strings.TrimSpace(rule.Platform) == "*"
+		itemGlobal := strings.TrimSpace(rule.ItemId) == "" || strings.TrimSpace(rule.ItemId) == "*"
+		if platformGlobal && itemGlobal {
+			return fmt.Errorf("chat.reply_timing.talk_value_rules[%d] 必须指定平台或群聊 ID；所有群的默认频率请使用总体发言频率", index)
+		}
+	}
 	return nil
 }
 

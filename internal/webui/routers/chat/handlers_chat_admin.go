@@ -1,11 +1,12 @@
 package chat
 
 import (
+	"MaiGo/internal/webui/httputil"
 	"context"
 	"encoding/json"
 	"fmt"
-	"MaiGo/internal/webui/httputil"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -139,13 +140,17 @@ func (d Deps) handleChatPersons(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) handleChatInfo(w http.ResponseWriter, r *http.Request) {
 	botName := ""
+	var botQQ any
 	if dir := strings.TrimSpace(d.InstanceDir); dir != "" {
 		if cfg, err := maibotcfg.LoadFromInstanceDir(dir); err == nil {
 			botName = strings.TrimSpace(cfg.Bot.Bot.Nickname)
+			if account, convErr := strconv.ParseInt(strings.TrimSpace(cfg.Bot.Bot.QqAccount), 10, 64); convErr == nil && account > 0 {
+				botQQ = strconv.FormatInt(account, 10)
+			}
 		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"bot_name": botName, "platform": internalchat.Platform, "active_sessions": 0,
+		"bot_name": botName, "bot_qq": botQQ, "platform": internalchat.Platform, "active_sessions": 0,
 	})
 }
 

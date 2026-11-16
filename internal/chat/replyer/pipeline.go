@@ -61,7 +61,7 @@ func ApplyPipeline(text string, opts Options) PipelineResult {
 		pieces = []sentencePiece{{content: cleaned, separator: ""}}
 	}
 
-	segments := applyTypoPostProcess(opts.context(), pieces, cfg.Typo, opts.typoEnabled(cfg), rng, opts.TypoEngine)
+	segments := afterSplitSegments(pieces, opts)
 
 	if len(segments) > cfg.Splitter.MaxSentenceNum {
 		if cfg.Splitter.EnableOverflowReturnAll {
@@ -100,7 +100,7 @@ func applyLLMSplitterPipeline(text string, opts Options, cfg Config, rng *rand.R
 		pieces = []sentencePiece{{content: text}}
 	}
 
-	segments := applyTypoPostProcess(opts.context(), pieces, cfg.Typo, opts.typoEnabled(cfg), rng, opts.TypoEngine)
+	segments := afterSplitSegments(pieces, opts)
 
 	if len(segments) > cfg.Splitter.MaxSentenceNum {
 		if cfg.Splitter.EnableOverflowReturnAll {
@@ -124,4 +124,21 @@ func ApplyPipelineForTest(ctx context.Context, text string, opts Options) []Segm
 		opts.Ctx = ctx
 	}
 	return ApplyPipeline(text, opts).Segments
+}
+
+// afterSplitSegments 把断句结果交给插件 Hook 改写，再进入段数与合并限制
+func afterSplitSegments(pieces []sentencePiece, opts Options) []Segment {
+	segments := make([]Segment, 0, len(pieces))
+	for _, piece := range pieces {
+		segments = append(segments, Segment{Text: piece.content, Separator: piece.separator})
+	}
+	if opts.AfterSplit != nil {
+		if modified := opts.AfterSplit(segments, opts.chineseTypoEnabled()); modified != nil {
+			segments = modified
+		}
+	}
+	if len(segments) == 0 {
+		return []Segment{{Text: ""}}
+	}
+	return segments
 }

@@ -30,21 +30,15 @@ func (a *Agent) replyerOptionsForSpeak(ctx context.Context) replyer.Options {
 			EnableKaomojiProtection: settings.EnableKaomojiProtection,
 			EnableOverflowReturnAll: settings.EnableOverflowReturnAll,
 		}
-		cfg.Typo = replyer.TypoConfig{
-			Enable:                     settings.TypoEnable,
-			EnableCorrectionQuote:      settings.TypoEnableCorrectionQuote,
-			CorrectionQuoteProbability: settings.TypoCorrectionQuoteProbability,
-			ErrorRate:                  settings.TypoErrorRate,
-			MinFreq:                    settings.TypoMinFreq,
-			ToneErrorRate:              settings.TypoToneErrorRate,
-			WordReplaceRate:            settings.TypoWordReplaceRate,
-		}
 	}
 	opts := replyer.Options{
 		Config:      cfg,
 		BotNickname: fallbackBotName,
 		Ctx:         ctx,
 		LLMSplitter: a.generateSplitterText,
+		AfterSplit: func(segments []replyer.Segment, enableChineseTypo bool) []replyer.Segment {
+			return a.replyAfterSplit(ctx, segments, enableChineseTypo)
+		},
 	}
 	if runtimeCfg := configFor(ctx); runtimeCfg != nil && runtimeCfg.Chat.TypingSpeed > 0 {
 		opts.Config.TypingSpeed = float64(runtimeCfg.Chat.TypingSpeed) / 6
@@ -64,7 +58,7 @@ func (a *Agent) pipelineSegments(ctx context.Context, content string) []replyer.
 			opts.EnableSplitter = pp.EnableSplitter
 		}
 		if pp.EnableTypo != nil {
-			opts.EnableTypo = pp.EnableTypo
+			opts.EnableChineseTypo = pp.EnableTypo
 		}
 	}
 	result := replyer.ApplyPipeline(content, opts)

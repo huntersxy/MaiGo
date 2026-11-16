@@ -3,8 +3,8 @@ package version
 import "strings"
 
 const (
-	// Baseline 对齐 ../MaiBot/pyproject.toml:7 的 project.version = "1.3.19"
-	Baseline = "1.3.19"
+	// Baseline 对齐 ../MaiBot/pyproject.toml 的 project.version
+	Baseline = "1.4.0"
 	// RequiredWebUIVersion 对齐 ../MaiBot/pyproject.toml:32 的 maibot-dashboard==1.9.13
 	RequiredWebUIVersion = "1.9.13"
 )

@@ -1,9 +1,9 @@
 package chat
 
 import (
+	webuiutils "MaiGo/internal/webui/utils"
 	"encoding/json"
 	"fmt"
-	webuiutils "MaiGo/internal/webui/utils"
 	"net/http"
 	"strconv"
 	"strings"
@@ -169,7 +169,6 @@ func (d Deps) handleChatUpdateTalkFrequency(w http.ResponseWriter, r *http.Reque
 	} else {
 		rules[targetIndex] = nextRule
 	}
-	replyTiming["enable_talk_value_rules"] = true
 	talkRules := make([]any, len(rules))
 	for index, rule := range rules {
 		talkRules[index] = rule

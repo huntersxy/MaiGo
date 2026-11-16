@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 var (
@@ -213,4 +214,22 @@ func isEnglishLetter(r rune) bool {
 
 func isAlnumLatinOrDigit(r rune) bool {
 	return unicode.IsDigit(r) || isEnglishLetter(r)
+}
+
+// NormalizeTypoSentence 去掉段尾逗号分隔符逻辑，供 LLM 断句路径使用
+func NormalizeTypoSentence(sentence string) (content, separator string) {
+	content = strings.TrimRight(sentence, "，, \t\r\n")
+	if content == "" {
+		return sentence, ""
+	}
+	sepRunes := []rune(sentence[len(content):])
+	separator = string(sepRunes)
+	if strings.ContainsAny(separator, "，,") && strings.TrimSpace(content) != "" {
+		return content, separator
+	}
+	return sentence, ""
+}
+
+func runeLen(s string) int {
+	return utf8.RuneCountInString(s)
 }

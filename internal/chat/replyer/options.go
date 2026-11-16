@@ -5,13 +5,12 @@ import (
 	"math/rand/v2"
 )
 
-// Config 对齐 MaiBot response_post_process / response_splitter / chinese_typo 默认值
+// Config 对齐 MaiBot response_post_process / response_splitter 默认值
 type Config struct {
 	EnablePostProcess bool
 	TypingSpeed       float64
 
 	Splitter SplitterConfig
-	Typo     TypoConfig
 }
 
 // SplitterConfig 规则断句相关参数
@@ -23,17 +22,6 @@ type SplitterConfig struct {
 	MaxSplitNum             int
 	EnableKaomojiProtection bool
 	EnableOverflowReturnAll bool
-}
-
-// TypoConfig 错别字注入；完整行为见 typo_generator.py
-type TypoConfig struct {
-	Enable                     bool
-	EnableCorrectionQuote      bool
-	CorrectionQuoteProbability float64
-	ErrorRate                  float64
-	MinFreq                    int
-	ToneErrorRate              float64
-	WordReplaceRate            float64
 }
 
 // TimingConfig 单条消息的打字延迟参数
@@ -58,9 +46,10 @@ type Options struct {
 	Config Config
 
 	// 显式覆盖 Config 内开关（nil 表示跟随 Config）
-	EnableSplitter  *bool
-	EnableTypo      *bool
-	SkipPostProcess bool
+	EnableSplitter *bool
+	// EnableChineseTypo 本次回复是否允许错别字插件注入错字
+	EnableChineseTypo *bool
+	SkipPostProcess   bool
 
 	BotNickname string
 	// RNG 可选随机源；nil 时按全局随机种子新建（生产默认），测试须注入固定种子
@@ -70,12 +59,15 @@ type Options struct {
 	Ctx context.Context
 	// LLMSplitter LLM 语义断句器；mode=llm 时必填
 	LLMSplitter LLMSplitterFunc
-	// TypoEngine 错别字注入后端；nil 时按 Python 兼容侧车配置自动选择
-	TypoEngine TypoEngine
+	// AfterSplit 断句后、限制段数与合并前触发，可由插件改写有序文本分段
+	AfterSplit AfterSplitFunc
 
 	Timing     TimingConfig
 	Expression *ExpressionRequest
 }
+
+// AfterSplitFunc 断句后处理 Hook；返回 nil 时保持原分段
+type AfterSplitFunc func(segments []Segment, enableChineseTypo bool) []Segment
 
 // DefaultConfig 对齐 official_configs.py 默认项
 func DefaultConfig() Config {
@@ -90,15 +82,6 @@ func DefaultConfig() Config {
 			MaxSplitNum:             3,
 			EnableKaomojiProtection: false,
 			EnableOverflowReturnAll: false,
-		},
-		Typo: TypoConfig{
-			Enable:                     true,
-			EnableCorrectionQuote:      true,
-			CorrectionQuoteProbability: 1.0,
-			ErrorRate:                  0.01,
-			MinFreq:                    9,
-			ToneErrorRate:              0.1,
-			WordReplaceRate:            0.006,
 		},
 	}
 }
@@ -129,9 +112,6 @@ func (o *Options) mergedConfig() Config {
 		}
 		cfg.Splitter.EnableKaomojiProtection = c.Splitter.EnableKaomojiProtection
 		cfg.Splitter.EnableOverflowReturnAll = c.Splitter.EnableOverflowReturnAll
-		if c.Typo != (TypoConfig{}) {
-			cfg.Typo = c.Typo
-		}
 	}
 	return cfg
 }
@@ -150,11 +130,11 @@ func (o *Options) splitterEnabled(cfg Config) bool {
 	return cfg.Splitter.Enable
 }
 
-func (o *Options) typoEnabled(cfg Config) bool {
-	if o != nil && o.EnableTypo != nil {
-		return *o.EnableTypo
+func (o *Options) chineseTypoEnabled() bool {
+	if o != nil && o.EnableChineseTypo != nil {
+		return *o.EnableChineseTypo
 	}
-	return cfg.Typo.Enable
+	return true
 }
 
 func (o *Options) botNickname() string {

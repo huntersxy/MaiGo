@@ -180,6 +180,26 @@ func maisakaHookSpecs() []HookSpec {
 			DenyAbort:        true,
 		},
 		{
+			Name:        "maisaka.reply.after_split",
+			Description: "最终回复完成断句后、限制段数与合并前触发，可修改有序文本分段。",
+			ParametersSchema: hookSchema(map[string]any{
+				"segments": map[string]any{
+					"type":     "array",
+					"minItems": 1,
+					"items": hookSchema(map[string]any{
+						"text":           map[string]any{"type": "string", "minLength": 1},
+						"separator":      map[string]any{"type": "string"},
+						"quote_previous": map[string]any{"type": "boolean"},
+						"is_correction":  map[string]any{"type": "boolean"},
+					}, "text", "separator", "quote_previous", "is_correction"),
+				},
+				"session_id":          map[string]any{"type": "string"},
+				"enable_chinese_typo": map[string]any{"type": "boolean"},
+			}, "segments", "session_id", "enable_chinese_typo"),
+			DefaultTimeoutMS: 3000,
+			DenyAbort:        true,
+		},
+		{
 			Name:        "maisaka.reply.before_post_process",
 			Description: "在 Maisaka 对最终可见回复执行文本后处理前触发，可按本次回复调整后处理策略。",
 			ParametersSchema: hookSchema(map[string]any{
@@ -189,7 +209,7 @@ func maisakaHookSpecs() []HookSpec {
 				"reply_tool_args":     map[string]any{"type": "object", "description": "本次 reply 工具除内部参数外的透传参数。"},
 				"skip_post_process":   map[string]any{"type": "boolean", "description": "是否跳过本次回复的全部文本后处理。"},
 				"enable_splitter":     map[string]any{"type": "boolean", "description": "本次回复是否允许按全局配置进行文本拆分。"},
-				"enable_chinese_typo": map[string]any{"type": "boolean", "description": "本次回复是否允许按全局配置注入中文错别字。"},
+				"enable_chinese_typo": map[string]any{"type": "boolean", "description": "本次回复是否允许内置错别字插件注入错字。"},
 			}, "response", "session_id", "reply_message_id", "reply_tool_args", "skip_post_process", "enable_splitter", "enable_chinese_typo"),
 			DefaultTimeoutMS: 6000,
 			DenyAbort:        true,
