@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 )
 
 // SupplementComponent 展开后的一条消息组件
@@ -175,7 +176,7 @@ type SupplementGeneration struct {
 
 // SupplementGenerator 复用 Planner 请求快照生成补充编排
 type SupplementGenerator interface {
-	GenerateSupplement(snapshot PlannerRequestSnapshot, instruction string, schema map[string]any) (SupplementGeneration, error)
+	GenerateSupplement(snapshot PlannerRequestSnapshot, instruction string, retryInstruction string, schema map[string]any) (SupplementGeneration, error)
 }
 
 // BuildReplySupplementSchema 生成编排 JSON Schema；不允许 @ 时移除 AtNode
@@ -259,6 +260,7 @@ func BuildReplySupplementInstruction(promptTemplate, guidance string, resources 
 }
 
 // GenerateReplySupplement 保留 Planner 的模型、工具及消息前缀，只在末尾追加编排任务
+// 首次失败时带错误重生成一次，再失败由回复链路跳过补充
 func GenerateReplySupplement(
 	generator SupplementGenerator,
 	promptSource PromptSource,
@@ -268,6 +270,30 @@ func GenerateReplySupplement(
 	isGroup bool,
 	history []ContextMessage,
 	options SupplementResourceOptions,
+) (ReplySupplement, error) {
+	supplement, err := generateReplySupplementOnce(
+		generator, promptSource, snapshot, guidance, sessionID, isGroup, history, options, "",
+	)
+	if err == nil {
+		return supplement, nil
+	}
+	zap.L().Warn("回复补充器生成失败，将重生成一次", zap.String("session_id", sessionID), zap.Error(err))
+	return generateReplySupplementOnce(
+		generator, promptSource, snapshot, guidance, sessionID, isGroup, history, options,
+		fmt.Sprintf("%T: %v", err, err),
+	)
+}
+
+func generateReplySupplementOnce(
+	generator SupplementGenerator,
+	promptSource PromptSource,
+	snapshot PlannerRequestSnapshot,
+	guidance string,
+	sessionID string,
+	isGroup bool,
+	history []ContextMessage,
+	options SupplementResourceOptions,
+	retryError string,
 ) (ReplySupplement, error) {
 	if generator == nil {
 		return ReplySupplement{}, errors.New("回复补充器缺少生成端口")
@@ -285,7 +311,15 @@ func GenerateReplySupplement(
 	if err != nil {
 		return ReplySupplement{}, err
 	}
-	result, err := generator.GenerateSupplement(snapshot, instruction, schema)
+	retryInstruction := ""
+	if retryError != "" {
+		retryTemplate, retryErr := promptSource.Get("reply_supplement_retry")
+		if retryErr != nil {
+			return ReplySupplement{}, retryErr
+		}
+		retryInstruction = strings.ReplaceAll(retryTemplate, "{error}", retryError)
+	}
+	result, err := generator.GenerateSupplement(snapshot, instruction, retryInstruction, schema)
 	if err != nil {
 		return ReplySupplement{}, err
 	}

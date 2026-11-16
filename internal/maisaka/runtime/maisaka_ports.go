@@ -362,11 +362,12 @@ func (e *AgentReplyExecutor) generateReplyAndSupplement(ctx context.Context, con
 	if text.err != nil {
 		return "", nil, fmt.Errorf("生成可见回复或补充内容时发生异常: %w", text.err)
 	}
-	if supp.err != nil {
-		return "", nil, fmt.Errorf("生成可见回复或补充内容时发生异常: %w", supp.err)
-	}
-	if supp.supplement == nil {
-		return "", nil, fmt.Errorf("回复补充器未返回编排结果")
+	if supp.err != nil || supp.supplement == nil {
+		// 补充失败只跳过补充，正文成功即可继续发送
+		if supp.err != nil {
+			zap.L().Error("回复补充生成失败，跳过补充并继续发送正文", zap.Error(supp.err))
+		}
+		return strings.TrimSpace(text.text), nil, nil
 	}
 	return strings.TrimSpace(text.text), supp.supplement, nil
 }

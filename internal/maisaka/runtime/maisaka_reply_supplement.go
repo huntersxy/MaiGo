@@ -17,7 +17,7 @@ type agentReplySupplementGenerator struct {
 }
 
 // GenerateSupplement 在 Planner 快照末尾追加编排任务并解析结构化输出
-func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.PlannerRequestSnapshot, instruction string, schema map[string]any) (maisaka.SupplementGeneration, error) {
+func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.PlannerRequestSnapshot, instruction string, retryInstruction string, schema map[string]any) (maisaka.SupplementGeneration, error) {
 	if g == nil || g.agent == nil {
 		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器缺少 Agent 绑定")
 	}
@@ -37,9 +37,12 @@ func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.Plan
 	if model == nil {
 		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器模型未就绪")
 	}
-	items := make([]maisaka.ContextItem, 0, len(snapshot.Items)+1)
+	items := make([]maisaka.ContextItem, 0, len(snapshot.Items)+2)
 	items = append(items, snapshot.Items...)
 	items = append(items, maisaka.ContextItem{Role: maisaka.RoleUser, Text: instruction})
+	if strings.TrimSpace(retryInstruction) != "" {
+		items = append(items, maisaka.ContextItem{Role: maisaka.RoleUser, Text: retryInstruction})
+	}
 	request := maisaka.ChatRequest{
 		RequestKind:   "maisaka.reply_supplement",
 		ModelTaskName: snapshot.ModelTask,
@@ -94,6 +97,9 @@ func buildReplySupplementArguments(base map[string]any, content string, suppleme
 				arguments["reply_to"] = parsed
 			}
 		}
+	} else {
+		// 补充器未选择引用目标时，不对原始回复目标额外发起引用
+		delete(arguments, "reply_to")
 	}
 	attachAt := make([]string, 0, 2)
 	attachPic := make([]any, 0, 2)
