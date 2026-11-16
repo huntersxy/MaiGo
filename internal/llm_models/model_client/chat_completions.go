@@ -171,6 +171,11 @@ func (c *chatCompletionsClient) Generate(ctx context.Context, input []*schema.Ag
 	if err != nil {
 		return nil, c.snapshotFailure(recorder, started, input, options, finalPayload, false, err)
 	}
+	message, err = normalizeTextToolCalls(message, options.Tools, ChatToolChoiceValue(options), textToolCallOccupiedIDs(items))
+	if err != nil {
+		err = &ParseError{Message: err.Error(), Err: err}
+		return nil, c.snapshotFailure(recorder, started, input, options, finalPayload, false, err)
+	}
 	cacheCfg := c.cfg
 	if options != nil && options.Model != nil && strings.TrimSpace(*options.Model) != "" {
 		cacheCfg.Model = strings.TrimSpace(*options.Model)
@@ -221,7 +226,7 @@ func (c *chatCompletionsClient) Stream(ctx context.Context, input []*schema.Agen
 	go func() {
 		defer cancel()
 		defer resp.Body.Close()
-		pumpChatCompletionsStream(ctx, streamCtx, resp.Body, writer, newChatCompletionsStreamBuilder(c, options.MaxTokens))
+		pumpChatCompletionsStream(ctx, streamCtx, resp.Body, writer, newChatCompletionsStreamBuilder(c, options.MaxTokens, options.Tools, ChatToolChoiceValue(options), textToolCallOccupiedIDs(items)))
 	}()
 	stream := wrapAgenticStreamSnapshot(reader, func(streamErr error) error {
 		return c.snapshotFailure(recorder, started, input, options, finalPayload, true, streamErr)

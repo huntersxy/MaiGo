@@ -807,8 +807,21 @@ func maisakaBuiltinConfig(bot *maibotcfg.BotConfigFile, model *maibotcfg.ModelCo
 		WebSearchEnabled:     webSearchEnabled,
 		MemoryQueryEnabled:   bot.AMemorix.Integration.EnableMemoryQueryTool,
 		PersonProfileEnabled: bot.AMemorix.Integration.EnablePersonProfileQueryTool,
-		ImageMemoryEnabled:   bot.AMemorix.ImageMemory.Enabled,
+		ImageMemoryEnabled:   imageMemoryEnabled(bot, model),
 	}
+}
+
+// imageMemoryEnabled 图片记忆需要总开关、图片开关与图片嵌入模型同时满足
+func imageMemoryEnabled(bot *maibotcfg.BotConfigFile, model *maibotcfg.ModelConfigFile) bool {
+	if bot == nil || model == nil || !bot.AMemorix.Plugin.Enabled || !bot.AMemorix.ImageMemory.Enabled {
+		return false
+	}
+	for _, name := range model.ModelTaskConfig.ImageEmbedding.ModelList {
+		if strings.TrimSpace(name) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 const (

@@ -8,7 +8,7 @@ package model_client
 //
 // 差异（诚实边界）：
 //   - 工具调用参数修复使用 json-repair-go，并在其前后补齐 Python json_repair 的缺失开括号与注释处理
-//   - 流式模式在最终响应构建时执行 XML <tool_call> 兜底；流式文本改为结束前统一构建，避免重复下发
+//   - 流式模式在最终响应构建时恢复文本工具调用；流式文本改为结束前统一构建，避免重复下发
 //   - finish_reason=length 只记录日志，eino 的 ResponseMeta 无通用 finish_reason 字段
 
 import (
@@ -237,12 +237,6 @@ func (c *chatCompletionsClient) parseResponse(raw []byte, maxTokens *int) (*sche
 		calls = blockCalls
 		if len(blockCalls) > 0 {
 			source = chatBlockToolCallSource(blockReasoning, blockContent)
-		}
-	}
-	if len(calls) == 0 {
-		content, reasoning, calls, source, err = chatApplyXMLToolCallFallback(content, reasoning)
-		if err != nil {
-			return nil, err
 		}
 	}
 	chatWarnMaxTokens(c.model, choice.FinishReason, content, len(calls), maxTokens)
@@ -593,109 +587,6 @@ func chatToolCallBlock(call *schema.FunctionToolCall, source string) *schema.Con
 	}
 	block.Extra = map[string]any{toolCallSourceExtraKey: source}
 	return block
-}
-
-// chatApplyXMLToolCallFallback 对齐 _apply_xml_tool_call_fallback。
-// 先尝试 reasoning，再尝试 content；已有标准工具调用时调用方不会进入此函数。
-// 返回解析出的调用及其来源，供监控面板标注「推理中调用 / 正文调用」。
-func chatApplyXMLToolCallFallback(content, reasoning string) (string, string, []*schema.FunctionToolCall, string, error) {
-	if strings.TrimSpace(reasoning) != "" {
-		cleanedReasoning, calls, err := chatExtractXMLToolCalls(reasoning)
-		if err != nil {
-			return content, reasoning, nil, "", err
-		}
-		if len(calls) > 0 {
-			if content == "" && cleanedReasoning != "" {
-				return cleanedReasoning, "", calls, toolCallSourceReasoning, nil
-			}
-			return content, cleanedReasoning, calls, toolCallSourceReasoning, nil
-		}
-	}
-	if strings.TrimSpace(content) != "" {
-		cleanedContent, calls, err := chatExtractXMLToolCalls(content)
-		if err != nil {
-			return content, reasoning, nil, "", err
-		}
-		if len(calls) > 0 {
-			return cleanedContent, reasoning, calls, toolCallSourceResponse, nil
-		}
-	}
-	return content, reasoning, nil, "", nil
-}
-
-var (
-	chatXMLToolCallBlock = regexp.MustCompile(`(?is)<tool_call>\s*(.*?)\s*</tool_call>`)
-	chatXMLFunctionBlock = regexp.MustCompile(`(?is)<function=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</function>`)
-	chatXMLParameter     = regexp.MustCompile(`(?is)<parameter=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</parameter>`)
-)
-
-// chatExtractXMLToolCalls 对齐 _extract_xml_tool_calls。
-// 参数解析失败必须向上抛出，不能静默返回空 map。
-func chatExtractXMLToolCalls(text string) (string, []*schema.FunctionToolCall, error) {
-	if !strings.Contains(strings.ToLower(text), "<tool_call>") {
-		return text, nil, nil
-	}
-	calls := make([]*schema.FunctionToolCall, 0)
-	var parseErr error
-	cleaned := chatXMLToolCallBlock.ReplaceAllStringFunc(text, func(block string) string {
-		if parseErr != nil {
-			return block
-		}
-		innerMatch := chatXMLToolCallBlock.FindStringSubmatch(block)
-		if len(innerMatch) < 2 {
-			return block
-		}
-		functionMatch := chatXMLFunctionBlock.FindStringSubmatch(innerMatch[1])
-		if len(functionMatch) < 3 {
-			return block
-		}
-		name := strings.TrimSpace(functionMatch[1])
-		arguments := map[string]any{}
-		parameterMatches := chatXMLParameter.FindAllStringSubmatch(functionMatch[2], -1)
-		if len(parameterMatches) > 0 {
-			for _, parameter := range parameterMatches {
-				arguments[strings.TrimSpace(parameter[1])] = chatCoerceXMLParameter(parameter[2])
-			}
-		} else if raw := strings.TrimSpace(functionMatch[2]); raw != "" {
-			parsed, err := parseChatToolArguments(raw, chatToolArgModeAuto)
-			if err != nil {
-				parseErr = err
-				return block
-			}
-			arguments = parsed
-		}
-		calls = append(calls, &schema.FunctionToolCall{
-			CallID:    "xml_tool_call_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-			Name:      name,
-			Arguments: chatMarshalArguments(arguments),
-		})
-		return ""
-	})
-	if parseErr != nil {
-		return text, nil, parseErr
-	}
-	return strings.TrimSpace(cleaned), calls, nil
-}
-
-func chatCoerceXMLParameter(raw string) any {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return ""
-	}
-	switch strings.ToLower(trimmed) {
-	case "true":
-		return true
-	case "false":
-		return false
-	case "null", "none":
-		return nil
-	}
-	if trimmed[0] == '{' || trimmed[0] == '[' {
-		if value, err := chatRepairJSON(llmjson.Normalize(trimmed)); err == nil {
-			return value
-		}
-	}
-	return raw
 }
 
 // chatTokenUsage 对齐 _extract_usage_record 的缓存命中计算

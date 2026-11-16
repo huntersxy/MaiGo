@@ -42,6 +42,11 @@ func (m *ResponsesResponseFormatModel) Generate(ctx context.Context, input []*sc
 	if err != nil {
 		return nil, m.snapshotFailure(recorder, started, input, items, options, plan, false, normalizeResponsesCallError(ctx, err))
 	}
+	message, err = normalizeTextToolCalls(message, options.Tools, ChatToolChoiceValue(options), textToolCallOccupiedIDs(items))
+	if err != nil {
+		err = &ParseError{Message: err.Error(), Err: err}
+		return nil, m.snapshotFailure(recorder, started, input, items, options, plan, false, err)
+	}
 	cacheCfg := m.cfg
 	if options != nil && options.Model != nil && strings.TrimSpace(*options.Model) != "" {
 		cacheCfg.Model = strings.TrimSpace(*options.Model)
@@ -90,7 +95,7 @@ func (m *ResponsesResponseFormatModel) buildRequestPlan(ctx context.Context, opt
 	if extra == nil {
 		extra = &responsesExtraParams{}
 	}
-		return extra.buildPlan(options, textConfig, m.configExtraFields)
+	return extra.buildPlan(options, textConfig, m.configExtraFields)
 }
 
 // responsesDownstreamOptions 把已解析的通用参数重新编码为 eino options

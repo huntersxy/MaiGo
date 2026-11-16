@@ -30,6 +30,7 @@ func init() {
 		NewUsageRecordingAudioTranscriber: newUsageRecordingAudioTranscriber,
 		NewUsageRecordingEmbeddingClient:  newUsageRecordingEmbeddingClient,
 		WrapUsageRecordingModel:           newUsageRecordingModel,
+		NormalizeTextToolCalls:            NormalizeTextToolResponse,
 	})
 }
 

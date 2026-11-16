@@ -4,7 +4,7 @@ package model_client
 //
 // 对等 MaiBot src/llm_models/model_client/openai_client.py 的 _OpenAIStreamAccumulator。
 // 与 Python 一致，文本和 reasoning 全程累积，只在流结束构建一次响应；
-// 这样 XML <tool_call> 兜底可以在下发前清理文本，避免已下发内容无法回收。
+// 文本工具调用恢复在结束构建时执行，避免已下发的调用块无法回收。
 
 import (
 	"fmt"
@@ -91,15 +91,23 @@ type chatCompletionsStreamBuilder struct {
 	// rawContent 记录未经过 <think> 解析的正文原文，供打断快照对齐 Python content_buffer
 	rawContent strings.Builder
 	tools      map[int]*chatToolCallState
+	// tools/toolChoice 用于流结束后恢复正文中的文本工具调用
+	toolInfos  []*schema.ToolInfo
+	toolChoice string
+	// occupiedCallIDs 请求上下文中已占用的调用 ID
+	occupiedCallIDs []string
 }
 
-func newChatCompletionsStreamBuilder(client *chatCompletionsClient, maxTokens *int) *chatCompletionsStreamBuilder {
+func newChatCompletionsStreamBuilder(client *chatCompletionsClient, maxTokens *int, toolInfos []*schema.ToolInfo, toolChoice string, occupiedCallIDs []string) *chatCompletionsStreamBuilder {
 	return &chatCompletionsStreamBuilder{
-		client:      client,
-		mode:        client.reasoningParseMode,
-		toolArgMode: client.toolArgumentParseMode,
-		maxTokens:   maxTokens,
-		tools:       map[int]*chatToolCallState{},
+		client:          client,
+		mode:            client.reasoningParseMode,
+		toolArgMode:     client.toolArgumentParseMode,
+		maxTokens:       maxTokens,
+		tools:           map[int]*chatToolCallState{},
+		toolInfos:       toolInfos,
+		toolChoice:      toolChoice,
+		occupiedCallIDs: occupiedCallIDs,
 	}
 }
 
@@ -287,12 +295,6 @@ func (b *chatCompletionsStreamBuilder) finish() (*schema.AgenticMessage, bool, e
 		return nil, false, err
 	}
 	source := chatStandardToolCallSource(reasoning)
-	if len(calls) == 0 {
-		content, reasoning, calls, source, err = chatApplyXMLToolCallFallback(content, reasoning)
-		if err != nil {
-			return nil, false, err
-		}
-	}
 	chatWarnMaxTokens(b.model, b.finishReason, content, len(calls), b.maxTokens)
 	hasReplay := b.client.reasoningScope != nil && b.nativeReasoning.Len() > 0
 	if content == "" && reasoning == "" && len(calls) == 0 && !hasReplay {
@@ -308,7 +310,11 @@ func (b *chatCompletionsStreamBuilder) finish() (*schema.AgenticMessage, bool, e
 	if len(blocks) == 0 && b.usage == nil {
 		return nil, false, nil
 	}
-	return b.message(blocks), true, nil
+	message, err := normalizeTextToolCalls(b.message(blocks), b.toolInfos, b.toolChoice, b.occupiedCallIDs)
+	if err != nil {
+		return nil, false, &ParseError{Message: err.Error(), Err: err}
+	}
+	return message, true, nil
 }
 
 func (b *chatCompletionsStreamBuilder) buildToolCalls() ([]*schema.FunctionToolCall, error) {

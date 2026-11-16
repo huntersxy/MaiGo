@@ -68,7 +68,7 @@ func (a *Agent) buildMaisakaPlannerExtraInjections(session *Session) func(contex
 		}
 	}
 	var imageInjector *maisakamemory.ImageMemoryInjector
-	if imageConfig.Enabled {
+	if instance != nil && imageMemoryEnabled(&instance.Bot, &instance.Model) {
 		imageInjector = maisakamemory.NewImageMemoryInjector(&agentImageMemoryService{agent: a, session: session}, true)
 		imageInjector.CandidateLimit = firstPositiveInt(imageConfig.CandidateLimit, 3)
 		imageInjector.SimilarityThreshold = imageConfig.SimilarityThreshold

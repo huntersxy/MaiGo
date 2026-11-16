@@ -42,6 +42,8 @@ type Ports struct {
 	NewUsageRecordingEmbeddingClient func(inner EmbeddingClient, cfg ModelConfig) EmbeddingClient
 	// WrapUsageRecordingModel 包装模型客户端以记录用量
 	WrapUsageRecordingModel func(inner model.AgenticModel, cfg ModelConfig) model.AgenticModel
+	// NormalizeTextToolCalls 将模型正文/推理中的文本工具调用恢复为结构化调用
+	NormalizeTextToolCalls func(message *schema.AgenticMessage, tools []*schema.ToolInfo, toolChoice string, occupiedCallIDs []string) (*schema.AgenticMessage, error)
 }
 
 var ports Ports
@@ -138,4 +140,30 @@ func wrapUsageRecordingModel(inner model.AgenticModel, cfg ModelConfig) model.Ag
 		return inner
 	}
 	return ports.WrapUsageRecordingModel(inner, cfg)
+}
+
+// normalizeTextToolCalls 恢复文本工具调用；未注入时保持原响应
+func normalizeTextToolCalls(message *schema.AgenticMessage, tools []*schema.ToolInfo, toolChoice string, occupiedCallIDs []string) (*schema.AgenticMessage, error) {
+	if message == nil || ports.NormalizeTextToolCalls == nil {
+		return message, nil
+	}
+	return ports.NormalizeTextToolCalls(message, tools, toolChoice, occupiedCallIDs)
+}
+
+// textToolCallOccupiedIDs 收集请求上下文里已占用的工具调用 ID
+func textToolCallOccupiedIDs(items []ContextItem) []string {
+	ids := make([]string, 0)
+	for _, item := range items {
+		switch item.Type {
+		case ContextItemFunctionCall:
+			if item.ToolCall != nil && item.ToolCall.CallID != "" {
+				ids = append(ids, item.ToolCall.CallID)
+			}
+		case ContextItemFunctionCallOutput:
+			if item.CallID != "" {
+				ids = append(ids, item.CallID)
+			}
+		}
+	}
+	return ids
 }

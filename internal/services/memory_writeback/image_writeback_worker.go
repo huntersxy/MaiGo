@@ -63,12 +63,17 @@ func ImageWritebackSettingsFromInstance(cfg *maibotcfg.InstanceConfig) ImageWrit
 	return settings
 }
 
-// ImageMemoryEnabledFromInstance 对齐 Python _enabled: plugin.enabled and image_memory.enabled
+// ImageMemoryEnabledFromInstance 对齐 Python _enabled：总开关、图片开关与图片嵌入模型同时满足
 func ImageMemoryEnabledFromInstance(cfg *maibotcfg.InstanceConfig) bool {
-	if cfg == nil {
+	if cfg == nil || !cfg.Bot.AMemorix.Plugin.Enabled || !cfg.Bot.AMemorix.ImageMemory.Enabled {
 		return false
 	}
-	return cfg.Bot.AMemorix.Plugin.Enabled && cfg.Bot.AMemorix.ImageMemory.Enabled
+	for _, name := range cfg.Model.ModelTaskConfig.ImageEmbedding.ModelList {
+		if strings.TrimSpace(name) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ImageDescriptionHook 延迟绑定图片描述查询，避免启动顺序耦合
