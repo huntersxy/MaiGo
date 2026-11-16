@@ -110,11 +110,31 @@ func (m *Manager) Render(name string, vars map[string]string) (string, error) {
 	return m.renderResolved(name, vars, 0)
 }
 
+// RenderLocale 按指定 locale 渲染，不改变 Manager 当前语言层；对齐 Python 的 use_locale 局部切换
+func (m *Manager) RenderLocale(locale, name string, vars map[string]string) (string, error) {
+	normalized, err := NormalizeLocale(locale)
+	if err != nil {
+		return "", err
+	}
+	m.ensureFresh()
+	m.mu.RLock()
+	merged := mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, normalized)
+	for promptName, registered := range m.prompts {
+		merged[promptName] = registered.Template()
+	}
+	m.mu.RUnlock()
+	return renderFromMerged(name, merged, vars, 0)
+}
+
 func (m *Manager) renderResolved(name string, vars map[string]string, depth int) (string, error) {
 	m.mu.RLock()
-	tpl, ok := m.merged[name]
 	merged := m.merged
 	m.mu.RUnlock()
+	return renderFromMerged(name, merged, vars, depth)
+}
+
+func renderFromMerged(name string, merged map[string]string, vars map[string]string, depth int) (string, error) {
+	tpl, ok := merged[name]
 	if !ok {
 		return "", fmt.Errorf("prompt %q 不存在", name)
 	}
@@ -129,7 +149,7 @@ func (m *Manager) renderResolved(name string, vars map[string]string, depth int)
 		if !exists {
 			return "", false, nil
 		}
-		rendered, err := m.renderNested(nested, merged, vars, depth+1)
+		rendered, err := renderNestedTemplate(nested, merged, vars, depth+1)
 		if err != nil {
 			return "", false, err
 		}
@@ -137,7 +157,7 @@ func (m *Manager) renderResolved(name string, vars map[string]string, depth int)
 	}, depth)
 }
 
-func (m *Manager) renderNested(template string, merged map[string]string, vars map[string]string, depth int) (string, error) {
+func renderNestedTemplate(template string, merged map[string]string, vars map[string]string, depth int) (string, error) {
 	return renderTemplate(template, func(field string) (string, bool, error) {
 		if value, provided := vars[field]; provided {
 			return value, true, nil
@@ -146,7 +166,7 @@ func (m *Manager) renderNested(template string, merged map[string]string, vars m
 		if !exists {
 			return "", false, nil
 		}
-		rendered, err := m.renderNested(nested, merged, vars, depth+1)
+		rendered, err := renderNestedTemplate(nested, merged, vars, depth+1)
 		if err != nil {
 			return "", false, err
 		}

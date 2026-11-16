@@ -143,6 +143,9 @@ type GeneratorConfig struct {
 	// CreativeMode 对齐 chat.creative_mode：普通模型使用通用复古模板
 	CreativeMode bool
 
+	// SuperCreativeMode 对齐 chat.super_creative_mode：日语生成后由同一模型翻译为中文
+	SuperCreativeMode bool
+
 	// SaveReasoning 对齐 debug.save_maisaka_reasoning：持久化 Replyer 请求与输出预览
 	SaveReasoning bool
 	// GeminiReplyCompatibility 对齐 debug.gemini_reply_compatibility：剥离混入正文的思考格式
@@ -223,9 +226,22 @@ const retroTargetContentLimit = 300
 // PromptBuilder replyer 提示词装配器；PromptLoader 与配置解耦，便于测试
 type PromptBuilder struct {
 	PromptLoader LoadPromptFunc
-	Config       GeneratorConfig
-	Now          func() time.Time
-	Rand         *rand.Rand
+	// LocalePromptLoader 按 locale 构造独立加载器；用于单次请求切换语言层
+	LocalePromptLoader func(locale string) LoadPromptFunc
+	Config             GeneratorConfig
+	Now                func() time.Time
+	Rand               *rand.Rand
+}
+
+// ForLocale 返回使用指定 locale 的浅拷贝；未配置多语言加载器时保持原样
+func (b *PromptBuilder) ForLocale(locale string) *PromptBuilder {
+	if b == nil || b.LocalePromptLoader == nil {
+		return b
+	}
+	clone := *b
+	clone.PromptLoader = b.LocalePromptLoader(locale)
+	clone.Config.PromptLocale = locale
+	return &clone
 }
 
 // DocumentBuilder 对应 DocumentReplyGenerator 的提示词部分

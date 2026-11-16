@@ -61,6 +61,7 @@ enable_reply_at = true
 max_context_size = 50
 max_private_context_size = 75
 creative_mode = true
+super_creative_mode = false
 
 [chat.reply_timing]
 message_debounce_mode = "natural"

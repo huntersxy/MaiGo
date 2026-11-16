@@ -118,6 +118,8 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	aggregateCompletionTokens := 0
 	aggregateTotalTokens := 0
 	reasoningContinuationCount := 0
+	translationCount := 0
+	superCreativeMode := g.Builder != nil && g.Builder.Config.SuperCreativeMode
 	reasoningRegenerationRequested := false
 	retroPeriodRegenerationRequested := false
 	geminiRegenerationRequested := false
@@ -283,6 +285,38 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			aggregateCompletionTokens += generationResult.CompletionTokens
 			aggregateTotalTokens += generationResult.TotalTokens
 			promptPreview = renderContextItemsPrompt(requestItems)
+		}
+
+		// 在 after_response Hook 与正文校验前翻译，插件和发送端只处理中文结果
+		if superCreativeMode && strings.TrimSpace(generationResult.ResponseText()) != "" {
+			result.ErrorCode = "replyer_translation_failed"
+			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult)
+			if translationErr != nil {
+				result.ErrorMessage = translationErr.Error()
+				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
+				return finalize(false)
+			}
+			result.ErrorCode = ""
+			translationCount++
+			aggregatePromptTokens += translated.PromptTokens
+			aggregateCompletionTokens += translated.CompletionTokens
+			aggregateTotalTokens += translated.TotalTokens
+			requestItems = translationItems
+			promptPreview = renderContextItemsPrompt(translationItems)
+			originalAttempts := make([]GenerationAttempt, 0, len(generationResult.GenerationAttempts))
+			for _, attempt := range generationResult.GenerationAttempts {
+				if attempt.WorkflowPurpose == g.requestType() || attempt.WorkflowPurpose == "replyer" {
+					attempt.WorkflowPurpose = "replyer.japanese"
+				}
+				originalAttempts = append(originalAttempts, attempt)
+			}
+			translatedAttempts := make([]GenerationAttempt, len(translated.GenerationAttempts))
+			copy(translatedAttempts, translated.GenerationAttempts)
+			for index := range translatedAttempts {
+				translatedAttempts[index].WorkflowPurpose = "replyer.translation"
+			}
+			translated.GenerationAttempts = append(originalAttempts, translatedAttempts...)
+			generationResult = translated
 		}
 
 		generationResult.GenerationAttempts = updateWorkflowAttempt(generationResult.GenerationAttempts, retryCount+1)
@@ -457,7 +491,9 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 	result.Metrics.Extra["prompt_cache_hit_rate"] = round2(hitRate)
 	result.Metrics.Extra["replyer_retry_count"] = retryCount
 	result.Metrics.Extra["replyer_reasoning_continuation_count"] = reasoningContinuationCount
-	result.Metrics.Extra["replyer_attempt_count"] = retryCount + reasoningContinuationCount + 1
+	result.Metrics.Extra["replyer_super_creative_mode"] = superCreativeMode
+	result.Metrics.Extra["replyer_translation_count"] = translationCount
+	result.Metrics.Extra["replyer_attempt_count"] = retryCount + reasoningContinuationCount + translationCount + 1
 	result.Metrics.Extra["replyer_aggregate_prompt_tokens"] = aggregatePromptTokens
 	result.Metrics.Extra["replyer_aggregate_completion_tokens"] = aggregateCompletionTokens
 	result.Metrics.Extra["replyer_aggregate_total_tokens"] = aggregateTotalTokens
@@ -523,21 +559,99 @@ func (g *ReplyGenerator) buildReplyContext(ctx context.Context, history []ChatMe
 func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequest, info *ModelInfo) ([]llm.ContextItem, error) {
 	var messages []RequestMessage
 	var err error
+	var builder *PromptBuilder
 	if g.DocumentMode {
 		if g.DocumentBuilder == nil {
 			return nil, fmt.Errorf("长文 replyer 提示装配器未配置")
 		}
-		messages, err = g.DocumentBuilder.BuildDocumentMessages(req)
+		localized := *g.DocumentBuilder
+		if localized.Config.SuperCreativeMode {
+			localized.PromptBuilder = *localized.PromptBuilder.ForLocale("ja-JP")
+		}
+		builder = &localized.PromptBuilder
+		messages, err = localized.BuildDocumentMessages(req)
 	} else {
 		if g.Builder == nil {
 			return nil, fmt.Errorf("replyer 提示装配器未配置")
 		}
-		messages, err = g.Builder.RequestMessages(ctx, req)
+		builder = g.Builder
+		if builder.Config.SuperCreativeMode {
+			builder = builder.ForLocale("ja-JP")
+		}
+		messages, err = builder.RequestMessages(ctx, req)
 	}
 	if err != nil {
 		return nil, err
 	}
+	if builder != nil && builder.Config.SuperCreativeMode {
+		instruction, loadErr := builder.LoadPrompt("replyer_super_creative", nil)
+		if loadErr != nil {
+			return nil, fmt.Errorf("加载 replyer_super_creative 失败: %w", loadErr)
+		}
+		messages = append(messages, RequestMessage{Role: "user", Content: instruction})
+	}
 	return requestMessagesToContextItems(messages)
+}
+
+// translateSuperCreativeReply 用实际生成日语正文的同一模型翻译；翻译失败时不返回日语原文
+func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client LLMClient, generationResult GenerationResult) (GenerationResult, []llm.ContextItem, error) {
+	modelName := strings.TrimSpace(generationResult.ModelName)
+	if modelName == "" {
+		return GenerationResult{}, nil, fmt.Errorf("超级创意模式缺少实际 Replyer 模型名称，无法锁定翻译模型")
+	}
+	if len(generationResult.ToolCalls) > 0 {
+		return GenerationResult{}, nil, fmt.Errorf("超级创意模式只允许回复正文，不接受工具调用")
+	}
+	sourceText := generationResult.Response
+	if g.Builder != nil && g.Builder.Config.GeminiReplyCompatibility {
+		// 先剥离有明确边界的分析块，避免翻译改变边界后将其当作正式正文
+		compatible, err := NormalizeGeminiReply(sourceText)
+		if err != nil {
+			return GenerationResult{}, nil, err
+		}
+		sourceText = compatible
+	}
+	instruction, err := g.superCreativePromptLoader("zh-CN")("replyer_translate", nil)
+	if err != nil {
+		return GenerationResult{}, nil, fmt.Errorf("加载 replyer_translate 失败: %w", err)
+	}
+	items, err := requestMessagesToContextItems([]RequestMessage{
+		{Role: "system", Content: instruction},
+		{Role: "user", Content: sourceText},
+	})
+	if err != nil {
+		return GenerationResult{}, nil, err
+	}
+	translated, err := client.GenerateResponseWithContext(ctx, func(context.Context, *ModelInfo) ([]llm.ContextItem, error) {
+		return items, nil
+	}, GenerationOptions{ModelName: modelName})
+	if err != nil {
+		return GenerationResult{}, nil, err
+	}
+	translated, err = normalizeGenerationResult(translated)
+	if err != nil {
+		return GenerationResult{}, nil, err
+	}
+	if len(translated.ToolCalls) > 0 {
+		return GenerationResult{}, nil, fmt.Errorf("超级创意模式翻译返回了工具调用，无法输出中文正文")
+	}
+	if strings.TrimSpace(translated.ResponseText()) == "" {
+		return GenerationResult{}, nil, fmt.Errorf("超级创意模式翻译未生成中文正文")
+	}
+	return translated, items, nil
+}
+
+// superCreativePromptLoader 按 locale 加载翻译指令；未配置多语言加载器时退回当前层
+func (g *ReplyGenerator) superCreativePromptLoader(locale string) LoadPromptFunc {
+	if g.Builder != nil && g.Builder.LocalePromptLoader != nil {
+		return g.Builder.LocalePromptLoader(locale)
+	}
+	if g.Builder != nil && g.Builder.PromptLoader != nil {
+		return g.Builder.PromptLoader
+	}
+	return func(string, map[string]string) (string, error) {
+		return "", errPromptLoaderMissing
+	}
 }
 
 func (g *ReplyGenerator) buildGenerationOptions(modelName string) GenerationOptions {

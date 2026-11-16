@@ -79,9 +79,10 @@ func (a *Agent) GenerateDocumentReply(ctx context.Context, streamID, reference, 
 	}
 	builder := &replyer.DocumentBuilder{
 		PromptBuilder: replyer.PromptBuilder{
-			PromptLoader: replyer.NewPromptManagerLoader(manager),
-			Config:       generatorConfig,
-			Now:          time.Now,
+			PromptLoader:       replyer.NewPromptManagerLoader(manager),
+			LocalePromptLoader: replyer.NewPromptManagerLocaleLoader(manager),
+			Config:             generatorConfig,
+			Now:                time.Now,
 		},
 		DocumentModel: modelName,
 	}

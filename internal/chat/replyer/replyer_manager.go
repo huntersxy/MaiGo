@@ -92,3 +92,19 @@ func NewPromptManagerLoader(manager *prompt.Manager) LoadPromptFunc {
 		return rendered, nil
 	}
 }
+
+// NewPromptManagerLocaleLoader 按 locale 独立渲染，不改变 Manager 当前语言层
+func NewPromptManagerLocaleLoader(manager *prompt.Manager) func(locale string) LoadPromptFunc {
+	return func(locale string) LoadPromptFunc {
+		return func(name string, vars map[string]string) (string, error) {
+			if manager == nil {
+				return "", fmt.Errorf("prompt manager 未初始化")
+			}
+			rendered, err := manager.RenderLocale(locale, name, vars)
+			if err != nil {
+				return "", fmt.Errorf("渲染 prompt %q (%s): %w", name, locale, err)
+			}
+			return rendered, nil
+		}
+	}
+}

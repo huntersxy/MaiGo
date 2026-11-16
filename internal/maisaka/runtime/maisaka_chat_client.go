@@ -385,6 +385,7 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.GroupChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.GroupChatPrompt)
 	cfg.PrivateChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.PrivateChatPrompts)
 	cfg.CreativeMode = bot.Chat.CreativeMode
+	cfg.SuperCreativeMode = bot.Chat.SuperCreativeMode
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
 	cfg.GeminiReplyCompatibility = bot.Debug.GeminiReplyCompatibility
 	cfg.KeepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
@@ -543,9 +544,10 @@ func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, 
 		generatorConfig.AttentionDriftBlock = focus.BuildAttentionDriftPromptBlock(&isGroup, prompt.InitialLocale(), instance.Bot.Experimental.GroupAttentionDrift, instance.Bot.Experimental.PrivateAttentionDrift)
 	}
 	builder := &replyer.PromptBuilder{
-		PromptLoader: replyer.NewPromptManagerLoader(manager),
-		Config:       generatorConfig,
-		Now:          time.Now,
+		PromptLoader:       replyer.NewPromptManagerLoader(manager),
+		LocalePromptLoader: replyer.NewPromptManagerLocaleLoader(manager),
+		Config:             generatorConfig,
+		Now:                time.Now,
 	}
 	targetMessage := replyerTarget(target)
 	if targetMessage == nil {
