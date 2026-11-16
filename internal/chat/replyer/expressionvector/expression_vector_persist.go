@@ -1,5 +1,9 @@
 package expressionvector
 
+// 存储策略与 Python 不同：Python 使用可变的 NPY 世代 + delta 增量并回收 mmap 引用
+// （expression_vector_storage.py）；Go 侧以原子 NPY/npz 快照写入并常驻内存索引，
+// 不存在 mmap 生命周期或增量合并问题，因此 4010e7fa 的代际/增量优化在 Go 无对应实现。
+
 import (
 	"context"
 	"crypto/sha256"
