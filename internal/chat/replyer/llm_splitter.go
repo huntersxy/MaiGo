@@ -8,6 +8,8 @@ import (
 	"unicode"
 
 	"github.com/bytedance/sonic"
+
+	"MaiGo/internal/common/llmjson"
 )
 
 // LLMSplitterFunc 调用 LLM 并返回原始文本；prompt 已包含待断句正文
@@ -42,7 +44,7 @@ func SplitTextWithLLM(ctx context.Context, text string, generate LLMSplitterFunc
 	if err != nil {
 		return nil, fmt.Errorf("LLM 断句请求失败: %w", err)
 	}
-	payload := normalizeJSONPayload(raw)
+	payload := llmjson.Normalize(raw)
 
 	if isNoSplitMarker(payload) {
 		content, separator := NormalizeTypoSentence(text)
@@ -96,18 +98,6 @@ func SplitTextWithLLM(ctx context.Context, text string, generate LLMSplitterFunc
 		pieces = append(pieces, sentencePiece{content: content, separator: separator})
 	}
 	return pieces, nil
-}
-
-// normalizeJSONPayload 去除模型偶尔添加的 Markdown JSON 代码块包装
-func normalizeJSONPayload(payload string) string {
-	normalized := strings.TrimSpace(payload)
-	if strings.HasPrefix(normalized, "```json") && strings.HasSuffix(normalized, "```") && len(normalized) >= len("```json")+3 {
-		return strings.TrimSpace(normalized[7 : len(normalized)-3])
-	}
-	if strings.HasPrefix(normalized, "```") && strings.HasSuffix(normalized, "```") && len(normalized) >= 6 {
-		return strings.TrimSpace(normalized[3 : len(normalized)-3])
-	}
-	return normalized
 }
 
 // isNoSplitMarker 兼容裸 no_split 与 JSON 字符串写法

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"MaiGo/internal/common/llmjson"
 	"MaiGo/internal/llm_models"
 
-	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"
 )
@@ -110,16 +110,12 @@ func agenticPlainText(msg *schema.AgenticMessage) string {
 }
 
 func parseExtractedFacts(raw string) []ExtractedFact {
-	text := strings.TrimSpace(raw)
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
-	if text == "" {
+	decoded, err := llmjson.Parse(raw, true, true)
+	if err != nil {
 		return nil
 	}
-	var payload []any
-	if err := sonic.UnmarshalString(text, &payload); err != nil {
+	payload, ok := decoded.([]any)
+	if !ok {
 		return nil
 	}
 	out := make([]ExtractedFact, 0, len(payload))

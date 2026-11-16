@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
 
+	"MaiGo/internal/common/llmjson"
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka/builtin_tool"
 )
@@ -380,7 +381,7 @@ func toSearchDocument(candidate Candidate) searchDocument {
 }
 
 func parseModelOutput(raw string) (ModelOutput, error) {
-	trimmed := strings.TrimSpace(raw)
+	trimmed := llmjson.Normalize(raw)
 	if trimmed == "" {
 		return ModelOutput{}, &OutputError{Message: "模型没有返回可解析的 JSON 对象"}
 	}

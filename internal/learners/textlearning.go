@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/text/cases"
 
+	"MaiGo/internal/common/llmjson"
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/prompt"
 
@@ -174,11 +175,7 @@ func ParseLearningCandidates(response, source string, kind LearningKind) ([]Lear
 		if strings.TrimSpace(lines[len(lines)-1]) != "```" {
 			return nil, errors.New("学习模型返回了不完整的 JSON 代码块")
 		}
-		if len(lines) < 2 {
-			payload = ""
-		} else {
-			payload = strings.Join(lines[1:len(lines)-1], "\n")
-		}
+		payload = llmjson.Normalize(payload)
 	}
 	decoder := json.NewDecoder(bytes.NewReader([]byte(payload)))
 	decoder.DisallowUnknownFields()

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"MaiGo/internal/common/llmjson"
 )
 
 // 回复补充编排节点类型，对齐 Python reply_supplement 的 discriminated union
@@ -38,7 +38,7 @@ type ReplySupplementPlan struct {
 // ParseReplySupplementPlan 严格解析模型输出，多余字段与结构错误直接报错
 func ParseReplySupplementPlan(raw string) (ReplySupplementPlan, error) {
 	payload := map[string]any{}
-	if err := sonic.UnmarshalString(strings.TrimSpace(raw), &payload); err != nil {
+	if err := llmjson.Unmarshal(raw, &payload); err != nil {
 		return ReplySupplementPlan{}, fmt.Errorf("回复补充编排不是合法 JSON：%w", err)
 	}
 	for key := range payload {

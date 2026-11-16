@@ -22,6 +22,8 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"MaiGo/internal/common/llmjson"
 )
 
 // 工具调用来源标记，对齐 Python TOOL_CALL_SOURCE_EXTRA_KEY 及取值
@@ -495,13 +497,13 @@ func parseChatToolArguments(raw, mode string) (map[string]any, error) {
 			return nil, &ParseError{Message: "响应解析失败，无法解析工具调用参数。原始参数：" + raw}
 		}
 	} else {
-		value, err = chatRepairJSON(trimmed)
+		value, err = chatRepairJSON(llmjson.Normalize(trimmed))
 		if err != nil {
 			return nil, &ParseError{Message: "响应解析失败，无法解析工具调用参数。原始参数：" + raw}
 		}
 		if mode == chatToolArgModeAuto || mode == chatToolArgModeDoubleDecode {
 			if text, ok := value.(string); ok {
-				value, err = chatRepairJSON(text)
+				value, err = chatRepairJSON(llmjson.Normalize(text))
 				if err != nil {
 					return nil, &ParseError{Message: "响应解析失败，无法解析工具调用参数。原始参数：" + raw}
 				}
@@ -687,7 +689,7 @@ func chatCoerceXMLParameter(raw string) any {
 		return nil
 	}
 	if trimmed[0] == '{' || trimmed[0] == '[' {
-		if value, err := chatRepairJSON(trimmed); err == nil {
+		if value, err := chatRepairJSON(llmjson.Normalize(trimmed)); err == nil {
 			return value
 		}
 	}
