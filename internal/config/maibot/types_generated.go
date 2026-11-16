@@ -460,9 +460,15 @@ type DebugConfig struct {
 }
 
 type DesktopPetConfig struct {
-	Enabled          bool   `toml:"enabled,omitempty"`
-	ChatToolsEnabled bool   `toml:"chat_tools_enabled,omitempty"`
-	SkinId           string `toml:"skin_id,omitempty"`
+	Enabled                      bool    `toml:"enabled,omitempty"`
+	ChatToolsEnabled             bool    `toml:"chat_tools_enabled,omitempty"`
+	SkinId                       string  `toml:"skin_id,omitempty"`
+	ProactiveWakeEnabled         bool    `toml:"proactive_wake_enabled,omitempty"`
+	ProactiveWakeIntervalMinutes int     `toml:"proactive_wake_interval_minutes,omitempty"`
+	ScreenReadEnabled            bool    `toml:"screen_read_enabled,omitempty"`
+	ScreenReadIntervalSeconds    int     `toml:"screen_read_interval_seconds,omitempty"`
+	ScreenSampleIntervalSeconds  float64 `toml:"screen_sample_interval_seconds,omitempty"`
+	ScreenChangeThreshold        float64 `toml:"screen_change_threshold,omitempty"`
 }
 
 type EmojiCacheCleanupConfig struct {
