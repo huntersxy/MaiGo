@@ -219,6 +219,7 @@ func (r *ToolRegistry) Invoke(ctx context.Context, invocation ToolInvocation, ex
 	native := invocation
 	native.ToolName = metadataText(matched.spec.Metadata, "registry_original_name")
 	native.Metadata = metadata
+	native.Arguments = FilterToolArguments(native.Arguments, matched.spec.ParametersSchema)
 	result, err := invokeProvider(ctx, matched.provider, native, execution)
 	if err != nil {
 		message := strings.TrimSpace(err.Error())

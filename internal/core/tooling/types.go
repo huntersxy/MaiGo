@@ -3,6 +3,7 @@ package tooling
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -120,6 +121,68 @@ func (spec ToolSpec) ToLLMDefinition() map[string]any {
 		definition["parameters_schema"] = cloneAny(spec.ParametersSchema)
 	}
 	return definition
+}
+
+// FilterToolArguments 只保留工具声明的参数；参数值本身保持原样
+func FilterToolArguments(arguments map[string]any, schema map[string]any) map[string]any {
+	if len(arguments) == 0 {
+		return arguments
+	}
+	out := make(map[string]any, len(arguments))
+	for name, value := range arguments {
+		if toolSchemaDeclares(name, schema, schema, 0) {
+			out[name] = value
+		}
+	}
+	return out
+}
+
+func toolSchemaDeclares(name string, node, root map[string]any, depth int) bool {
+	if node == nil || depth > 32 {
+		return false
+	}
+	if reference, ok := node["$ref"].(string); ok && strings.HasPrefix(reference, "#/") {
+		target := root
+		for _, part := range strings.Split(strings.TrimPrefix(reference, "#/"), "/") {
+			part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
+			target, _ = target[part].(map[string]any)
+			if target == nil {
+				break
+			}
+		}
+		if target != nil && toolSchemaDeclares(name, target, root, depth+1) {
+			return true
+		}
+	}
+	if properties, ok := node["properties"].(map[string]any); ok {
+		if _, exists := properties[name]; exists {
+			return true
+		}
+	}
+	if patterns, ok := node["patternProperties"].(map[string]any); ok {
+		for pattern := range patterns {
+			if matched, err := regexp.MatchString(pattern, name); err == nil && matched {
+				return true
+			}
+		}
+	}
+	switch additional := node["additionalProperties"].(type) {
+	case bool:
+		if additional {
+			return true
+		}
+	case map[string]any:
+		return true
+	}
+	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
+		branches, _ := node[keyword].([]any)
+		for _, raw := range branches {
+			if branch, ok := raw.(map[string]any); ok && toolSchemaDeclares(name, branch, root, depth+1) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ToolInvocation 统一工具调用请求
