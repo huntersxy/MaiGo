@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"MaiGo/internal/core/chatpause"
 	"MaiGo/internal/core/localoperator"
 	"MaiGo/internal/maisaka"
 )
@@ -61,6 +62,15 @@ type PolicyDeniedError struct {
 
 func (e *PolicyDeniedError) Error() string {
 	return "适配器名单禁止创建聊天运行实例: " + e.SessionID
+}
+
+// ChatPausedError 管理命令暂停了聊天回复，仍允许接收消息和执行管理命令
+type ChatPausedError struct {
+	SessionID string
+}
+
+func (e *ChatPausedError) Error() string {
+	return "聊天回复已暂停: " + e.SessionID
 }
 
 // Runtime 是本包需要的最小运行时端口，*maisaka.Runtime 满足该接口
@@ -164,6 +174,9 @@ func (m *Manager) GetOrCreate(ctx context.Context, sessionID string) (Runtime, e
 	if err := m.ensureRunning(); err != nil {
 		return nil, err
 	}
+	if err := m.ensureChatOnline(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	if runtime, ok := m.lookupAndTouch(sessionID); ok {
 		return runtime, nil
 	}
@@ -176,6 +189,9 @@ func (m *Manager) GetOrCreate(ctx context.Context, sessionID string) (Runtime, e
 		return runtime, nil
 	}
 	if err := m.ensureRunning(); err != nil {
+		return nil, err
+	}
+	if err := m.ensureChatOnline(ctx, sessionID); err != nil {
 		return nil, err
 	}
 	if m.opts.Sessions == nil {
@@ -202,6 +218,9 @@ func (m *Manager) GetOrCreate(ctx context.Context, sessionID string) (Runtime, e
 		return nil, err
 	}
 	if err := m.ensureRunning(); err != nil {
+		return nil, err
+	}
+	if err := m.ensureChatOnline(ctx, sessionID); err != nil {
 		return nil, err
 	}
 	if m.opts.New == nil {
@@ -571,4 +590,57 @@ func (m *Manager) isSessionAllowed(ctx context.Context, session ChatSession) (bo
 		}
 	}
 	return m.opts.Policy.IsTargetAllowed(ctx, session)
+}
+
+// ensureChatOnline 暂停的聊天仍接收消息，但不再创建思考运行时
+func (m *Manager) ensureChatOnline(ctx context.Context, sessionID string) error {
+	if m.opts.Sessions == nil {
+		return nil
+	}
+	session, ok, err := m.opts.Sessions.SessionByID(ctx, sessionID)
+	if err != nil || !ok {
+		return nil
+	}
+	if chatpause.Default().IsPaused(sessionID, session.IsGroup) {
+		return &ChatPausedError{SessionID: sessionID}
+	}
+	return nil
+}
+
+// StopPausedChats 停止暂停会话的思考、回复和唤醒任务；不清空聊天历史
+func (m *Manager) StopPausedChats(ctx context.Context) error {
+	m.mu.Lock()
+	locks := make([]*sync.Mutex, 0, len(m.createLocks))
+	for _, lock := range m.createLocks {
+		locks = append(locks, lock)
+	}
+	sessionIDs := make([]string, 0, len(m.chats))
+	for sessionID, entry := range m.chats {
+		if entry != nil && chatpause.Default().IsPaused(sessionID, entry.session.IsGroup) {
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+	m.mu.Unlock()
+	// 等待在途创建结束，避免暂停后仍注册新的运行时
+	for _, lock := range locks {
+		lock.Lock()
+	}
+	for _, lock := range locks {
+		lock.Unlock()
+	}
+	for _, sessionID := range sessionIDs {
+		m.evictChat(ctx, sessionID, "chat_paused")
+	}
+	return nil
+}
+
+// ActiveSessionIDs 返回当前有心流运行时的会话编号
+func (m *Manager) ActiveSessionIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.chats))
+	for sessionID := range m.chats {
+		out = append(out, sessionID)
+	}
+	return out
 }

@@ -33,6 +33,7 @@ type ChatBot struct {
 	filter             MessageFilter
 	images             ImagePreprocessor
 	lifecycle          AdapterLifecycle
+	chatControl        ChatControl
 	now                func() time.Time
 	voiceTranscription bool
 	silentPermission   func() bool
@@ -73,6 +74,7 @@ func NewChatBot(options ChatBotOptions) *ChatBot {
 		filter:             options.Filter,
 		images:             options.Images,
 		lifecycle:          options.Lifecycle,
+		chatControl:        options.ChatControl,
 		now:                now,
 		voiceTranscription: options.EnableVoiceTranscription,
 		silentPermission:   options.SilentPermission,

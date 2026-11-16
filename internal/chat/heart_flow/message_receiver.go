@@ -2,6 +2,7 @@ package heartflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"MaiGo/internal/core/chatpause"
 	"MaiGo/internal/maisaka"
 )
 
@@ -192,7 +194,12 @@ func (r *Receiver) ProcessMessageStrict(ctx context.Context, message *SessionMes
 	if r.opts.Chats != nil {
 		runtime, err := r.opts.Chats.GetOrCreate(ctx, message.SessionID)
 		if err != nil {
-			zap.L().Error(fmt.Sprintf("出现错误: %v", err), zap.Error(err))
+			var paused *ChatPausedError
+			if errors.As(err, &paused) {
+				zap.L().Debug("聊天回复已暂停，仅接收消息: " + message.SessionID)
+			} else {
+				zap.L().Error(fmt.Sprintf("出现错误: %v", err), zap.Error(err))
+			}
 		} else {
 			chat = runtime
 		}
@@ -203,7 +210,7 @@ func (r *Receiver) ProcessMessageStrict(ctx context.Context, message *SessionMes
 			return fmt.Errorf("存储消息失败: %w", err)
 		}
 	}
-	if chat != nil {
+	if chat != nil && !chatpause.Default().IsPaused(message.SessionID, groupInfoOf(message) != nil) {
 		if err := chat.RegisterMessage(ctx, message.ToContextMessage()); err != nil {
 			return fmt.Errorf("登记聊天消息失败: %w", err)
 		}

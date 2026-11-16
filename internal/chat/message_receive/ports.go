@@ -150,5 +150,13 @@ type ChatBotOptions struct {
 	EnableVoiceTranscription bool
 	// SilentPermission 对齐 global_config.plugin.silent_permission_denied；nil 视为 false
 	SilentPermission func() bool
-	Now              func() time.Time
+	// ChatControl 聊天暂停与活跃会话管理；nil 时暂停命令只记录状态
+	ChatControl ChatControl
+	Now         func() time.Time
+}
+
+// ChatControl 对齐 heartflow_manager 的暂停与活跃会话查询
+type ChatControl interface {
+	StopPausedChats(ctx context.Context) error
+	ActiveSessionIDs() []string
 }

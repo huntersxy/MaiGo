@@ -217,6 +217,7 @@ func New(options Options) *Runtime {
 		MessageIDs:               newMessageIDPort(options.DB),
 		Policy:                   options.CommandPolicy,
 		Lifecycle:                options.AdapterLifecycle,
+		ChatControl:              heartflowManager,
 		BotIdentity:              &BotPort{Registry: options.People, Nickname: options.BotNickname},
 		Text:                     &SenderText{Sender: sender},
 		Now:                      now,

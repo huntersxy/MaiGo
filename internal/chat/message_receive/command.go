@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"MaiGo/internal/core/chatpause"
 	"MaiGo/internal/core/localoperator"
 
 	"go.uber.org/zap"
@@ -27,6 +28,13 @@ func (b *ChatBot) IsCommandCandidate(message *SessionMessage) bool {
 		return false
 	}
 	if text == "/offline" || text == "/online" {
+		return true
+	}
+	parts := strings.Fields(text)
+	if len(parts) > 0 && (parts[0] == "/offline" || parts[0] == "/online") {
+		return true
+	}
+	if len(parts) == 2 && parts[0] == "/list" && parts[1] == "chat" {
 		return true
 	}
 	local := localoperator.IsLocalOperator(message.Platform, message.MessageInfo.AdditionalConfig)
@@ -257,27 +265,45 @@ func (b *ChatBot) ProcessClearContextCommand(ctx context.Context, message *Sessi
 
 // ProcessAdapterLifecycleCommand 对齐 bot._process_adapter_lifecycle_command
 func (b *ChatBot) ProcessAdapterLifecycleCommand(ctx context.Context, message *SessionMessage) bool {
-	if b == nil || message == nil || b.lifecycle == nil {
+	if b == nil || message == nil {
 		return false
 	}
 	text := strings.TrimSpace(message.PlainText())
-	if text != "/offline" && text != "/online" {
+	parts := strings.Fields(text)
+	if len(parts) == 0 {
+		return false
+	}
+	isAdapterCommand := parts[0] == "/offline" || parts[0] == "/online"
+	isListCommand := len(parts) == 2 && parts[0] == "/list" && parts[1] == "chat"
+	if !isAdapterCommand && !isListCommand {
 		return false
 	}
 	if b.policy != nil && !b.policy.HasPluginManagementPermission(ctx, message) {
 		b.markCommandMessage(message, 1)
 		b.storeCommandMessage(ctx, message)
 		if !b.silentPermissionDenied() {
-			b.sendCommandText(ctx, message, "你没有权限使用适配器管理命令。")
+			b.sendCommandText(ctx, message, "你没有权限使用聊天与适配器管理命令。")
 		}
-		zap.L().Warn("已拒绝未授权的适配器管理指令: platform=" + message.Platform + " user_id=" + message.UserID() + " command=" + text)
+		zap.L().Warn("已拒绝未授权的管理指令: platform=" + message.Platform + " user_id=" + message.UserID() + " command=" + text)
 		return true
 	}
 	b.markCommandMessage(message, 1)
 	b.storeCommandMessage(ctx, message)
+	if isListCommand {
+		b.handleChatListCommand(ctx, message)
+		return true
+	}
+	if len(parts) > 1 {
+		b.handleChatPauseCommand(ctx, message, parts)
+		return true
+	}
+	if b.lifecycle == nil {
+		return true
+	}
+	command := parts[0]
 	// Python 以本地操作员身份区分远端离线提示，而不是适配器运行模式
 	local := localoperator.IsLocalOperator(message.Platform, message.MessageInfo.AdditionalConfig)
-	remoteOffline := !local && text == "/offline"
+	remoteOffline := !local && command == "/offline"
 	if remoteOffline {
 		if err := b.sendText(ctx, message, "正在关闭全部适配器插件；操作结果将记录在主程序日志中。恢复适配器请使用本地控制台 /online。"); err != nil {
 			zap.L().Warn("适配器关闭前确认消息发送失败，已取消执行: session_id=" + message.SessionID)
@@ -312,6 +338,111 @@ func (b *ChatBot) runAdapterLifecycle(ctx context.Context, command string) (Adap
 		return b.lifecycle.BringAdaptersOnline(ctx)
 	}
 	return b.lifecycle.TakeAdaptersOffline(ctx)
+}
+
+// handleChatListCommand 列出当前活跃及本次运行已暂停的群聊
+func (b *ChatBot) handleChatListCommand(ctx context.Context, message *SessionMessage) {
+	active := map[string]struct{}{}
+	if b.chatControl != nil {
+		for _, sessionID := range b.chatControl.ActiveSessionIDs() {
+			active[sessionID] = struct{}{}
+		}
+	}
+	sessions := make([]*BotChatSession, 0)
+	if b.manager != nil {
+		for _, session := range b.manager.AllSessions() {
+			if session == nil || !session.IsGroup() {
+				continue
+			}
+			sessionID := session.SessionID()
+			if _, ok := active[sessionID]; ok || chatpause.Default().IsPaused(sessionID, true) {
+				sessions = append(sessions, session)
+			}
+		}
+	}
+	sort.SliceStable(sessions, func(left, right int) bool {
+		if sessions[left].Record.Platform != sessions[right].Record.Platform {
+			return sessions[left].Record.Platform < sessions[right].Record.Platform
+		}
+		return sessions[left].SessionID() < sessions[right].SessionID()
+	})
+	lines := []string{fmt.Sprintf("活跃及本次运行已暂停的群聊共 %d 个：", len(sessions))}
+	for _, session := range sessions {
+		name := strings.TrimSpace(b.manager.GetSessionName(session))
+		if name == "" {
+			name = strings.TrimSpace(pointerText(session.Record.GroupID))
+		}
+		if name == "" {
+			name = strings.TrimSpace(pointerText(session.Record.UserID))
+		}
+		status := "未暂停"
+		if chatpause.Default().IsPaused(session.SessionID(), true) {
+			status = "已暂停"
+		}
+		lines = append(lines, fmt.Sprintf("%s [%s / 群聊 / %s]\nID: %s", name, session.Record.Platform, status, session.SessionID()))
+	}
+	// 分批发送，避免聊天流较多时超出平台单条消息限制
+	for start := 0; start < len(lines); start += 10 {
+		end := start + 10
+		if end > len(lines) {
+			end = len(lines)
+		}
+		if err := b.sendText(ctx, message, strings.Join(lines[start:end], "\n\n")); err != nil {
+			zap.L().Warn("聊天流列表发送失败: session_id=" + message.SessionID, zap.Error(err))
+			break
+		}
+	}
+}
+
+// handleChatPauseCommand 暂停或恢复指定聊天类型/聊天流的回复
+func (b *ChatBot) handleChatPauseCommand(ctx context.Context, message *SessionMessage, parts []string) {
+	if len(parts) != 2 {
+		b.sendCommandText(ctx, message, "用法：/offline group|private|<聊天流ID>；/online group|private|<聊天流ID>；/list chat")
+		return
+	}
+	target := parts[1]
+	paused := parts[0] == "/offline"
+	var response string
+	if target == "group" || target == "private" {
+		chatpause.Default().SetType(target == "group", paused)
+		name := "全部群聊"
+		if target == "private" {
+			name = "全部私聊"
+		}
+		if paused && b.chatControl != nil {
+			_ = b.chatControl.StopPausedChats(ctx)
+		}
+		response = fmt.Sprintf("已%s %s 的聊天回复。管理命令仍可用；重启后暂停状态解除。", pausedWord(paused), name)
+	} else {
+		var session *BotChatSession
+		if b.manager != nil {
+			session, _ = b.manager.GetSessionBySessionID(target)
+		}
+		if session == nil {
+			b.sendCommandText(ctx, message, "未找到该聊天流，请通过 /list chat 获取完整聊天流 ID（不是群号或用户号）。")
+			return
+		}
+		chatpause.Default().SetSession(session.SessionID(), session.IsGroup(), paused)
+		if paused && b.chatControl != nil {
+			_ = b.chatControl.StopPausedChats(ctx)
+		}
+		name := strings.TrimSpace(b.manager.GetSessionName(session))
+		if name == "" {
+			name = session.SessionID()
+		}
+		response = fmt.Sprintf("已%s %s 的聊天回复。管理命令仍可用；重启后暂停状态解除。", pausedWord(paused), name)
+	}
+	if !paused {
+		response += "实际回复仍遵循原有配置。"
+	}
+	b.sendCommandText(ctx, message, response)
+}
+
+func pausedWord(paused bool) string {
+	if paused {
+		return "暂停"
+	}
+	return "解除暂停"
 }
 
 func adapterOfflineResponse(result AdapterLifecycleResult) string {

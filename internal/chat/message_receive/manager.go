@@ -324,6 +324,20 @@ func (m *ChatManager) GetExistingSessionBySessionID(ctx context.Context, session
 	return session, true
 }
 
+// AllSessions 返回已登记会话快照，对齐 chat_manager.sessions
+func (m *ChatManager) AllSessions() []*BotChatSession {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]*BotChatSession, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		out = append(out, session)
+	}
+	return out
+}
+
 // GetSessionName 对齐 chat_manager.get_session_name
 func (m *ChatManager) GetSessionName(session *BotChatSession) string {
 	if session == nil {
