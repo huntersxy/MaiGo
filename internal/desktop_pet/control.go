@@ -26,6 +26,9 @@ func (s *Service) Control(ctx context.Context, action, text string, active bool)
 		return s.Status(), nil
 	case "say":
 		parts := []map[string]any{{"kind": "text", "text": text}}
+		s.mu.Lock()
+		s.bubble = bubbleText(text)
+		s.mu.Unlock()
 		if _, err := s.call(ctx, map[string]any{"type": "notice", "parts": parts}); err != nil {
 			return s.Status(), err
 		}
@@ -35,6 +38,9 @@ func (s *Service) Control(ctx context.Context, action, text string, active bool)
 		if active {
 			command = "thinking"
 		}
+		s.mu.Lock()
+		s.thinking = active
+		s.mu.Unlock()
 		if _, err := s.call(ctx, map[string]any{"type": command}); err != nil {
 			return s.Status(), err
 		}
@@ -194,9 +200,10 @@ func (s *Service) handleChat(ctx context.Context, requestID string) {
 
 // NotifyThinking 通知桌宠进入思考状态，对齐 notify_thinking
 func (s *Service) NotifyThinking() {
-	s.mu.RLock()
+	s.mu.Lock()
+	s.thinking = true
 	ready := s.ready && !s.closing
-	s.mu.RUnlock()
+	s.mu.Unlock()
 	if !ready {
 		return
 	}
@@ -234,7 +241,34 @@ func (s *Service) NotifyReply(segments []map[string]any, text string) {
 	if _, err := s.call(ctx, map[string]any{"type": "reply", "parts": parts}); err != nil {
 		s.setError(err)
 		zap.L().Warn("桌宠回复气泡发送失败", zap.Error(err))
+		return
 	}
+	textParts := make([]string, 0)
+	for _, part := range parts {
+		if kind, _ := part["kind"].(string); kind == "text" {
+			if value, _ := part["text"].(string); value != "" {
+				textParts = append(textParts, value)
+			}
+		}
+	}
+	bubble := bubbleText(strings.Join(textParts, ""))
+	if bubble == "" {
+		bubble = "[图片]"
+	}
+	s.mu.Lock()
+	s.thinking = false
+	s.bubble = bubble
+	s.mu.Unlock()
+}
+
+// bubbleText 首页卡片只放一行摘要，完整内容在聊天记录里
+func bubbleText(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	runes := []rune(text)
+	if len(runes) <= 120 {
+		return text
+	}
+	return string(runes[:119]) + "…"
 }
 
 // instanceRoot 实例根目录，对齐 get_instance_root

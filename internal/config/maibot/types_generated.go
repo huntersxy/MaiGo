@@ -455,6 +455,7 @@ type DesktopPetConfig struct {
 	Enabled                      bool    `toml:"enabled,omitempty"`
 	Mode                         string  `toml:"mode,omitempty"`
 	ChatToolsEnabled             bool    `toml:"chat_tools_enabled,omitempty"`
+	ShowCurrentTask              bool    `toml:"show_current_task,omitempty"`
 	SkinId                       string  `toml:"skin_id,omitempty"`
 	ProactiveWakeEnabled         bool    `toml:"proactive_wake_enabled,omitempty"`
 	ProactiveWakeIntervalMinutes int     `toml:"proactive_wake_interval_minutes,omitempty"`

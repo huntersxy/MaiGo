@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"MaiGo/internal/plugin_runtime/protocol"
+
 	"github.com/bytedance/sonic"
 )
 
@@ -121,6 +123,9 @@ func makeWebHandler(port PluginWebPort, capability string) CapabilityHandler {
 			result, err = port.Fetch(ctx, pluginID, args)
 		}
 		if err != nil {
+			if coder, ok := err.(interface{ ErrorCode() string }); ok && strings.TrimSpace(coder.ErrorCode()) != "" {
+				return nil, &protocol.RPCError{Code: protocol.ErrorCode(coder.ErrorCode()), Message: err.Error()}
+			}
 			return capabilityFailure("%s", err.Error()), nil
 		}
 		if pluginWebResultTooLarge(result) {

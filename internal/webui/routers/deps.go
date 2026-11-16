@@ -49,6 +49,8 @@ type Deps struct {
 	MCPStore         *mcp.Store
 	Agent            *maisaruntime.Agent
 	ACPAgent         AgentControlService
+	DesktopPet       DesktopPetControl
+	DesktopPetChat   func(ctx context.Context, text string) (string, error)
 	ReasoningReplay  ReasoningReplayService
 	SearchService    *search.Service
 	SearchRunner     search.Runner

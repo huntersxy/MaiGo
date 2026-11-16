@@ -1,9 +1,9 @@
 package app
 
 import (
+	httpservice "MaiGo/internal/common/http_service"
 	"context"
 	"fmt"
-	httpservice "MaiGo/internal/common/http_service"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -48,6 +48,8 @@ type App struct {
 	pluginHost       *pluginruntime.Host
 	antiCrawler      *antiCrawlerMiddleware
 	acpAgent         webuiapi.AgentControlService
+	desktopPet       webuiapi.DesktopPetControl
+	desktopPetChat   func(context.Context, string) (string, error)
 	botAccounts      *botservices.BotAccountService
 	botOnline        func(platform, accountID string) bool
 	botAccountPairs  func(context.Context) ([][2]string, error)
@@ -63,7 +65,7 @@ type App struct {
 	sessionTaskSubmitter  func(context.Context, string, func(context.Context) error) error
 }
 
-func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService) *App {
+func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, desktopPet webuiapi.DesktopPetControl, desktopPetChat func(context.Context, string) (string, error), botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService) *App {
 	instanceDir := config.InstanceRoot()
 	securityConfig, err := loadAntiCrawlerConfig(instanceDir)
 	if err != nil {
@@ -90,6 +92,8 @@ func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.A
 		pluginMarket:     pluginmarket.NewService(),
 		pluginHost:       pluginHost,
 		acpAgent:         acpAgent,
+		desktopPet:       desktopPet,
+		desktopPetChat:   desktopPetChat,
 		botAccounts:      botAccounts,
 		botOnline:        botOnline,
 		botAccountPairs:  botAccountPairs,
@@ -214,6 +218,8 @@ func (a *App) routes() http.Handler {
 		Files:                 a.files,
 		ChatHub:               a.chatHub,
 		ACPAgent:              a.acpAgent,
+		DesktopPet:            a.desktopPet,
+		DesktopPetChat:        a.desktopPetChat,
 		BotAccounts:           a.botAccounts,
 		BotAccountOnline:      a.botOnline,
 		BotAccountPairs:       a.botAccountPairs,

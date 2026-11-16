@@ -1659,7 +1659,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	if acpService != nil {
 		acpAgentService = acpService
 	}
-	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
+	desktopPetChat := func(ctx context.Context, text string) (string, error) {
+		return chatRelay.RelayPluginChatMessage(ctx, "builtin.desktop_pet", text, nil)
+	}
+	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, desktopPetSvc, desktopPetChat, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
 	app.SetSessionSchedulerStats(chatPipeline.SessionSchedulerStats)
 	app.SetSessionTaskSubmitter(chatPipeline.SessionTaskSubmitter())
 	app.SetEnforcePublicOutboundProvider(func() bool {

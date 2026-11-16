@@ -16,8 +16,16 @@ acp_timeout = 60
 
 [desktop_pet]
 enabled = false
+mode = "local"
 chat_tools_enabled = false
+show_current_task = false
 skin_id = "builtin"
+proactive_wake_enabled = false
+proactive_wake_interval_minutes = 30
+screen_read_enabled = false
+screen_read_interval_seconds = 10
+screen_sample_interval_seconds = 2
+screen_change_threshold = 0.015
 
 [http]
 host = ["127.0.0.1", "::1"]

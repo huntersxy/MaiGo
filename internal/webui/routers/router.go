@@ -178,6 +178,9 @@ func Mount(r chi.Router, d Deps) {
 			pr.Get("/skins", d.handleDesktopPetSkins)
 			pr.Get("/skins/{skin_id}", d.handleDesktopPetSkin)
 			pr.Post("/skins", d.handleDesktopPetInstall)
+			pr.Get("/status", d.handleDesktopPetStatus)
+			pr.Post("/visibility", d.handleDesktopPetVisibility)
+			pr.Post("/chat", d.handleDesktopPetChat)
 		})
 
 		api.Get("/html-render/status", d.handleHTMLRenderStatus)

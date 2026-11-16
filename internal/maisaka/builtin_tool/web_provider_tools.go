@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -159,6 +160,22 @@ func webToolFailure(message string) (StructuredToolResult, error) {
 	return StructuredToolResult{Success: false, ErrorMessage: message}, nil
 }
 
+// webToolError 把联网配置错误映射为带 error_code 的结构化失败
+func webToolError(err error) (StructuredToolResult, error) {
+	var configErr *websearch.ConfigError
+	if errors.As(err, &configErr) {
+		return StructuredToolResult{
+			Success:      false,
+			ErrorMessage: configErr.Error(),
+			StructuredContent: map[string]any{
+				"error_code": configErr.ErrorCode(),
+				"message":    configErr.Error(),
+			},
+		}, nil
+	}
+	return webToolFailure(err.Error())
+}
+
 // InvokeStructuredToolResult 对齐 Python WebSearchToolProvider.invoke
 func (t *webSearchTool) InvokeStructuredToolResult(ctx context.Context, argumentsInJSON string) (StructuredToolResult, error) {
 	args := map[string]any{}
@@ -186,7 +203,7 @@ func (t *webSearchTool) InvokeStructuredToolResult(ctx context.Context, argument
 	}
 	result, err := defaultWebService.Search(ctx, strings.TrimSpace(query), count)
 	if err != nil {
-		return webToolFailure(err.Error())
+		return webToolError(err)
 	}
 	payload := map[string]any{
 		"query":        result.Query,
@@ -236,7 +253,7 @@ func (t *webFetchTool) InvokeStructuredToolResult(ctx context.Context, arguments
 	}
 	page, err := defaultWebService.Fetch(ctx, url)
 	if err != nil {
-		return webToolFailure(err.Error())
+		return webToolError(err)
 	}
 	payload := map[string]any{
 		"url":          page.URL,

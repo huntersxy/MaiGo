@@ -37,6 +37,8 @@ type Status struct {
 	Error     string `json:"error"`
 	SkinID    string `json:"skin_id"`
 	PID       int    `json:"pid"`
+	Thinking  bool   `json:"thinking"`
+	Bubble    string `json:"bubble"`
 }
 
 // Service 桌宠窗口进程与行协议客户端，对齐 DesktopPetService
@@ -58,6 +60,8 @@ type Service struct {
 	closing    bool
 	errMsg     string
 	skinID     string
+	thinking   bool
+	bubble     string
 	stderrTail []string
 	hooks      HookEmitter
 	buttons    ButtonProvider
@@ -362,6 +366,7 @@ func (s *Service) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.closing = true
+	s.thinking = false
 	s.mu.Unlock()
 
 	pid := cmd.Process.Pid
@@ -418,5 +423,7 @@ func (s *Service) Status() Status {
 		Error:     s.errMsg,
 		SkinID:    s.skinID,
 		PID:       pid,
+		Thinking:  s.thinking && s.ready && !s.closing,
+		Bubble:    s.bubble,
 	}
 }

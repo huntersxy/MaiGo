@@ -29,6 +29,26 @@ const (
 // ErrNoWebConfig 表示 model_config.toml 没有 [web] 联网配置，调用方应回退 env
 var ErrNoWebConfig = errors.New("model_config 未配置 web 联网服务")
 
+// CodeWebServiceConfigInvalid 对齐 protocol errors 的联网配置错误码
+const CodeWebServiceConfigInvalid = "E_WEB_SERVICE_CONFIG_INVALID"
+
+// ConfigError 已分配的联网服务缺失或配置不完整
+type ConfigError struct {
+	Message string
+}
+
+func (e *ConfigError) Error() string { return e.Message }
+
+// ErrorCode 供插件能力映射为 RPC 错误码
+func (e *ConfigError) ErrorCode() string { return CodeWebServiceConfigInvalid }
+
+// ServiceConfig 单个联网服务的调用配置快照
+type ServiceConfig struct {
+	Adapter   string
+	APIKey    string
+	ServerRef string
+}
+
 // RuntimeConfig 运行时联网配置；TOML 快照 + env 覆盖后的扁平结果
 type RuntimeConfig struct {
 	Enabled bool
@@ -38,6 +58,8 @@ type RuntimeConfig struct {
 	// SearchService / FetchService 记录 TOML 中选中的服务名，便于诊断
 	SearchService string
 	FetchService  string
+	// Services 保留服务定义，调用时校验服务是否存在且配置完整
+	Services map[string]ServiceConfig
 
 	PreviewChars int
 	Timeout      time.Duration
@@ -163,7 +185,7 @@ func finalizeRuntimeConfig(cfg *RuntimeConfig) {
 	cfg.SearchDepth = strings.ToLower(strings.TrimSpace(cfg.SearchDepth))
 	cfg.ExtractDepth = strings.ToLower(strings.TrimSpace(cfg.ExtractDepth))
 	cfg.Category = strings.TrimSpace(cfg.Category)
-	if cfg.SearchAdapter == "" {
+	if cfg.SearchAdapter == "" && strings.TrimSpace(cfg.SearchService) == "" {
 		switch {
 		case strings.TrimSpace(cfg.TavilyAPIKey) != "":
 			cfg.SearchAdapter = "tavily"
@@ -173,7 +195,7 @@ func finalizeRuntimeConfig(cfg *RuntimeConfig) {
 			cfg.SearchAdapter = "bing"
 		}
 	}
-	if cfg.FetchAdapter == "" {
+	if cfg.FetchAdapter == "" && strings.TrimSpace(cfg.FetchService) == "" {
 		switch {
 		case strings.TrimSpace(cfg.TavilyAPIKey) != "":
 			cfg.FetchAdapter = "tavily"
@@ -334,9 +356,15 @@ func ParseRuntimeTOML(raw []byte) (RuntimeConfig, error) {
 			services[name] = service
 		}
 	}
+	cfg.Services = make(map[string]ServiceConfig, len(services))
 	for name, service := range services {
 		if err := validateRawService(name, service); err != nil {
 			return RuntimeConfig{}, err
+		}
+		cfg.Services[name] = ServiceConfig{
+			Adapter:   normalizedAdapter(service.Adapter),
+			APIKey:    strings.TrimSpace(service.APIKey),
+			ServerRef: strings.TrimSpace(service.ServerRef),
 		}
 	}
 	selected := ""
@@ -353,12 +381,17 @@ func ParseRuntimeTOML(raw []byte) (RuntimeConfig, error) {
 		}
 	}
 	if selected != "" {
-		service, ok := services[selected]
-		if !ok {
-			return RuntimeConfig{}, fmt.Errorf("web_search 引用了不存在的联网服务：%s，请先取消该功能分配", selected)
+		if service, ok := services[selected]; ok {
+			applySelectedService(&cfg, selected, service)
+		} else {
+			// 服务缺失不阻止启动；调用时返回 E_WEB_SERVICE_CONFIG_INVALID
+			cfg.Enabled = true
+			cfg.SearchService = selected
+			cfg.FetchService = selected
 		}
-		if err := applySelectedService(&cfg, selected, service); err != nil {
-			return RuntimeConfig{}, err
+		if err := requireWebService(cfg, selected); err != nil {
+			zap.L().Warn("联网工具配置有误，调用时将返回 "+CodeWebServiceConfigInvalid,
+				zap.Error(err))
 		}
 	}
 	return applyEnvAndValidate(cfg)
@@ -417,24 +450,35 @@ func validateRawService(name string, service rawService) error {
 	return nil
 }
 
-func applySelectedService(cfg *RuntimeConfig, name string, service rawService) error {
-	adapter := strings.ToLower(strings.TrimSpace(service.Adapter))
+func normalizedAdapter(raw string) string {
+	adapter := strings.ToLower(strings.TrimSpace(raw))
 	if adapter == "" {
-		adapter = "deepseek"
+		return "deepseek"
 	}
 	if adapter == "stepsearch" {
-		adapter = "stepsearch_mcp"
+		return "stepsearch_mcp"
 	}
-	if adapter == "stepsearch_mcp" {
-		if strings.TrimSpace(service.APIKey) != "" || strings.TrimSpace(service.BaseURL) != "" {
-			return fmt.Errorf("StepSearch MCP 请使用 server_ref，地址和密钥在 MCP 连接中配置")
-		}
-		if strings.TrimSpace(service.ServerRef) == "" {
-			return fmt.Errorf("联网服务 %s 缺少 server_ref", name)
-		}
-	} else if strings.TrimSpace(service.APIKey) == "" {
-		return fmt.Errorf("联网服务 %s 缺少 api_key", name)
+	return adapter
+}
+
+// requireWebService 获取指定联网服务并检查调用所需配置
+func requireWebService(cfg RuntimeConfig, name string) error {
+	service, ok := cfg.Services[strings.TrimSpace(name)]
+	if !ok {
+		return &ConfigError{Message: fmt.Sprintf("web_search 引用了不存在的联网服务：%s，请修正或取消该功能分配", name)}
 	}
+	field, value := "api_key", service.APIKey
+	if service.Adapter == "stepsearch_mcp" {
+		field, value = "server_ref", service.ServerRef
+	}
+	if strings.TrimSpace(value) == "" {
+		return &ConfigError{Message: fmt.Sprintf("联网服务 %s 缺少 %s", name, field)}
+	}
+	return nil
+}
+
+func applySelectedService(cfg *RuntimeConfig, name string, service rawService) {
+	adapter := normalizedAdapter(service.Adapter)
 	cfg.Enabled = true
 	cfg.SearchAdapter = adapter
 	cfg.FetchAdapter = adapter
@@ -477,7 +521,6 @@ func applySelectedService(cfg *RuntimeConfig, name string, service rawService) e
 		cfg.SearchAdapter = "stepsearch"
 		cfg.FetchAdapter = "stepsearch"
 	}
-	return nil
 }
 
 // ModelConfigPathFromEnv 返回当前实例的 model_config.toml；MAIBOT_MODEL_CONFIG_PATH 优先

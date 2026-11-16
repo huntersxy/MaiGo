@@ -1,7 +1,7 @@
 {
  "source": {
-  "maibot_root": "maibot==1.4.1",
-  "maibot_version": "1.4.1",
+  "maibot_root": "maibot==1.4.2",
+  "maibot_version": "1.4.2",
   "fastapi": "0.162.0",
   "pydantic": "2.14.3"
  },
@@ -6198,6 +6198,48 @@
      "source_id",
      "custom_prefix",
      "force"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/desktop-pet/visibility",
+   "required": true,
+   "schema": {
+    "properties": {
+     "visible": {
+      "title": "Visible",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "visible"
+    ],
+    "title": "VisibilityBody",
+    "type": "object",
+    "x-order": [
+     "visible"
+    ]
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/api/webui/desktop-pet/chat",
+   "required": true,
+   "schema": {
+    "properties": {
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "title": "ChatBody",
+    "type": "object",
+    "x-order": [
+     "text"
     ]
    }
   }

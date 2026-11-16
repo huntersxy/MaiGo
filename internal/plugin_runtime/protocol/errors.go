@@ -25,6 +25,7 @@ const (
 	ErrorCodeReloadInProgress ErrorCode = "E_RELOAD_IN_PROGRESS"
 	ErrorCodeCapabilityDenied ErrorCode = "E_CAPABILITY_DENIED"
 	ErrorCodeCapabilityFailed ErrorCode = "E_CAPABILITY_FAILED"
+	ErrorCodeWebConfigInvalid ErrorCode = "E_WEB_SERVICE_CONFIG_INVALID"
 )
 
 // RPCError Host ↔ Runner RPC 异常

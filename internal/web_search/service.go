@@ -1,10 +1,10 @@
 package websearch
 
 import (
+	"MaiGo/internal/web_search/adapters"
 	"context"
 	"errors"
 	"fmt"
-	"MaiGo/internal/web_search/adapters"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +87,11 @@ func (s *Service) Search(ctx context.Context, query string, maxResults int) (*Se
 	if !cfg.Enabled {
 		return nil, NewError("统一联网功能未启用")
 	}
+	if name := strings.TrimSpace(cfg.SearchService); name != "" {
+		if err := requireWebService(cfg, name); err != nil {
+			return nil, err
+		}
+	}
 	query = strings.TrimSpace(query)
 	if query == "" || utf8.RuneCountInString(query) > 1000 {
 		return nil, NewError("query 必须是非空字符串且不超过 1000 个字符")
@@ -141,6 +146,11 @@ func (s *Service) Fetch(ctx context.Context, pageURL string) (*PageResult, error
 	}
 	if !cfg.Enabled {
 		return nil, NewError("统一联网功能未启用")
+	}
+	if name := strings.TrimSpace(cfg.FetchService); name != "" {
+		if err := requireWebService(cfg, name); err != nil {
+			return nil, err
+		}
 	}
 	pageURL, err = ValidateURL(pageURL)
 	if err != nil {

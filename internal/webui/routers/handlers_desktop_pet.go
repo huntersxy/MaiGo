@@ -1,15 +1,25 @@
 package webuiapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"MaiGo/internal/desktop_pet"
 
+	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 )
+
+// DesktopPetControl 桌宠窗口状态与控制端口
+type DesktopPetControl interface {
+	Status() desktoppet.Status
+	Control(ctx context.Context, action, text string, active bool) (desktoppet.Status, error)
+}
 
 // desktopPetMaxBytes 皮肤包体积上限，对齐 skins.MAX_BYTES
 const desktopPetMaxBytes = 32 * 1024 * 1024
@@ -68,4 +78,114 @@ func (d Deps) desktopPetRoot() string {
 		return "."
 	}
 	return dir
+}
+
+// desktopPetTodoSummary 读取未完成待办，只读不写
+func (d Deps) desktopPetTodoSummary() map[string]any {
+	path := filepath.Join(d.desktopPetRoot(), "data", "plugins", "sengokucola.desktop-pet", "todos.json")
+	items := desktoppet.NewTodoStore(path).List(false)
+	preview := make([]map[string]any, 0, len(items))
+	for index, item := range items {
+		if index >= 20 {
+			break
+		}
+		preview = append(preview, map[string]any{
+			"id": item["id"], "text": item["text"], "due_at": item["due_at"],
+		})
+	}
+	return map[string]any{"pending": len(items), "items": preview}
+}
+
+func (d Deps) handleDesktopPetStatus(w http.ResponseWriter, r *http.Request) {
+	if !d.authenticated(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"detail": "Token 无效或已过期"})
+		return
+	}
+	status := desktoppet.Status{}
+	if d.DesktopPet != nil {
+		status = d.DesktopPet.Status()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": status.Enabled, "supported": status.Supported, "running": status.Running,
+		"ready": status.Ready, "visible": status.Visible, "error": status.Error,
+		"skin_id": status.SkinID, "pid": status.PID, "thinking": status.Thinking, "bubble": status.Bubble,
+		"todos": d.desktopPetTodoSummary(),
+	})
+}
+
+func (d Deps) handleDesktopPetVisibility(w http.ResponseWriter, r *http.Request) {
+	if !d.authenticated(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"detail": "Token 无效或已过期"})
+		return
+	}
+	var body struct {
+		Visible bool `json:"visible"`
+	}
+	raw, ok := readJSONBody(w, r)
+	if !ok {
+		return
+	}
+	if len(raw) == 0 || sonic.Unmarshal(raw, &body) != nil {
+		writeValidationError(w, "visible 必须是布尔值")
+		return
+	}
+	if d.DesktopPet == nil || !d.DesktopPet.Status().Enabled {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": "桌宠没有开启"})
+		return
+	}
+	if !d.DesktopPet.Status().Ready {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": "桌宠窗口还没有就绪"})
+		return
+	}
+	action := "hide"
+	if body.Visible {
+		action = "show"
+	}
+	status, err := d.DesktopPet.Control(r.Context(), action, "", false)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (d Deps) handleDesktopPetChat(w http.ResponseWriter, r *http.Request) {
+	if !d.authenticated(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"detail": "Token 无效或已过期"})
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	raw, ok := readJSONBody(w, r)
+	if !ok {
+		return
+	}
+	if len(raw) == 0 || sonic.Unmarshal(raw, &body) != nil {
+		writeValidationError(w, "消息不能为空")
+		return
+	}
+	text := strings.TrimSpace(body.Text)
+	if text == "" {
+		writeValidationError(w, "消息不能为空")
+		return
+	}
+	if utf8.RuneCountInString(text) > 2000 {
+		writeValidationError(w, "消息不能超过 2000 字")
+		return
+	}
+	if d.DesktopPet == nil || !d.DesktopPet.Status().Enabled {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": "桌宠没有开启"})
+		return
+	}
+	if d.DesktopPetChat == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"detail": "桌宠聊天通道未接线"})
+		return
+	}
+	messageID, err := d.DesktopPetChat(r.Context(), text)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message_id": messageID})
 }
