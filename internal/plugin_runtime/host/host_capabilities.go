@@ -9,8 +9,8 @@ import (
 
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/platform_io"
 	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/platform_io"
 
 	capnames "MaiGo/internal/plugin_runtime/capabilities"
 

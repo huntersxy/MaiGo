@@ -25,9 +25,6 @@ const (
 )
 
 // ComponentEntry Host 侧通用组件条目，对齐 component_registry.ComponentEntry。
-//
-// ACTION 在 MaiBot 中会被转换为 legacy TOOL 条目（invoke_method=plugin.invoke_action），
-// 因此 ComponentType 为 TOOL、LegacyComponentType 为 ACTION。
 type ComponentEntry struct {
 	Name            string
 	FullName        string
@@ -40,13 +37,12 @@ type ComponentEntry struct {
 	AllowedSession  []string
 	disabledSession map[string]bool
 
-	// TOOL / ACTION
-	Platforms           []string
-	Description         string
-	Parameters          []any
-	ParametersRaw       any
-	InvokeMethod        string
-	LegacyComponentType string
+	// TOOL
+	Platforms     []string
+	Description   string
+	Parameters    []any
+	ParametersRaw any
+	InvokeMethod  string
 
 	// EVENT_HANDLER
 	EventType string
@@ -97,7 +93,6 @@ type ComponentFilter struct {
 // ComponentStatus 组件注册统计，对齐 component_registry.StatusDict。
 type ComponentStatus struct {
 	Total          int
-	Action         int
 	Command        int
 	Tool           int
 	EventHandler   int
@@ -139,7 +134,6 @@ func NewComponentRegistry() *ComponentRegistry {
 		byPlugin:   make(map[string][]*ComponentEntry),
 	}
 	for _, componentType := range []string{
-		ComponentTypeAction,
 		ComponentTypeCommand,
 		ComponentTypeTool,
 		ComponentTypeEventHandler,
@@ -214,16 +208,6 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 	}
 
 	switch componentType {
-	case ComponentTypeAction:
-		converted := convertActionMetadataToToolMetadata(comp.Name, metadata)
-		entry.ComponentType = ComponentTypeTool
-		entry.Metadata = converted
-		entry.Enabled = metadataEnabled(converted)
-		entry.Description = metadataText(converted, "description")
-		entry.ParametersRaw = converted["parameters_raw"]
-		entry.InvokeMethod = "plugin.invoke_action"
-		entry.LegacyComponentType = ComponentTypeAction
-		return entry, nil
 	case ComponentTypeTool:
 		platforms, err := normalizeComponentPlatforms(metadata["platforms"], "Tool")
 		if err != nil {
@@ -247,7 +231,6 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 			entry.ParametersRaw = map[string]any{}
 		}
 		entry.InvokeMethod = firstNonEmpty(metadataText(metadata, "invoke_method"), "plugin.invoke_tool")
-		entry.LegacyComponentType = strings.ToUpper(metadataText(metadata, "legacy_component_type"))
 		return entry, nil
 	case ComponentTypeCommand:
 		entry.Aliases = normalizeCommandAliases(metadata["aliases"])
@@ -347,46 +330,6 @@ func buildComponentEntry(pluginID, componentType string, comp protocol.Component
 	}
 }
 
-// convertActionMetadataToToolMetadata 将旧 Action 元数据转换为统一 Tool 元数据
-func convertActionMetadataToToolMetadata(name string, metadata map[string]any) map[string]any {
-	converted := cloneComponentMetadata(metadata)
-	converted["description"] = firstNonEmpty(
-		metadataText(metadata, "description"),
-		metadataText(metadata, "brief_description"),
-		"工具 "+name,
-	)
-	parametersRaw := map[string]any{}
-	if raw, ok := metadata["action_parameters"].(map[string]any); ok && len(raw) > 0 {
-		properties := make(map[string]any, len(raw))
-		for parameterName, parameterDescription := range raw {
-			normalized := strings.TrimSpace(parameterName)
-			if normalized == "" {
-				continue
-			}
-			description := strings.TrimSpace(fmt.Sprint(parameterDescription))
-			if description == "" {
-				description = "兼容旧 Action 参数"
-			}
-			properties[normalized] = map[string]any{
-				"type":        "string",
-				"description": description,
-			}
-		}
-		if len(properties) > 0 {
-			parametersRaw = map[string]any{
-				"type":       "object",
-				"properties": properties,
-			}
-		}
-	}
-	// 对齐 Python：parameters_raw 总被覆盖为解析后的 schema，缺省为空对象
-	converted["parameters_raw"] = parametersRaw
-	converted["invoke_method"] = "plugin.invoke_action"
-	converted["legacy_action"] = true
-	converted["legacy_component_type"] = ComponentTypeAction
-	return converted
-}
-
 // ReplacePluginComponents 整体替换一个插件的通用组件集合
 func (r *ComponentRegistry) ReplacePluginComponents(pluginID string, entries []*ComponentEntry) {
 	pluginID = strings.TrimSpace(pluginID)
@@ -438,9 +381,7 @@ func (r *ComponentRegistry) addLocked(entry *ComponentEntry) {
 		r.detachEntryLocked(existing)
 	}
 	r.components[entry.FullName] = entry
-	if entry.ComponentType == ComponentTypeAction || entry.ComponentType == ComponentTypeTool {
-		r.byType[ComponentTypeTool][entry.FullName] = entry
-	} else if typeDict := r.byType[entry.ComponentType]; typeDict != nil {
+	if typeDict := r.byType[entry.ComponentType]; typeDict != nil {
 		typeDict[entry.FullName] = entry
 	}
 	r.byPlugin[entry.PluginID] = append(r.byPlugin[entry.PluginID], entry)
@@ -519,7 +460,7 @@ func (r *ComponentRegistry) ComponentEnabled(fullName, sessionID string) (enable
 	return checkComponentEnabled(entry, ComponentFilter{SessionID: strings.TrimSpace(sessionID)}), true
 }
 
-// ComponentsByType 按类型查询组件，ACTION 映射为 legacy Tool 条目
+// ComponentsByType 按类型查询组件
 func (r *ComponentRegistry) ComponentsByType(componentType string, enabledOnly bool, filter ComponentFilter) ([]*ComponentEntry, error) {
 	normalized, err := normalizeComponentType(componentType)
 	if err != nil {
@@ -533,11 +474,7 @@ func (r *ComponentRegistry) ComponentsByType(componentType string, enabledOnly b
 		if entry == nil {
 			continue
 		}
-		if normalized == ComponentTypeAction {
-			if entry.ComponentType != ComponentTypeTool || entry.LegacyComponentType != ComponentTypeAction {
-				continue
-			}
-		} else if entry.ComponentType != normalized {
+		if entry.ComponentType != normalized {
 			continue
 		}
 		if enabledOnly && !checkComponentEnabled(entry, filter) {
@@ -635,14 +572,11 @@ func (r *ComponentRegistry) Tools(enabledOnly bool, sessionID string) []*Compone
 	return out
 }
 
-// ToolsForLLM 返回可供 LLM 使用的非 legacy 工具描述
+// ToolsForLLM 返回可供 LLM 使用的工具描述
 func (r *ComponentRegistry) ToolsForLLM(enabledOnly bool, sessionID string) []LLMToolInfo {
 	tools := r.Tools(enabledOnly, sessionID)
 	out := make([]LLMToolInfo, 0, len(tools))
 	for _, tool := range tools {
-		if tool.LegacyComponentType == ComponentTypeAction {
-			continue
-		}
 		parameters := tool.ParametersRaw
 		if rawMap, ok := tool.ParametersRaw.(map[string]any); !ok || len(rawMap) == 0 {
 			if schema := tool.BuildParametersSchema(); schema != nil {
@@ -842,11 +776,7 @@ func (r *ComponentRegistry) Status() ComponentStatus {
 	}
 	for _, entry := range r.components {
 		if entry.ComponentType == ComponentTypeTool {
-			if entry.LegacyComponentType == ComponentTypeAction {
-				status.Action++
-			} else {
-				status.Tool++
-			}
+			status.Tool++
 		}
 	}
 	return status

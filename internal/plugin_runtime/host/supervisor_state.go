@@ -234,11 +234,11 @@ func (h *Host) WaitForRunnerReady(ctx context.Context, group RunnerGroup, timeou
 		select {
 		case <-ctx.Done():
 			return protocol.RunnerReadyPayload{}, ctx.Err()
-			case <-ticker.C:
-				if time.Now().After(deadline) {
-					return protocol.RunnerReadyPayload{}, fmt.Errorf("%w（%s）", ErrRunnerReadyTimeout, timeout)
-				}
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return protocol.RunnerReadyPayload{}, fmt.Errorf("%w（%s）", ErrRunnerReadyTimeout, timeout)
 			}
+		}
 	}
 }
 

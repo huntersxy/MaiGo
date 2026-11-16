@@ -8,7 +8,7 @@ import (
 	"MaiGo/internal/core/tooling"
 )
 
-// pluginToolProvider 把插件 TOOL/ACTION 组件接入 core/tooling 统一注册表
+// pluginToolProvider 把插件 TOOL 组件接入 core/tooling 统一注册表
 type pluginToolProvider struct {
 	host *Host
 }

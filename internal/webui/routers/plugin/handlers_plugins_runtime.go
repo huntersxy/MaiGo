@@ -1,8 +1,8 @@
 package plugin
 
 import (
-	"fmt"
 	"MaiGo/internal/webui/httputil"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -136,9 +136,6 @@ func (d Deps) handleRuntimeHookSpecs(w http.ResponseWriter, r *http.Request) {
 // serializePluginComponent 对齐 _serialize_component_entry
 func serializePluginComponent(entry *pluginruntime.ComponentEntry) map[string]any {
 	componentType := strings.ToLower(entry.ComponentType)
-	if entry.ComponentType == pluginruntime.ComponentTypeTool && strings.EqualFold(entry.LegacyComponentType, pluginruntime.ComponentTypeAction) {
-		componentType = "action"
-	}
 	description := entry.Description
 	if description == "" {
 		description = stringFromAny(entry.Metadata["description"])
@@ -154,14 +151,6 @@ func serializePluginComponent(entry *pluginruntime.ComponentEntry) map[string]an
 		"component_type": componentType,
 	}
 	switch componentType {
-	case "action":
-		data["action_parameters"] = mapValue(entry.Metadata["action_parameters"])
-		data["action_require"] = listValue(entry.Metadata["action_require"])
-		data["associated_types"] = listValue(entry.Metadata["associated_types"])
-		data["activation_type"] = stringFromAny(entry.Metadata["activation_type"])
-		data["random_activation_probability"] = floatValue(entry.Metadata["activation_probability"])
-		data["activation_keywords"] = listValue(entry.Metadata["activation_keywords"])
-		data["parallel_action"] = boolValue(entry.Metadata["parallel_action"])
 	case "tool":
 		data["parameters_schema"] = entry.BuildParametersSchema()
 	case "command":

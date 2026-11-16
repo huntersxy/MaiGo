@@ -237,8 +237,6 @@ type (
 )
 
 const (
-	// ComponentTypeAction 动作组件类型
-	ComponentTypeAction = host.ComponentTypeAction
 	// ComponentTypeHomeCard 主页卡片组件类型
 	ComponentTypeHomeCard = host.ComponentTypeHomeCard
 	// ComponentTypeMessageGateway 消息网关组件类型

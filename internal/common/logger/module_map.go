@@ -47,7 +47,6 @@ var moduleAliases = map[string]string{
 	"_maibot_plugin_maibot_team_mai_statstic_plugin.client_statistics_service": "Mai统计客户端服务",
 	"_maibot_plugin_maibot_team_mai_statstic_plugin.plugin_store_service":      "Mai统计存储服务",
 	"a_memorix.host_service":                "A-Memorix宿主服务",
-	"action_manager":                        "动作",
 	"async_task_manager":                    "异步任务管理",
 	"base_message_component_model":          "消息组件模型",
 	"bot_account_service":                   "机器人账号服务",

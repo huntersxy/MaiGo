@@ -133,7 +133,7 @@ func (a *Agent) buildPluginTools(existing map[string]struct{}) []tool.BaseTool {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].FullName < entries[j].FullName })
 	out := make([]tool.BaseTool, 0, len(entries))
 	for _, entry := range entries {
-		if entry == nil || !entry.Enabled || entry.LegacyComponentType == pluginruntime.ComponentTypeAction {
+		if entry == nil || !entry.Enabled {
 			continue
 		}
 		if pluginToolHidden(entry) {

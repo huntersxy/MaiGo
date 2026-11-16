@@ -1,10 +1,10 @@
 package host
 
 import (
+	"MaiGo/internal/plugin_runtime/capabilities"
 	"context"
 	"errors"
 	"fmt"
-	"MaiGo/internal/plugin_runtime/capabilities"
 	"os"
 	"strings"
 	"sync"
@@ -118,7 +118,7 @@ type Host struct {
 	// startupFailure 本组启动失败原因，对齐 _startup_failure_reason
 	startupFailure map[RunnerGroup]string
 	// statusBadges 插件自报的运行标记，随运行实例清理
-	statusBadges *RuntimeStatusBadges
+	statusBadges       *RuntimeStatusBadges
 	maxRestartAttempts int
 
 	runnerHealthInterval time.Duration

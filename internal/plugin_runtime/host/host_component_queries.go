@@ -23,7 +23,7 @@ func (h *Host) HomeCards(enabledOnly bool) ([]*ComponentEntry, error) {
 	return h.components.ComponentsByType(ComponentTypeHomeCard, enabledOnly, ComponentFilter{})
 }
 
-// ComponentTypeCount 返回指定类型组件数量，ACTION 按 legacy Tool 统计
+// ComponentTypeCount 返回指定类型组件数量，TOOL 组件计数
 func (h *Host) ComponentTypeCount(componentType string, enabledOnly bool, filter ComponentFilter) int {
 	if h == nil || h.components == nil {
 		return 0

@@ -202,20 +202,6 @@ func pluginToolPayload(entry *ComponentEntry, args map[string]any, execCtx ToolE
 		payload[key] = value
 	}
 	contextPayload := pluginToolContextPayload(execCtx)
-	if entry.InvokeMethod == "plugin.invoke_action" {
-		streamID := firstNonEmpty(stringValue(contextPayload["stream_id"]), execCtx.StreamID, execCtx.SessionID)
-		for key, value := range contextPayload {
-			if _, exists := payload[key]; !exists || !truthyPayloadValue(payload[key]) {
-				payload[key] = value
-			}
-		}
-		if streamID != "" {
-			payload["stream_id"] = streamID
-			payload["chat_id"] = streamID
-		}
-		payload["action_data"] = cloneAnyMap(args)
-		return payload
-	}
 	for key, value := range contextPayload {
 		if _, exists := payload[key]; !exists || !truthyPayloadValue(payload[key]) {
 			payload[key] = value

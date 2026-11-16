@@ -19,7 +19,7 @@ type managementComponentEntry struct {
 
 func managementComponentTypeLabel(componentType string) string {
 	switch strings.ToUpper(strings.TrimSpace(componentType)) {
-	case ComponentTypeTool, ComponentTypeAction:
+	case ComponentTypeTool:
 		return "tool"
 	case ComponentTypeCommand:
 		return "command"
