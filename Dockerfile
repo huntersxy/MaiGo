@@ -52,8 +52,6 @@ RUN cp -a /app/plugin-runtime /opt/plugin-runtime
 COPY --chown=maibot:maibot --from=pycompat /compat /app/pycompat
 COPY --chown=maibot:maibot data/pycompat/src /app/pycompat-src/src
 COPY --chown=maibot:maibot scripts/python_compat_sidecar.py /app/pycompat_sidecar.py
-# 内置插件清单随镜像分发：host 启动期读取 plugins/built_in/plugin_management/_manifest.json
-COPY --chown=maibot:maibot plugins/built_in/plugin_management/_manifest.json /app/plugins/built_in/plugin_management/_manifest.json
 # 内置适配器随镜像分发，命名卷首次挂载时由 Docker 复制进卷
 COPY --chown=maibot:maibot plugins/built_in/weixin_clawbot_adapter /app/plugins/built_in/weixin_clawbot_adapter
 COPY --chown=maibot:maibot plugins/built_in/qq_official_adapter /app/plugins/built_in/qq_official_adapter

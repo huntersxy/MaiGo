@@ -513,6 +513,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 
 	pluginSpawnCfg := pluginruntime.LoadSpawnConfigFromEnv()
 	pluginHost := pluginruntime.NewHost()
+	pluginHost.SetInstanceRoot(pluginruntime.ResolveInstanceRoot())
 	pluginRuntimeSettings := func() pluginruntime.RuntimeSettings {
 		if instHolder == nil || instHolder.Config() == nil {
 			return pluginruntime.DefaultRuntimeSettings()

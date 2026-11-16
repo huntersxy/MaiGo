@@ -105,6 +105,9 @@ type Host struct {
 	gatewayStates            map[string]map[string]MessageGatewayRuntimeState
 	loading                  bool
 
+	// instanceRoot Bot 实例根目录，供实例级命令配置定位
+	instanceRoot string
+
 	runnerLifecycles   map[RunnerGroup]*runnerLifecycle
 	runnerReadyByGroup map[RunnerGroup]protocol.RunnerReadyPayload
 	// runnerReadySet 本轮 runner.ready 是否已到达，对齐 _runner_ready_events.is_set()
@@ -207,7 +210,6 @@ func NewHost() *Host {
 	host.installEventBusBridge()
 	host.toolRegistry = tooling.NewToolRegistry()
 	host.toolRegistry.RegisterProvider(newPluginToolProvider(host))
-	verifyBuiltinPluginManagementManifest()
 	host.installPluginManagementCommand()
 	setDefaultHost(host)
 	return host

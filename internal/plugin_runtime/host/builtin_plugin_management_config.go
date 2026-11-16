@@ -34,18 +34,13 @@ func (s *pluginManagementState) handleAliasAdd(ctx context.Context, host *Host, 
 		_ = s.sendText(ctx, host, streamID, message)
 		return
 	}
-	admin := host.ComponentAdmin()
-	if admin == nil {
-		_ = s.sendText(ctx, host, streamID, "指令别名保存失败: 插件配置端口未接线")
-		return
-	}
-	if _, err := admin.UpdatePluginConfig(ctx, builtinPluginManagementID, "aliases.shortcuts."+normalizedAlias, normalizedTarget); err != nil {
+	if _, err := host.writePMShortcut(normalizedAlias, normalizedTarget); err != nil {
 		_ = s.sendText(ctx, host, streamID, "指令别名保存失败: "+err.Error())
 		return
 	}
 	s.add(normalizedAlias, normalizedTarget)
 	s.syncAliases(host)
-	_ = s.sendText(ctx, host, streamID, fmt.Sprintf("指令别名已保存: %s -> %s\n重载插件管理插件后生效。", normalizedAlias, normalizedTarget))
+	_ = s.sendText(ctx, host, streamID, fmt.Sprintf("指令别名已保存: %s -> %s", normalizedAlias, normalizedTarget))
 }
 
 func (s *pluginManagementState) handleAliasRemove(ctx context.Context, host *Host, streamID, alias string) {
@@ -54,29 +49,18 @@ func (s *pluginManagementState) handleAliasRemove(ctx context.Context, host *Hos
 		_ = s.sendText(ctx, host, streamID, "别名不能为空")
 		return
 	}
-	configData, _, err := host.readPluginConfig(builtinPluginManagementID)
+	removed, err := host.writePMShortcut(normalizedAlias, "")
 	if err != nil {
 		_ = s.sendText(ctx, host, streamID, "指令别名删除失败: "+err.Error())
 		return
 	}
-	shortcuts := pluginConfigShortcuts(configData)
-	if _, exists := shortcuts[normalizedAlias]; !exists {
+	if !removed {
 		_ = s.sendText(ctx, host, streamID, "未找到指令别名: "+normalizedAlias)
-		return
-	}
-	delete(shortcuts, normalizedAlias)
-	admin := host.ComponentAdmin()
-	if admin == nil {
-		_ = s.sendText(ctx, host, streamID, "指令别名删除失败: 插件配置端口未接线")
-		return
-	}
-	if _, err := admin.UpdatePluginConfig(ctx, builtinPluginManagementID, "aliases.shortcuts", shortcuts); err != nil {
-		_ = s.sendText(ctx, host, streamID, "指令别名删除失败: "+err.Error())
 		return
 	}
 	s.remove(normalizedAlias)
 	s.syncAliases(host)
-	_ = s.sendText(ctx, host, streamID, "指令别名已删除: "+normalizedAlias+"\n重载插件管理插件后生效。")
+	_ = s.sendText(ctx, host, streamID, "指令别名已删除: "+normalizedAlias)
 }
 
 // pluginCommandAliasTargets 对齐 Python 内置插件的 _COMMAND_ALIAS_TARGETS
@@ -106,9 +90,8 @@ var pluginCommandAliasTargets = map[string]string{
 	"cmd.help":            "/pm cmd help",
 }
 
-// loadPluginManagementAliases 从插件 config.toml 载入别名映射
+// loadPluginManagementAliases 从实例 config/commands/pm.toml 载入别名映射
 //
-// 本地兜底命令没有 Python 插件实例，配置在启动、注入插件目录或配置写入后载入；
 // 读取失败时保留进程内已有映射，不阻断 /pm 命令。
 func (h *Host) loadPluginManagementAliases() {
 	if h == nil {
@@ -120,7 +103,7 @@ func (h *Host) loadPluginManagementAliases() {
 	if state == nil {
 		return
 	}
-	configData, _, err := h.readPluginConfig(builtinPluginManagementID)
+	configData, err := h.readPMConfig()
 	if err != nil {
 		return
 	}
@@ -184,20 +167,6 @@ func pluginAliasStrings(raw any) []string {
 		}
 	}
 	return nil
-}
-
-func pluginConfigShortcuts(configData map[string]any) map[string]any {
-	aliases, ok := configData["aliases"].(map[string]any)
-	if !ok {
-		aliases = map[string]any{}
-		configData["aliases"] = aliases
-	}
-	shortcuts, ok := aliases["shortcuts"].(map[string]any)
-	if !ok {
-		shortcuts = map[string]any{}
-		aliases["shortcuts"] = shortcuts
-	}
-	return shortcuts
 }
 
 // syncAliases 让新增别名进入组件匹配表，否则 FindCommandByText 无法命中 /pm 之外的别名
