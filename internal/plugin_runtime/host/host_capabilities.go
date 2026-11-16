@@ -166,6 +166,7 @@ func RegisterHostCapabilities(host *Host, deps HostCapabilityDeps) ([]string, er
 		registration{capnames.CapAPIGet, makeAPIGetHandler(host)},
 		registration{capnames.CapAPIList, makeAPIListHandler(host)},
 		registration{capnames.CapAPIReplaceDynamic, makeAPIReplaceDynamicHandler(host)},
+		registration{capnames.CapRuntimeSetStatusBadges, makeRuntimeStatusBadgesHandler(host)},
 	)
 	reg = append(reg, registration{capnames.CapKnowledgeSearch, makeKnowledgeSearchHandler(deps.Knowledge)})
 	for _, capability := range []string{capnames.CapMarketSearch, capnames.CapMarketGetDetail, capnames.CapMarketGetReadme} {

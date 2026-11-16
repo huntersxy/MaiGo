@@ -153,6 +153,16 @@ func New(options Options) *Runtime {
 	if !options.SkipInboundStore {
 		receiverOptions.Store = &HeartflowStore{Messages: store}
 	}
+	if options.ChatManager != nil {
+		chatManager := options.ChatManager
+		receiverOptions.SessionName = func(ctx context.Context, sessionID string) string {
+			session, ok := chatManager.GetExistingSessionBySessionID(ctx, sessionID)
+			if !ok || session == nil {
+				return ""
+			}
+			return chatManager.GetSessionName(session)
+		}
+	}
 	receiver := heartflow.NewReceiver(receiverOptions)
 	processor := &HeartflowProcessor{Receiver: receiver, OnError: options.OnHeartflowError}
 

@@ -11,6 +11,7 @@ import (
 
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/plugin_market"
+	pluginruntime "MaiGo/internal/plugin_runtime"
 	"MaiGo/internal/plugin_runtime/circuitbreaker"
 )
 
@@ -134,6 +135,7 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			"disabled":       !enabled,
 			"loaded":         effectiveStatus == "success",
 			"load_status":    effectiveStatus,
+			"status_badges":  pluginStatusBadges(d.PluginHost, pluginID, effectiveStatus),
 			"usage_seconds":  usageSeconds,
 			"load_error":     loadErrorOrEmpty(loadError, effectiveStatus),
 			"circuit_status": circuitStatus,
@@ -154,6 +156,18 @@ func loadErrorOrEmpty(loadError, status string) string {
 		return loadError
 	}
 	return ""
+}
+
+// pluginStatusBadges 只给已加载插件返回运行标记
+func pluginStatusBadges(host *pluginruntime.Host, pluginID, status string) []map[string]any {
+	if host == nil || status != "success" {
+		return []map[string]any{}
+	}
+	badges := host.RuntimeStatusBadgesSnapshot()[pluginID]
+	if badges == nil {
+		return []map[string]any{}
+	}
+	return badges
 }
 
 // handlePluginUsage 对齐 GET /plugins/usage

@@ -382,6 +382,9 @@ func (h *Host) clearStartupState(group RunnerGroup) {
 	delete(h.runnerReadyByGroup, group)
 	h.runnerReadySet = len(h.runnerReadyByGroup) > 0
 	h.mu.Unlock()
+	if h.statusBadges != nil {
+		h.statusBadges.Clear()
+	}
 	h.notifyStatusChanges()
 }
 

@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"MaiGo/internal/plugin_runtime/protocol"
@@ -291,6 +292,20 @@ func makeComponentReloadPluginHandler(host *Host, deps HostCapabilityDeps) Capab
 		}
 		if !result.Success {
 			return capabilityFailure("插件 %s 热重载失败", name), nil
+		}
+		return map[string]any{"success": true}, nil
+	}
+}
+
+// makeRuntimeStatusBadgesHandler 对齐 runtime.set_status_badges
+func makeRuntimeStatusBadgesHandler(host *Host) CapabilityHandler {
+	return func(ctx context.Context, pluginID, _ string, args map[string]any) (any, error) {
+		_ = ctx
+		if host == nil {
+			return nil, fmt.Errorf("Host 未初始化")
+		}
+		if err := host.UpdateRuntimeStatusBadges(pluginID, args["badges"]); err != nil {
+			return nil, err
 		}
 		return map[string]any{"success": true}, nil
 	}

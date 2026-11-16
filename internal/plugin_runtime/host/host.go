@@ -117,6 +117,8 @@ type Host struct {
 	startupStartedAt map[RunnerGroup]time.Time
 	// startupFailure 本组启动失败原因，对齐 _startup_failure_reason
 	startupFailure map[RunnerGroup]string
+	// statusBadges 插件自报的运行标记，随运行实例清理
+	statusBadges *RuntimeStatusBadges
 	maxRestartAttempts int
 
 	runnerHealthInterval time.Duration
@@ -200,6 +202,7 @@ func NewHost() *Host {
 	}
 	host.llmProviders = NewLLMProviderRegistry()
 	host.llmProviders.hostInvoker = host
+	host.statusBadges = NewRuntimeStatusBadges(host.notifyStatusChanges)
 	host.eventBus = eventbus.NewEventBus()
 	host.installEventBusBridge()
 	host.toolRegistry = tooling.NewToolRegistry()

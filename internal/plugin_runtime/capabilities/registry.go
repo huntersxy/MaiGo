@@ -91,6 +91,7 @@ var capabilitySpecs = []CapabilitySpec{
 	{Name: CapAPIGet, Domain: "components"},
 	{Name: CapAPIList, Domain: "components"},
 	{Name: CapAPIReplaceDynamic, Domain: "components"},
+	{Name: CapRuntimeSetStatusBadges, Domain: "components"},
 	{Name: CapComponentGetAllPlugins, Domain: "components"},
 	{Name: CapComponentGetPluginInfo, Domain: "components"},
 	{Name: CapComponentGetPluginConfigSchema, Domain: "components"},

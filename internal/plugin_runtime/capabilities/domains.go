@@ -125,6 +125,7 @@ const (
 	CapAPIGet            = "api.get"
 	CapAPIList           = "api.list"
 	CapAPIReplaceDynamic = "api.replace_dynamic"
+	CapRuntimeSetStatusBadges = "runtime.set_status_badges"
 
 	CapComponentGetAllPlugins         = "component.get_all_plugins"
 	CapComponentGetPluginInfo         = "component.get_plugin_info"

@@ -153,7 +153,9 @@ type ReceiverOptions struct {
 	Store  MessageStore
 	Memory MemoryAutomation
 	People PersonRegistrar
-	Now    func() time.Time
+	// SessionName 已登记会话的真实名称；官方平台事件可能不带群名
+	SessionName func(ctx context.Context, sessionID string) string
+	Now         func() time.Time
 }
 
 // Receiver 心流消息处理器，负责校验、落库、登记运行时与关系
@@ -215,7 +217,13 @@ func (r *Receiver) ProcessMessageStrict(ctx context.Context, message *SessionMes
 	group := groupInfoOf(message)
 	displayName := "私聊"
 	if group != nil {
-		displayName = group.GroupName
+		displayName = "群聊"
+	}
+	// 官方平台事件可能不带群名，使用已登记会话中的真实名称，与 Maisaka 日志保持一致
+	if r.opts.SessionName != nil {
+		if name := strings.TrimSpace(r.opts.SessionName(ctx, message.SessionID)); name != "" {
+			displayName = name
+		}
 	}
 	text := message.ProcessedPlainText
 	preview := strings.Join(strings.Fields(text), " ")
