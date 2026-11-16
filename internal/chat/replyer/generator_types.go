@@ -218,4 +218,6 @@ type ReplyGenerationResult struct {
 	RequestMessages     []llm.ContextItem
 	OutputItems         []llm.ContextItem
 	GenerationAttempts  []GenerationAttempt
+	// PromptHTMLURI 已保存的推理记录入口，供工具监控复用
+	PromptHTMLURI string
 }

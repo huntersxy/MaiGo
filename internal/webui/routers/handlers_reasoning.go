@@ -160,7 +160,7 @@ func (d Deps) handleReasoningFiles(w http.ResponseWriter, r *http.Request) {
 			}
 			items = filtered
 		}
-		if stage == "replyer" {
+		if isReplyOutputStage(stage) {
 			items = deduplicateReplyerRecords(items)
 		}
 		total = len(items)
@@ -168,7 +168,7 @@ func (d Deps) handleReasoningFiles(w http.ResponseWriter, r *http.Request) {
 			page = 1
 		}
 		items = reasoningPageSlice(items, page, pageSize)
-	} else if stage == "replyer" {
+	} else if isReplyOutputStage(stage) {
 		items = hydrateReasoningRecords(root, records, false, false, true)
 		items = deduplicateReplyerRecords(items)
 		total = len(items)

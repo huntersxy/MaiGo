@@ -6,11 +6,27 @@ import (
 	"strings"
 )
 
+// replyRequestStages 超级创意请求阶段沿用 Replyer 的请求预览
+var replyRequestStages = map[string]struct{}{"replyer": {}, "replyer_creative": {}}
+
+// replyOutputStages 所有产出最终回复正文的阶段
+var replyOutputStages = map[string]struct{}{"replyer": {}, "replyer_creative": {}, "replyer_translation": {}}
+
+func isReplyRequestStage(stage string) bool {
+	_, ok := replyRequestStages[stage]
+	return ok
+}
+
+func isReplyOutputStage(stage string) bool {
+	_, ok := replyOutputStages[stage]
+	return ok
+}
+
 // 本文件对齐 ../MaiBot/src/webui/routers/reasoning_process.py 的记录归属与搜索过滤
 func hydrateReasoningRecord(root string, record *reasoningPromptFile, includePreviews, includeActionPreview, includeOutputPreview bool) *reasoningPromptFile {
 	stage := record.Stage
 	extractAction := includeActionPreview && (stage == "jargon_learning_update" || stage == "planner")
-	extractOutput := includeOutputPreview && (stage == "replyer" || stage == "expression_selector")
+	extractOutput := includeOutputPreview && (isReplyOutputStage(stage) || stage == "expression_selector")
 	extractError := stage == "llm_error"
 	var payload map[string]any
 	jsonPath, hasJSON := resolveReasoningRecordPath(root, record.JSONPath, ".json")
@@ -39,7 +55,7 @@ func hydrateReasoningRecord(root string, record *reasoningPromptFile, includePre
 				} else {
 					record.OutputPreview = stringPointer("无法从记录还原已选表达")
 				}
-			case stage == "replyer" && (includePreviews || extractOutput):
+			case isReplyOutputStage(stage) && (includePreviews || extractOutput):
 				if preview := truncateReasoningPreview(extractOutputTextFromJSONPayload(payload), 160); preview != "" {
 					record.OutputPreview = stringPointer(preview)
 				}
@@ -56,11 +72,11 @@ func hydrateReasoningRecord(root string, record *reasoningPromptFile, includePre
 		}
 	}
 	metadataMissing := record.ModelName == nil || record.DurationMS == nil
-	previewMissing := (includePreviews || extractOutput) && stage == "replyer" && record.OutputPreview == nil
+	previewMissing := (includePreviews || extractOutput) && isReplyOutputStage(stage) && record.OutputPreview == nil
 	if textPath, ok := resolveReasoningRecordPath(root, record.TextPath, ".txt"); ok && (metadataMissing || previewMissing) {
 		content, _ := os.ReadFile(textPath)
 		mergeReasoningMetadata(record, extractReasoningMetadataFromText(string(content)))
-		if stage == "replyer" && record.OutputPreview == nil {
+		if isReplyOutputStage(stage) && record.OutputPreview == nil {
 			if preview := truncateReasoningPreview(extractOutputTextFromContent(string(content)), 160); preview != "" {
 				record.OutputPreview = stringPointer(preview)
 			}
@@ -86,7 +102,7 @@ func deduplicateReplyerRecords(items []*reasoningPromptFile) []*reasoningPromptF
 	result := []*reasoningPromptFile{}
 	seen := map[string][]int{}
 	for _, item := range items {
-		if item.Stage != "replyer" || item.OutputPreview == nil || *item.OutputPreview == "" {
+		if !isReplyOutputStage(item.Stage) || item.OutputPreview == nil || *item.OutputPreview == "" {
 			result = append(result, item)
 			continue
 		}

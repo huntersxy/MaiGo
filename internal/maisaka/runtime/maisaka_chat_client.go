@@ -517,19 +517,32 @@ func replyerMessageImages(message maisaka.ContextMessage) []replyer.MessageImage
 	return out
 }
 
+// replyerTextResult Replyer 正文及可供 reply 工具复用的监控信息
+type replyerTextResult struct {
+	Text          string
+	MonitorDetail map[string]any
+	PromptHTMLURI string
+}
+
 // generateReplyerText 用独立 Replyer 生成循环产出可见回复
-// Hook/重试/视觉开关/模型重选/表达选择/PromptBuilder 统一由 replyer.ReplyGenerator 负责
 func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, target *maisaka.ContextMessage, history []maisaka.ContextMessage, isGroup bool, replyToolArgs map[string]any) (string, error) {
+	result, err := a.generateReplyerTextResult(ctx, plannerContent, target, history, isGroup, replyToolArgs)
+	return result.Text, err
+}
+
+// generateReplyerTextResult 产出回复正文与推理记录入口，供 reply 工具监控复用
+// Hook/重试/视觉开关/模型重选/表达选择/PromptBuilder 统一由 replyer.ReplyGenerator 负责
+func (a *Agent) generateReplyerTextResult(ctx context.Context, plannerContent string, target *maisaka.ContextMessage, history []maisaka.ContextMessage, isGroup bool, replyToolArgs map[string]any) (replyerTextResult, error) {
 	if a == nil {
-		return "", fmt.Errorf("Agent 未初始化")
+		return replyerTextResult{}, fmt.Errorf("Agent 未初始化")
 	}
 	generation := a.currentGeneration()
 	if generation == nil || generation.model == nil {
-		return "", fmt.Errorf("Replyer 模型未就绪")
+		return replyerTextResult{}, fmt.Errorf("Replyer 模型未就绪")
 	}
 	manager, err := prompt.NewManager()
 	if err != nil {
-		return "", fmt.Errorf("加载 Replyer 提示词失败: %w", err)
+		return replyerTextResult{}, fmt.Errorf("加载 Replyer 提示词失败: %w", err)
 	}
 	generatorConfig := a.replyerGeneratorConfig(isGroup)
 	imageQuality := ""
@@ -537,7 +550,7 @@ func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, 
 	if instance := a.instanceConfig(); instance != nil {
 		if strings.TrimSpace(instance.Dir) != "" {
 			if err := manager.LoadFromDir(prompt.CustomPromptsRoot(instance.Dir)); err != nil {
-				return "", fmt.Errorf("加载自定义 Replyer 提示词失败: %w", err)
+				return replyerTextResult{}, fmt.Errorf("加载自定义 Replyer 提示词失败: %w", err)
 			}
 		}
 		imageQuality = instance.Bot.Visual.ImageQuality
@@ -598,13 +611,17 @@ func (a *Agent) generateReplyerText(ctx context.Context, plannerContent string, 
 		if code == "" {
 			code = "generation_failed"
 		}
-		return "", &replyGenerationError{Code: code, Reason: message, Details: result.ErrorDetails}
+		return replyerTextResult{}, &replyGenerationError{Code: code, Reason: message, Details: result.ErrorDetails}
 	}
 	text := strings.TrimSpace(result.Completion.ResponseText)
 	if text == "" {
-		return "", fmt.Errorf("Replyer 返回空回复")
+		return replyerTextResult{}, fmt.Errorf("Replyer 返回空回复")
 	}
-	return text, nil
+	return replyerTextResult{
+		Text:          text,
+		MonitorDetail: replyer.BuildReplyMonitorDetail(result),
+		PromptHTMLURI: result.PromptHTMLURI,
+	}, nil
 }
 
 func replyerTarget(target *maisaka.ContextMessage) *replyer.ReplyTarget {

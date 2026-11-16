@@ -46,7 +46,15 @@ type ResolveMessageAuthorCallback func(msgID string) (MessageAuthor, bool)
 type SendStickerCallback func(ctx context.Context, targetID int64, fileName string, description string) error
 type SendImageURLCallback func(ctx context.Context, imageURL string) error
 type GetNewMessagesCallback func(ctx context.Context) (any, error)
-type ReplyerCallback func(ctx context.Context, replyReference string, msgID string, replyToolArgs map[string]any) (string, error)
+
+// ReplyerCallbackResult Replyer 正文及监控信息
+type ReplyerCallbackResult struct {
+	Text          string
+	MonitorDetail map[string]any
+	PromptHTMLURI string
+}
+
+type ReplyerCallback func(ctx context.Context, replyReference string, msgID string, replyToolArgs map[string]any) (ReplyerCallbackResult, error)
 type ResolveMessageSenderCallback func(msgID string) (int64, bool)
 type SessionMessageCallback func(ctx context.Context, fromKind string, fromTargetID int64, toKind string, toTargetID int64, text string) (*memory.SessionMessage, error)
 type InternalTaskCallback func(ctx context.Context, kind string, targetID int64, text, sourceKind, reason string, images []media.Ref) (map[string]any, error)

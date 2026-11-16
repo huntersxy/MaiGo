@@ -156,7 +156,7 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 			}
 			return senderID, true
 		},
-		ReplyerCallback: func(callCtx context.Context, replyReference string, msgID string, replyToolArgs map[string]any) (string, error) {
+		ReplyerCallback: func(callCtx context.Context, replyReference string, msgID string, replyToolArgs map[string]any) (tools.ReplyerCallbackResult, error) {
 			var target *maisaka.ContextMessage
 			var history []maisaka.ContextMessage
 			if runtime := session.MaisakaRuntime(); runtime != nil {
@@ -175,7 +175,15 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 			if raw := strings.TrimSpace(msgID); raw != "" {
 				args["msg_id"] = raw
 			}
-			return a.generateReplyerText(callCtx, replyReference, target, history, kind == memory.ConversationKindGroup, args)
+			result, err := a.generateReplyerTextResult(callCtx, replyReference, target, history, kind == memory.ConversationKindGroup, args)
+			if err != nil {
+				return tools.ReplyerCallbackResult{}, err
+			}
+			return tools.ReplyerCallbackResult{
+				Text:          result.Text,
+				MonitorDetail: result.MonitorDetail,
+				PromptHTMLURI: result.PromptHTMLURI,
+			}, nil
 		},
 		PreviousTargetReply: func(msgID string) string {
 			return session.previousReplyToTarget(msgID)

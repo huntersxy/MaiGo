@@ -22,14 +22,10 @@ func (g *ReplyGenerator) persistReplyPreview(ctx context.Context, result *ReplyG
 	if g.Builder == nil || !g.Builder.Config.SaveReasoning {
 		return
 	}
-	requestItems := sanitizePreviewItems(llm.SerializeContextItemsSnapshot(result.RequestMessages), g.keepPreviewBase64())
-	outputItems := sanitizePreviewItems(llm.SerializeContextItemsSnapshot(result.OutputItems), g.keepPreviewBase64())
-	if len(requestItems) == 0 && len(outputItems) == 0 {
+	if strings.TrimSpace(result.PromptHTMLURI) != "" {
 		return
 	}
-
-	attempts := serializeReplyGenerationAttempts(result.GenerationAttempts)
-	metadata := display.NormalizePreviewMetadata(map[string]any{
+	metadata := map[string]any{
 		"model_name":               result.Completion.ModelName,
 		"duration_ms":              result.Metrics.OverallMS,
 		"prompt_tokens":            result.Completion.PromptTokens,
@@ -37,7 +33,39 @@ func (g *ReplyGenerator) persistReplyPreview(ctx context.Context, result *ReplyG
 		"total_tokens":             result.Completion.TotalTokens,
 		"prompt_cache_hit_tokens":  metricInt(result.Metrics.Extra["prompt_cache_hit_tokens"]),
 		"prompt_cache_miss_tokens": metricInt(result.Metrics.Extra["prompt_cache_miss_tokens"]),
-	})
+	}
+	uri := g.savePromptPreview(ctx, g.requestType(), sessionID, replyReason, result.RequestMessages, result.OutputItems, result.GenerationAttempts, metadata)
+	if uri != "" {
+		result.PromptHTMLURI = uri
+	}
+}
+
+// persistStagePreview 独立保存超级创意每个阶段的模型输入与输出
+func (g *ReplyGenerator) persistStagePreview(ctx context.Context, result *ReplyGenerationResult, stage, sessionID, selectionReason string, requestItems, outputItems []llm.ContextItem, attempts []GenerationAttempt, durationMS float64, modelName string, promptTokens, completionTokens, totalTokens int) {
+	if g == nil || result == nil || g.Builder == nil || !g.Builder.Config.SaveReasoning {
+		return
+	}
+	metadata := map[string]any{
+		"model_name":        modelName,
+		"duration_ms":       durationMS,
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+		"total_tokens":      totalTokens,
+	}
+	uri := g.savePromptPreview(ctx, stage, sessionID, selectionReason, requestItems, outputItems, attempts, metadata)
+	if uri != "" {
+		result.PromptHTMLURI = uri
+	}
+}
+
+func (g *ReplyGenerator) savePromptPreview(ctx context.Context, stage, sessionID, selectionReason string, requestMessages, outputMessages []llm.ContextItem, attemptsIn []GenerationAttempt, rawMetadata map[string]any) string {
+	requestItems := sanitizePreviewItems(llm.SerializeContextItemsSnapshot(requestMessages), g.keepPreviewBase64())
+	outputItems := sanitizePreviewItems(llm.SerializeContextItemsSnapshot(outputMessages), g.keepPreviewBase64())
+	if len(requestItems) == 0 && len(outputItems) == 0 {
+		return ""
+	}
+	attempts := serializeReplyGenerationAttempts(attemptsIn)
+	metadata := display.NormalizePreviewMetadata(rawMetadata)
 	for key, value := range display.ExtractTokenMetadataFromAttempts(attempts) {
 		if _, exists := metadata[key]; !exists {
 			metadata[key] = value
@@ -51,8 +79,8 @@ func (g *ReplyGenerator) persistReplyPreview(ctx context.Context, result *ReplyG
 	payload := map[string]any{
 		"schema_version": 6,
 		"request": map[string]any{
-			"kind":             g.requestType(),
-			"selection_reason": strings.TrimSpace(replyReason),
+			"kind":             stage,
+			"selection_reason": strings.TrimSpace(selectionReason),
 		},
 		"metadata":            metadata,
 		"presentation":        map[string]any{"output_title": "输出结果"},
@@ -64,15 +92,18 @@ func (g *ReplyGenerator) persistReplyPreview(ctx context.Context, result *ReplyG
 	content, err := sonic.ConfigStd.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		zap.L().Warn("序列化 Replyer Prompt 预览失败", zap.Error(err))
-		return
+		return ""
 	}
 	logger := g.PreviewLogger
 	if logger == nil {
 		logger = display.DefaultPromptPreviewLogger()
 	}
-	if _, err := logger.SavePreviewFileWithTrace(sessionID, g.requestType(), string(content), nil, nil, traceID); err != nil {
+	filePath, err := logger.SavePreviewFileWithTrace(sessionID, stage, string(content), nil, nil, traceID)
+	if err != nil {
 		zap.L().Warn("写入 Replyer Prompt 预览失败", zap.Error(err))
+		return ""
 	}
+	return (&display.PromptCLIVisualizer{}).BuildPromptPreviewWebURI(filePath)
 }
 
 func (g *ReplyGenerator) keepPreviewBase64() bool {

@@ -291,12 +291,51 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			promptPreview = renderContextItemsPrompt(requestItems)
 		}
 
+		superActive := superCreativeMode && activePromptProfile != "mai_replier"
+		var originalAttempts []GenerationAttempt
+		if superActive {
+			// 先固定本阶段的调用用途与轮次，保证预览与最终诊断一致
+			originalAttempts = make([]GenerationAttempt, len(generationResult.GenerationAttempts))
+			copy(originalAttempts, generationResult.GenerationAttempts)
+			for index := range originalAttempts {
+				if originalAttempts[index].WorkflowPurpose == g.requestType() || originalAttempts[index].WorkflowPurpose == "replyer" {
+					originalAttempts[index].WorkflowPurpose = "replyer." + creativeLanguage
+				}
+			}
+			originalAttempts = updateWorkflowAttempt(originalAttempts, retryCount+1)
+			response := generationResult
+			response.GenerationAttempts = originalAttempts
+			g.persistStagePreview(ctx, &result, "replyer_creative", sessionID, req.ReplyReason,
+				requestItems, response.OutputItems, originalAttempts, llmMS,
+				response.ModelName, response.PromptTokens, response.CompletionTokens, response.TotalTokens)
+		}
 		// 在 after_response Hook 与正文校验前翻译，插件和发送端只处理中文结果
-		if superCreativeMode && activePromptProfile != "mai_replier" && strings.TrimSpace(generationResult.ResponseText()) != "" {
+		if superActive && strings.TrimSpace(generationResult.ResponseText()) != "" {
 			result.ErrorCode = "replyer_translation_failed"
+			translationStarted := g.now()
 			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult, creativeLanguage)
 			if translationErr != nil {
 				result.ErrorMessage = translationErr.Error()
+				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
+				return finalize(false)
+			}
+			translatedAttempts := make([]GenerationAttempt, len(translated.GenerationAttempts))
+			copy(translatedAttempts, translated.GenerationAttempts)
+			for index := range translatedAttempts {
+				translatedAttempts[index].WorkflowPurpose = "replyer.translation"
+			}
+			translatedAttempts = updateWorkflowAttempt(translatedAttempts, retryCount+1)
+			translated.GenerationAttempts = translatedAttempts
+			g.persistStagePreview(ctx, &result, "replyer_translation", sessionID, req.ReplyReason,
+				translationItems, translated.OutputItems, translatedAttempts, durationMS(translationStarted, g.now()),
+				translated.ModelName, translated.PromptTokens, translated.CompletionTokens, translated.TotalTokens)
+			if len(translated.ToolCalls) > 0 {
+				result.ErrorMessage = "超级创意模式翻译返回了工具调用，无法输出中文正文"
+				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
+				return finalize(false)
+			}
+			if strings.TrimSpace(translated.ResponseText()) == "" {
+				result.ErrorMessage = "超级创意模式翻译未生成中文正文"
 				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
 				return finalize(false)
 			}
@@ -307,18 +346,6 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			aggregateTotalTokens += translated.TotalTokens
 			requestItems = translationItems
 			promptPreview = renderContextItemsPrompt(translationItems)
-			originalAttempts := make([]GenerationAttempt, 0, len(generationResult.GenerationAttempts))
-			for _, attempt := range generationResult.GenerationAttempts {
-				if attempt.WorkflowPurpose == g.requestType() || attempt.WorkflowPurpose == "replyer" {
-					attempt.WorkflowPurpose = "replyer." + creativeLanguage
-				}
-				originalAttempts = append(originalAttempts, attempt)
-			}
-			translatedAttempts := make([]GenerationAttempt, len(translated.GenerationAttempts))
-			copy(translatedAttempts, translated.GenerationAttempts)
-			for index := range translatedAttempts {
-				translatedAttempts[index].WorkflowPurpose = "replyer.translation"
-			}
 			translated.GenerationAttempts = append(originalAttempts, translatedAttempts...)
 			generationResult = translated
 		}
@@ -655,12 +682,6 @@ func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client
 	translated, err = normalizeGenerationResult(translated)
 	if err != nil {
 		return GenerationResult{}, nil, err
-	}
-	if len(translated.ToolCalls) > 0 {
-		return GenerationResult{}, nil, fmt.Errorf("超级创意模式翻译返回了工具调用，无法输出中文正文")
-	}
-	if strings.TrimSpace(translated.ResponseText()) == "" {
-		return GenerationResult{}, nil, fmt.Errorf("超级创意模式翻译未生成中文正文")
 	}
 	return translated, items, nil
 }

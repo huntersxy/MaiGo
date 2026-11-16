@@ -71,29 +71,32 @@ func (d Deps) latestReplyerExpressions(sessionID string, active maisaruntime.Act
 			UserID:   active.UserID,
 		}, true
 	}
-	dir := filepath.Join(root, "replyer", display.BuildPreviewChatDirName(sessionID, lookup))
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return []string{}, nil
-	}
-	files := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+	chatDir := display.BuildPreviewChatDirName(sessionID, lookup)
+	files := make([]string, 0)
+	for stage := range replyRequestStages {
+		dir := filepath.Join(root, stage, chatDir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
 			continue
 		}
-		stem := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		if _, err := strconv.ParseInt(stem, 10, 64); err != nil {
-			continue
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
+				continue
+			}
+			stem := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+			if _, err := strconv.ParseInt(stem, 10, 64); err != nil {
+				continue
+			}
+			files = append(files, filepath.Join(dir, entry.Name()))
 		}
-		files = append(files, entry.Name())
 	}
 	sort.Slice(files, func(i, j int) bool {
-		left, _ := strconv.ParseInt(strings.TrimSuffix(files[i], filepath.Ext(files[i])), 10, 64)
-		right, _ := strconv.ParseInt(strings.TrimSuffix(files[j], filepath.Ext(files[j])), 10, 64)
+		left, _ := strconv.ParseInt(strings.TrimSuffix(filepath.Base(files[i]), filepath.Ext(files[i])), 10, 64)
+		right, _ := strconv.ParseInt(strings.TrimSuffix(filepath.Base(files[j]), filepath.Ext(files[j])), 10, 64)
 		return left > right
 	})
-	for _, name := range files {
-		raw, err := os.ReadFile(filepath.Join(dir, name))
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
@@ -106,7 +109,7 @@ func (d Deps) latestReplyerExpressions(sessionID string, active maisaruntime.Act
 			continue
 		}
 		expressions := expressionHabitsFromRequestItems(requestItems)
-		stem := strings.TrimSuffix(name, filepath.Ext(name))
+		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 		timestamp, _ := strconv.ParseInt(stem, 10, 64)
 		return expressions, &timestamp
 	}

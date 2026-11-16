@@ -92,6 +92,9 @@ func replayModelExists(config *maibotcfg.ModelConfigFile, modelName string) bool
 func replayTaskFor(config *maibotcfg.ModelConfigFile, stage, modelName string) (llm.TaskName, bool, error) {
 	tasks := replayTaskEntries(config)
 	stage = strings.TrimSpace(stage)
+	if isReplyOutputStage(stage) {
+		stage = "replyer"
+	}
 
 	var stageEntry *replayTaskEntry
 	if stage != "" {

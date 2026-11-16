@@ -246,6 +246,8 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		}
 		emojiID = resolved
 	}
+	var generatedMonitorDetail map[string]any
+	var generatedPromptHTMLURI string
 	if content == "" || !input.ReplyerGenerated {
 		if tc == nil || tc.ReplyerCallback == nil {
 			return &maisakaStubOutput{
@@ -267,7 +269,9 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 				Message: fmt.Sprintf("生成可见回复失败：%v", err),
 			}, nil
 		}
-		content = strings.TrimSpace(generated)
+		content = strings.TrimSpace(generated.Text)
+		generatedMonitorDetail = generated.MonitorDetail
+		generatedPromptHTMLURI = generated.PromptHTMLURI
 		if content == "" {
 			return &maisakaStubOutput{Success: false, Message: "生成可见回复失败。"}, nil
 		}
@@ -299,6 +303,15 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	out.Content = content
 	out.ReplyTo = replyTo
 	out.MsgID = strings.TrimSpace(input.MsgID)
+	if len(generatedMonitorDetail) > 0 {
+		out.MonitorDetail = generatedMonitorDetail
+	}
+	if generatedPromptHTMLURI != "" {
+		if out.MonitorDetail == nil {
+			out.MonitorDetail = map[string]any{}
+		}
+		out.MonitorDetail["prompt_html_uri"] = generatedPromptHTMLURI
+	}
 	out.SetQuote = replyTo != 0
 	out.EffectiveSetQuote = outcome.EffectiveSetQuote
 	out.Sent = outcome.Sent
