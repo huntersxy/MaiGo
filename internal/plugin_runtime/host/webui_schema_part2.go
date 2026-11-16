@@ -201,9 +201,6 @@ func ValidateWebUIExtension(raw map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("页面 ID 重复")
 		}
 		seenIDs[page.ID] = struct{}{}
-		if page.Placement == "workspace" && strings.TrimSpace(workspaceTitle) == "" {
-			return nil, fmt.Errorf("顶部工作区必须声明 workspace_title")
-		}
 		if page.Mode == "custom" {
 			if !containsText(capabilities, "custom_pages") {
 				return nil, fmt.Errorf("custom 页面需要声明 required_capabilities: custom_pages")

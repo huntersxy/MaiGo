@@ -34,7 +34,8 @@ func parseWebUIPage(raw any, index int) (*WebUIPage, error) {
 		if placement != "sidebar" && placement != "workspace" {
 			return nil, fmt.Errorf("%s.placement 非法", where)
 		}
-		page.Placement = placement
+		// 旧插件的顶栏页面统一进入侧栏
+		page.Placement = "sidebar"
 	}
 	for scope, target := range map[string]map[string]*WebUIBinding{"queries": page.Queries, "actions": page.Actions} {
 		rawBindings, exists := object[scope]
