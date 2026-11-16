@@ -105,8 +105,14 @@ func GetBuiltinToolVisibility(spec ToolSpec) BuiltinToolVisibility {
 	}
 }
 
-// IsBuiltinToolInActionStage 内置工具是否属于 Action Loop 阶段
-func IsBuiltinToolInActionStage(spec ToolSpec) bool {
+// IsBuiltinToolInActionStage 内置工具是否属于 Action Loop 阶段；被动式单独使用 stop
+func IsBuiltinToolInActionStage(spec ToolSpec, passiveReplyer bool) bool {
+	if (spec.Name == "stop" || spec.Name == "wait") && !passiveReplyer {
+		return false
+	}
+	if spec.Name == "reply" && passiveReplyer {
+		return false
+	}
 	raw := ""
 	if spec.Metadata != nil {
 		if value, ok := spec.Metadata["builtin_stage"].(string); ok {
@@ -120,7 +126,6 @@ func IsBuiltinToolInActionStage(spec ToolSpec) bool {
 type BuiltinToolConfig struct {
 	UseNewSendLogic      bool
 	PlannerSubagent      bool
-	AdvancedSubAgent     bool
 	ToolResultCondense   bool
 	WebSearchEnabled     bool
 	MemoryQueryEnabled   bool
@@ -135,10 +140,8 @@ func BuiltinToolEnabledByConfig(name string, cfg BuiltinToolConfig) bool {
 		return cfg.UseNewSendLogic
 	case string(ToolSendEmoji):
 		return !cfg.UseNewSendLogic
-	case string(ToolSubagent):
+	case string(ToolSubagent), string(ToolSubagentStatus), string(ToolSubagentStop):
 		return cfg.PlannerSubagent
-	case string(ToolSubagentStatus), string(ToolSubagentStop):
-		return cfg.PlannerSubagent && cfg.AdvancedSubAgent
 	case string(ToolReadToolResult):
 		return cfg.ToolResultCondense || cfg.WebSearchEnabled
 	case string(ToolQueryMemory):

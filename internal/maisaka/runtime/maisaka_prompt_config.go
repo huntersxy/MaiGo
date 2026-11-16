@@ -25,7 +25,6 @@ func (a *Agent) configureMaisakaChatLoop(loop *maisaka.ChatLoopService, isGroup 
 	loop.MaxImageNum = bot.Visual.MaxImageNum
 	loop.LimitImages = a.limitPlannerImages
 	loop.PlannerSubagent = bot.Capabilities.PlannerSubagent
-	loop.AdvancedSubAgent = bot.Capabilities.AdvancedSubAgent
 	loop.Personality = strings.TrimSpace(bot.Personality.Personality)
 	loop.BehaviorStyle = strings.TrimSpace(bot.Personality.BehaviorStyle)
 	if isGroup {

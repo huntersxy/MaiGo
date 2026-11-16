@@ -339,6 +339,19 @@ func convertReplyResult(ctx context.Context, output map[string]any) StructuredTo
 // 与 :655-670 的 sent_message_ids/send_results/quote_probability/reply_supplement/reply_extensions
 func maisakaReplyMetadata(output map[string]any) map[string]any {
 	metadata := map[string]any{}
+	if value := maisakaStringValue(output["after_reply"]); value != "" {
+		metadata["after_reply"] = value
+	}
+	if value, exists := output["wait_seconds"]; exists {
+		switch typed := value.(type) {
+		case int:
+			metadata["wait_seconds"] = typed
+		case int64:
+			metadata["wait_seconds"] = int(typed)
+		case float64:
+			metadata["wait_seconds"] = int(typed)
+		}
+	}
 	if replyID := maisakaStringValue(output["reply_id"]); replyID != "" {
 		metadata["reply_id"] = replyID
 	}

@@ -145,8 +145,6 @@ type ChatLoopService struct {
 	CurrentChatPrompt string
 	// PlannerSubagent 是否向 Planner 注入 subagent 工具说明
 	PlannerSubagent bool
-	// AdvancedSubAgent 是否启用后台运行的子代理
-	AdvancedSubAgent bool
 	// EnableVisualMessage 是否允许请求携带图片
 	EnableVisualMessage bool
 	// MaxImageSide Planner 上下文图片最大边，0 表示按 normal 档 512
@@ -406,13 +404,11 @@ func (s *ChatLoopService) buildSubagentRule() string {
 		"ja-JP": "- subagent()：答えたり判断したりする前に調べものが必要なこと（ドキュメントの確認、ウェブ検索、バージョンやプラグイン情報の確認、画像探し、ある主張の検証など）は、サブエージェントに任せることを優先してください。何を調べるかを明確に書き、使えそうなツールを許可します。サブエージェントは結論だけをあなたに渡します。一手で済むことだけ、該当するツールを直接呼び出してください。",
 		"zh-CN": "- subagent()：遇到需要查资料才能回答或判断的事（查文档、搜网页、查版本或插件信息、找图、核实某个说法等），优先交给子代理：写清楚要查什么，把用得上的工具授权给它；它查完只把结论交给你。只有一步就能完成的事才直接调用对应工具。",
 	})
-	if s.AdvancedSubAgent {
-		rule += s.localizedMap(map[string]string{
-			"en-US": " The sub-agent runs in the background: after dispatching it you do not need to wait and can keep chatting; its conclusion will be sent back to you later.",
-			"ja-JP": "サブエージェントはバックグラウンドで動作します。依頼したあとは待つ必要はなく、会話を続けてかまいません。結論は後であなたに返されます。",
-			"zh-CN": "子代理在后台运行，派发后不用等它，可以继续聊天，结论稍后会送回给你。",
-		})
-	}
+	rule += s.localizedMap(map[string]string{
+		"en-US": " The sub-agent runs in the background: after dispatching it you do not need to wait and can keep chatting; its conclusion will be sent back to you later.",
+		"ja-JP": "サブエージェントはバックグラウンドで動作します。依頼したあとは待つ必要はなく、会話を続けてかまいません。結論は後であなたに返されます。",
+		"zh-CN": "子代理在后台运行，派发后不用等它，可以继续聊天，结论稍后会送回给你。",
+	})
 	return "\n" + rule
 }
 

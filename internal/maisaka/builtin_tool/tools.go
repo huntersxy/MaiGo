@@ -120,9 +120,7 @@ type ToolContext struct {
 	UtilsLLM         model.AgenticModel // generation 快照：model_task_config.utils
 	// SubagentRunner 宿主提供的多轮子代理执行器；nil 时退化为单次模型调用
 	SubagentRunner func(ctx context.Context, task string, grantedTools []string, maxRounds int) (string, map[string]int, error)
-	// AdvancedSubagent 对齐 capabilities.advanced_sub_agent：后台运行，结论异步送回
-	AdvancedSubagent  bool
-	ToolCatalog       []ToolCatalogEntry
+	ToolCatalog    []ToolCatalogEntry
 	DeferredToolInfos []*schema.ToolInfo  // deferred 工具的模型定义，用于发现后恢复
 	DiscoveredTools   map[string]struct{} // deferred 工具发现状态（供后续轮次过滤）
 	// AgentFilesHost 当前会话的 agent_* 工具宿主

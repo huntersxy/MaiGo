@@ -802,7 +802,6 @@ func maisakaBuiltinConfig(bot *maibotcfg.BotConfigFile, model *maibotcfg.ModelCo
 	return maisaka.BuiltinToolConfig{
 		UseNewSendLogic:      bot.Emoji.UseNewSendLogic,
 		PlannerSubagent:      bot.Capabilities.PlannerSubagent,
-		AdvancedSubAgent:     bot.Capabilities.AdvancedSubAgent,
 		ToolResultCondense:   bot.Capabilities.ToolResultCondense,
 		WebSearchEnabled:     webSearchEnabled,
 		MemoryQueryEnabled:   bot.AMemorix.Integration.EnableMemoryQueryTool,

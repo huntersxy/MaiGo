@@ -361,7 +361,6 @@ type CapabilitiesConfig struct {
 	ToolResultCondense          bool `toml:"tool_result_condense,omitempty"`
 	ToolResultCondenseThreshold int  `toml:"tool_result_condense_threshold,omitempty"`
 	PlannerSubagent             bool `toml:"planner_subagent,omitempty"`
-	AdvancedSubAgent            bool `toml:"advanced_sub_agent,omitempty"`
 }
 
 type ChatConfig struct {

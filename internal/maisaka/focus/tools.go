@@ -77,7 +77,7 @@ func (r *FocusToolRouter) Refresh(ctx context.Context) ([]maisaka.ToolSpec, erro
 		}
 		for _, original := range specs {
 			if original.Provider == maisaka.BuiltinProviderName &&
-				(!maisaka.IsBuiltinToolInActionStage(original) || maisaka.GetBuiltinToolVisibility(original) == maisaka.BuiltinHidden) {
+				(!maisaka.IsBuiltinToolInActionStage(original, false) || maisaka.GetBuiltinToolVisibility(original) == maisaka.BuiltinHidden) {
 				continue
 			}
 			identity := toolIdentity(original)
@@ -232,7 +232,7 @@ func (r *FocusToolRouter) mergeVariants(route *ToolRoute) {
 // IsDefaultVisible 工具是否默认暴露给模型
 func (r *FocusToolRouter) IsDefaultVisible(spec maisaka.ToolSpec) bool {
 	if spec.Provider == maisaka.BuiltinProviderName {
-		return maisaka.IsBuiltinToolInActionStage(spec) && maisaka.GetBuiltinToolVisibility(spec) == maisaka.BuiltinVisible
+		return maisaka.IsBuiltinToolInActionStage(spec, false) && maisaka.GetBuiltinToolVisibility(spec) == maisaka.BuiltinVisible
 	}
 	if spec.Metadata != nil {
 		if visibility, ok := spec.Metadata["visibility"].(string); ok {

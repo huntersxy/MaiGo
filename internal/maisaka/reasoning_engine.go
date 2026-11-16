@@ -680,6 +680,10 @@ func cycleEndForPauseTool(pauseToolName string) CycleEnd {
 		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "Planner 调用 stop，已结束本轮思考并等待新消息。"}
 	case "wait":
 		return CycleEnd{Reason: CycleEndToolPauseWait, Detail: "Planner 调用 wait，本轮暂停并在等待结束后继续判断。"}
+	case "reply:stop":
+		return CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "回复已发送，after_reply=stop 结束本轮思考。"}
+	case "reply:wait":
+		return CycleEnd{Reason: CycleEndToolPauseWait, Detail: "回复已发送，after_reply=wait 等待后继续判断。"}
 	case "":
 		return CycleEnd{Reason: CycleEndToolPause, Detail: "工具要求暂停当前思考循环。"}
 	default:
@@ -807,6 +811,9 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 	deferredPostHistory := make([]ContextMessage, 0, len(toolCalls))
 	// 同一批工具调用共用本轮 trace，供预览记录互相索引
 	traceCtx := reasoningtrace.WithTraceID(ctx, reasoningtrace.NewTraceID())
+	replyPause := ""
+	replyWaitSeconds := 30
+	replyPauseCallID := ""
 
 	for index, call := range toolCalls {
 		e.logToolCallSource(call, index+1, len(toolCalls))
@@ -822,7 +829,20 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		runtime.UpdateStageStatus("工具执行 · "+call.Name, fmt.Sprintf("第 %d/%d 个工具", index+1, len(toolCalls)))
 		started := time.Now()
 		result := ToolExecutionResult{Success: false, Content: "统一工具注册表尚未初始化。"}
-		if e.PassiveReplyerEnabled() && call.Name == "reply" {
+		if replyPause != "" {
+			// 同批调用都必须有回执，但回复要求结束后不能再执行其余工具
+			result = ToolExecutionResult{
+				ToolName: call.Name,
+				Success:  false,
+				Message:  fmt.Sprintf("未执行：前面的 reply 已选择 after_reply=%s。", replyPause),
+			}
+		} else if !e.PassiveReplyerEnabled() && (call.Name == "stop" || call.Name == "wait") {
+			result = ToolExecutionResult{
+				ToolName: call.Name,
+				Success:  false,
+				Message:  "普通模式不提供 stop/wait 工具；静默结束时不调用工具，回复后的行为使用 reply.after_reply。",
+			}
+		} else if e.PassiveReplyerEnabled() && call.Name == "reply" {
 			result = ToolExecutionResult{
 				ToolName: "reply",
 				Success:  false,
@@ -857,8 +877,25 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		e.appendToolResultMediaMessages(call, result)
 		summaries = append(summaries, summary)
 		monitorResults = append(monitorResults, buildToolMonitorResult(call, invocation, result, runtime.CurrentActionToolSpec(call.Name), float64(duration), summary))
-		runtime.emitPlannerProgress(cycleDetail, state, monitorResults, nextCallID(toolCalls, index))
+		nextID := nextCallID(toolCalls, index)
+		if replyPause != "" {
+			nextID = ""
+		}
+		runtime.emitPlannerProgress(cycleDetail, state, monitorResults, nextID)
 
+		if result.Success && call.Name == "reply" && !e.PassiveReplyerEnabled() {
+			afterReply := "continue"
+			if value, ok := result.Metadata["after_reply"].(string); ok && strings.TrimSpace(value) != "" {
+				afterReply = strings.TrimSpace(value)
+			}
+			if afterReply == "stop" || afterReply == "wait" {
+				replyPause = afterReply
+				replyPauseCallID = call.CallID
+				if seconds, ok := result.Metadata["wait_seconds"].(int); ok && seconds >= 0 {
+					replyWaitSeconds = seconds
+				}
+			}
+		}
 		if !result.Success && call.Name == "reply" {
 			zap.L().Warn(runtime.logPrefix + " 回复工具未生成可见消息，将继续下一轮循环")
 		}
@@ -872,6 +909,18 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		}
 	}
 	e.appendToolPostHistoryMessages(deferredPostHistory)
+	if replyPause != "" {
+		if replyPause == "stop" {
+			runtime.EndPlannerContinuation()
+			runtime.EnterStopState()
+		} else {
+			seconds := float64(replyWaitSeconds)
+			if _, err := runtime.EnterCountedWaitState(&seconds, replyPauseCallID, e.activeLogicalTurnID); err != nil {
+				zap.L().Warn(runtime.logPrefix + " 进入 reply 等待状态失败: " + err.Error())
+			}
+		}
+		return true, "reply:" + replyPause, summaries, monitorResults
+	}
 	if shouldStopAfterExecution {
 		runtime.EndPlannerContinuation()
 		runtime.resetConsecutiveWaitCount(CycleEndToolStopAfterExec)

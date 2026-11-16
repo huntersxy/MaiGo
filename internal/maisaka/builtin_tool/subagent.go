@@ -20,7 +20,6 @@ const (
 	subagentMaxRunningTasks   = 3
 	subagentFinishedTaskKeep  = 20
 	subagentTaskPreviewRunes  = 80
-	subagentSynchronousRounds = 5
 	subagentBackgroundRounds  = 20
 	subagentSingleCallTimeout = 3 * time.Minute
 	// subagentSystemPromptTemplate 对齐 Python subagent.py:69-77 的 SUBAGENT_SYSTEM_PROMPT
@@ -81,7 +80,6 @@ type SubagentTaskManager struct {
 	llmRouter      *llm.Router
 	parentCtx      context.Context
 	subagentRunner func(ctx context.Context, task string, grantedTools []string, maxRounds int) (string, map[string]int, error)
-	advanced       bool
 }
 
 func subagentSessionKey(kind string, targetID int64) string {
@@ -109,7 +107,6 @@ func subagentManagerForContext(ctx context.Context) (*SubagentTaskManager, bool)
 		mgr.parentCtx = ctx
 	}
 	mgr.subagentRunner = tc.SubagentRunner
-	mgr.advanced = tc.AdvancedSubagent
 	return mgr, true
 }
 
@@ -443,38 +440,12 @@ func subagentFunc(ctx context.Context, input *SubagentInput) (*subagentToolOutpu
 			Message: fmt.Sprintf("没有可以授权给子代理的工具：%s 属于只能由 Planner 调用的工具或尚未授权", strings.Join(rejected, "、")),
 		}, nil
 	}
-	tc := GetToolContext(ctx)
-	if tc != nil && !tc.AdvancedSubagent && tc.SubagentRunner != nil {
-		conclusion, usage, err := tc.SubagentRunner(ctx, taskDesc, granted, subagentSynchronousRounds)
-		if err != nil {
-			return &subagentToolOutput{Success: false, Message: fmt.Sprintf("子代理执行失败：%v", err)}, nil
-		}
-		conclusion = strings.TrimSpace(conclusion)
-		usageText := formatSubagentToolUsage(usage)
-		if conclusion == "" {
-			return &subagentToolOutput{Success: false, Message: fmt.Sprintf("子代理没有给出结论（工具使用：%s）", usageText)}, nil
-		}
-		rejectedNote := ""
-		if len(rejected) > 0 {
-			rejectedNote = fmt.Sprintf("\n（未授权的工具：%s，它们不存在或只能由你自己调用）", strings.Join(rejected, "、"))
-		}
-		return &subagentToolOutput{
-			Success:       true,
-			Message:       fmt.Sprintf("[子代理结论｜工具使用：%s]\n%s%s", usageText, conclusion, rejectedNote),
-			GrantedTools:  granted,
-			RejectedTools: rejected,
-			ToolUsage:     usage,
-		}, nil
-	}
 	mgr, ok := subagentManagerForContext(ctx)
 	if !ok {
 		return &subagentToolOutput{Success: false, Message: "子代理任务管理器未接入（缺少会话 ToolContext）"}, nil
 	}
 	taskID := mgr.allocateTaskID()
-	maxRounds := subagentSynchronousRounds
-	if mgr.advanced {
-		maxRounds = subagentBackgroundRounds
-	}
+	maxRounds := subagentBackgroundRounds
 	_, err := mgr.start(taskID, taskDesc, granted, rejected, mgr.subagentRunner, maxRounds)
 	if err != nil {
 		return &subagentToolOutput{Success: false, Message: err.Error()}, nil

@@ -207,7 +207,6 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 	}
 	tc.AgentFilesHost = a.newAgentFilesHost(sessionID)
 	if instance := a.instanceBotConfig(); instance != nil {
-		tc.AdvancedSubagent = instance.Capabilities.AdvancedSubAgent
 		tc.BotName = strings.TrimSpace(instance.Bot.Nickname)
 	}
 	if generation := generationFrom(ctx); generation != nil {

@@ -96,7 +96,11 @@ func (p ReplyAttachPicture) pictureIndex() int {
 }
 
 type ReplyInput struct {
-	MsgID            string               `json:"msg_id,omitempty" jsonschema:"description=要回复的消息 msg_id"`
+	MsgID string `json:"msg_id,omitempty" jsonschema:"description=要回复的消息 msg_id"`
+	// AfterReply 回复成功后的行为：continue/stop/wait
+	AfterReply *string `json:"after_reply,omitempty" jsonschema:"description=回复发送成功后的行为：continue 继续思考；stop 结束本轮（默认）；wait 等待后再判断"`
+	// WaitSeconds after_reply=wait 时的等待秒数
+	WaitSeconds *int                 `json:"wait_seconds,omitempty" jsonschema:"description=after_reply=wait 时的等待秒数，默认 30"`
 	ReplyReference   string               `json:"reply_reference,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
 	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
@@ -141,6 +145,10 @@ type ReplyOutput struct {
 	MonitorDetail map[string]any `json:"monitor_detail,omitempty"`
 	// ReplySupplement 补充编排详情，对齐 Python reply_metadata.reply_supplement
 	ReplySupplement map[string]any `json:"reply_supplement,omitempty"`
+	// AfterReply 回复成功后的行为，对齐 reply 工具 after_reply
+	AfterReply string `json:"after_reply,omitempty"`
+	// WaitSeconds after_reply=wait 时的等待秒数
+	WaitSeconds int `json:"wait_seconds,omitempty"`
 	// ReplyExtensions 插件回复扩展参数，对齐 Python reply_metadata.reply_extensions
 	ReplyExtensions map[string]any `json:"reply_extensions,omitempty"`
 	// ReplyID 插件回复编号，对齐 Python reply_metadata.reply_id
@@ -150,6 +158,20 @@ type ReplyOutput struct {
 func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	if input == nil {
 		return nil, fmt.Errorf("reply 参数不能为空")
+	}
+	afterReply := "stop"
+	if input.AfterReply != nil {
+		afterReply = strings.TrimSpace(*input.AfterReply)
+	}
+	if afterReply != "continue" && afterReply != "stop" && afterReply != "wait" {
+		return &maisakaStubOutput{Success: false, Message: "after_reply 必须为 continue、stop 或 wait。"}, nil
+	}
+	waitSeconds := 30
+	if input.WaitSeconds != nil {
+		waitSeconds = *input.WaitSeconds
+	}
+	if waitSeconds < 0 {
+		return &maisakaStubOutput{Success: false, Message: "wait_seconds 必须为非负整数。"}, nil
 	}
 	reference := strings.TrimSpace(input.ReplyReference)
 	if reference == "" {
@@ -291,6 +313,10 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		if !emojiOutput.Success {
 			return nil, fmt.Errorf("发送回复表情失败: %s", maisakaFirstNonEmpty(emojiOutput.Message, "未知错误"))
 		}
+	}
+	out.AfterReply = afterReply
+	if afterReply == "wait" {
+		out.WaitSeconds = waitSeconds
 	}
 	return out, nil
 }
