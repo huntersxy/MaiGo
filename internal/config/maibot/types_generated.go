@@ -790,6 +790,7 @@ type PrivateReplyPauseRule struct {
 
 type ResponsePostProcessConfig struct {
 	EnableResponsePostProcess bool    `toml:"enable_response_post_process,omitempty"`
+	RemoveBracketContent      bool    `toml:"remove_bracket_content,omitempty"`
 	TypingSpeed               float64 `toml:"typing_speed,omitempty"`
 }
 

@@ -38,7 +38,10 @@ func ApplyPipeline(text string, opts Options) PipelineResult {
 	}
 
 	protected, kaomojiMap := protectKaomoji(text, cfg.Splitter.EnableKaomojiProtection)
-	cleaned := stripChineseParentheticalContent(protected)
+	cleaned := protected
+	if cfg.RemoveBracketContent {
+		cleaned = stripChineseParentheticalContent(protected)
+	}
 	if cleaned == "" {
 		fallback := "呃呃"
 		segs := []Segment{{Text: fallback}}

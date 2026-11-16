@@ -7,8 +7,9 @@ import (
 
 // Config 对齐 MaiBot response_post_process / response_splitter 默认值
 type Config struct {
-	EnablePostProcess bool
-	TypingSpeed       float64
+	EnablePostProcess    bool
+	RemoveBracketContent bool
+	TypingSpeed          float64
 
 	Splitter SplitterConfig
 }
@@ -72,8 +73,9 @@ type AfterSplitFunc func(segments []Segment, enableChineseTypo bool) []Segment
 // DefaultConfig 对齐 official_configs.py 默认项
 func DefaultConfig() Config {
 	return Config{
-		EnablePostProcess: true,
-		TypingSpeed:       1.0,
+		EnablePostProcess:    true,
+		RemoveBracketContent: true,
+		TypingSpeed:          1.0,
 		Splitter: SplitterConfig{
 			Enable:                  true,
 			Mode:                    "rule",
@@ -94,6 +96,7 @@ func (o *Options) mergedConfig() Config {
 	c := o.Config
 	if c != (Config{}) {
 		cfg.EnablePostProcess = c.EnablePostProcess
+		cfg.RemoveBracketContent = c.RemoveBracketContent
 		if c.TypingSpeed != 0 {
 			cfg.TypingSpeed = c.TypingSpeed
 		}

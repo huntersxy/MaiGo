@@ -58,12 +58,16 @@ func emojiFromRecord(record memory.EmojiRecord) Emoji {
 
 // Manager 表情包选择与管理，内存池 + PG
 type Manager struct {
-	mu         sync.RWMutex
-	saveMu     sync.Mutex
-	mem        *memory.Manager
-	cached     []Emoji
-	stickerDir string
+	mu           sync.RWMutex
+	saveMu       sync.Mutex
+	mem          *memory.Manager
+	cached       []Emoji
+	stickerDir   string
+	recentHashes []string
 }
+
+// recentEmojiWindow 最近发送表情包的冷却窗口
+const recentEmojiWindow = 2
 
 // NewManager 创建 Manager
 func NewManager(mem *memory.Manager) *Manager {
@@ -235,6 +239,10 @@ func (m *Manager) RecordUsage(id uint) error {
 		if m.cached[i].ID == id {
 			m.cached[i].QueryCount++
 			m.cached[i].LastUsedTime = &now
+			m.recentHashes = append(m.recentHashes, m.cached[i].FileHash)
+			if len(m.recentHashes) > recentEmojiWindow {
+				m.recentHashes = m.recentHashes[len(m.recentHashes)-recentEmojiWindow:]
+			}
 			break
 		}
 	}
@@ -267,6 +275,10 @@ func (m *Manager) RecordUsageByHash(ctx context.Context, hash string) (bool, err
 		if m.cached[i].FileHash == hash {
 			m.cached[i].QueryCount++
 			m.cached[i].LastUsedTime = &now
+			m.recentHashes = append(m.recentHashes, hash)
+			if len(m.recentHashes) > recentEmojiWindow {
+				m.recentHashes = m.recentHashes[len(m.recentHashes)-recentEmojiWindow:]
+			}
 			break
 		}
 	}
@@ -365,3 +377,10 @@ func (m *Manager) SerializeForHook(emoji *Emoji) map[string]any {
 }
 
 var _ = errors.Is
+
+// recentEmojiHashes 返回最近发送表情包快照，用于语义选择冷却
+func (m *Manager) recentEmojiHashes() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]string(nil), m.recentHashes...)
+}

@@ -13,11 +13,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"MaiGo/internal/common/llmjson"
 	"MaiGo/internal/llm_models"
@@ -554,7 +556,9 @@ func MatchEmojiDescription(ctx context.Context, emotion, sessionID, content stri
 		return "", fmt.Errorf("表情包管理器未初始化")
 	}
 	candidates := map[string]map[string]string{}
+	emojisByHash := map[string]Emoji{}
 	for _, emoji := range mgr.pool() {
+		emojisByHash[emoji.FileHash] = emoji
 		tags, ok := tagsByHash[emoji.FileHash]
 		if !ok {
 			continue
@@ -627,24 +631,88 @@ func MatchEmojiDescription(ctx context.Context, emotion, sessionID, content stri
 			totals[hash] += score
 		}
 	}
-	bestHash := ""
-	bestScore := math.Inf(-1)
-	hashes := make([]string, 0, len(totals))
-	for hash := range totals {
-		hashes = append(hashes, hash)
+	scores := make(map[string]float64, len(totals))
+	for hash, total := range totals {
+		scores[hash] = total / float64(len(queries))
 	}
-	sort.Strings(hashes)
-	for _, hash := range hashes {
-		score := totals[hash] / float64(len(queries))
-		if score > bestScore {
-			bestScore = score
-			bestHash = hash
-		}
-	}
-	if bestHash == "" {
+	if len(scores) == 0 {
 		return "", fmt.Errorf("当前 Embedding 模型空间中没有已索引的可用表情包")
 	}
-	return bestHash, nil
+	return selectEmojiMatch(scores, emojisByHash, time.Now(), mgr.recentEmojiHashes()), nil
+}
+
+const (
+	emojiCooldownSeconds     = 600.0
+	emojiRecentUseWeight     = 0.2
+	emojiMatchScoreWindow    = 0.1
+	emojiMatchTemperature    = 0.05
+	emojiMatchCandidateLimit = 10
+)
+
+// selectEmojiMatch 在相近高分候选中按分数与冷却加权抽样
+func selectEmojiMatch(scores map[string]float64, emojis map[string]Emoji, now time.Time, recentHashes []string) string {
+	ranked := make([]string, 0, len(scores))
+	for hash := range scores {
+		ranked = append(ranked, hash)
+	}
+	sort.Slice(ranked, func(i, j int) bool { return scores[ranked[i]] > scores[ranked[j]] })
+	if len(ranked) > emojiMatchCandidateLimit {
+		ranked = ranked[:emojiMatchCandidateLimit]
+	}
+	bestScore := scores[ranked[0]]
+	candidates := make([]string, 0, len(ranked))
+	for _, hash := range ranked {
+		if bestScore-scores[hash] <= emojiMatchScoreWindow {
+			candidates = append(candidates, hash)
+		}
+	}
+	sendsSinceUse := make(map[string]int, len(recentHashes))
+	for index, hash := range recentHashes {
+		sendsSinceUse[hash] = len(recentHashes) - index - 1
+	}
+	weights := make([]float64, len(candidates))
+	for index, hash := range candidates {
+		recovery := 1.0
+		if emoji, ok := emojis[hash]; ok && emoji.LastUsedTime != nil {
+			recovery = math.Min(1, math.Max(0, now.Sub(*emoji.LastUsedTime).Seconds()/emojiCooldownSeconds))
+		}
+		sends, ok := sendsSinceUse[hash]
+		if !ok {
+			sends = recentEmojiWindow
+		}
+		countRecovery := math.Min(1, float64(sends)/float64(recentEmojiWindow))
+		cooldownWeight := emojiRecentUseWeight + (1-emojiRecentUseWeight)*math.Min(recovery, countRecovery)
+		weights[index] = math.Exp((scores[hash]-bestScore)/emojiMatchTemperature) * cooldownWeight
+	}
+	return candidates[weightedEmojiIndex(weights)]
+}
+
+func weightedEmojiIndex(weights []float64) int {
+	total := 0.0
+	for _, weight := range weights {
+		if weight > 0 {
+			total += weight
+		}
+	}
+	if total <= 0 {
+		return 0
+	}
+	target := rand.Float64() * total
+	for index, weight := range weights {
+		if weight <= 0 {
+			continue
+		}
+		target -= weight
+		if target <= 0 {
+			return index
+		}
+	}
+	for index := len(weights) - 1; index >= 0; index-- {
+		if weights[index] > 0 {
+			return index
+		}
+	}
+	return 0
 }
 
 func scoreEmojiCandidates(query []float64, entries [][2]any) (map[string]float64, error) {

@@ -422,6 +422,7 @@ no_file_record_retention_days = 30
 
 [response_post_process]
 enable_response_post_process = true
+remove_bracket_content = true
 typing_speed = 1.0
 
 [response_splitter]

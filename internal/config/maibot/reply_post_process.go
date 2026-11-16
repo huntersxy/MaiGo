@@ -5,8 +5,9 @@ import "fmt"
 // ReplyPostProcessSettings 是 bot_config 中回复后处理子表的合并视图
 // 默认值逐项对齐 official_configs.py：ResponsePostProcessConfig / ResponseSplitterConfig
 type ReplyPostProcessSettings struct {
-	Enable      bool
-	TypingSpeed float64
+	Enable               bool
+	RemoveBracketContent bool
+	TypingSpeed          float64
 
 	SplitterMode            string
 	SplitterEnable          bool
@@ -20,8 +21,9 @@ type ReplyPostProcessSettings struct {
 // DefaultReplyPostProcessSettings 对齐 MaiBot 官方默认配置
 func DefaultReplyPostProcessSettings() ReplyPostProcessSettings {
 	return ReplyPostProcessSettings{
-		Enable:      true,
-		TypingSpeed: 1.0,
+		Enable:               true,
+		RemoveBracketContent: true,
+		TypingSpeed:          1.0,
 
 		SplitterMode:            "rule",
 		SplitterEnable:          true,
@@ -41,6 +43,9 @@ func (b BotConfigFile) ReplyPostProcessSettings() ReplyPostProcessSettings {
 
 	if hasKey(m.PostProcessKeys, "enable_response_post_process") {
 		s.Enable = b.ResponsePostProcess.EnableResponsePostProcess
+	}
+	if hasKey(m.PostProcessKeys, "remove_bracket_content") {
+		s.RemoveBracketContent = b.ResponsePostProcess.RemoveBracketContent
 	}
 	if hasKey(m.PostProcessKeys, "typing_speed") {
 		s.TypingSpeed = b.ResponsePostProcess.TypingSpeed
