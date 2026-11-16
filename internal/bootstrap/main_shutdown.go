@@ -14,6 +14,7 @@ import (
 type workerShutdownHooks struct {
 	StopLogBroadcast  func(context.Context) error
 	StopMessageEntry  func(context.Context) error
+	StopDesktopPet    func(context.Context) error
 	StopACPAgent      func(context.Context) error
 	StopComputer      func(context.Context) error
 	StopChatLoop      func(context.Context) error
@@ -93,6 +94,8 @@ func newWorkerShutdownPlan(hooks workerShutdownHooks) runtime.ShutdownPlan {
 
 	// 消息生产者先于插件、电脑及存储关闭，避免在依赖销毁后继续调用工具
 	add("停止消息入口", runtime.PhasePre, 5*time.Second, hooks.StopMessageEntry)
+	// 先停止桌宠轮询和主动唤醒，窗口退出时仍可调用插件关闭钩子
+	add("停止桌宠", runtime.PhasePre, 6*time.Second, hooks.StopDesktopPet)
 	add("停止聊天循环", runtime.PhasePre, 5*time.Second, hooks.StopChatLoop)
 	add("停止外接 Agent", runtime.PhasePre, 8*time.Second, hooks.StopACPAgent)
 	add("保存并断开电脑", runtime.PhasePre, 8*time.Second, hooks.StopComputer)

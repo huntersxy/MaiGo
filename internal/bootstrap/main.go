@@ -1798,6 +1798,12 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			}
 			return platformIOMgr.Stop(ctx)
 		},
+		StopDesktopPet: func(ctx context.Context) error {
+			if desktopPetSvc == nil {
+				return nil
+			}
+			return desktopPetSvc.Stop(ctx)
+		},
 		StopAsyncTasks: func(ctx context.Context) error {
 			stopBackground()
 			return waitGroupContext(ctx, &backgroundWG)
@@ -1852,16 +1858,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		StopPluginRuntime: func(ctx context.Context) error {
 			stopHealthMonitor()
 			healthCancel()
-			var errs []error
-			if desktopPetSvc != nil {
-				if err := desktopPetSvc.Stop(ctx); err != nil {
-					errs = append(errs, fmt.Errorf("停止桌宠: %w", err))
-				}
-			}
 			if err := pluginHost.Stop(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("停止插件运行时: %w", err))
+				return fmt.Errorf("停止插件运行时: %w", err)
 			}
-			return errors.Join(errs...)
+			return nil
 		},
 		StopImageSync: func(ctx context.Context) error {
 			imageCleanupCancel()
