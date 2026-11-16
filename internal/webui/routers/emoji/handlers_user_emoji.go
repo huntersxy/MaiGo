@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"io"
-	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +11,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"MaiGo/internal/core/internal_chat"
+	"MaiGo/internal/webui/httputil"
 )
 
 // 本文件对齐 ../MaiBot/src/webui/routers/user_emoji.py 的 WebUI 本地用户表情包
@@ -32,7 +34,7 @@ func (d Deps) userEmojiRoot() string {
 
 func (d Deps) resolveUserEmojiDirectory(userID string) (string, error) {
 	normalized := strings.TrimSpace(userID)
-	if !webuiUserIDPattern.MatchString(normalized) {
+	if normalized != internalchat.OwnerUserID && !webuiUserIDPattern.MatchString(normalized) {
 		return "", newTransferError(http.StatusBadRequest, "WebUI 用户 ID 不合法")
 	}
 	root, err := filepath.Abs(d.userEmojiRoot())
