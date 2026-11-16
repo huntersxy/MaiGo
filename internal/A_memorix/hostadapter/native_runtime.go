@@ -292,7 +292,7 @@ func (g *NativeLLMGateway) Generate(ctx context.Context, req utils.TextGeneratio
 	if err != nil {
 		return utils.TextGenerationResult{Success: false, Error: err.Error()}, err
 	}
-	return generateNativeText(ctx, client, req.Prompt, req.Temperature, req.MaxTokens)
+	return generateNativeText(ctx, client, req.Prompt, req.Temperature, req.MaxTokens, req.ResponseFormat)
 }
 
 // GeneratePinned 用指定模型构造单模型任务后生成
@@ -335,14 +335,18 @@ func (g *NativeLLMGateway) GeneratePinned(
 	if err != nil {
 		return utils.TextGenerationResult{Success: false, Error: err.Error()}, err
 	}
-	return generateNativeText(ctx, client, prompt, temperature, maxTokens)
+	return generateNativeText(ctx, client, prompt, temperature, maxTokens, nil)
 }
 
 func generateNativeText(
 	ctx context.Context, client model.AgenticModel, prompt string, temperature *float64, maxTokens *int,
+	responseFormat any,
 ) (utils.TextGenerationResult, error) {
 	if client == nil {
 		return utils.TextGenerationResult{Success: false, Error: "LLM 客户端未初始化"}, errors.New("LLM 客户端未初始化")
+	}
+	if responseFormat != nil {
+		ctx = llm.WithResponseFormat(ctx, responseFormat)
 	}
 	options := make([]model.Option, 0, 2)
 	if temperature != nil {

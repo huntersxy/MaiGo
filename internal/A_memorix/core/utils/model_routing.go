@@ -65,11 +65,12 @@ func (m ResolvedLLMModel) IsSingleModel() bool { return m.SelectedModelName != "
 
 // TextGenerationRequest 对齐 LLMServiceRequest 的字段子集
 type TextGenerationRequest struct {
-	TaskName    string
-	RequestType string
-	Prompt      string
-	Temperature *float64
-	MaxTokens   *int
+	TaskName       string
+	RequestType    string
+	Prompt         string
+	Temperature    *float64
+	MaxTokens      *int
+	ResponseFormat any
 }
 
 // TextGenerationResult 对齐 LLMServiceResult 的字段子集

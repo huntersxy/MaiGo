@@ -126,10 +126,11 @@ type FactDedupStore interface {
 
 // FactDedupLLMRequest 去重模型请求
 type FactDedupLLMRequest struct {
-	TaskName    string
-	RequestType string
-	Prompt      string
-	Temperature float64
+	TaskName       string
+	RequestType    string
+	Prompt         string
+	Temperature    float64
+	ResponseFormat any
 }
 
 // FactDedupLLMResponse 去重模型响应，Completion 对应 Python completion.response

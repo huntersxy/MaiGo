@@ -24,7 +24,8 @@ type BackgroundTaskDeps struct {
 	HasLegacyVectorView             func() bool
 	CopyLegacyVectorsOnce           func(ctx context.Context, batchSize int) (map[string]any, error)
 	CleanupVectorQuarantine         func()
-	MaintenanceReconcile            func()
+	MaintenanceReconcile            func() error
+	GraphStoreAvailable             func() bool
 	ProcessStorageCleanup           func(ctx context.Context, limit int) (map[string]any, error)
 	MaintenanceLoop                 func(ctx context.Context) error
 	FeedbackCorrectionLoop          func(ctx context.Context) error
@@ -309,14 +310,17 @@ func (s *BackgroundTaskService) storageCleanupLoop(ctx context.Context) error {
 		if s.stopping() {
 			break
 		}
-		if s.deps.MaintenanceReconcile != nil {
+		// 图通道初始化失败的原因已在启动时记录；清理任务继续运行，投影等待图通道可用。
+		if s.deps.MaintenanceReconcile != nil && (s.deps.GraphStoreAvailable == nil || s.deps.GraphStoreAvailable()) {
 			func() {
 				defer func() {
 					if recovered := recover(); recovered != nil {
 						s.LoggerWarn("relation graph projection loop panic: %v", recovered)
 					}
 				}()
-				s.deps.MaintenanceReconcile()
+				if err := s.deps.MaintenanceReconcile(); err != nil {
+					s.LoggerWarn("relation graph projection loop 异常，将在下一轮重试: %v", err)
+				}
 			}()
 		}
 		if s.deps.ProcessStorageCleanup != nil {

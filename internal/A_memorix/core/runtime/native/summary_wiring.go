@@ -61,7 +61,7 @@ func (r *Runtime) newSummaryImporter() *utils.SummaryImporter {
 	store := summaryStoreAdapter{store: r.metadataStore}
 	options := utils.SummaryImporterOptions{
 		Store:         store,
-		VectorStore:   &webImportVectorAdapter{inner: r.vectorStore},
+		VectorStore:   &webImportVectorAdapter{inner: r.paragraphPoolStore()},
 		GraphStore:    &webImportGraphAdapter{inner: r.graphStore},
 		Embedding:     &webImportEmbeddingAdapter{inner: r.embeddingManager},
 		LLM:           r.llmGateway,
@@ -129,8 +129,8 @@ func (r *Runtime) summaryDedupFactory(store summaryStoreAdapter) utils.SummaryDe
 			embedding = &webImportEmbeddingAdapter{inner: r.embeddingManager}
 		}
 		var vectors utils.FactDedupVectorStore
-		if r.vectorStore != nil {
-			vectors = summarySearchAdapter{inner: r.vectorStore}
+		if paragraphStore := r.paragraphPoolStore(); paragraphStore != nil {
+			vectors = summarySearchAdapter{inner: paragraphStore}
 		}
 		var llm utils.FactDedupLLM
 		if r.llmGateway != nil {
@@ -167,6 +167,7 @@ func (a summaryDedupLLM) Generate(ctx context.Context, req utils.FactDedupLLMReq
 	temperature := req.Temperature
 	result, err := a.gateway.Generate(ctx, utils.TextGenerationRequest{
 		TaskName: req.TaskName, RequestType: req.RequestType, Prompt: req.Prompt, Temperature: &temperature,
+		ResponseFormat: req.ResponseFormat,
 	})
 	if err != nil {
 		return utils.FactDedupLLMResponse{}, err

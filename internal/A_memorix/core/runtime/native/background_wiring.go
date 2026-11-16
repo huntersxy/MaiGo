@@ -211,11 +211,10 @@ func (r *Runtime) backgroundTaskDeps() services.BackgroundTaskDeps {
 				r.logger.Warning("[native] 清理向量隔离区失败: " + err.Error())
 			}
 		},
+		GraphStoreAvailable: func() bool { return r.graphStore != nil },
 		// 对齐 Python _storage_cleanup_loop：只对账关系图投影作业，不跑完整维护周期
-		MaintenanceReconcile: func() {
-			if err := r.reconcileRelationGraphProjectionJobs(false, 0); err != nil {
-				r.logger.Warning("relation graph projection loop 异常，将在下一轮重试: " + err.Error())
-			}
+		MaintenanceReconcile: func() error {
+			return r.reconcileRelationGraphProjectionJobs(false, 0)
 		},
 		VectorStores: func(ctx context.Context) map[string]*storage.VectorStore {
 			// 与 Python _runtime_vector_training_targets 一致：双池只训练段落/图谱池，单池只训练主池
