@@ -109,10 +109,12 @@ type Host struct {
 	runnerReadyByGroup map[RunnerGroup]protocol.RunnerReadyPayload
 	// runnerReadySet 本轮 runner.ready 是否已到达，对齐 _runner_ready_events.is_set()
 	runnerReadySet bool
-	// startupProgress 整轮完成前的逐插件进度，对齐 _startup_progress
-	startupProgress map[RunnerGroup]protocol.RunnerStartupProgressPayload
-	// startupTimeout 本组加载等待超时的可见原因，对齐 _startup_timeout_reason
-	startupTimeout map[RunnerGroup]string
+	// startupLoadResult 最近一次完成的加载结果（进度或 ready）
+	startupLoadResult map[RunnerGroup]protocol.RunnerReadyPayload
+	// startupPending 尚未完成初始化的插件，对齐 _startup_pending_plugins
+	startupPending map[RunnerGroup]map[string]struct{}
+	// startupStartedAt 本轮开始等待的时刻，对齐 _startup_started_at
+	startupStartedAt map[RunnerGroup]time.Time
 	// startupFailure 本组启动失败原因，对齐 _startup_failure_reason
 	startupFailure map[RunnerGroup]string
 	maxRestartAttempts int
@@ -185,8 +187,9 @@ func NewHost() *Host {
 		gatewayStates:            make(map[string]map[string]MessageGatewayRuntimeState),
 		runnerLifecycles:         make(map[RunnerGroup]*runnerLifecycle),
 		runnerReadyByGroup:       make(map[RunnerGroup]protocol.RunnerReadyPayload),
-		startupProgress:          make(map[RunnerGroup]protocol.RunnerStartupProgressPayload),
-		startupTimeout:           make(map[RunnerGroup]string),
+		startupLoadResult:        make(map[RunnerGroup]protocol.RunnerReadyPayload),
+		startupPending:           make(map[RunnerGroup]map[string]struct{}),
+		startupStartedAt:         make(map[RunnerGroup]time.Time),
 		startupFailure:           make(map[RunnerGroup]string),
 		maxRestartAttempts:       DefaultMaxRestartAttempt,
 		runnerHealthInterval:     DefaultRunnerHealthInterval,

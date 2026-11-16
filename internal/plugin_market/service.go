@@ -136,11 +136,17 @@ func (s *Service) Search(ctx context.Context, request SearchRequest) (SearchResp
 	if err != nil {
 		return SearchResponse{}, err
 	}
-	if (request.IncludeStats || request.SortBy != SortName) && !snapshot.Features().Stats {
-		return SearchResponse{}, &MarketError{StatusCode: 502, Message: fmt.Sprintf(
-			"当前信息源 %s 不支持插件统计或排行榜，请在市场设置中选择官方源", snapshot.Source())}
-	}
 	plugins := pluginsFromSnapshot(snapshot)
+	if request.IncludeStats || request.SortBy != SortName {
+		if snapshot.Source() != "official" {
+			summary, _, summaryErr := s.statisticsSnapshot(ctx, request.ForceRefresh)
+			if summaryErr != nil {
+				return SearchResponse{}, summaryErr
+			}
+			// 统计只按规范化后的 manifest.id 对应；没有记录时保留空值。
+			plugins = attachStatistics(plugins, summary)
+		}
+	}
 	candidates := plugins
 	if request.CompatibleOnly {
 		candidates = filterCompatible(candidates)
@@ -301,13 +307,6 @@ func (s *Service) Detail(ctx context.Context, pluginID string, forceRefresh bool
 		}
 		pluginMap = normalizedCatalogMap(detail, true)
 		pluginMap["stats"] = plugin.Stats
-		if rawStats, exists := data.Data["stats"]; exists {
-			if statsMap, ok := anyMap(rawStats); ok {
-				pluginMap["stats"] = statsMap
-			} else {
-				pluginMap["stats"] = rawStats
-			}
-		}
 		plugin = detail
 	} else {
 		index, err := s.loadReleaseIndexWithSource(ctx, source, forceRefresh)
@@ -328,32 +327,19 @@ func (s *Service) Detail(ctx context.Context, pluginID string, forceRefresh bool
 	return DetailResponse{Success: true, Metadata: metadata, Plugin: pluginMap, Releases: releases}, nil
 }
 
-// Stats 对齐 get_stats
+// Stats 对齐 get_stats：读取独立缓存的官方统计
 func (s *Service) Stats(ctx context.Context, pluginID string, forceRefresh bool) (StatsResponse, error) {
-	snapshot, err := s.loadSnapshot(ctx, forceRefresh)
+	stats, info, targetURL, err := s.statisticsPlugin(ctx, pluginID, forceRefresh)
 	if err != nil {
 		return StatsResponse{}, err
 	}
-	plugin, err := s.resolvePlugin(pluginID, snapshot.Plugins)
-	if err != nil {
-		return StatsResponse{}, err
-	}
-	if !snapshot.Features().Stats || plugin.Stats == nil {
-		return StatsResponse{Success: true, Metadata: snapshot.Meta, Stats: nil}, nil
-	}
-	reviews, err := s.getReviews(ctx, plugin.ID)
-	if err != nil {
-		return StatsResponse{}, err
-	}
-	merged := copyAnyMap(plugin.Stats)
-	if merged == nil {
-		merged = map[string]any{}
-	}
-	for key, value := range reviews {
-		merged[key] = value
-	}
-	merged["plugin_id"] = plugin.ID
-	return StatsResponse{Success: true, Metadata: snapshot.Meta, Stats: merged}, nil
+	return StatsResponse{
+		Success: true,
+		Metadata: map[string]any{
+			"source": "official", "source_url": targetURL, "cache": info,
+		},
+		Stats: stats,
+	}, nil
 }
 
 // LoadReleaseIndex 对齐 load_release_index

@@ -2,6 +2,7 @@ package pluginmarket
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"sync"
@@ -241,7 +242,11 @@ func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, sour
 				if !ok {
 					return nil, &MarketError{StatusCode: 502, Message: "插件 " + plugin.ID + " 的统计数据格式无效"}
 				}
-				plugin.Stats = mergeAnyMap(stats, "plugin_id", plugin.ID)
+				normalized, normalizeErr := NormalizeStatistics(stats)
+				if normalizeErr != nil {
+					return nil, fmt.Errorf("插件 %s 的统计数据格式无效: %w", plugin.ID, normalizeErr)
+				}
+				plugin.Stats = normalized
 			}
 		}
 		if entry == nil {

@@ -300,7 +300,7 @@ func (h *Host) waitForStartupCompletion(ctx context.Context, group RunnerGroup, 
 	if timeout <= 0 {
 		timeout = h.RunnerSpawnTimeout()
 	}
-	startedAt := time.Now()
+	h.markStartupWait(group)
 	for {
 		payload, err := h.WaitForRunnerReady(ctx, group, timeout)
 		if err == nil {
@@ -310,12 +310,7 @@ func (h *Host) waitForStartupCompletion(ctx context.Context, group RunnerGroup, 
 		if !errors.Is(err, ErrRunnerReadyTimeout) || ctx.Err() != nil {
 			return payload, err
 		}
-		elapsed := time.Since(startedAt).Seconds()
-		reason := fmt.Sprintf(
-			"本组插件加载已等待 %.1f 秒，超过 %g 秒的等待阈值；尚未完成的插件仍在后台加载，Runner 未被停止。",
-			elapsed, timeout.Seconds(),
-		)
-		h.recordStartupTimeout(group, reason)
-		zap.L().Warn(reason)
+		h.notifyStatusChanges()
+		zap.L().Warn(h.StartupLoadReason())
 	}
 }

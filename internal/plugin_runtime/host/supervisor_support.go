@@ -1,7 +1,9 @@
 package host
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"MaiGo/internal/plugin_runtime/protocol"
 )
@@ -26,8 +28,9 @@ func (h *Host) ApplyRunnerReadyForGroup(payload protocol.RunnerReadyPayload, gro
 	group = runnerGroupOrDefault(group)
 	h.mu.Lock()
 	h.runnerReadyByGroup[group] = payload
-	h.startupTimeout[group] = ""
-	h.startupProgress[group] = protocol.RunnerStartupProgressPayload{}
+	h.startupLoadResult[group] = payload
+	delete(h.startupPending, group)
+	delete(h.startupStartedAt, group)
 	h.mu.Unlock()
 	h.ApplyRunnerReady(payload)
 	h.markRunnerReadyForGroup(group)
@@ -44,7 +47,12 @@ func (h *Host) ApplyRunnerStartupProgressForGroup(payload protocol.RunnerStartup
 	_, ready := h.runnerReadyByGroup[group]
 	accepted := !h.shutdownRequested.Load() && !ready && h.startupFailure[group] == ""
 	if accepted {
-		h.startupProgress[group] = payload
+		h.startupLoadResult[group] = payload.ReadyPayload()
+		pending := make(map[string]struct{}, len(payload.LoadingPlugins))
+		for _, pluginID := range payload.LoadingPlugins {
+			pending[pluginID] = struct{}{}
+		}
+		h.startupPending[group] = pending
 	}
 	h.mu.Unlock()
 	if accepted {
@@ -94,16 +102,24 @@ func (h *Host) LoadedPluginIDsByType(pluginType string) []string {
 	return out
 }
 
-// LoadedPluginVersions 返回插件 ID → 版本
+// LoadedPluginVersions 返回已完成初始化的可用插件版本映射
 func (h *Host) LoadedPluginVersions() map[string]string {
 	if h == nil {
 		return nil
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	loaded := make(map[string]struct{}, len(h.plugins))
+	for _, result := range h.startupLoadResult {
+		for _, pluginID := range result.LoadedPlugins {
+			loaded[pluginID] = struct{}{}
+		}
+	}
 	out := make(map[string]string, len(h.plugins))
 	for pluginID, rec := range h.plugins {
-		out[pluginID] = rec.PluginVersion
+		if _, ok := loaded[pluginID]; ok && rec.ConfigError == "" {
+			out[pluginID] = rec.PluginVersion
+		}
 	}
 	return out
 }
@@ -178,38 +194,34 @@ func (h *Host) PluginLoadStatuses() map[string]string {
 
 func (h *Host) pluginLoadStatusesLocked() map[string]string {
 	out := make(map[string]string, len(h.plugins))
-	for pluginID := range h.plugins {
-		if h.runnerReadySet {
+	for _, result := range h.startupLoadResult {
+		for _, pluginID := range result.LoadedPlugins {
 			out[pluginID] = "success"
-		} else {
+		}
+		for _, pluginID := range result.FailedPlugins {
+			out[pluginID] = "failed"
+		}
+		for _, pluginID := range result.InactivePlugins {
+			if _, exists := out[pluginID]; !exists {
+				out[pluginID] = "inactive"
+			}
+		}
+	}
+	for pluginID := range h.plugins {
+		if _, exists := out[pluginID]; !exists {
 			out[pluginID] = "loading"
 		}
 	}
-	for _, inactive := range h.runnerReady.InactivePlugins {
-		if _, exists := out[inactive]; !exists {
-			out[inactive] = "inactive"
+	for _, pending := range h.startupPending {
+		for pluginID := range pending {
+			out[pluginID] = "loading"
 		}
 	}
 	if h.loading {
-		for _, progress := range h.startupProgress {
-			for _, pluginID := range progress.LoadedPlugins {
-				out[pluginID] = "success"
-			}
-			for _, pluginID := range progress.FailedPlugins {
-				out[pluginID] = "failed"
-			}
-			for _, pluginID := range progress.InactivePlugins {
-				out[pluginID] = "inactive"
-			}
-			for _, pluginID := range progress.LoadingPlugins {
-				out[pluginID] = h.startupLoadStatusLocked()
-			}
-		}
-		if h.startupTimeoutReasonLocked() != "" {
-			for pluginID, status := range out {
-				if status == "loading" {
-					out[pluginID] = "timed_out"
-				}
+		loadingStatus := h.startupLoadStatusLocked()
+		for pluginID, status := range out {
+			if status == "loading" {
+				out[pluginID] = loadingStatus
 			}
 		}
 	}
@@ -228,16 +240,10 @@ func (h *Host) PluginLoadFailureReasons() map[string]string {
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	out := make(map[string]string, len(h.runnerReady.FailedPluginReasons)+len(h.blockedReasons))
-	for pluginID, reason := range h.runnerReady.FailedPluginReasons {
-		out[pluginID] = reason
-	}
-	for pluginID, reason := range h.blockedReasons {
-		out[pluginID] = reason
-	}
-	if h.loading {
-		for _, progress := range h.startupProgress {
-			for pluginID, reason := range progress.FailedPluginReasons {
+	out := make(map[string]string, len(h.plugins))
+	for _, result := range h.startupLoadResult {
+		for pluginID, reason := range result.FailedPluginReasons {
+			if strings.TrimSpace(pluginID) != "" && strings.TrimSpace(reason) != "" {
 				out[pluginID] = reason
 			}
 		}
@@ -247,11 +253,9 @@ func (h *Host) PluginLoadFailureReasons() map[string]string {
 			out[pluginID] = rec.ConfigError
 		}
 	}
-	if timeoutReason := h.startupTimeoutReasonLocked(); timeoutReason != "" {
-		for pluginID, status := range h.pluginLoadStatusesLocked() {
-			if status == "timed_out" {
-				out[pluginID] = timeoutReason
-			}
+	for pluginID, status := range h.pluginLoadStatusesLocked() {
+		if status == "timed_out" {
+			out[pluginID] = h.startupLoadReasonLocked()
 		}
 	}
 	return out
@@ -271,13 +275,13 @@ func (h *Host) startupLoadStatusLocked() string {
 	if h.startupFailureReasonLocked() != "" {
 		return "failed"
 	}
-	if h.loading {
-		if h.startupTimeoutReasonLocked() != "" {
-			return "timed_out"
-		}
-		return "loading"
+	if !h.loading {
+		return "not_loaded"
 	}
-	return "not_loaded"
+	if h.startupTimedOutLocked() {
+		return "timed_out"
+	}
+	return "loading"
 }
 
 // StartupLoadReason 返回本组启动失败或持续等待的具体原因
@@ -287,10 +291,7 @@ func (h *Host) StartupLoadReason() string {
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if reason := h.startupFailureReasonLocked(); reason != "" {
-		return reason
-	}
-	return h.startupTimeoutReasonLocked()
+	return h.startupLoadReasonLocked()
 }
 
 func (h *Host) startupFailureReasonLocked() string {
@@ -302,13 +303,44 @@ func (h *Host) startupFailureReasonLocked() string {
 	return ""
 }
 
-func (h *Host) startupTimeoutReasonLocked() string {
-	for _, reason := range h.startupTimeout {
-		if reason != "" {
-			return reason
+func (h *Host) startupTimeoutValue() time.Duration {
+	if h != nil && h.runnerSpawnTimeout > 0 {
+		return h.runnerSpawnTimeout
+	}
+	return DefaultRunnerSpawnWait
+}
+
+func (h *Host) startupTimedOutLocked() bool {
+	timeout := h.startupTimeoutValue()
+	for _, startedAt := range h.startupStartedAt {
+		if !startedAt.IsZero() && time.Since(startedAt) >= timeout {
+			return true
 		}
 	}
-	return ""
+	return false
+}
+
+func (h *Host) startupLoadReasonLocked() string {
+	if reason := h.startupFailureReasonLocked(); reason != "" {
+		return reason
+	}
+	if !h.startupTimedOutLocked() {
+		return ""
+	}
+	timeout := h.startupTimeoutValue()
+	elapsed := 0.0
+	for _, startedAt := range h.startupStartedAt {
+		if startedAt.IsZero() {
+			continue
+		}
+		if value := time.Since(startedAt).Seconds(); value > elapsed {
+			elapsed = value
+		}
+	}
+	return fmt.Sprintf(
+		"本组插件加载已等待 %.1f 秒，超过 %g 秒的等待阈值；尚未完成的插件仍在后台加载，Runner 未被停止。",
+		elapsed, timeout.Seconds(),
+	)
 }
 
 // recordStartupFailure 记录本组启动失败原因，对齐 _startup_failure_reason
@@ -322,13 +354,16 @@ func (h *Host) recordStartupFailure(group RunnerGroup, reason string) {
 	h.notifyStatusChanges()
 }
 
-// recordStartupTimeout 记录本组加载等待超时原因并保持 Runner 运行
-func (h *Host) recordStartupTimeout(group RunnerGroup, reason string) {
+// markStartupWait 记录本轮开始等待的时刻；启动状态按等待时长派生
+func (h *Host) markStartupWait(group RunnerGroup) {
 	if h == nil {
 		return
 	}
+	group = runnerGroupOrDefault(group)
 	h.mu.Lock()
-	h.startupTimeout[group] = reason
+	if h.startupStartedAt[group].IsZero() {
+		h.startupStartedAt[group] = time.Now()
+	}
 	h.mu.Unlock()
 	h.notifyStatusChanges()
 }
@@ -340,8 +375,9 @@ func (h *Host) clearStartupState(group RunnerGroup) {
 	}
 	group = runnerGroupOrDefault(group)
 	h.mu.Lock()
-	delete(h.startupProgress, group)
-	h.startupTimeout[group] = ""
+	delete(h.startupLoadResult, group)
+	delete(h.startupPending, group)
+	delete(h.startupStartedAt, group)
 	h.startupFailure[group] = ""
 	delete(h.runnerReadyByGroup, group)
 	h.runnerReadySet = len(h.runnerReadyByGroup) > 0
@@ -349,13 +385,13 @@ func (h *Host) clearStartupState(group RunnerGroup) {
 	h.notifyStatusChanges()
 }
 
-// clearStartupTimeout 本轮 ready 到达后清除等待超时原因
+// clearStartupTimeout 本轮 ready 到达后清除等待起点
 func (h *Host) clearStartupTimeout(group RunnerGroup) {
 	if h == nil {
 		return
 	}
 	h.mu.Lock()
-	h.startupTimeout[runnerGroupOrDefault(group)] = ""
+	delete(h.startupStartedAt, runnerGroupOrDefault(group))
 	h.mu.Unlock()
 }
 

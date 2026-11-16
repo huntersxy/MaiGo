@@ -175,46 +175,11 @@ func (s *Service) marketRequest(ctx context.Context, method, path string, payloa
 	}
 	if method != http.MethodGet && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if success, ok := data["success"].(bool); !ok || success {
-			s.cache.Invalidate(marketBaseURL() + "/api/v2/market/")
+			s.cache.Invalidate(marketBaseURL() + "/stats/")
+			s.cache.Invalidate(marketBaseURL() + "/api/v2/market/plugins/summary")
 		}
 	}
 	return MarketReply{StatusCode: resp.StatusCode, Data: data}, nil
-}
-
-// getReviews 对齐 engagement.get_reviews：读取最近评价用于详情统计
-func (s *Service) getReviews(ctx context.Context, pluginID string) (map[string]any, error) {
-	reply, err := s.marketRequest(ctx, http.MethodGet, "/stats/"+quoteSegment(pluginID), nil)
-	if err != nil {
-		return nil, err
-	}
-	successIsFalse := false
-	if flag, ok := reply.Data["success"].(bool); ok && !flag {
-		successIsFalse = true
-	}
-	if reply.StatusCode >= 400 || successIsFalse {
-		status := 502
-		if reply.StatusCode >= 400 {
-			status = reply.StatusCode
-		}
-		message := "获取插件评论失败"
-		if raw, ok := reply.Data["error"]; ok {
-			message = safeString(raw)
-		}
-		return nil, &MarketError{StatusCode: status, Message: message}
-	}
-	statsValue, hasStats := reply.Data["stats"]
-	if !hasStats {
-		statsValue = reply.Data
-	}
-	stats, ok := anyMap(statsValue)
-	if !ok {
-		return nil, fmt.Errorf("插件评论响应格式无效")
-	}
-	recent, hasRecent := stats["recent_ratings"]
-	if !hasRecent {
-		recent = []any{}
-	}
-	return map[string]any{"recent_ratings": recent}, nil
 }
 
 // GetUserState 对齐 engagement.get_user_state
