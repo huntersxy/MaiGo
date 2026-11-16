@@ -43,19 +43,24 @@ MaiGo 是 MaiBot 的 Golang 移植版本，致力于在保持原版逻辑与行�
 ### Docker
 
 ```bash
-cp .env.example .env
-docker compose build
-docker compose up -d
-docker compose logs | grep "WebUI 登录 Token"
+docker compose up -d --build
+docker compose logs maigo | grep "WebUI 登录 Token"
 ```
 
-WebUI 在 `http://<host>:7468`。`.env` 必须设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
-首次启动自动生成配置，模型 `api_key` 在 WebUI 填写，平台适配器在 WebUI「适配器设置」安装。
+WebUI 在 `http://<host>:7468`。无需创建 `.env`；端口冲突时：
+
+```bash
+MAIBOT_WEB_PORT=8080 docker compose up -d
+```
+
+首次启动自动生成配置与 `MAIBOT_SECRET_KEY`，密钥保存在 data 卷的 `.secret_key`。
+模型 `api_key` 在 WebUI 填写，内置适配器在 WebUI「适配器设置」启用并配置。
 
 ### 非 Docker
 
 Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.0` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
 装好 `maibot==1.4.0` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
+非 Docker 首次启动需设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 
 ## 贡献
 

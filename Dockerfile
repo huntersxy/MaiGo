@@ -55,11 +55,6 @@ RUN cp -a /app/plugin-runtime /opt/plugin-runtime
 COPY --chown=maibot:maibot --from=pycompat /compat /app/pycompat
 COPY --chown=maibot:maibot data/pycompat/src /app/pycompat-src/src
 COPY --chown=maibot:maibot scripts/python_compat_sidecar.py /app/pycompat_sidecar.py
-# 内置适配器随镜像分发，命名卷首次挂载时由 Docker 复制进卷
-COPY --chown=maibot:maibot plugins/built_in/weixin_clawbot_adapter /app/plugins/built_in/weixin_clawbot_adapter
-COPY --chown=maibot:maibot plugins/built_in/qq_official_adapter /app/plugins/built_in/qq_official_adapter
-COPY --chown=maibot:maibot plugins/built_in/telegram_adapter /app/plugins/built_in/telegram_adapter
-COPY --chown=maibot:maibot plugins/built_in/chinese_typo /app/plugins/built_in/chinese_typo
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # config/data/logs/plugins 与 media/stickers 一样预建并改属主，供命名卷首次挂载时继承
 # temp 是 Runner 的非持久运行时目录（Python build_plugin_paths 写 temp/plugins）

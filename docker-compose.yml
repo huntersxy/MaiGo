@@ -11,20 +11,11 @@ services:
     # 会截断正在落盘的 SQLite 与配置写回（对齐 MaiBot compose 的 70s）
     stop_grace_period: 70s
     environment:
-      MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:?set MAIBOT_SECRET_KEY in .env}
-      MAIBOT_SERVER_PORT: ${MAIBOT_SERVER_PORT:-7468}
       MAIBOT_INSTANCE_DIR: /app
-      MAIBOT_MEDIA_DIR: /app/media
-      MAIBOT_STICKER_DIR: /app/stickers
-      MAIBOT_LOG_LEVEL: ${MAIBOT_LOG_LEVEL:-info}
-      MAIBOT_DEBUG: ${MAIBOT_DEBUG:-false}
-      MAIBOT_STATISTICS_REPORT_PATH: /app/data/maibot_statistics.html
-      MAIBOT_HTMLRENDER_URL: "${MAIBOT_HTMLRENDER_URL:-}"
-      MAIBOT_HTMLRENDER_TOKEN: "${MAIBOT_HTMLRENDER_TOKEN:-}"
-      MAIBOT_HTMLRENDER_TIMEOUT: ${MAIBOT_HTMLRENDER_TIMEOUT:-30}
+      # 未设置时由入口脚本生成并保存到 data 卷的 .secret_key
+      MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:-}
       # 错别字注入与表达向量聚类委托 Python 原版侧车（pypinyin / numpy）
       MAIBOT_COMPAT_URL: http://python-compat:8767
-      MAIBOT_COMPAT_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
       MAIBOT_COMPAT_TIMEOUT: "60"
       # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
       HTTP_HOST: 0.0.0.0
@@ -33,7 +24,7 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
-      - ${MAIBOT_WEB_PORT:-7468}:${MAIBOT_SERVER_PORT:-7468}
+      - ${MAIBOT_WEB_PORT:-7468}:7468
     volumes:
       - maibot-config:/app/config
       - maibot-data:/app/data
@@ -48,7 +39,7 @@ services:
       # Runner 的非持久运行时目录（Python build_plugin_paths 会写 temp/plugins）
       - /app/temp
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${MAIBOT_SERVER_PORT:-7468}/health >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7468/health >/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -68,7 +59,6 @@ services:
       MAIBOT_INSTANCE_DIR: /app
       MAIBOT_SOURCE_ROOT: /app/pycompat-src
       MAIBOT_COMPAT_SIDECAR_PORT: "8767"
-      MAIBOT_COMPAT_SIDECAR_TOKEN: ${MAIBOT_COMPAT_TOKEN:-}
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       # MaiBot 的 typo 生成器会在 depends-data 下缓存字频表

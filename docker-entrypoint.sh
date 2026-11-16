@@ -10,6 +10,19 @@ done
 
 # 数据库是 SQLite（/app/data/MaiBot.db），随 data 卷备份/恢复，无需 postgresql 客户端
 
+# 模型与 MCP 密钥由 MAIBOT_SECRET_KEY 加密；首次启动自动生成并随 data 卷保存
+secret_file=/app/data/.secret_key
+if [ -z "${MAIBOT_SECRET_KEY:-}" ]; then
+    if [ -s "$secret_file" ]; then
+        MAIBOT_SECRET_KEY=$(cat "$secret_file")
+    else
+        MAIBOT_SECRET_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+        (umask 077; printf '%s' "$MAIBOT_SECRET_KEY" > "$secret_file")
+        chown maibot:maibot "$secret_file" 2>/dev/null || true
+    fi
+    export MAIBOT_SECRET_KEY
+fi
+
 # 插件依赖安装写进 Runner venv，只读镜像层无法写入：
 # 命名卷首次挂载为空时从镜像副本播种
 if [ -d /opt/plugin-runtime ] && [ -z "$(ls -A /app/plugin-runtime 2>/dev/null)" ]; then
