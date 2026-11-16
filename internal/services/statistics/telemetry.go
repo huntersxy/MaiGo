@@ -360,7 +360,14 @@ func osTypeLabel() string {
 	case "windows":
 		return "Windows"
 	case "linux":
+		// Termux 或 proot 容器（如 MaiDroid）运行的是 Linux 版程序，
+		// ANDROID_ROOT 与 ANDROID_DATA 同时存在时按 Android 上报
+		if os.Getenv("ANDROID_ROOT") == "/system" && os.Getenv("ANDROID_DATA") == "/data" {
+			return "Android"
+		}
 		return "Linux"
+	case "android":
+		return "Android"
 	case "darwin":
 		return "macOS"
 	default:
