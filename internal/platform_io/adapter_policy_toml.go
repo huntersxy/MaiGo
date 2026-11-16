@@ -24,6 +24,7 @@ const (
 	policyDisabledKey      = "disabled"
 	policyAllowIDsKey      = "allow_ids"
 	policyDenyIDsKey       = "deny_ids"
+	policyDisabledIDsKey   = "disabled_ids"
 	policyListTypeKey      = "list_type"
 	policyIDsKey           = "ids"
 	policyDefaultActionKey = "default_action"
@@ -275,6 +276,7 @@ func pruneEmptyUIPolicy(adapterPolicy map[string]any, chatType ChatType) {
 	for _, key := range []string{
 		policyAllowIDsKey,
 		policyDenyIDsKey,
+		policyDisabledIDsKey,
 		policyListTypeKey,
 		policyIDsKey,
 		policyDisabledKey,
@@ -348,6 +350,9 @@ func syncActiveGroup(adapterPolicy map[string]any) error {
 			policyDefaultActionKey: defaultActionOrInherit(policy),
 			policyAllowIDsKey:      copyAnyList(policy[policyAllowIDsKey]),
 			policyDenyIDsKey:       copyAnyList(policy[policyDenyIDsKey]),
+		}
+		if disabled := copyAnyList(policy[policyDisabledIDsKey]); len(disabled) > 0 {
+			selected[string(chatType)].(map[string]any)[policyDisabledIDsKey] = disabled
 		}
 	}
 	return nil

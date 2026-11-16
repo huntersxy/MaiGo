@@ -283,8 +283,10 @@ func evaluatePolicy(policy map[string]any, source string, chatType ChatType, tar
 		}, true
 	}
 
-	denyIDs := normalizeIDList(policy[policyDenyIDsKey])
-	allowIDs := normalizeIDList(policy[policyAllowIDsKey])
+	// 停用条目仍保存在名单中，但不参与运行时匹配（包括通配符）
+	disabledIDs := normalizeIDList(policy[policyDisabledIDsKey])
+	denyIDs := excludeStrings(normalizeIDList(policy[policyDenyIDsKey]), disabledIDs)
+	allowIDs := excludeStrings(normalizeIDList(policy[policyAllowIDsKey]), disabledIDs)
 	if wildcard := slices.Contains(denyIDs, "*"); slices.Contains(denyIDs, targetID) || wildcard {
 		return AdapterPolicyResult{
 			Allowed:    false,

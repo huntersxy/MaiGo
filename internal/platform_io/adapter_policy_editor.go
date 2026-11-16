@@ -10,6 +10,7 @@ import (
 // ChatPolicyEditor 单个聊天类型的可编辑规则
 type ChatPolicyEditor struct {
 	DefaultAction string   `json:"default_action"`
+	DisabledIDs   []string `json:"disabled_ids"`
 	AllowIDs      []string `json:"allow_ids"`
 	DenyIDs       []string `json:"deny_ids"`
 }
@@ -33,6 +34,7 @@ type AdapterPolicyEditor struct {
 // PluginChatRule 某插件条目在某一聊天类型上的规则摘要
 type PluginChatRule struct {
 	DefaultAction string   `json:"default_action"`
+	DisabledIDs   []string `json:"disabled_ids"`
 	AllowIDs      []string `json:"allow_ids"`
 	DenyIDs       []string `json:"deny_ids"`
 }
@@ -142,6 +144,7 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 	}
 	editor.AllowIDs = normalizeIDList(typedPolicy[policyAllowIDsKey])
 	editor.DenyIDs = normalizeIDList(typedPolicy[policyDenyIDsKey])
+	editor.DisabledIDs = normalizeIDList(typedPolicy[policyDisabledIDsKey])
 
 	// 旧版 list_type/ids 在首次创建分组时转换成等价的默认动作与覆盖名单
 	// 显式覆盖优先于旧名单，因此合并时必须保留原来的放行/拒绝顺序
@@ -180,6 +183,11 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 		editor.DenyIDs = dedupeStrings(editor.DenyIDs)
 		editor.AllowIDs = dedupeStrings(excludeStrings(editor.AllowIDs, editor.DenyIDs))
 	}
+	// 停用条目仍保存在名单中，但只对本条规则里实际存在的 ID 生效
+	editor.DisabledIDs = dedupeStrings(editor.DisabledIDs)
+	editor.DisabledIDs = slices.DeleteFunc(editor.DisabledIDs, func(id string) bool {
+		return !slices.Contains(editor.AllowIDs, id) && !slices.Contains(editor.DenyIDs, id)
+	})
 	if policyBoolValue(typedPolicy[policyDisabledKey]) {
 		editor.DefaultAction = defaultActionBlock
 		editor.AllowIDs = []string{}
@@ -235,6 +243,7 @@ func (m *AdapterPolicyManager) ListPluginEntries(pluginID string) ([]PluginPolic
 			}
 			rules[chatType] = PluginChatRule{
 				DefaultAction: defaultAction,
+				DisabledIDs:   normalizeIDList(typedPolicy[policyDisabledIDsKey]),
 				AllowIDs:      normalizeIDList(typedPolicy[policyAllowIDsKey]),
 				DenyIDs:       normalizeIDList(typedPolicy[policyDenyIDsKey]),
 			}
@@ -261,6 +270,7 @@ func chatPoliciesFromDoc(table map[string]any) (map[ChatType]ChatPolicyEditor, e
 		}
 		policies[chatType] = ChatPolicyEditor{
 			DefaultAction: policyStringValue(rawPolicy[policyDefaultActionKey]),
+			DisabledIDs:   normalizeIDList(rawPolicy[policyDisabledIDsKey]),
 			AllowIDs:      normalizeIDList(rawPolicy[policyAllowIDsKey]),
 			DenyIDs:       normalizeIDList(rawPolicy[policyDenyIDsKey]),
 		}
@@ -289,8 +299,15 @@ func normalizeEditorPolicies(policies map[ChatType]ChatPolicyEditor) (map[ChatTy
 		if len(conflictingIDs) > 0 {
 			return nil, fmt.Errorf("同一 ID 不能同时放行和拒绝: %s", strings.Join(conflictingIDs, ", "))
 		}
+		disabledIDs := make([]string, 0)
+		for _, id := range normalizeStringIDList(rawPolicy.DisabledIDs) {
+			if slices.Contains(allowIDs, id) || slices.Contains(denyIDs, id) {
+				disabledIDs = append(disabledIDs, id)
+			}
+		}
 		normalized[chatType] = ChatPolicyEditor{
 			DefaultAction: defaultAction,
+			DisabledIDs:   disabledIDs,
 			AllowIDs:      allowIDs,
 			DenyIDs:       denyIDs,
 		}

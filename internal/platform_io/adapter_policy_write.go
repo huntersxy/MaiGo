@@ -59,6 +59,7 @@ func (m *AdapterPolicyManager) SetAdapterPolicy(
 		}
 		setOrRemoveIDList(chatPolicy, policyAllowIDsKey, normalizedPolicy.AllowIDs)
 		setOrRemoveIDList(chatPolicy, policyDenyIDsKey, normalizedPolicy.DenyIDs)
+		setOrRemoveIDList(chatPolicy, policyDisabledIDsKey, normalizedPolicy.DisabledIDs)
 		pruneEmptyUIPolicy(adapterPolicy, chatType)
 	}
 
@@ -137,6 +138,9 @@ func (m *AdapterPolicyManager) SetChatOverride(
 		denyIDs = removeString(denyIDs, normalizedTargetID)
 	}
 
+	// 显式修改聊天覆盖规则时恢复该条目，避免停用状态屏蔽用户的新选择
+	disabledIDs := removeString(normalizeIDList(chatPolicy[policyDisabledIDsKey]), normalizedTargetID)
+	setOrRemoveIDList(chatPolicy, policyDisabledIDsKey, disabledIDs)
 	setOrRemoveIDList(chatPolicy, policyAllowIDsKey, allowIDs)
 	setOrRemoveIDList(chatPolicy, policyDenyIDsKey, denyIDs)
 	pruneEmptyUIPolicy(adapterPolicy, normalizedChatType)
