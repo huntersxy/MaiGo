@@ -84,6 +84,7 @@ type chatCompletionsStreamBuilder struct {
 	usage                *chatUsage
 	content              chatStreamText
 	reasoning            chatStreamText
+	nativeReasoning      strings.Builder
 	think                chatThinkState
 	thinkBuffer          strings.Builder
 	usingNativeReasoning bool
@@ -124,6 +125,7 @@ func (b *chatCompletionsStreamBuilder) consume(chunk chatCompletionChunk) (*sche
 			native := b.client.nativeReasoning(choice.Delta.ReasoningContent, choice.Delta.Reasoning)
 			if native != "" {
 				b.usingNativeReasoning = true
+				b.nativeReasoning.WriteString(native)
 				if b.mode != chatReasoningModeNone {
 					b.reasoning.push(native, false)
 				}
@@ -292,7 +294,8 @@ func (b *chatCompletionsStreamBuilder) finish() (*schema.AgenticMessage, bool, e
 		}
 	}
 	chatWarnMaxTokens(b.model, b.finishReason, content, len(calls), b.maxTokens)
-	if content == "" && reasoning == "" && len(calls) == 0 {
+	hasReplay := b.client.reasoningScope != nil && b.nativeReasoning.Len() > 0
+	if content == "" && reasoning == "" && len(calls) == 0 && !hasReplay {
 		return nil, false, &EmptyResponseError{}
 	}
 	blocks := make([]*schema.ContentBlock, 0, 2+len(calls))
@@ -301,6 +304,7 @@ func (b *chatCompletionsStreamBuilder) finish() (*schema.AgenticMessage, bool, e
 	for _, call := range calls {
 		blocks = append(blocks, chatToolCallBlock(call, source))
 	}
+	blocks = attachChatReasoningReplay(blocks, b.client.reasoningScope, b.nativeReasoning.String())
 	if len(blocks) == 0 && b.usage == nil {
 		return nil, false, nil
 	}

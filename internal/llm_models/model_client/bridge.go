@@ -50,6 +50,8 @@ type (
 	ContextItemMeta = payloadcontent.ContextItemMeta
 	// ContextProviderReplayFragment Provider 重放片段
 	ContextProviderReplayFragment = payloadcontent.ContextProviderReplayFragment
+	// ContextProviderScope Provider 原生 Item 可安全回放的范围
+	ContextProviderScope = payloadcontent.ContextProviderScope
 	// ContextProtocolMode 上下文关系约束模式
 	ContextProtocolMode = payloadcontent.ContextProtocolMode
 
@@ -66,9 +68,17 @@ type (
 	StreamPartialSink = contract.StreamPartialSink
 )
 
+// buildProviderEndpointFingerprint 生成不包含鉴权信息的 Provider 端点指纹
+var buildProviderEndpointFingerprint = payloadcontent.BuildProviderEndpointFingerprint
+
+// newContextProviderReplayFragment 从 payload 创建不可变回放片段
+var newContextProviderReplayFragment = payloadcontent.NewContextProviderReplayFragment
+
 const (
 	// ContextItemSchemaVersion 上下文项 schema 版本
 	ContextItemSchemaVersion = payloadcontent.ContextItemSchemaVersion
+	// ProviderReplaySchemaVersion Provider 回放片段 schema 版本
+	ProviderReplaySchemaVersion = payloadcontent.ProviderReplaySchemaVersion
 
 	// ContextItemSystemMessage 系统消息项
 	ContextItemSystemMessage = payloadcontent.ContextItemSystemMessage

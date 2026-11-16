@@ -212,7 +212,11 @@ func (c *chatCompletionsClient) buildRequestBody(input []*schema.AgenticMessage,
 // buildRequestBodyFromContextItems 以 Context Item 为唯一请求表示构造请求体
 func (c *chatCompletionsClient) buildRequestBodyFromContextItems(items []ContextItem, options *model.Options, stream bool, useMaxCompletionTokens bool) (map[string]any, bool, error) {
 	includeTools := options != nil && len(options.Tools) > 0
-	messages, err := BuildChatMessagesFromContextItems(items, includeTools)
+	var reasoningScope *ContextProviderScope
+	if includeTools {
+		reasoningScope = c.reasoningScope
+	}
+	messages, err := BuildChatMessagesFromContextItemsWithScope(items, includeTools, reasoningScope)
 	if err != nil {
 		return nil, false, err
 	}
@@ -243,28 +247,28 @@ func (c *chatCompletionsClient) buildRequestBodyFromContextItems(items []Context
 	if toolChoice != "" {
 		extraBody["tool_choice"] = toolChoice
 	}
-		// 对齐 Python openai_client.py:1590-1618：
-		// extra_body 已含 temperature/max_tokens 时省略原生参数，由最终 extra_body 合并覆盖；
-		// send_temperature=false 时 utils_model 把请求温度置空，但仍不剥掉 extra_body 里的温度。
-		_, hasExtraTemperature := extraBody["temperature"]
-		if options != nil && options.Temperature != nil && !hasExtraTemperature {
-			body["temperature"] = *options.Temperature
-		}
+	// 对齐 Python openai_client.py:1590-1618：
+	// extra_body 已含 temperature/max_tokens 时省略原生参数，由最终 extra_body 合并覆盖；
+	// send_temperature=false 时 utils_model 把请求温度置空，但仍不剥掉 extra_body 里的温度。
+	_, hasExtraTemperature := extraBody["temperature"]
+	if options != nil && options.Temperature != nil && !hasExtraTemperature {
+		body["temperature"] = *options.Temperature
+	}
 
-		sentLegacyMaxTokens := false
-		_, hasExtraMaxTokens := extraBody["max_tokens"]
-		_, hasExtraMaxCompletion := extraBody["max_completion_tokens"]
-		if useMaxCompletionTokens {
-			delete(extraBody, "max_tokens")
-			if !hasExtraMaxCompletion && options != nil && options.MaxTokens != nil {
-				extraBody["max_completion_tokens"] = *options.MaxTokens
-			}
-		} else if options != nil && options.MaxTokens != nil && !hasExtraMaxTokens && !hasExtraMaxCompletion {
-			body["max_tokens"] = *options.MaxTokens
-			sentLegacyMaxTokens = true
-		} else {
-			sentLegacyMaxTokens = hasExtraMaxTokens
+	sentLegacyMaxTokens := false
+	_, hasExtraMaxTokens := extraBody["max_tokens"]
+	_, hasExtraMaxCompletion := extraBody["max_completion_tokens"]
+	if useMaxCompletionTokens {
+		delete(extraBody, "max_tokens")
+		if !hasExtraMaxCompletion && options != nil && options.MaxTokens != nil {
+			extraBody["max_completion_tokens"] = *options.MaxTokens
 		}
+	} else if options != nil && options.MaxTokens != nil && !hasExtraMaxTokens && !hasExtraMaxCompletion {
+		body["max_tokens"] = *options.MaxTokens
+		sentLegacyMaxTokens = true
+	} else {
+		sentLegacyMaxTokens = hasExtraMaxTokens
+	}
 
 	formatSpec, err := parseResponseFormat(c.cfg.ResponseFormat)
 	if err != nil {

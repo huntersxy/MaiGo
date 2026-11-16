@@ -109,16 +109,16 @@ func LoadSourceSettings(instanceDir string) (PluginSourceSettings, error) {
 }
 
 // SaveSourceSettings 对齐 save_source_settings：校验自定义前缀并原子写入
-func SaveSourceSettings(instanceDir string, settings PluginSourceSettings, options urlGuardOptions) error {
+func SaveSourceSettings(instanceDir string, settings PluginSourceSettings, _ urlGuardOptions) error {
 	if err := settings.Normalize(); err != nil {
 		return err
 	}
 	if settings.CustomDownloadPrefix != nil && *settings.CustomDownloadPrefix != "" {
-		validated, err := validatePublicURL(*settings.CustomDownloadPrefix, options)
+		source, err := SelectGitSource("custom", *settings.CustomDownloadPrefix)
 		if err != nil {
 			return err
 		}
-		prefix := strings.TrimRight(validated, "/")
+		prefix := source.ClonePrefix
 		settings.CustomDownloadPrefix = &prefix
 	}
 	path, err := settingsPath(instanceDir)

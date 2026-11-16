@@ -34,18 +34,12 @@ func cloneRepositoryFailure(message string, statusCode int) cloneOutcome {
 	return cloneOutcome{Error: message, StatusCode: statusCode}
 }
 
-// validateDownloadURL 对齐 _validate_custom_outbound_url
-func (s *Service) validateDownloadURL(targetURL, sourceName string) (string, error) {
-	validated, err := validatePublicURL(targetURL, s.guardForRequest())
+// validateDownloadURL 只校验 URL 格式；管理员配置的下载源可指向本机或内网服务
+func (s *Service) validateDownloadURL(targetURL, _ string) (string, error) {
+	options := s.guardForRequest()
+	options.RequirePublicNetwork = false
+	validated, err := validatePublicURL(targetURL, options)
 	if err != nil {
-		var nonPublic *nonPublicAddressError
-		if errors.As(err, &nonPublic) {
-			return "", fmt.Errorf(
-				"下载源 %s 的目标 %s 被当前系统解析为非公网地址 %s，已阻止下载。"+
-					"请检查运行麦麦的机器或容器的 DNS、hosts 和代理设置，"+
-					"或在插件市场的下载源设置中切换来源后重试",
-				sourceName, nonPublic.Hostname, nonPublic.Address)
-		}
 		return "", fmt.Errorf("目标 URL 非法: %v", err)
 	}
 	return validated, nil
@@ -74,13 +68,7 @@ func (s *Service) cloneRepository(ctx context.Context, owner, repo, targetPath, 
 	if err != nil {
 		return cloneRepositoryFailure(err.Error(), 400)
 	}
-	validated, err := s.validateDownloadURL(cloneURL, source.Name)
-	if err != nil {
-		outcome := cloneRepositoryFailure(err.Error(), 400)
-		outcome.MirrorUsed = source.ID
-		return outcome
-	}
-	return s.cloneWithURL(ctx, validated, targetPath, branch, depth, source.ID, operation, pluginID, source.Name, 1, 1)
+	return s.cloneWithURL(ctx, cloneURL, targetPath, branch, depth, source.ID, operation, pluginID, source.Name, 1, 1)
 }
 
 // cloneWithURL 对齐 _clone_with_url：失败重试并清理半成品目录

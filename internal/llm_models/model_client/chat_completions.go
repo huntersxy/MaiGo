@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -49,7 +50,9 @@ type chatCompletionsClient struct {
 	toolArgumentParseMode string
 	// reasoningKey 原生 reasoning 字段名：reasoning_content 或 reasoning
 	reasoningKey string
-	httpClient   *http.Client
+	// reasoningScope DeepSeek 官方端点允许原生推理回放的范围；其他端点为空
+	reasoningScope *ContextProviderScope
+	httpClient     *http.Client
 	// cfg 只用于失败快照与日志元数据
 	cfg ModelConfig
 }
@@ -66,9 +69,6 @@ func newChatCompletionsClient(cfg ModelConfig) (*chatCompletionsClient, error) {
 	modelName := strings.TrimSpace(cfg.Model)
 	baseURL := normalizeOpenAIBaseURL(cfg.BaseURL)
 	if baseURL == "" || modelName == "" {
-		return nil, fmt.Errorf("主模型配置不完整")
-	}
-	if strings.TrimSpace(cfg.APIKey) == "" && !strings.EqualFold(strings.TrimSpace(cfg.AuthType), authTypeNone) {
 		return nil, fmt.Errorf("主模型配置不完整")
 	}
 
@@ -104,9 +104,33 @@ func newChatCompletionsClient(cfg ModelConfig) (*chatCompletionsClient, error) {
 		reasoningParseMode:    normalizeChatReasoningMode(cfg.ReasoningParseMode),
 		toolArgumentParseMode: normalizeChatToolArgumentMode(cfg.ToolArgumentParseMode),
 		reasoningKey:          chatReasoningKey(baseURL),
+		reasoningScope:        buildChatReasoningScope(cfg, baseURL),
 		httpClient:            httpClient,
 		cfg:                   cfg,
 	}, nil
+}
+
+// buildChatReasoningScope 只在 DeepSeek 官方端点启用原生推理回放
+func buildChatReasoningScope(cfg ModelConfig, baseURL string) *ContextProviderScope {
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Host != "api.deepseek.com" {
+		return nil
+	}
+	providerName := strings.TrimSpace(cfg.ProviderName)
+	if providerName == "" {
+		return nil
+	}
+	scope := ContextProviderScope{
+		SchemaVersion:       ProviderReplaySchemaVersion,
+		ClientType:          "openai",
+		ProviderName:        providerName,
+		EndpointFingerprint: buildProviderEndpointFingerprint("openai", baseURL),
+		ModelIdentifier:     strings.TrimSpace(cfg.Model),
+	}
+	if scope.Validate() != nil {
+		return nil
+	}
+	return &scope
 }
 
 // Generate 非流式 Chat Completions

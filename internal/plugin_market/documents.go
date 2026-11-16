@@ -192,8 +192,10 @@ func (s *Service) remoteDocument(ctx context.Context, plugin PluginCatalogItem, 
 	}
 	loader := func() (any, error) {
 		gitSource := GitSource{}
-		if _, verifyErr := validatePublicURL(targetURL, s.guardForRequest()); verifyErr != nil {
-			return nil, verifyErr
+		if declared != "" && (strings.HasPrefix(declared, "https://") || strings.HasPrefix(declared, "http://")) {
+			if _, verifyErr := validatePublicURL(targetURL, s.guardForRequest()); verifyErr != nil {
+				return nil, verifyErr
+			}
 		}
 		return gitSource.ReadText(ctx, targetURL, requestTimeout)
 	}

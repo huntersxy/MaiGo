@@ -13,6 +13,11 @@ import (
 )
 
 func BuildChatMessagesFromContextItems(items []ContextItem, includeTools bool) ([]map[string]any, error) {
+	return BuildChatMessagesFromContextItemsWithScope(items, includeTools, nil)
+}
+
+// BuildChatMessagesFromContextItemsWithScope 允许回放指定 Provider 范围的原生推理
+func BuildChatMessagesFromContextItemsWithScope(items []ContextItem, includeTools bool, reasoningScope *ContextProviderScope) ([]map[string]any, error) {
 	messages := make([]map[string]any, 0, len(items))
 	for index := 0; index < len(items); {
 		item := items[index]
@@ -44,7 +49,7 @@ func BuildChatMessagesFromContextItems(items []ContextItem, includeTools bool) (
 			index++
 		case ContextItemReasoning, ContextItemAssistantMessage, ContextItemFunctionCall,
 			ContextItemProviderActivity, ContextItemProviderOpaque:
-			message, next, err := chatAssistantGroupFromContextItems(items, index, includeTools)
+			message, next, err := chatAssistantGroupFromContextItems(items, index, includeTools, reasoningScope)
 			if err != nil {
 				return nil, err
 			}
@@ -112,15 +117,29 @@ func chatUserMessageFromContextItem(item ContextItem) (map[string]any, error) {
 	return map[string]any{"role": "user", "content": parts}, nil
 }
 
-func chatAssistantGroupFromContextItems(items []ContextItem, start int, includeTools bool) (map[string]any, int, error) {
+func chatAssistantGroupFromContextItems(items []ContextItem, start int, includeTools bool, reasoningScope *ContextProviderScope) (map[string]any, int, error) {
 	texts := make([]string, 0)
+	reasoningTexts := make([]string, 0)
 	toolCalls := make([]map[string]any, 0)
 	index := start
+	groupTurn := items[start].Meta.LogicalTurnID
 	for ; index < len(items); index++ {
 		item := items[index]
+		if reasoningScope != nil && index > start && item.Meta.LogicalTurnID != groupTurn {
+			break
+		}
 		switch item.Type {
-		case ContextItemReasoning, ContextItemProviderActivity, ContextItemProviderOpaque:
-			continue
+		case ContextItemReasoning:
+			if reasoningScope != nil && item.Replay != nil && item.Replay.Scope == *reasoningScope {
+				payload, err := item.Replay.Materialize()
+				if err != nil {
+					return nil, index, &ParseError{Message: "Provider 推理回放片段无效", Err: err}
+				}
+				if value, ok := payload["reasoning_content"].(string); ok {
+					reasoningTexts = append(reasoningTexts, value)
+				}
+			}
+		case ContextItemProviderActivity, ContextItemProviderOpaque:
 		case ContextItemAssistantMessage:
 			for _, part := range item.Parts {
 				if part.Type != ContextPartText {
@@ -159,6 +178,10 @@ done:
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
+	}
+	if len(reasoningTexts) > 0 {
+		// DeepSeek 在带工具的请求中要求回传先前 assistant 消息的原生推理字段
+		message["reasoning_content"] = strings.Join(reasoningTexts, "")
 	}
 	return message, index, nil
 }

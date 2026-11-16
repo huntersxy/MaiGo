@@ -120,9 +120,6 @@ func (s *Service) fetchInformationFile(ctx context.Context, filePath, source str
 		return InformationFile{}, err
 	}
 	loader := func() (any, error) {
-		if _, verifyErr := validatePublicURL(targetURL, s.guardForRequest()); verifyErr != nil {
-			return nil, verifyErr
-		}
 		return gitSource.ReadText(ctx, targetURL, requestTimeout)
 	}
 	ttl := catalogTTL

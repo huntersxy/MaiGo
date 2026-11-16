@@ -310,10 +310,6 @@ func (d Deps) handleModelsList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "提供商配置缺少 base_url"})
 		return
 	}
-	if strings.TrimSpace(apiKey) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "提供商配置缺少 api_key"})
-		return
-	}
 	endpoint := r.URL.Query().Get("endpoint")
 	if endpoint == "" {
 		endpoint = "/models"
@@ -371,7 +367,7 @@ func (d Deps) handleModelsListByURL(w http.ResponseWriter, r *http.Request) {
 		BaseURL: baseURL, APIKey: query.Get("api_key"), Endpoint: endpoint, Parser: parser, ClientType: clientType,
 		AuthType: authType, AuthHeaderName: defaultString(query.Get("auth_header_name"), "Authorization"),
 		AuthHeaderPrefix: defaultString(query.Get("auth_header_prefix"), "Bearer"),
-		AuthQueryName:    defaultString(query.Get("auth_query_name"), "api_key"),
+		AuthQueryName:    defaultString(query.Get("auth_query_name"), "api_key"), AllowPrivate: true,
 	})
 	if err != nil {
 		writeModelFetchError(w, err)
@@ -462,7 +458,7 @@ func (d Deps) handleModelsTestConnection(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "base_url 不能为空"})
 		return
 	}
-	result := d.testProviderConnection(r.Context(), baseURL, query.Get("api_key"), defaultString(query.Get("client_type"), "openai"), false)
+	result := d.testProviderConnection(r.Context(), baseURL, query.Get("api_key"), defaultString(query.Get("client_type"), "openai"), true)
 	writeJSON(w, http.StatusOK, result)
 }
 

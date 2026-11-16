@@ -247,7 +247,8 @@ func (c *chatCompletionsClient) parseResponse(raw []byte, maxTokens *int) (*sche
 	}
 	chatWarnMaxTokens(c.model, choice.FinishReason, content, len(calls), maxTokens)
 
-	if content == "" && reasoning == "" && len(calls) == 0 {
+	hasReplay := c.reasoningScope != nil && nativeReasoning != ""
+	if content == "" && reasoning == "" && len(calls) == 0 && !hasReplay {
 		return nil, &EmptyResponseError{}
 	}
 	blocks := make([]*schema.ContentBlock, 0, 2+len(calls))
@@ -256,6 +257,7 @@ func (c *chatCompletionsClient) parseResponse(raw []byte, maxTokens *int) (*sche
 	for _, call := range calls {
 		blocks = append(blocks, chatToolCallBlock(call, source))
 	}
+	blocks = attachChatReasoningReplay(blocks, c.reasoningScope, nativeReasoning)
 	return &schema.AgenticMessage{
 		Role:          schema.AgenticRoleTypeAssistant,
 		ContentBlocks: blocks,
@@ -750,4 +752,44 @@ func chatReasoningBlocks(text string) []*schema.ContentBlock {
 		return nil
 	}
 	return []*schema.ContentBlock{schema.NewContentBlock(&schema.Reasoning{Text: text})}
+}
+
+const chatReasoningReplayExtraKey = "provider_reasoning_replay"
+
+// chatReasoningReplayExtra 记录原样的 Provider 推理字段，供同一范围后续请求回放
+func chatReasoningReplayExtra(scope *ContextProviderScope, nativeReasoning string) map[string]any {
+	if scope == nil || nativeReasoning == "" {
+		return nil
+	}
+	return map[string]any{
+		"scope": map[string]any{
+			"schema_version":       scope.SchemaVersion,
+			"client_type":          scope.ClientType,
+			"provider_name":        scope.ProviderName,
+			"endpoint_fingerprint": scope.EndpointFingerprint,
+			"model_identifier":     scope.ModelIdentifier,
+		},
+		"payload": map[string]any{"reasoning_content": nativeReasoning},
+	}
+}
+
+// attachChatReasoningReplay 把回放片段附着到 reasoning block；隐藏推理时插入不透明项
+func attachChatReasoningReplay(blocks []*schema.ContentBlock, scope *ContextProviderScope, nativeReasoning string) []*schema.ContentBlock {
+	extra := chatReasoningReplayExtra(scope, nativeReasoning)
+	if extra == nil {
+		return blocks
+	}
+	for _, block := range blocks {
+		if block == nil || block.Reasoning == nil {
+			continue
+		}
+		if block.Extra == nil {
+			block.Extra = map[string]any{}
+		}
+		block.Extra[chatReasoningReplayExtraKey] = extra
+		return blocks
+	}
+	opaque := schema.NewContentBlock(&schema.Reasoning{})
+	opaque.Extra = map[string]any{chatReasoningReplayExtraKey: extra}
+	return append([]*schema.ContentBlock{opaque}, blocks...)
 }

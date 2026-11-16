@@ -118,12 +118,15 @@ func (d Deps) enforcePublicOutbound() bool {
 	return true
 }
 
-// networkSecurityOptions 组装公共出站校验参数
+// networkSecurityOptions 组装公共出站校验参数；管理员配置的服务可关闭公网检查
 func (d Deps) networkSecurityOptions(allowPrivate, allowFakeIP bool) networksecurity.Options {
+	requirePublic := d.enforcePublicOutbound()
+	if allowPrivate {
+		requirePublic = false
+	}
 	return networksecurity.Options{
-		RequirePublicNetwork:          d.enforcePublicOutbound(),
-		AllowConfiguredPrivateNetwork: allowPrivate,
-		AllowFakeIP:                   allowFakeIP,
-		LookupIP:                      d.lookupIP,
+		RequirePublicNetwork: requirePublic,
+		AllowFakeIP:          allowFakeIP,
+		LookupIP:             d.lookupIP,
 	}
 }

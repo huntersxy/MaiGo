@@ -305,11 +305,7 @@ func (s *Service) pullGitHubRepository(ctx context.Context, repositoryPath, bran
 	if err != nil {
 		return pullOutcome{Error: err.Error(), StatusCode: http.StatusBadRequest, MirrorUsed: source.ID, Commands: executed}
 	}
-	validated, err := s.validateDownloadURL(cloneURL, source.Name)
-	if err != nil {
-		return pullOutcome{Error: err.Error(), StatusCode: http.StatusBadRequest, MirrorUsed: source.ID, Commands: executed}
-	}
-	fetchArgs := []string{"fetch", "--no-tags", validated, "refs/heads/" + branch}
+	fetchArgs := []string{"fetch", "--no-tags", cloneURL, "refs/heads/" + branch}
 	executed = append(executed, "git "+strings.Join(fetchArgs, " "))
 	stdout, stderrText, runErr := runGitCommand(ctx, repositoryPath, updateGitTimeout, fetchArgs...)
 	if runErr != nil {

@@ -16,26 +16,12 @@ import (
 type Options struct {
 	// RequirePublicNetwork 为 true 时执行本地主机与 DNS 解析后的公网校验
 	RequirePublicNetwork bool
-	// AllowConfiguredPrivateNetwork 允许已保存配置显式使用回环或私网目标
-	AllowConfiguredPrivateNetwork bool
 	// AllowFakeIP 供插件市场 HTTPS 域名放行 198.18.0.0/15
 	AllowFakeIP bool
 	// AllowedSchemes 为空时默认只允许 http 与 https
 	AllowedSchemes []string
 	// LookupIP 仅测试注入，nil 时使用 net.DefaultResolver
 	LookupIP func(ctx context.Context, host string) ([]net.IPAddr, error)
-}
-
-// NonPublicAddressError 对齐 network_security.NonPublicAddressError
-type NonPublicAddressError struct {
-	Hostname string
-	Address  string
-	Resolved []string
-}
-
-// Error 输出被拦截的地址
-func (e *NonPublicAddressError) Error() string {
-	return "禁止访问非公网地址: " + e.Address
 }
 
 func mustCIDR(value string) *net.IPNet {
@@ -77,7 +63,7 @@ func ValidatePublicURL(rawURL string, options Options) (string, error) {
 	if parsed.Fragment != "" {
 		return "", fmt.Errorf("URL 不允许包含片段")
 	}
-	if options.RequirePublicNetwork && !options.AllowConfiguredPrivateNetwork {
+	if options.RequirePublicNetwork {
 		lowered := strings.ToLower(hostname)
 		if lowered == "localhost" || lowered == "localhost.localdomain" {
 			return "", fmt.Errorf("不允许访问本地主机")
@@ -107,16 +93,8 @@ func ValidatePublicURL(rawURL string, options Options) (string, error) {
 			if options.AllowFakeIP && scheme == "https" && !literal && fakeIPNetwork.Contains(address) {
 				continue
 			}
-			forbidden := isUnsafeIPAddress(address)
-			if !options.AllowConfiguredPrivateNetwork {
-				forbidden = isNonPublicIPAddress(address)
-			}
-			if forbidden {
-				resolved := make([]string, 0, len(addresses))
-				for _, item := range addresses {
-					resolved = append(resolved, formatIP(item))
-				}
-				return "", &NonPublicAddressError{Hostname: hostname, Address: formatIP(address), Resolved: resolved}
+			if isNonPublicIPAddress(address) {
+				return "", fmt.Errorf("禁止访问非公网地址: %s", formatIP(address))
 			}
 		}
 	}

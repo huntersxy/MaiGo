@@ -150,11 +150,19 @@ func projectAssistantMessage(message *schema.AgenticMessage, callTurns map[strin
 		switch {
 		case block.Reasoning != nil:
 			text := strings.TrimSpace(block.Reasoning.Text)
-			if text == "" {
+			replay := projectChatReasoningReplay(block.Extra)
+			if text == "" && replay == nil {
 				continue
 			}
 			flushText()
 			item := NewReasoningItem(logicalTurnID, text)
+			if replay != nil {
+				item.Replay = replay
+				if text == "" {
+					// OPAQUE reasoning 只承载 Provider 回放，不展示为思考正文
+					item.Representation = ""
+				}
+			}
 			items = append(items, item)
 		case block.AssistantGenText != nil:
 			if block.AssistantGenText.Text == "" {
@@ -372,4 +380,61 @@ func ContextImageMIME(format string) string {
 
 func NewContextUUID() string {
 	return strings.ReplaceAll(NewContextItemMeta("").ItemID, "-", "")
+}
+
+// projectChatReasoningReplay 还原附在 reasoning block 上的 Provider 回放片段
+func projectChatReasoningReplay(extra map[string]any) *ContextProviderReplayFragment {
+	if len(extra) == 0 {
+		return nil
+	}
+	raw, ok := extra[chatReasoningReplayExtraKey].(map[string]any)
+	if !ok {
+		return nil
+	}
+	scopeMap, ok := raw["scope"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	payloadMap, ok := raw["payload"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	scope := ContextProviderScope{
+		SchemaVersion:       replayIntValue(scopeMap["schema_version"]),
+		ClientType:          strings.TrimSpace(replayStringValue(scopeMap["client_type"])),
+		ProviderName:        strings.TrimSpace(replayStringValue(scopeMap["provider_name"])),
+		EndpointFingerprint: strings.TrimSpace(replayStringValue(scopeMap["endpoint_fingerprint"])),
+		ModelIdentifier:     strings.TrimSpace(replayStringValue(scopeMap["model_identifier"])),
+	}
+	fragment, err := newContextProviderReplayFragment(scope, payloadMap)
+	if err != nil {
+		return nil
+	}
+	return &fragment
+}
+
+func replayStringValue(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
+}
+
+func replayIntValue(value any) int {
+	switch number := value.(type) {
+	case int:
+		return number
+	case int64:
+		return int(number)
+	case float64:
+		return int(number)
+	case json.Number:
+		parsed, err := number.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(parsed)
+	default:
+		return 0
+	}
 }

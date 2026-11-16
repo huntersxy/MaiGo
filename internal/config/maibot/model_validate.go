@@ -130,9 +130,6 @@ func validateAPIProvider(name string, p APIProvider) error {
 	if clientType == "" {
 		clientType = "openai"
 	}
-	if authType != "none" && strings.TrimSpace(p.ApiKey) == "" {
-		return fmt.Errorf("api_provider %q 未配置 api_key（auth_type=%s）", name, authType)
-	}
 	if strings.TrimSpace(p.BaseUrl) == "" && clientType != "gemini" {
 		return fmt.Errorf("api_provider %q 未配置 base_url", name)
 	}

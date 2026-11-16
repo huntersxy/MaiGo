@@ -1,11 +1,11 @@
 package plugin
 
 import (
+	"MaiGo/internal/webui/httputil"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"MaiGo/internal/webui/httputil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -398,12 +398,8 @@ func (d Deps) handlePluginMarketIcon(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteAPIError(w, http.StatusBadRequest, "只能读取 CNB 插件市场仓库图标")
 		return
 	}
-	validated, err := networksecurity.ValidatePublicURL(rawURL, d.networkSecurityOptions(false, true))
-	if err != nil {
-		httputil.WriteAPIError(w, http.StatusBadGateway, "获取 CNB 插件图标失败："+err.Error())
-		return
-	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, validated, nil)
+
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		httputil.WriteAPIError(w, http.StatusBadGateway, "获取 CNB 插件图标失败：无效的 URL")
 		return
