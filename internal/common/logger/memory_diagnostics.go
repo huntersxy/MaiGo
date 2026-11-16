@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,8 +22,8 @@ const (
 	defaultDiagnosticsDeepInterval = 600 * time.Second
 	defaultDiagnosticsMaxBytes     = 5 * 1024 * 1024
 	defaultDiagnosticsBackups      = 3
-	// diagnosticsSchema 记录格式版本，对齐 Python 的 schema=1
-	diagnosticsSchema = 1
+	// diagnosticsSchema 记录格式版本，对齐 Python 的 schema=2
+	diagnosticsSchema = 2
 )
 
 // MemoryDiagnosticsOptions 内存诊断选项
@@ -125,13 +126,19 @@ func (d *MemoryDiagnostics) run() {
 
 // sample 采集一次并写入 JSONL
 func (d *MemoryDiagnostics) sample() {
+	before := processMemorySnapshot()
+	diagnostics := map[string]any{
+		"before":           before,
+		"measurement_note": "process_wide_change_includes_concurrent_business_activity",
+	}
 	record := map[string]any{
 		"timestamp":    time.Now().Unix(),
 		"pid":          os.Getpid(),
 		"schema":       diagnosticsSchema,
-		"process":      processMemorySnapshot(),
+		"process":      before,
 		"runtime":      runtimeCountsSnapshot(),
 		"deep_enabled": d.opts.Deep,
+		"diagnostics":  diagnostics,
 	}
 	// 对齐 Python memory_diagnostics.py:81-116 与 :51-79：业务计数与连接池状态由调用方注入
 	if d.opts.RuntimeCounts != nil {
@@ -148,6 +155,13 @@ func (d *MemoryDiagnostics) sample() {
 		d.lastDeep = time.Now()
 		record["allocations"] = deepAllocationSnapshot()
 	}
+	after := processMemorySnapshot()
+	diagnostics["after"] = after
+	if beforeRSS, ok := before["rss_bytes"].(int64); ok {
+		if afterRSS, ok := after["rss_bytes"].(int64); ok {
+			diagnostics["rss_change_bytes"] = afterRSS - beforeRSS
+		}
+	}
 	raw, err := json.Marshal(record)
 	if err != nil {
 		zap.L().Warn("内存诊断记录序列化失败", zap.Error(err))
@@ -159,10 +173,12 @@ func (d *MemoryDiagnostics) sample() {
 }
 
 // processMemorySnapshot 进程内存计数，对齐 Python process_memory
+// Go 无 tracemalloc/smaps 对应物：分配明细使用 runtime.MemStats 尺寸类，
+// 进程读数在 Linux 上补 /proc/self/status 的 RSS/峰值/页表等字段。
 func processMemorySnapshot() map[string]any {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
-	return map[string]any{
+	out := map[string]any{
 		"heap_alloc_bytes":  stats.HeapAlloc,
 		"heap_sys_bytes":    stats.HeapSys,
 		"heap_inuse_bytes":  stats.HeapInuse,
@@ -175,6 +191,46 @@ func processMemorySnapshot() map[string]any {
 		"goroutines":        runtime.NumGoroutine(),
 		"process_threads":   runtime.GOMAXPROCS(0),
 	}
+	for key, value := range processStatusMemory() {
+		out[key] = value
+	}
+	return out
+}
+
+// processStatusMemory 读取 /proc/self/status 的进程内存字段，非 Linux 返回 nil
+func processStatusMemory() map[string]any {
+	raw, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return nil
+	}
+	names := map[string]string{
+		"VmRSS:":    "rss_bytes",
+		"RssAnon:":  "anonymous_rss_bytes",
+		"VmSwap:":   "swap_bytes",
+		"RssFile:":  "file_rss_bytes",
+		"RssShmem:": "shared_memory_rss_bytes",
+		"VmHWM:":    "peak_rss_bytes",
+		"VmSize:":   "virtual_bytes",
+		"VmPTE:":    "page_table_bytes",
+	}
+	out := map[string]any{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 || fields[2] != "kB" {
+			continue
+		}
+		key, ok := names[fields[0]]
+		if !ok {
+			continue
+		}
+		if value, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+			out[key] = value * 1024
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // runtimeCountsSnapshot 运行时计数，对齐 Python runtime_counts
