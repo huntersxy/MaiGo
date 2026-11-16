@@ -55,6 +55,7 @@ type InternalTaskCallback func(ctx context.Context, kind string, targetID int64,
 type ToolContext struct {
 	ConversationKind        string
 	Platform                string
+	AccountID               string // 聊天流归属的 Bot 账号
 	SessionID               string // 真实 chat_sessions.session_id
 	TargetID                int64
 	MemoryMgr               *memory.Manager
@@ -76,6 +77,10 @@ type ToolContext struct {
 	ResolveMessageSender    ResolveMessageSenderCallback
 	// ResolveMessageAuthor 解析目标消息作者，供 reply 回执使用
 	ResolveMessageAuthor ResolveMessageAuthorCallback
+	// ResolveBotAccount 解析发送身份，对齐 get_bot_account；会话未指定账号且平台多账号时返回空
+	ResolveBotAccount func(ctx context.Context, platform, preferredAccountID string) (string, error)
+	// ReplyBotUserID 本次 reply 请求确定的 Bot 发送账号，供引用规则使用
+	ReplyBotUserID string
 	// PreviousTargetReply 返回本会话最近一次回复同一目标消息的正文，用于重复回复提醒
 	PreviousTargetReply func(msgID string) string
 	// RecordReplyTarget 记录本次成功发送的回复目标与正文
@@ -119,8 +124,8 @@ type ToolContext struct {
 	SubagentLLM      model.AgenticModel // generation 快照：model_task_config.planner
 	UtilsLLM         model.AgenticModel // generation 快照：model_task_config.utils
 	// SubagentRunner 宿主提供的多轮子代理执行器；nil 时退化为单次模型调用
-	SubagentRunner func(ctx context.Context, task string, grantedTools []string, maxRounds int) (string, map[string]int, error)
-	ToolCatalog    []ToolCatalogEntry
+	SubagentRunner    func(ctx context.Context, task string, grantedTools []string, maxRounds int) (string, map[string]int, error)
+	ToolCatalog       []ToolCatalogEntry
 	DeferredToolInfos []*schema.ToolInfo  // deferred 工具的模型定义，用于发现后恢复
 	DiscoveredTools   map[string]struct{} // deferred 工具发现状态（供后续轮次过滤）
 	// AgentFilesHost 当前会话的 agent_* 工具宿主

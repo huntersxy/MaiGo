@@ -128,7 +128,7 @@ func (a *Agent) doPrivateSpeak(ctx context.Context, targetID int64, content stri
 	segments := a.pipelineSegments(ctx, content)
 	if tc := tools.GetToolContext(ctx); tc != nil {
 		if session, ok := tc.Session.(*Session); ok {
-			replyTo = a.applyQuoteDecision(ctx, session, memory.ConversationKindPrivate, targetID, replyTo, firstSegmentText(segments))
+			replyTo = a.applyQuoteDecision(ctx, session, memory.ConversationKindPrivate, targetID, replyTo, firstSegmentText(segments), "")
 		}
 		if tc.EffectiveReplyTo != nil {
 			*tc.EffectiveReplyTo = replyTo

@@ -12,6 +12,7 @@ import (
 	maisakactx "MaiGo/internal/maisaka/context"
 
 	"github.com/cloudwego/eino/schema"
+	"go.uber.org/zap"
 )
 
 // restoreProactiveContextMessages 主动回合回填真实用户消息
@@ -126,6 +127,46 @@ func messageLogIsClearMarker(log memory.MessageLog) bool {
 // SetBotAccountPairs 注入机器人账号对提供者，供 filter_bot 排除
 func (a *Agent) SetBotAccountPairs(provider func(ctx context.Context) ([][2]string, error)) {
 	a.setCallbacks(func(c *AgentCallbacks) { c.BotAccountPairs = provider })
+}
+
+// resolveBotAccount 解析单个 Bot 账号；多账号且无会话归属时拒绝猜测
+func (a *Agent) resolveBotAccount(ctx context.Context, platform, preferredAccountID string) (string, error) {
+	if preferred := strings.TrimSpace(preferredAccountID); preferred != "" {
+		return preferred, nil
+	}
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if platform == "" {
+		return "", nil
+	}
+	a.callbacksMu.RLock()
+	provider := a.callbacks.BotAccountPairs
+	a.callbacksMu.RUnlock()
+	if provider == nil {
+		return "", nil
+	}
+	pairs, err := provider(ctx)
+	if err != nil {
+		return "", err
+	}
+	accounts := make(map[string]struct{})
+	for _, pair := range pairs {
+		if len(pair) < 2 || !strings.EqualFold(strings.TrimSpace(pair[0]), platform) {
+			continue
+		}
+		if account := strings.TrimSpace(pair[1]); account != "" {
+			accounts[account] = struct{}{}
+		}
+	}
+	if len(accounts) == 1 {
+		for account := range accounts {
+			return account, nil
+		}
+	}
+	if len(accounts) > 1 {
+		zap.L().Error("平台存在多个 Bot 账号，缺少聊天流 account_id，无法选择发送身份",
+			zap.String("platform", platform))
+	}
+	return "", nil
 }
 
 // filterBotMessages 排除所有机器人账号发出的消息

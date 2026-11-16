@@ -10,7 +10,7 @@ import (
 // ChatPolicyEditor 单个聊天类型的可编辑规则
 type ChatPolicyEditor struct {
 	DefaultAction string   `json:"default_action"`
-	DisabledIDs   []string `json:"disabled_ids"`
+	DisabledIDs   []string `json:"disabled_ids,omitempty"`
 	AllowIDs      []string `json:"allow_ids"`
 	DenyIDs       []string `json:"deny_ids"`
 }
@@ -138,6 +138,16 @@ func (m *AdapterPolicyManager) GetAdapterPolicy(identity AdapterIdentity) (Adapt
 
 // applyEditorPolicy 把策略文件中的聊天规则填充到编辑器视图
 func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
+	if typedPolicy == nil {
+		return
+	}
+	if policyBoolValue(typedPolicy[policyDisabledKey]) {
+		editor.DefaultAction = defaultActionBlock
+		editor.AllowIDs = []string{}
+		editor.DenyIDs = []string{"*"}
+		editor.DisabledIDs = nil
+		return
+	}
 	configuredAction := strings.ToLower(policyStringValue(typedPolicy[policyDefaultActionKey]))
 	if isSupportedDefaultAction(configuredAction) {
 		editor.DefaultAction = configuredAction
@@ -146,8 +156,7 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 	editor.DenyIDs = normalizeIDList(typedPolicy[policyDenyIDsKey])
 	editor.DisabledIDs = normalizeIDList(typedPolicy[policyDisabledIDsKey])
 
-	// 旧版 list_type/ids 在首次创建分组时转换成等价的默认动作与覆盖名单
-	// 显式覆盖优先于旧名单，因此合并时必须保留原来的放行/拒绝顺序
+	// 旧版 list_type/ids 转换成等价的默认动作与覆盖名单，保留运行时显式覆盖优先的语义
 	_, hasListType := typedPolicy[policyListTypeKey]
 	_, hasIDs := typedPolicy[policyIDsKey]
 	if hasListType || hasIDs {
@@ -156,42 +165,44 @@ func applyEditorPolicy(editor *ChatPolicyEditor, typedPolicy map[string]any) {
 		if listType == "" {
 			listType = listTypeWhitelist
 		}
+		isBlacklist := listType == listTypeBlacklist
 		wildcard := slices.Contains(legacyIDs, "*")
-		if listType == listTypeBlacklist {
+		if isBlacklist {
 			editor.DefaultAction = defaultActionAllow
 			if wildcard {
 				editor.DefaultAction = defaultActionBlock
-			}
-			for _, item := range legacyIDs {
-				if item == "*" || slices.Contains(editor.AllowIDs, item) {
-					continue
-				}
-				editor.DenyIDs = append(editor.DenyIDs, item)
 			}
 		} else {
 			editor.DefaultAction = defaultActionBlock
 			if wildcard {
 				editor.DefaultAction = defaultActionAllow
 			}
-			for _, item := range legacyIDs {
-				if item == "*" || slices.Contains(editor.DenyIDs, item) {
-					continue
-				}
-				editor.AllowIDs = append(editor.AllowIDs, item)
+		}
+		activeOverrides := make(map[string]struct{}, len(editor.AllowIDs)+len(editor.DenyIDs))
+		for _, id := range append(append([]string{}, editor.AllowIDs...), editor.DenyIDs...) {
+			if !slices.Contains(editor.DisabledIDs, id) {
+				activeOverrides[id] = struct{}{}
 			}
 		}
-		editor.DenyIDs = dedupeStrings(editor.DenyIDs)
-		editor.AllowIDs = dedupeStrings(excludeStrings(editor.AllowIDs, editor.DenyIDs))
-	}
-	// 停用条目仍保存在名单中，但只对本条规则里实际存在的 ID 生效
-	editor.DisabledIDs = dedupeStrings(editor.DisabledIDs)
-	editor.DisabledIDs = slices.DeleteFunc(editor.DisabledIDs, func(id string) bool {
-		return !slices.Contains(editor.AllowIDs, id) && !slices.Contains(editor.DenyIDs, id)
-	})
-	if policyBoolValue(typedPolicy[policyDisabledKey]) {
-		editor.DefaultAction = defaultActionBlock
-		editor.AllowIDs = []string{}
-		editor.DenyIDs = []string{"*"}
+		// 生效的显式通配符已覆盖所有目标；旧名单通配符则已由默认动作表达
+		if _, covered := activeOverrides["*"]; !covered && !wildcard {
+			legacyOverrides := make([]string, 0, len(legacyIDs))
+			for _, id := range legacyIDs {
+				if _, active := activeOverrides[id]; !active {
+					legacyOverrides = append(legacyOverrides, id)
+				}
+			}
+			if isBlacklist {
+				editor.AllowIDs = excludeStrings(editor.AllowIDs, legacyOverrides)
+				editor.DenyIDs = dedupeStrings(append(editor.DenyIDs, legacyOverrides...))
+			} else {
+				editor.DenyIDs = excludeStrings(editor.DenyIDs, legacyOverrides)
+				editor.AllowIDs = dedupeStrings(append(editor.AllowIDs, legacyOverrides...))
+			}
+			// 停用只屏蔽旧规则中的显式覆盖，不屏蔽其下仍生效的旧名单
+			editor.DisabledIDs = excludeStrings(editor.DisabledIDs, legacyOverrides)
+		}
+		editor.AllowIDs = excludeStrings(editor.AllowIDs, editor.DenyIDs)
 	}
 }
 

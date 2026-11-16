@@ -46,11 +46,9 @@ func (m *AdapterPolicyManager) SetAdapterPolicy(
 	for _, chatType := range supportedChatTypes {
 		normalizedPolicy := normalizedPolicies[chatType]
 		chatPolicy := ensureChatPolicyTable(adapterPolicy, chatType)
-		if normalizedGroups != nil {
-			// 分组保存使用完整的新规则，清除旧格式字段，避免旧名单继续影响新组
-			for _, key := range []string{policyListTypeKey, policyIDsKey, policyDisabledKey} {
-				delete(chatPolicy, key)
-			}
+		// 完整保存后只保留新表示，避免读回时重新合入用户已经删除的旧名单
+		for _, key := range []string{policyListTypeKey, policyIDsKey, policyDisabledKey} {
+			delete(chatPolicy, key)
 		}
 		if normalizedPolicy.DefaultAction == defaultActionInherit {
 			delete(chatPolicy, policyDefaultActionKey)
@@ -63,7 +61,7 @@ func (m *AdapterPolicyManager) SetAdapterPolicy(
 		pruneEmptyUIPolicy(adapterPolicy, chatType)
 	}
 
-	adapters = pruneEmptyAdapterPolicy(adapters, adapterPolicy)
+	// 完整保存保留编辑归属；全 inherit 时运行时仍逐级解析，读回和再次保存不会切到下层条目
 	policyDoc[policyAdaptersKey] = adapters
 	if err := syncActiveGroup(adapterPolicy); err != nil {
 		return err

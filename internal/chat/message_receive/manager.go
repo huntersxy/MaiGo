@@ -460,13 +460,12 @@ func (m *ChatManager) ResolveSessionsByTarget(ctx context.Context, platform, tar
 	if m.repo != nil {
 		rows, err := m.repo.LoadAll(ctx)
 		if err != nil {
-			// Python 在按目标解析时吞掉数据库异常，保留内存命中结果
 			zap.L().Error("按目标解析聊天流失败",
 				zap.String("platform", platform),
 				zap.String("target_id", targetID),
 				zap.String("chat_type", chatType),
 				zap.Error(err))
-			rows = nil
+			return nil, err
 		}
 		for index := range rows {
 			row := rows[index]

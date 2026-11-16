@@ -233,7 +233,7 @@ func (a *Agent) doSpeak(ctx context.Context, groupID int64, content string, repl
 	segments := a.pipelineSegments(ctx, content)
 	if tc := tools.GetToolContext(ctx); tc != nil {
 		if session, ok := tc.Session.(*Session); ok {
-			replyTo = a.applyQuoteDecision(ctx, session, memory.ConversationKindGroup, groupID, replyTo, firstSegmentText(segments))
+			replyTo = a.applyQuoteDecision(ctx, session, memory.ConversationKindGroup, groupID, replyTo, firstSegmentText(segments), "")
 		}
 		if tc.EffectiveReplyTo != nil {
 			*tc.EffectiveReplyTo = replyTo

@@ -127,6 +127,7 @@ func (a *Agent) applyQuoteDecision(
 	targetID int64,
 	candidateReplyTo int64,
 	text string,
+	botUserID string,
 ) int64 {
 	if a == nil || session == nil {
 		return candidateReplyTo
@@ -158,7 +159,9 @@ func (a *Agent) applyQuoteDecision(
 			zap.Error(err))
 		return 0
 	}
-	botUserID := strconv.FormatInt(a.SelfID(), 10)
+	if strings.TrimSpace(botUserID) == "" {
+		botUserID = strconv.FormatInt(a.SelfID(), 10)
+	}
 	ok, _, err := quote.Decide(snap, botUserID, text, frequency, isGroup, nil)
 	if err != nil {
 		zap.L().Debug("引用抽签失败",

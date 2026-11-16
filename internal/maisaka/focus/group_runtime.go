@@ -126,11 +126,11 @@ type FocusEmitter interface {
 
 // GroupOptions 共享组装配参数
 type GroupOptions struct {
-	Planner         PlannerStep
-	Summary         SummaryBuilder
-	Emitter         FocusEmitter
-	MaxContextSize  func() int
-	StoreRoot       string
+	Planner        PlannerStep
+	Summary        SummaryBuilder
+	Emitter        FocusEmitter
+	MaxContextSize func() int
+	StoreRoot      string
 	// Prompts 提示词来源，用于连续等待提醒
 	Prompts maisaka.PromptSource
 }
@@ -165,9 +165,11 @@ type GroupRuntime struct {
 	cycle           int
 	state           string
 	plannerSnapshot *maisaka.PlannerRequestSnapshot
-	startedAt       float64
-	endedAt         float64
-	waiters         []chan struct{}
+	// plannerRetryAfter 失败请求没有确认输入进度；收到更新的序列号前不重试
+	plannerRetryAfter *int
+	startedAt         float64
+	endedAt           float64
+	waiters           []chan struct{}
 
 	wake        chan struct{}
 	workerAlive bool
@@ -741,13 +743,18 @@ func (g *GroupRuntime) signalLocked() {
 
 // setStage 同步共享组与成员阶段
 func (g *GroupRuntime) setStage(stage, detail string) {
+	g.setStageState(stage, detail, "running")
+}
+
+// setStageState 指定共享组状态；请求失败时保持 stop，等待新输入再继续
+func (g *GroupRuntime) setStageState(stage, detail, agentState string) {
 	g.mu.Lock()
 	if g.failed {
 		g.state = "failed"
 	} else if g.waitUntil != nil {
 		g.state = "wait"
 	} else if g.workerAlive {
-		g.state = "running"
+		g.state = agentState
 	}
 	waiting := g.waitUntil != nil
 	members := make([]GroupMember, 0, len(g.members))
@@ -759,7 +766,7 @@ func (g *GroupRuntime) setStage(stage, detail string) {
 		if waiting {
 			member.SetAgentState("wait")
 		} else {
-			member.SetAgentState("running")
+			member.SetAgentState(agentState)
 		}
 		member.UpdateStageStatus(stage, "Focus 共享组 · "+detail)
 	}

@@ -248,6 +248,24 @@ func (m *Manager) ResolveSessionIDsByTarget(ctx context.Context, platform, targe
 	return ids, nil
 }
 
+// TouchSession 刷新会话最后活跃时间，对齐 BotChatSession.update_active_time
+func (m *Manager) TouchSession(ctx context.Context, sessionID string) error {
+	if m == nil || m.db == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	now := time.Now()
+	if err := m.db.WithContext(ctx).Model(&Record{}).Where("session_id=?", sessionID).
+		Update("last_active_timestamp", now).Error; err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if rec := m.byID[sessionID]; rec != nil {
+		rec.LastActiveTimestamp = &now
+	}
+	m.mu.Unlock()
+	return nil
+}
+
 // ResolveSession 解析唯一聊天流；不存在返回 ErrNotFound，多条返回 ErrAmbiguous
 func (m *Manager) ResolveSession(ctx context.Context, platform, targetID, chatType string) (*Record, error) {
 	sessions, err := m.ResolveSessionsByTarget(ctx, platform, targetID, chatType)
@@ -343,6 +361,9 @@ func sessionMatchesTarget(rec *Record, platform, targetAttr, targetID string) bo
 		return false
 	}
 	if strings.TrimSpace(rec.Platform) != platform {
+		return false
+	}
+	if (targetAttr == "group_id") != rec.IsGroup() {
 		return false
 	}
 	switch targetAttr {

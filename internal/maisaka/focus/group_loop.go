@@ -2,13 +2,28 @@ package focus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
+	"MaiGo/internal/llm_models/contract"
 	"MaiGo/internal/maisaka"
+
+	"go.uber.org/zap"
 )
+
+// isRecoverablePlannerError 只恢复已知模型请求失败；保存或上下文一致性错误仍交由外层停止
+func isRecoverablePlannerError(err error) bool {
+	var empty *contract.EmptyResponseError
+	var timeout *contract.TaskTimeoutError
+	var network *contract.NetworkError
+	var status *contract.HTTPStatusError
+	var parse *contract.ParseError
+	return errors.As(err, &empty) || errors.As(err, &timeout) || errors.As(err, &network) ||
+		errors.As(err, &status) || errors.As(err, &parse)
+}
 
 // Run 共享 Planner 主循环
 func (g *GroupRuntime) Run() {
@@ -24,6 +39,18 @@ func (g *GroupRuntime) Run() {
 		if g.closed || len(g.members) == 0 {
 			g.mu.Unlock()
 			return
+		}
+		if g.plannerRetryAfter != nil {
+			if g.sequence <= *g.plannerRetryAfter {
+				g.mu.Unlock()
+				select {
+				case <-g.ctx.Done():
+					return
+				case <-g.wake:
+				}
+				continue
+			}
+			g.plannerRetryAfter = nil
 		}
 		if g.waitUntil != nil {
 			remaining := *g.waitUntil - nowSeconds()
@@ -140,6 +167,7 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 		cycle := g.cycle
 		logicalTurnID := newRunID()
 		waits := g.waits
+		requestSequence := g.sequence
 		g.mu.Unlock()
 
 		g.setStage("Planner", fmt.Sprintf("汇合 %d 个聊天，等待模型响应", len(related)))
@@ -180,7 +208,18 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 		g.endedAt = nowSeconds()
 		g.mu.Unlock()
 		if err != nil {
-			return err
+			if !isRecoverablePlannerError(err) {
+				return err
+			}
+			g.mu.Lock()
+			g.plannerSnapshot = nil
+			g.plannerRetryAfter = &requestSequence
+			g.mu.Unlock()
+			g.setStageState("请求失败", fmt.Sprintf("输入已保留，等待新消息后继续；%v", err), "stop")
+			zap.L().Error("Focus 共享 Planner 请求失败，等待新输入",
+				zap.String("scope_id", g.scopeID), zap.Error(err))
+			_ = g.Checkpoint(ctx)
+			return nil
 		}
 		g.mu.Lock()
 		stale := generation != g.generation || g.closed

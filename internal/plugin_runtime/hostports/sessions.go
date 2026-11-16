@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"MaiGo/internal/chat/session"
+	"MaiGo/internal/core/localoperator"
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_runtime"
 
@@ -18,6 +20,13 @@ type Sessions struct {
 	db      *gorm.DB
 	manager *chatsession.Manager
 	avatar  *platformio.AvatarService
+	routes  SessionRouteResolver
+	openMu  sync.Mutex
+}
+
+// SessionRouteResolver 解析新会话的 Bot 账号与适配器作用域
+type SessionRouteResolver interface {
+	ResolveNewSessionRoute(ctx context.Context, platform, accountID, scope string) (string, string, error)
 }
 
 // SessionsOption 会话端口可选依赖
@@ -27,6 +36,13 @@ type SessionsOption func(*Sessions)
 func WithAvatarService(service *platformio.AvatarService) SessionsOption {
 	return func(s *Sessions) {
 		s.avatar = service
+	}
+}
+
+// WithSessionRouteResolver 注入新会话路由解析器
+func WithSessionRouteResolver(resolver SessionRouteResolver) SessionsOption {
+	return func(s *Sessions) {
+		s.routes = resolver
 	}
 }
 
@@ -97,28 +113,102 @@ func (s *Sessions) ListStreams(ctx context.Context, filter pluginruntime.PluginS
 	return out, nil
 }
 
-// OpenSession 打开或创建会话
+// OpenSession 按目标打开真实会话；未指定归属时只接受唯一确定的账号与作用域
 func (s *Sessions) OpenSession(ctx context.Context, req pluginruntime.PluginOpenSession) (map[string]any, error) {
 	if s == nil || s.manager == nil {
 		return nil, fmt.Errorf("会话存储未初始化")
 	}
-	platform := firstNonEmpty(req.Platform, "qq")
+	s.openMu.Lock()
+	defer s.openMu.Unlock()
+	platform := strings.ToLower(firstNonEmpty(req.Platform, "qq"))
 	scope := strings.TrimSpace(req.Scope)
 	accountID := strings.TrimSpace(req.AccountID)
-	var record *chatsession.Record
-	var err error
+	chatType := "private"
+	targetID := strings.TrimSpace(req.UserID)
+	userID, groupID := strings.TrimSpace(req.UserID), ""
 	if req.ChatType == "group" {
-		record, err = s.manager.GetOrCreateSession(ctx, platform, "", req.GroupID, accountID, scope)
-	} else {
-		record, err = s.manager.GetOrCreateSession(ctx, platform, req.UserID, "", accountID, scope)
+		chatType = "group"
+		groupID = strings.TrimSpace(req.GroupID)
+		targetID = groupID
+		userID = ""
 	}
+	localPlatform := platform == "internal" || platform == "webui"
+	if _, ok := localoperator.LocalPlatformBotIDs[platform]; ok {
+		localPlatform = true
+	}
+	existing, err := s.manager.ResolveSessionsByTarget(ctx, platform, targetID, chatType)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]chatsession.Record, 0, len(existing))
+	for _, record := range existing {
+		if !localPlatform && recordAccountID(&record) == "" {
+			continue
+		}
+		if accountID != "" && recordAccountID(&record) != accountID {
+			continue
+		}
+		if scope != "" && recordScope(&record) != scope {
+			continue
+		}
+		candidates = append(candidates, record)
+	}
+	if len(candidates) > 1 {
+		return nil, fmt.Errorf("目标存在多个聊天流，请明确指定 account_id 和 scope")
+	}
+	if len(candidates) == 1 {
+		record := candidates[0]
+		if err := s.manager.TouchSession(ctx, record.SessionID); err != nil {
+			return nil, err
+		}
+		return sessionOpenResult(&record, false), nil
+	}
+
+	resolvedAccount, resolvedScope := accountID, scope
+	if !localPlatform && s.routes != nil {
+		resolvedAccount, resolvedScope, err = s.routes.ResolveNewSessionRoute(ctx, platform, accountID, scope)
+		if err != nil {
+			return nil, err
+		}
+	}
+	record, err := s.manager.GetOrCreateSession(ctx, platform, userID, groupID, resolvedAccount, resolvedScope)
 	if err != nil {
 		return nil, err
 	}
 	if record == nil {
 		return nil, fmt.Errorf("会话创建失败")
 	}
-	return map[string]any{"success": true, "created": true, "stream": serializeSession(record)}, nil
+	created := true
+	for _, previous := range existing {
+		if previous.SessionID == record.SessionID {
+			created = false
+			break
+		}
+	}
+	return sessionOpenResult(record, created), nil
+}
+
+func sessionOpenResult(record *chatsession.Record, created bool) map[string]any {
+	stream := serializeSession(record)
+	out := map[string]any{"success": true, "created": created, "stream": stream}
+	for key, value := range stream {
+		out[key] = value
+	}
+	return out
+}
+
+func recordAccountID(record *chatsession.Record) string {
+	if record == nil || record.AccountID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*record.AccountID)
+}
+
+func recordScope(record *chatsession.Record) string {
+	if record == nil || record.Scope == nil {
+		return ""
+	}
+	return strings.TrimSpace(*record.Scope)
 }
 
 // StreamByGroupID 按群号查找会话

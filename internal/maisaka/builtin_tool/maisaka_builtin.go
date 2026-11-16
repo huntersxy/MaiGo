@@ -100,7 +100,7 @@ type ReplyInput struct {
 	// AfterReply 回复成功后的行为：continue/stop/wait
 	AfterReply *string `json:"after_reply,omitempty" jsonschema:"description=回复发送成功后的行为：continue 继续思考；stop 结束本轮（默认）；wait 等待后再判断"`
 	// WaitSeconds after_reply=wait 时的等待秒数
-	WaitSeconds *int                 `json:"wait_seconds,omitempty" jsonschema:"description=after_reply=wait 时的等待秒数，默认 30"`
+	WaitSeconds      *int                 `json:"wait_seconds,omitempty" jsonschema:"description=after_reply=wait 时的等待秒数，默认 30"`
 	ReplyReference   string               `json:"reply_reference,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
 	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
@@ -202,6 +202,23 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			zap.String("plugin_msg_id", msgID))
 	}
 	tc := GetToolContext(ctx)
+	botUserID := ""
+	if tc != nil {
+		if tc.ResolveBotAccount != nil {
+			resolved, err := tc.ResolveBotAccount(ctx, tc.Platform, tc.AccountID)
+			if err != nil {
+				return &maisakaStubOutput{Success: false, Message: err.Error()}, nil
+			}
+			botUserID = strings.TrimSpace(resolved)
+		}
+		if botUserID == "" {
+			return &maisakaStubOutput{
+				Success: false,
+				Message: "无法确定 Bot 发送账号，请为聊天流明确指定 account_id。",
+			}, nil
+		}
+		tc.ReplyBotUserID = botUserID
+	}
 	if len(input.AttachAt) > 0 && (tc == nil || !tc.EnableReplyAt) {
 		return &maisakaStubOutput{
 			Success: false,

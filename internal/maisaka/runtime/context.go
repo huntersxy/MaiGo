@@ -74,9 +74,16 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 		memoryQueryDefaultLimit = instance.Bot.AMemorix.Integration.MemoryQueryDefaultLimit
 	}
 	effectiveReplyTo := int64(0)
+	accountID := ""
+	if a.chatSessions != nil && strings.TrimSpace(sessionID) != "" {
+		if record, err := a.chatSessions.GetExistingBySessionID(ctx, sessionID); err == nil && record != nil && record.AccountID != nil {
+			accountID = strings.TrimSpace(*record.AccountID)
+		}
+	}
 	tc := &tools.ToolContext{
 		ConversationKind:        kind,
 		Platform:                a.conversationPlatform(kind, targetID),
+		AccountID:               accountID,
 		SessionID:               sessionID,
 		TargetID:                targetID,
 		MemoryMgr:               a.memory.WithContext(ctx),
@@ -104,6 +111,9 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 		},
 		ResolveMessageAuthor: func(msgID string) (tools.MessageAuthor, bool) {
 			return a.resolveMessageAuthor(session, msgID)
+		},
+		ResolveBotAccount: func(callCtx context.Context, platform, preferredAccountID string) (string, error) {
+			return a.resolveBotAccount(callCtx, platform, preferredAccountID)
 		},
 		SendStickerCallback: func(callCtx context.Context, gid int64, fileName string, description string) error {
 			if kind == memory.ConversationKindPrivate {

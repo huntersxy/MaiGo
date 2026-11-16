@@ -416,6 +416,16 @@ func (m *Manager) ResolveSendAdapters(routeKey RouteKey) []Adapter {
 	return m.resolveSendAdaptersLocked(routeKey)
 }
 
+// Adapters 返回当前注册的全部适配器，供路由与账号解析读取描述符
+func (m *Manager) Adapters() []Adapter {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.registry.List(nil, "")
+}
+
 func (m *Manager) resolveSendAdaptersLocked(routeKey RouteKey) []Adapter {
 	var adapters []Adapter
 	seen := make(map[string]struct{})

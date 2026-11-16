@@ -19,8 +19,12 @@ func (a *Agent) doReplySend(ctx context.Context, session *Session, kind string, 
 func (a *Agent) doReplySendWith(ctx context.Context, session *Session, kind string, targetID int64, content string, replyTo int64, mentions []int64, send speakSender) (tools.ReplySendOutcome, error) {
 	segments := a.pipelineSegments(ctx, content)
 	effectiveReplyTo := replyTo
+	botUserID := ""
+	if tc := tools.GetToolContext(ctx); tc != nil {
+		botUserID = strings.TrimSpace(tc.ReplyBotUserID)
+	}
 	if session != nil {
-		effectiveReplyTo = a.applyQuoteDecision(ctx, session, kind, targetID, replyTo, firstSegmentText(segments))
+		effectiveReplyTo = a.applyQuoteDecision(ctx, session, kind, targetID, replyTo, firstSegmentText(segments), botUserID)
 	}
 	outcome := tools.ReplySendOutcome{
 		SetQuote:          replyTo != 0,

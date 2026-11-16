@@ -829,7 +829,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	pluginHost.SetFileScopeIssuer(fileService)
 	// botAccountService 已在 A_Memorix 原生内核启动前创建，插件 Host 复用同一实例
 	pluginHost.SetBotAccountPort(pluginBotAccountReporter{service: botAccountService})
-	sessionsPort := hostports.NewSessions(memoryMgr.GetDB())
+	sessionsPort := hostports.NewSessions(memoryMgr.GetDB(), hostports.WithSessionRouteResolver(pluginSessionRouteResolver{
+		platform: platformIOMgr,
+		accounts: botAccountService,
+	}))
 	// WebUI / 插件发送共用同一 AvatarService（对齐 Python avatar_service 单例）
 	avatarService := platformio.NewAvatarService(pluginruntime.ResolveInstanceRoot())
 	avatarService.Provider = hostports.NewAdapterAvatarProvider(platformIOMgr)

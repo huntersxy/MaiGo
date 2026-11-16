@@ -87,6 +87,9 @@ func recordMatchesTarget(record *chatsession.Record, targetID, chatType string) 
 	if record == nil {
 		return false
 	}
+	if (chatType == "group") != record.IsGroup() {
+		return false
+	}
 	switch chatType {
 	case "group":
 		return pointerText(record.GroupID) == targetID
