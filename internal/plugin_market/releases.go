@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 )
 
 var (
@@ -102,7 +103,8 @@ func ParseReleaseIndex(content string) (*PluginReleaseIndex, error) {
 	for _, item := range raw.Plugins {
 		entry, err := parseReleaseEntry(item)
 		if err != nil {
-			return nil, err
+			zap.L().Warn("跳过无效的插件版本索引条目", zap.Error(err))
+			continue
 		}
 		for _, alias := range releaseAliases(*entry) {
 			if entry.SyncError != nil {
@@ -115,7 +117,8 @@ func ParseReleaseIndex(content string) (*PluginReleaseIndex, error) {
 			aliases[key] = entry.ID
 		}
 		if err := validateReleaseEntry(*entry); err != nil {
-			return nil, err
+			zap.L().Warn("跳过无效的插件版本索引条目", zap.Error(err))
+			continue
 		}
 		index.Plugins = append(index.Plugins, *entry)
 	}

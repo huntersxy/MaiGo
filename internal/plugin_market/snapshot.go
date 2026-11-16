@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"go.uber.org/zap"
 )
 
 // orderedRecords 保留插件顺序，对齐 Python dict 的插入顺序
@@ -250,10 +251,19 @@ func (s *Service) buildCatalog(ctx context.Context, items []map[string]any, sour
 			}
 		}
 		if entry == nil {
+			repositoryURL := safeString(item["repository_url"])
+			if repositoryURL == "" {
+				repositoryURL = plugin.RepositoryURL
+			}
+			if !pluginRepositoryPattern.MatchString(repositoryURL) {
+				zap.L().Warn("跳过无法构造回退发布信息的插件市场条目",
+					zap.String("plugin_id", plugin.ID), zap.String("repository_url", repositoryURL))
+				continue
+			}
 			entry = &PluginReleaseEntry{
 				ID:            plugin.MarketplaceID,
 				ManifestID:    &plugin.ID,
-				RepositoryURL: plugin.RepositoryURL,
+				RepositoryURL: repositoryURL,
 				Mode:          "releases",
 				Versions:      []PluginRelease{},
 				SyncError:     stringPointer("插件尚未收录到版本索引，请先同步插件中心"),
