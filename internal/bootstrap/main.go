@@ -1324,6 +1324,15 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		})
 	}
 	if pluginSpawnCfg.Enabled {
+		// 对齐 integration.py：索引和加载前先把旧版 QQ 官方适配器迁入内置配置布局
+		backup, migrateErr := pluginruntime.MigrateQQOfficialAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
+		if migrateErr != nil {
+			zap.L().Error("QQ 官方适配器迁移失败", zap.Error(migrateErr))
+			return 1
+		}
+		if backup != "" {
+			zap.L().Info("QQ 官方适配器旧安装已备份", zap.String("backup", backup))
+		}
 		// 对齐 Python integration.py:904-908 的 plugin_runtime.sync_dependencies 阶段：
 		// 启动 Runner 前先分析并补装插件依赖，环境变化时 Runner 直接加载最新环境
 		syncPipeline := pluginruntime.NewPluginDependencyPipeline(pluginSpawnCfg.ProjectRoot)
