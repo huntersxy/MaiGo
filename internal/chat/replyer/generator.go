@@ -294,7 +294,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		// 在 after_response Hook 与正文校验前翻译，插件和发送端只处理中文结果
 		if superCreativeMode && activePromptProfile != "mai_replier" && strings.TrimSpace(generationResult.ResponseText()) != "" {
 			result.ErrorCode = "replyer_translation_failed"
-			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult)
+			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult, creativeLanguage)
 			if translationErr != nil {
 				result.ErrorMessage = translationErr.Error()
 				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
@@ -574,13 +574,17 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 	if g.Builder != nil {
 		language = CreativeLanguage(g.Builder.Config.SuperCreativeLanguage)
 	}
+	promptLocale := language
+	if promptLocale == "zh-classical" {
+		promptLocale = "zh-CN"
+	}
 	if g.DocumentMode {
 		if g.DocumentBuilder == nil {
 			return nil, fmt.Errorf("长文 replyer 提示装配器未配置")
 		}
 		localized := *g.DocumentBuilder
 		if superActive {
-			localized.PromptBuilder = *localized.PromptBuilder.ForLocale(language)
+			localized.PromptBuilder = *localized.PromptBuilder.ForLocale(promptLocale)
 		}
 		builder = &localized.PromptBuilder
 		messages, err = localized.BuildDocumentMessages(req)
@@ -590,7 +594,7 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 		}
 		builder = g.Builder
 		if superActive {
-			builder = builder.ForLocale(language)
+			builder = builder.ForLocale(promptLocale)
 		}
 		messages, err = builder.RequestMessages(ctx, req)
 	}
@@ -613,8 +617,8 @@ func (g *ReplyGenerator) buildRequestMessages(ctx context.Context, req ReplyRequ
 	return requestMessagesToContextItems(messages)
 }
 
-// translateSuperCreativeReply 用实际生成日语正文的同一模型翻译；翻译失败时不返回日语原文
-func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client LLMClient, generationResult GenerationResult) (GenerationResult, []llm.ContextItem, error) {
+// translateSuperCreativeReply 用实际生成正文的同一模型翻译；翻译失败时不返回原文
+func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client LLMClient, generationResult GenerationResult, language string) (GenerationResult, []llm.ContextItem, error) {
 	modelName := strings.TrimSpace(generationResult.ModelName)
 	if modelName == "" {
 		return GenerationResult{}, nil, fmt.Errorf("超级创意模式缺少实际 Replyer 模型名称，无法锁定翻译模型")
@@ -631,8 +635,13 @@ func (g *ReplyGenerator) translateSuperCreativeReply(ctx context.Context, client
 		}
 		sourceText = compatible
 	}
+	// 文言文本身属于中文，需明确译成白话，避免通用指令将其原样返回
+	instruction := CreativeTranslationInstruction
+	if language == "zh-classical" {
+		instruction = ClassicalTranslationInstruction
+	}
 	items, err := requestMessagesToContextItems([]RequestMessage{
-		{Role: "user", Content: CreativeTranslationInstruction + sourceText},
+		{Role: "user", Content: instruction + sourceText},
 	})
 	if err != nil {
 		return GenerationResult{}, nil, err

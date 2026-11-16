@@ -125,6 +125,8 @@ func NewCreativeLocaleLoader(manager *prompt.Manager) func(locale string) LoadPr
 				rendered, err = manager.RenderLocaleTransform("zh-CN", name, vars, func(template string) string {
 					return TranslateCreativeFixedLines(language, template)
 				})
+			} else if language == "zh-classical" {
+				rendered, err = manager.RenderLocale("zh-CN", name, vars)
 			} else {
 				rendered, err = manager.RenderLocale(language, name, vars)
 			}

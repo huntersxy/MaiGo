@@ -4,14 +4,20 @@ import "strings"
 
 // CreativeOutputLanguage 超级创意模式的语言输出要求
 var CreativeOutputLanguage = map[string]string{
-	"ja-JP": "今回の返信は日本語で、返信本文だけを出力してください。",
-	"ru-RU": "Напишите этот ответ по-русски, выводя только текст ответа.",
-	"fr-FR": "Rédigez cette réponse en français et produisez uniquement le texte de la réponse.",
+	"zh-classical": "本次回复请使用中文文言文，保留角色语气，只输出回复正文，不附白话译文。",
+	"ja-JP":        "今回の返信は日本語で、返信本文だけを出力してください。",
+	"ru-RU":        "Напишите этот ответ по-русски, выводя только текст ответа.",
+	"fr-FR":        "Rédigez cette réponse en français et produisez uniquement le texte de la réponse.",
 }
 
 // CreativeTranslationInstruction 翻译阶段的前置说明
 const CreativeTranslationInstruction = "请将以下内容翻译成中文，保留原文的含义、创意、角色语气、情绪和分段，不增删内容。\n" +
 	"只输出中文译文，保持原文格式，不要添加内容。如果已经是中文，不用翻译。\n" +
+	"待翻译内容："
+
+// ClassicalTranslationInstruction 文言文翻译阶段的前置说明
+const ClassicalTranslationInstruction = "请将以下文言文翻译成现代白话中文，保留原文的含义、创意、角色语气、情绪和分段，不增删内容。\n" +
+	"只输出现代白话中文译文，保持原文格式，不要添加内容。如果已经是现代白话中文，不用翻译。\n" +
 	"待翻译内容："
 
 // creativeTextTranslations 中文固定文案的俄语、法语译本；只替换固定行，不复制模板结构与占位符
@@ -133,6 +139,8 @@ func CreativeLanguage(language string) string {
 		return "ru-RU"
 	case "fr-FR":
 		return "fr-FR"
+	case "zh-classical":
+		return "zh-classical"
 	default:
 		return "ja-JP"
 	}
