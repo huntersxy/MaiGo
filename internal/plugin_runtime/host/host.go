@@ -117,6 +117,8 @@ type Host struct {
 	runnerReadySet bool
 	// startupLoadResult 最近一次完成的加载结果（进度或 ready）
 	startupLoadResult map[RunnerGroup]protocol.RunnerReadyPayload
+	// runtimeLoadStatuses 热加载/卸载后的插件状态，覆盖启动快照
+	runtimeLoadStatuses map[string]string
 	// startupPending 尚未完成初始化的插件，对齐 _startup_pending_plugins
 	startupPending map[RunnerGroup]map[string]struct{}
 	// startupStartedAt 本轮开始等待的时刻，对齐 _startup_started_at
@@ -196,6 +198,7 @@ func NewHost() *Host {
 		runnerLifecycles:         make(map[RunnerGroup]*runnerLifecycle),
 		runnerReadyByGroup:       make(map[RunnerGroup]protocol.RunnerReadyPayload),
 		startupLoadResult:        make(map[RunnerGroup]protocol.RunnerReadyPayload),
+		runtimeLoadStatuses:      make(map[string]string),
 		startupPending:           make(map[RunnerGroup]map[string]struct{}),
 		startupStartedAt:         make(map[RunnerGroup]time.Time),
 		startupFailure:           make(map[RunnerGroup]string),
@@ -253,6 +256,10 @@ func (h *Host) RegisterPlugin(rec PluginRecord) {
 	h.pluginRevision[rec.PluginID]++
 	rec.Revision = h.pluginRevision[rec.PluginID]
 	h.plugins[rec.PluginID] = rec
+	if h.runtimeLoadStatuses == nil {
+		h.runtimeLoadStatuses = make(map[string]string)
+	}
+	h.runtimeLoadStatuses[rec.PluginID] = "success"
 	h.mu.Unlock()
 	if h.authorization != nil {
 		h.authorization.RegisterPlugin(rec.PluginID, rec.Capabilities)

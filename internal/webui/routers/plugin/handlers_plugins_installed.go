@@ -112,7 +112,8 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			loadError = configError
 		}
 		effectiveStatus := loadStatus
-		if !enabled && loadStatus != "success" && loadStatus != "loading" && loadStatus != "timed_out" && loadStatus != "stopping" {
+		// 配置禁用后运行时状态可能滞后；启停过渡仍展示过渡态，其余一律按禁用展示
+		if !enabled && loadStatus != "loading" && loadStatus != "stopping" {
 			effectiveStatus = "disabled"
 		}
 		release, _ := pluginmarket.ReadReleaseReceipt(pluginPath)

@@ -234,9 +234,13 @@ func (h *Host) pluginLoadStatusesLocked() map[string]string {
 			}
 		}
 	}
+	defaultStatus := "success"
+	if h.loading {
+		defaultStatus = "loading"
+	}
 	for pluginID := range h.plugins {
 		if _, exists := out[pluginID]; !exists {
-			out[pluginID] = "loading"
+			out[pluginID] = defaultStatus
 		}
 	}
 	for _, pending := range h.startupPending {
@@ -250,6 +254,12 @@ func (h *Host) pluginLoadStatusesLocked() map[string]string {
 			if status == "loading" {
 				out[pluginID] = loadingStatus
 			}
+		}
+	}
+	// 热加载/卸载结果覆盖启动快照；配置错误仍在下面统一置为 failed
+	for pluginID, status := range h.runtimeLoadStatuses {
+		if status != "" {
+			out[pluginID] = status
 		}
 	}
 	for pluginID, rec := range h.plugins {
@@ -405,6 +415,7 @@ func (h *Host) clearStartupState(group RunnerGroup) {
 	delete(h.startupLoadResult, group)
 	delete(h.startupPending, group)
 	delete(h.startupStartedAt, group)
+	clear(h.runtimeLoadStatuses)
 	h.startupFailure[group] = ""
 	delete(h.runnerReadyByGroup, group)
 	h.runnerReadySet = len(h.runnerReadyByGroup) > 0

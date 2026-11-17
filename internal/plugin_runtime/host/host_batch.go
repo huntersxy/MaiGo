@@ -59,6 +59,7 @@ func (h *Host) ReloadPlugins(ctx context.Context, pluginIDs []string, reason str
 			FailedPlugins:             result.FailedPlugins,
 		}
 		h.applyPluginRecoveryResult(reloaded)
+		h.rememberReloadStatuses(reloaded)
 		return reloaded, nil
 	}
 
@@ -72,7 +73,36 @@ func (h *Host) ReloadPlugins(ctx context.Context, pluginIDs []string, reason str
 	reloaded := decodeReloadPluginsResult(resp.Payload, ids)
 	// 对齐 Python supervisor.py:424：显式禁用与已重载插件不再属于恢复目标
 	h.applyPluginRecoveryResult(reloaded)
+	h.rememberReloadStatuses(reloaded)
 	return reloaded, nil
+}
+
+// rememberReloadStatuses 记录热加载/卸载结果，供 /plugins/installed 立即反映
+func (h *Host) rememberReloadStatuses(result ReloadPluginsResult) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	if h.runtimeLoadStatuses == nil {
+		h.runtimeLoadStatuses = make(map[string]string)
+	}
+	for _, pluginID := range result.ReloadedPlugins {
+		h.runtimeLoadStatuses[pluginID] = "success"
+	}
+	for _, pluginID := range result.UnloadedPlugins {
+		h.runtimeLoadStatuses[pluginID] = "inactive"
+	}
+	for _, pluginID := range result.InactivePlugins {
+		h.runtimeLoadStatuses[pluginID] = "inactive"
+	}
+	for _, pluginID := range result.ExplicitlyDisabledPlugins {
+		h.runtimeLoadStatuses[pluginID] = "inactive"
+	}
+	for pluginID := range result.FailedPlugins {
+		h.runtimeLoadStatuses[pluginID] = "failed"
+	}
+	h.mu.Unlock()
+	h.notifyStatusChanges()
 }
 
 // RecoverPlugins 请求 Runner 恢复指定插件，复刻 supervisor._recover_missing_plugins 的 plugin.recover 调用。
@@ -126,12 +156,29 @@ func (h *Host) UnloadPlugins(ctx context.Context, pluginIDs []string, reason str
 	for _, pluginID := range unloaded {
 		h.dropPluginRecoveryTarget(pluginID)
 	}
+	h.rememberUnloadedStatuses(unloaded)
 	return UnloadPluginsResult{
 		Success:            payloadBool(resp.Payload, "success", false),
 		RequestedPluginIDs: requested,
 		UnloadedPlugins:    unloaded,
 		FailedPlugins:      payloadTextMap(resp.Payload, "failed_plugins"),
 	}, nil
+}
+
+// rememberUnloadedStatuses 记录批量卸载结果，供 /plugins/installed 立即反映
+func (h *Host) rememberUnloadedStatuses(pluginIDs []string) {
+	if h == nil || len(pluginIDs) == 0 {
+		return
+	}
+	h.mu.Lock()
+	if h.runtimeLoadStatuses == nil {
+		h.runtimeLoadStatuses = make(map[string]string)
+	}
+	for _, pluginID := range pluginIDs {
+		h.runtimeLoadStatuses[pluginID] = "inactive"
+	}
+	h.mu.Unlock()
+	h.notifyStatusChanges()
 }
 
 func (h *Host) sendRunnerPayloadRequest(ctx context.Context, method string, pluginIDs []string, reason string, externalAvailablePlugins map[string]string, timeoutMS int64) (protocol.Envelope, error) {

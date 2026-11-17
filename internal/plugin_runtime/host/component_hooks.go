@@ -140,6 +140,10 @@ func (h *Host) UnregisterPlugin(pluginID string) (int, bool) {
 	h.mu.Lock()
 	_, existed := h.plugins[pluginID]
 	delete(h.plugins, pluginID)
+	if h.runtimeLoadStatuses == nil {
+		h.runtimeLoadStatuses = make(map[string]string)
+	}
+	h.runtimeLoadStatuses[pluginID] = "inactive"
 	h.mu.Unlock()
 	if h.statusBadges != nil {
 		h.statusBadges.Remove(pluginID)
