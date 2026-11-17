@@ -707,6 +707,9 @@ func (w *WebUI) forwardWebSocket(rw http.ResponseWriter, r *http.Request, path, 
 		_ = upstream.Close(websocket.StatusGoingAway, "")
 		return
 	}
+	// Python 代理使用 max_msg_size=0；监控/历史快照单条消息可能远超 coder 默认 32 KiB
+	upstream.SetReadLimit(104_857_600)
+	client.SetReadLimit(104_857_600)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	relay := func(source, target *websocket.Conn) error {
