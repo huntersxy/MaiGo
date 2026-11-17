@@ -707,8 +707,9 @@ func (w *WebUI) forwardWebSocket(rw http.ResponseWriter, r *http.Request, path, 
 		_ = upstream.Close(websocket.StatusGoingAway, "")
 		return
 	}
-	// Python 代理使用 max_msg_size=0；监控/历史快照单条消息可能远超 coder 默认 32 KiB
-	upstream.SetReadLimit(104_857_600)
+	// 对齐 Python：宿主 uvicorn 的浏览器侧上限为 100 MiB；到 Bot 的 aiohttp
+	// 代理使用 max_msg_size=0（不限制），coder 需传 -1 才是无限。
+	upstream.SetReadLimit(-1)
 	client.SetReadLimit(104_857_600)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
