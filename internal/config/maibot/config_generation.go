@@ -65,3 +65,9 @@ func WriteDefaultBotConfig(path string) error {
 func WriteDefaultModelConfig(path string) error {
 	return writeGeneratedConfigIfMissing(path, ModelConfigTargetVersion, defaultModelConfigTOML)
 }
+
+// DefaultModelConfigTOML 返回内置默认 model_config.toml
+func DefaultModelConfigTOML() []byte { return append([]byte(nil), defaultModelConfigTOML...) }
+
+// DefaultBotConfigTOML 返回内置默认 bot_config.toml
+func DefaultBotConfigTOML() []byte { return append([]byte(nil), defaultBotConfigTOML...) }

@@ -198,10 +198,36 @@ func validateModelConfigFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("模型配置副本无效: %w", err)
 	}
+	if maibotcfg.SharedCatalogPath() != "" {
+		if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
+			doc = merged
+		}
+	}
 	if err := validateModelConfigMap(doc); err != nil {
 		return fmt.Errorf("模型配置副本无效: %w", err)
 	}
 	return nil
+}
+
+// validateModelConfigFileForActivate 切换副本前检查共享目录接管字段
+func validateModelConfigFileForActivate(path string) error {
+	if maibotcfg.SharedCatalogPath() != "" {
+		doc, err := readTOMLDocument(path)
+		if err != nil {
+			return fmt.Errorf("模型配置副本无效: %w", err)
+		}
+		for _, section := range maibotcfg.CatalogSections {
+			if _, exists := doc[section]; exists {
+				return errors.New("旧模型配置副本尚未迁移，请重启宿主完成统一迁移后再激活")
+			}
+		}
+		if web, ok := doc["web"].(map[string]any); ok {
+			if _, exists := web["services"]; exists {
+				return errors.New("旧模型配置副本尚未迁移，请重启宿主完成统一迁移后再激活")
+			}
+		}
+	}
+	return validateModelConfigFile(path)
 }
 
 // deepMergeConfig 递归合并字典，列表与标量直接替换

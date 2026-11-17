@@ -224,7 +224,7 @@ func (d Deps) handleConfigModelVersionActivate(w http.ResponseWriter, r *http.Re
 			selectedLabel = strings.TrimSpace(label)
 		}
 	}
-	if err := validateModelConfigFile(versionPath); err != nil {
+	if err := validateModelConfigFileForActivate(versionPath); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
 		return
 	}

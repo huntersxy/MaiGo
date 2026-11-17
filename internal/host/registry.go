@@ -206,6 +206,18 @@ func (r *Registry) GetBot(botID string) (BotRecord, error) {
 
 // AddBot 登记新目录；目录不得与已登记目录相同或互相包含（工作区 bots/ 目录除外）
 func (r *Registry) AddBot(name, directory string, owned bool, initialization string) (BotRecord, error) {
+	return r.addBot(newBotID(), name, directory, owned, initialization)
+}
+
+// AddBotWithID 用调用方生成的 ID 登记，克隆与 adopt 需要提前把目录与 ID 绑定
+func (r *Registry) AddBotWithID(botID, name, directory string, owned bool, initialization string) (BotRecord, error) {
+	if !botIDPattern.MatchString(botID) {
+		return BotRecord{}, fmt.Errorf("无效的 Bot ID: %s", botID)
+	}
+	return r.addBot(botID, name, directory, owned, initialization)
+}
+
+func (r *Registry) addBot(botID, name, directory string, owned bool, initialization string) (BotRecord, error) {
 	name, err := validateBotName(name)
 	if err != nil {
 		return BotRecord{}, err
@@ -224,7 +236,6 @@ func (r *Registry) AddBot(name, directory string, owned bool, initialization str
 			return BotRecord{}, fmt.Errorf("目录包含已登记的 Bot %s: %s", item.Name, item.Directory)
 		}
 	}
-	botID := newBotID()
 	err = r.write(func(tx *sql.Tx) error {
 		_, execErr := tx.Exec(
 			"INSERT INTO bots (bot_id, name, directory, owned, created_at, initialization, desired_state, restart_policy) "+

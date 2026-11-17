@@ -4,6 +4,7 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 const (
@@ -106,14 +109,15 @@ func (b *SupervisedBot) Snapshot() BotStatus {
 
 // Supervisor 监督工作区内全部 Bot
 type Supervisor struct {
-	workspace        Workspace
-	publicBaseURL    string
-	upgradeConfirmed map[string]struct{}
-	mu               sync.Mutex
-	bots             map[string]*SupervisedBot
-	closing          bool
-	maintenance      bool
-	existingPaths    func() []string
+	workspace           Workspace
+	publicBaseURL       string
+	upgradeConfirmed    map[string]struct{}
+	mu                  sync.Mutex
+	bots                map[string]*SupervisedBot
+	closing             bool
+	maintenance         bool
+	prepareDependencies func() error
+	existingPaths       func() []string
 }
 
 // NewSupervisor 创建监督器
@@ -204,6 +208,11 @@ func (s *Supervisor) Start(botID string) (BotStatus, error) {
 	if err := s.startBlocker(); err != nil {
 		return BotStatus{}, err
 	}
+	if s.prepareDependencies != nil {
+		if err := s.prepareDependencies(); err != nil {
+			return BotStatus{}, err
+		}
+	}
 	bot, err := s.workspace.Registry.GetBot(botID)
 	if err != nil {
 		return BotStatus{}, err
@@ -213,6 +222,12 @@ func (s *Supervisor) Start(botID string) (BotStatus, error) {
 	}
 	bot.DesiredState = "running"
 	instance := s.runtime(bot)
+	instance.mu.Lock()
+	alreadyRunning := instance.process != nil
+	instance.mu.Unlock()
+	if alreadyRunning {
+		return instance.Snapshot(), nil
+	}
 	if err := s.spawn(context.Background(), instance); err != nil {
 		return instance.Snapshot(), err
 	}
@@ -245,10 +260,125 @@ func (s *Supervisor) Stop(botID string) (BotStatus, error) {
 
 // Restart 重启指定 Bot
 func (s *Supervisor) Restart(botID string) (BotStatus, error) {
-	if _, err := s.Stop(botID); err != nil {
+	if err := s.startBlocker(); err != nil {
 		return BotStatus{}, err
 	}
-	return s.Start(botID)
+	if s.prepareDependencies != nil {
+		if err := s.prepareDependencies(); err != nil {
+			return BotStatus{}, err
+		}
+	}
+	bot, err := s.workspace.Registry.GetBot(botID)
+	if err != nil {
+		return BotStatus{}, err
+	}
+	if _, err := s.workspace.Registry.SetDesiredState(botID, "running"); err != nil {
+		return BotStatus{}, err
+	}
+	bot.DesiredState = "running"
+	instance := s.runtime(bot)
+	if err := s.stop(instance, StopTimeout); err != nil {
+		return instance.Snapshot(), err
+	}
+	instance.mu.Lock()
+	instance.crashes = nil
+	instance.mu.Unlock()
+	if err := s.spawn(context.Background(), instance); err != nil {
+		return instance.Snapshot(), err
+	}
+	return instance.Snapshot(), nil
+}
+
+// Manage 执行重命名、归档或克隆；归档与克隆会先停止目标且不改写期望状态
+func (s *Supervisor) Manage(botID, action, name string) (map[string]any, error) {
+	if err := s.startBlocker(); err != nil {
+		return nil, err
+	}
+	bot, err := s.workspace.Registry.GetBot(botID)
+	if err != nil {
+		return nil, err
+	}
+	switch action {
+	case "rename":
+		record, err := s.workspace.Registry.RenameBot(botID, name)
+		if err != nil {
+			return nil, err
+		}
+		s.runtime(record)
+		status, err := s.Status(botID)
+		if err != nil {
+			return nil, err
+		}
+		return statusPayload(status), nil
+	case "archive", "clone":
+		instance := s.runtime(bot)
+		instance.mu.Lock()
+		desired := instance.bot.DesiredState
+		instance.mu.Unlock()
+		if err := s.stop(instance, StopTimeout); err != nil {
+			return nil, fmt.Errorf("停止 Bot 未完成，已取消操作：%w", err)
+		}
+		if action == "archive" {
+			if _, err := s.workspace.Registry.SetDesiredState(botID, "stopped"); err != nil {
+				return nil, err
+			}
+			bot.DesiredState = "stopped"
+			result, err := ArchiveBot(s.workspace, bot)
+			if err != nil {
+				return nil, err
+			}
+			s.mu.Lock()
+			delete(s.bots, botID)
+			s.mu.Unlock()
+			return result, nil
+		}
+		record, cloneErr := CloneBot(s.workspace, bot, name)
+		if desired == "running" && s.startBlocker() == nil {
+			instance.mu.Lock()
+			instance.bot.DesiredState = desired
+			instance.mu.Unlock()
+			go func() { _ = s.spawn(context.Background(), instance) }()
+		}
+		if cloneErr != nil {
+			return nil, cloneErr
+		}
+		return map[string]any{"bot_id": record.BotID, "name": record.Name, "status": "stopped"}, nil
+	default:
+		return nil, errors.New("未知管理操作")
+	}
+}
+
+func statusPayload(status BotStatus) map[string]any {
+	encoded, err := json.Marshal(status)
+	if err != nil {
+		return map[string]any{}
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		return map[string]any{}
+	}
+	return payload
+}
+
+// RunFileOperation 保持期望状态并锁住实例目录执行磁盘事务，期间不再拉起
+func (s *Supervisor) RunFileOperation(botID string, operation func() error) error {
+	bot, err := s.workspace.Registry.GetBot(botID)
+	if err != nil {
+		return err
+	}
+	if err := s.startBlocker(); err != nil {
+		return err
+	}
+	instance := s.runtime(bot)
+	if err := s.stop(instance, StopTimeout); err != nil {
+		return errors.New("Bot 未干净停止，已取消数据传输")
+	}
+	lease, err := LockInstance(bot.Directory)
+	if err != nil {
+		return err
+	}
+	defer lease.Release()
+	return operation()
 }
 
 // EnterMaintenance 维护期间阻止自动重启与手动启动
@@ -259,18 +389,34 @@ func (s *Supervisor) EnterMaintenance() error {
 	return nil
 }
 
-// LeaveMaintenance 结束维护
+// LeaveMaintenance 结束维护，并在后台按期望状态恢复 Bot
 func (s *Supervisor) LeaveMaintenance() {
 	s.mu.Lock()
 	s.maintenance = false
+	closing := s.closing
 	s.mu.Unlock()
+	if !closing {
+		go s.startDesired(false)
+	}
 }
 
 // StartDesired 按期望状态拉起全部 Bot，返回启动失败列表
 func (s *Supervisor) StartDesired() []string {
+	return s.startDesired(true)
+}
+
+func (s *Supervisor) startDesired(prepareDependencies bool) []string {
 	bots, err := s.workspace.Registry.ListBots()
 	if err != nil {
 		return []string{err.Error()}
+	}
+	if prepareDependencies && s.prepareDependencies != nil {
+		if err := s.prepareDependencies(); err != nil {
+			return []string{"插件依赖准备失败: " + err.Error()}
+		}
+	}
+	if err := s.startBlocker(); err != nil {
+		return nil
 	}
 	failures := make([]string, 0)
 	for _, bot := range bots {
@@ -278,6 +424,12 @@ func (s *Supervisor) StartDesired() []string {
 			continue
 		}
 		instance := s.runtime(bot)
+		instance.mu.Lock()
+		running := instance.process != nil
+		instance.mu.Unlock()
+		if running {
+			continue
+		}
 		if err := s.spawn(context.Background(), instance); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", bot.Name, err))
 		}
@@ -355,6 +507,15 @@ func (s *Supervisor) spawn(ctx context.Context, instance *SupervisedBot) error {
 	if err := ValidateWorkspaceBot(bot.Directory); err != nil {
 		return blocker(err.Error())
 	}
+	if _, confirmed := s.upgradeConfirmed[bot.BotID]; !confirmed {
+		if reasons := maibotcfg.CollectLegacyUpgradeReasons(bot.Directory, nil); len(reasons) > 0 {
+			messages := make([]string, 0, len(reasons))
+			for _, reason := range reasons {
+				messages = append(messages, reason.Message)
+			}
+			return blocker(fmt.Sprintf("Bot %s 需要确认 0.x 升级，请在终端重新启动宿主并确认：%s", bot.Name, strings.Join(messages, "；")))
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(instance.LogPath()), 0o777); err != nil {
 		return blocker(err.Error())
 	}
@@ -409,12 +570,19 @@ func (s *Supervisor) watch(instance *SupervisedBot, command *exec.Cmd, listener 
 	instance.mu.Lock()
 	desired := instance.bot.DesiredState
 	policy := instance.bot.RestartPolicy
+	wasReady := instance.ready
+	stopping := instance.status == "stopping"
 	instance.exitCode = &exitCode
 	instance.exitedAt = now.UTC().Format(time.RFC3339)
 	instance.endpoint = ""
 	instance.ready = false
 	instance.process = nil
-	shouldRestart := desired == "running" && policy == "on-failure"
+	if stopping {
+		instance.status = "stopped"
+		instance.mu.Unlock()
+		return
+	}
+	shouldRestart := wasReady && desired == "running" && policy == "on-failure"
 	if shouldRestart {
 		instance.crashes = append(instance.crashes, now)
 		cutoff := now.Add(-crashWindow)
@@ -431,27 +599,41 @@ func (s *Supervisor) watch(instance *SupervisedBot, command *exec.Cmd, listener 
 			shouldRestart = false
 		}
 	}
+	immediateRestart := false
 	if exitCode == RestartExitCode && desired == "running" {
 		shouldRestart = true
+		immediateRestart = true
 		instance.crashes = nil
 	}
 	if desired != "running" {
 		instance.status = "stopped"
 	} else if !shouldRestart && instance.status != "crash_loop" {
-		instance.status = "exited"
+		if exitCode == 0 {
+			instance.status = "exited"
+		} else {
+			instance.status = "failed"
+			if instance.errMsg == "" {
+				instance.errMsg = fmt.Sprintf("Worker 退出码 %d；请查看 %s", exitCode, instance.LogPath())
+			}
+		}
 	}
 	var delay time.Duration
 	if shouldRestart {
-		delay = restartDelayMin
-		if count := len(instance.crashes); count > 1 {
-			delay = restartDelayMin << (count - 1)
-			if delay > restartDelayMax {
-				delay = restartDelayMax
+		if immediateRestart {
+			delay = 0
+			instance.status = "starting"
+		} else {
+			delay = restartDelayMin
+			if count := len(instance.crashes); count > 1 {
+				delay = restartDelayMin << (count - 1)
+				if delay > restartDelayMax {
+					delay = restartDelayMax
+				}
 			}
+			retryAt := float64(now.Add(delay).UnixNano()) / 1e9
+			instance.retryAt = &retryAt
+			instance.status = "exited"
 		}
-		retryAt := float64(now.Add(delay).UnixNano()) / 1e9
-		instance.retryAt = &retryAt
-		instance.status = "exited"
 	}
 	instance.mu.Unlock()
 	if shouldRestart {

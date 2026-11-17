@@ -30,32 +30,37 @@ import (
 	"MaiGo/internal/webui/routers"
 
 	"github.com/bytedance/sonic"
+	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 )
 
 type App struct {
-	boot             config.Bootstrap
-	auth             *auth.Manager
-	memMgr           *memory.Manager
-	maiAgent         *maisaruntime.Agent
-	modelStore       *modelprofiles.Store
-	mcpStore         *mcp.Store
-	files            *filesvc.Service
-	newsSvc          *news.Service
-	htmlRenderSvc    *htmlrender.Service
-	chatHub          *internalchat.Hub
-	pluginMarket     *pluginmarket.Service
-	pluginHost       *pluginruntime.Host
-	antiCrawler      *antiCrawlerMiddleware
-	acpAgent         webuiapi.AgentControlService
-	desktopPet       webuiapi.DesktopPetControl
-	desktopPetChat   func(context.Context, string) (string, error)
-	botAccounts      *botservices.BotAccountService
-	botOnline        func(platform, accountID string) bool
-	botAccountPairs  func(context.Context) ([][2]string, error)
-	platformAdapters webuiapi.PlatformAdapterSource
-	avatar           *platformio.AvatarService
-	router           http.Handler
+	boot               config.Bootstrap
+	auth               *auth.Manager
+	memMgr             *memory.Manager
+	maiAgent           *maisaruntime.Agent
+	modelStore         *modelprofiles.Store
+	mcpStore           *mcp.Store
+	files              *filesvc.Service
+	newsSvc            *news.Service
+	htmlRenderSvc      *htmlrender.Service
+	chatHub            *internalchat.Hub
+	pluginMarket       *pluginmarket.Service
+	pluginHost         *pluginruntime.Host
+	antiCrawler        *antiCrawlerMiddleware
+	acpAgent           webuiapi.AgentControlService
+	desktopPet         webuiapi.DesktopPetControl
+	desktopPetChat     func(context.Context, string) (string, error)
+	botAccounts        *botservices.BotAccountService
+	botOnline          func(platform, accountID string) bool
+	botAccountPairs    func(context.Context) ([][2]string, error)
+	platformAdapters   webuiapi.PlatformAdapterSource
+	avatar             *platformio.AvatarService
+	router             http.Handler
+	maimLegacy         http.HandlerFunc
+	maimAPI            http.HandlerFunc
+	consoleSubmit      func(context.Context, string) error
+	consoleCompletions func() []string
 
 	enforceMu             sync.RWMutex
 	enforcePublicOutbound func() bool
@@ -104,6 +109,24 @@ func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.A
 	router := textGZipMiddleware(app.routes())
 	app.router = router
 	return app
+}
+
+// SetMaimHandlers 注入 Worker 进程内的消息协议处理器；只在宿主 IPC 上暴露
+func (a *App) SetMaimHandlers(legacy, api http.HandlerFunc) {
+	if a == nil {
+		return
+	}
+	a.maimLegacy = legacy
+	a.maimAPI = api
+}
+
+// SetHostConsole 注入宿主终端的提交与补全入口
+func (a *App) SetHostConsole(submit func(context.Context, string) error, completions func() []string) {
+	if a == nil {
+		return
+	}
+	a.consoleSubmit = submit
+	a.consoleCompletions = completions
 }
 
 // PluginMarket 暴露插件市场服务，供启动装配注入运行时协调器
@@ -200,6 +223,10 @@ func (a *App) routes() http.Handler {
 	dashboardDir, dashboardMounted := dashboardstatic.ResolveRoot(strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR")))
 	r.Get("/robots.txt", a.handleRobotsTxt)
 	r.Get("/health", a.handleHealth)
+	r.HandleFunc("/_maim/ws", a.serveMaim(a.maimLegacy))
+	r.HandleFunc("/_maim/api", a.serveMaim(a.maimAPI))
+	r.Post("/_host/console", a.handleHostConsole)
+	r.Get("/_host/console/completions", a.handleHostConsoleCompletions)
 
 	if a.files != nil {
 		filesvc.Mount(r, a.files, filesvc.MountOpts{AdminAuth: a.auth, ChatHooks: a.fileChatHooks()})
@@ -243,6 +270,21 @@ func (a *App) routes() http.Handler {
 	}
 
 	return r
+}
+
+func (a *App) serveMaim(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if handler == nil {
+			connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+				InsecureSkipVerify: true, OriginPatterns: []string{"*"},
+			})
+			if err == nil {
+				_ = connection.Close(websocket.StatusTryAgainLater, "消息服务未就绪或已关闭")
+			}
+			return
+		}
+		handler(w, r)
+	}
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {

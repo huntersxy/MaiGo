@@ -264,6 +264,16 @@ func loadBotConfigFile(path, root string, out *InstanceConfig, opts LoadOptions)
 	}
 
 	decodedRaw := normalizeAMemorixImportRaw(finalRaw)
+	if SharedSettingsPath() != "" {
+		var document map[string]any
+		if err := toml.Unmarshal(decodedRaw, &document); err == nil {
+			if merged, mergeErr := MergeSharedSettingsDoc(document); mergeErr == nil {
+				if encoded, encodeErr := toml.Marshal(merged); encodeErr == nil {
+					decodedRaw = encoded
+				}
+			}
+		}
+	}
 	if err := ValidateRawBotConstraints(decodedRaw); err != nil {
 		return fmt.Errorf("bot_config.toml 校验失败: %w", err)
 	}
@@ -432,6 +442,16 @@ func loadModelConfigFile(path string, out *InstanceConfig) error {
 	}
 	if doc.Inner.Version == "" {
 		return fmt.Errorf("model_config.toml 缺少 inner.version")
+	}
+	if SharedCatalogPath() != "" {
+		var document map[string]any
+		if err := toml.Unmarshal(raw, &document); err == nil {
+			if merged, mergeErr := MergeSharedCatalogDoc(document); mergeErr == nil {
+				if encoded, encodeErr := toml.Marshal(merged); encodeErr == nil {
+					raw = encoded
+				}
+			}
+		}
 	}
 	if err := ValidateRawModelConstraints(raw); err != nil {
 		return fmt.Errorf("model_config.toml 校验失败: %w", err)

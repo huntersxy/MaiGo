@@ -3,6 +3,7 @@ package host
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,8 +38,10 @@ func TestOpenWorkspaceAdoptsExistingInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = os.WriteFile(filepath.Join(root, "config", "bot_config.toml"),
-		append([]byte("[bot]\nnickname = \"旧实例\"\n"), raw...), 0o666)
+	raw = []byte(strings.Replace(string(raw), `nickname = "麦麦"`, `nickname = "旧实例"`, 1))
+	if err := os.WriteFile(filepath.Join(root, "config", "bot_config.toml"), raw, 0o666); err != nil {
+		t.Fatal(err)
+	}
 	workspace, err := OpenWorkspace(root)
 	if err != nil {
 		t.Fatal(err)

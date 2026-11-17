@@ -25,12 +25,13 @@ const (
 
 // Control 宿主控制通道
 type Control struct {
-	supervisor *Supervisor
-	stopping   chan struct{}
-	stopOnce   sync.Once
-	webui      *WebUI
-	server     net.Listener
-	mu         sync.Mutex
+	supervisor  *Supervisor
+	stopping    chan struct{}
+	stopOnce    sync.Once
+	webui       *WebUI
+	maintenance *HostMaintenance
+	server      net.Listener
+	mu          sync.Mutex
 }
 
 // NewControl 创建控制通道
@@ -101,7 +102,7 @@ func (c *Control) handle(conn net.Conn) {
 	}
 	action, _ := request["action"].(string)
 	timeout := controlTimeout
-	if action == "start" || action == "restart" {
+	if action == "start" || action == "restart" || action == "install_plugin_dependencies" {
 		timeout = controlActionTimeout
 	}
 	_ = conn.SetDeadline(time.Now().Add(timeout))
@@ -125,14 +126,41 @@ func writeControlResponse(conn net.Conn, payload map[string]any) {
 
 // RunHost 持有工作区运行锁启动宿主，直到信号或控制通道请求关闭
 func RunHost(ctx context.Context, workspace Workspace, confirmed map[string]struct{}) error {
+	runLock, err := LockFilePath(filepath.Join(workspace.HostDirectory(), "run.lock"))
+	if err != nil {
+		return errors.New("宿主工作区正在被其他进程使用")
+	}
+	runLockHeld := true
+	defer func() {
+		if runLockHeld {
+			runLock.Release()
+		}
+	}()
+	if updatePending() {
+		return applyHostPendingUpdate(workspace, func() {
+			runLock.Release()
+			runLockHeld = false
+		})
+	}
 	descriptorPath := filepath.Join(workspace.HostDirectory(), "control.json")
+	confirmed = confirmHostUpgrades(workspace, confirmed)
 	supervisor := NewSupervisor(workspace)
 	for botID := range confirmed {
 		supervisor.upgradeConfirmed[botID] = struct{}{}
 	}
 	control := NewControl(supervisor)
+	control.maintenance = NewHostMaintenance(supervisor)
 	webui, err := NewWebUI(supervisor, workspace.Config, control.stopping)
 	if err != nil {
+		return err
+	}
+	webui.maintenance = control.maintenance
+	webui.stop = control.Stop
+	if webui.Management() && webui.staticRoot == "" {
+		fmt.Fprintln(os.Stderr, "WebUI 前端资源不可用，请执行 pip install maibot-dashboard 或构建 dashboard")
+	}
+	supervisor.prepareDependencies = func() error {
+		_, err := control.maintenance.InstallPluginDependencies(context.Background())
 		return err
 	}
 	control.webui = webui
@@ -198,10 +226,18 @@ func RunHost(ctx context.Context, workspace Workspace, confirmed map[string]stru
 			return fmt.Errorf("宿主 WebUI 异常退出: %w", err)
 		}
 	}
+	control.maintenance.Finish(ctx)
 	cancel()
 	shutdownErr := supervisor.Shutdown()
 	closeErr := webui.Close()
-	return errors.Join(shutdownErr, closeErr)
+	joined := errors.Join(shutdownErr, closeErr)
+	if joined != nil {
+		return joined
+	}
+	return applyHostPendingUpdate(workspace, func() {
+		runLock.Release()
+		runLockHeld = false
+	})
 }
 
 func publishControlDescriptor(path, endpoint string) error {
@@ -255,7 +291,7 @@ func ControlRequest(root, action, botID string) (any, error) {
 		return nil, err
 	}
 	timeout := controlTimeout
-	if action == "start" || action == "restart" {
+	if action == "start" || action == "restart" || action == "install_plugin_dependencies" {
 		timeout = controlActionTimeout
 	}
 	_ = conn.SetDeadline(time.Now().Add(timeout))

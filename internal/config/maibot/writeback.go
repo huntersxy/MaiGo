@@ -60,12 +60,36 @@ func writeUpgradedBotConfig(path string, inner InnerMeta, bot BotConfigFile) err
 	if err != nil {
 		return fmt.Errorf("编码 %s: %w", filepath.Base(path), err)
 	}
-	return writeUpgradedConfigBytes(path, normalizeAMemorixImportForWrite(data))
+	data = normalizeAMemorixImportForWrite(data)
+	if SharedSettingsPath() != "" {
+		var document map[string]any
+		if err := toml.Unmarshal(data, &document); err == nil {
+			StripSharedSettingsDoc(document)
+			if encoded, encodeErr := toml.Marshal(document); encodeErr == nil {
+				data = encoded
+			}
+		}
+	}
+	return writeUpgradedConfigBytes(path, data)
 }
 
 func writeUpgradedModelConfig(path string, inner InnerMeta, model ModelConfigFile) error {
 	doc := modelConfigDocument{Inner: inner, ModelConfigFile: model}
-	return writeUpgradedConfigFile(path, doc)
+	data, err := toml.Marshal(doc)
+	if err != nil {
+		return fmt.Errorf("编码 %s: %w", filepath.Base(path), err)
+	}
+	if SharedCatalogPath() != "" {
+		var document map[string]any
+		if err := toml.Unmarshal(data, &document); err == nil {
+			document = ExtractBotModelSettings(document)
+			document["inner"] = map[string]any{"version": inner.Version}
+			if encoded, encodeErr := toml.Marshal(document); encodeErr == nil {
+				data = encoded
+			}
+		}
+	}
+	return writeUpgradedConfigBytes(path, data)
 }
 
 // writeUpgradedConfigFile 用 go-toml/v2 重写，并尽量把原文件注释与未变更节合并保留

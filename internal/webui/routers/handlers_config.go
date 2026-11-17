@@ -10,6 +10,9 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	maibotcfg "MaiGo/internal/config/maibot"
+	"MaiGo/internal/host"
 )
 
 // handleConfigBotGet 对应 GET /api/webui/config/bot
@@ -39,6 +42,12 @@ func (d Deps) handleConfigModelGet(w http.ResponseWriter, r *http.Request) {
 		writeConfigReadError(w, err)
 		return
 	}
+	if catalogPath := maibotcfg.SharedCatalogPath(); catalogPath != "" {
+		if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
+			doc = merged
+		}
+		doc["_shared_catalog"] = map[string]any{"revision": maibotcfg.CatalogRevision(catalogPath)}
+	}
 	doc["_warnings"] = modelConfigWarnings(doc)
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "config": doc})
 }
@@ -54,6 +63,9 @@ func (d Deps) handleConfigBotUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
 		return
+	}
+	if maibotcfg.SharedSettingsPath() != "" {
+		maibotcfg.StripSharedSettingsDoc(body)
 	}
 	if err := validateBotConfigMap(body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
@@ -81,6 +93,19 @@ func (d Deps) handleConfigModelUpdate(w http.ResponseWriter, r *http.Request) {
 	delete(body, "_warnings")
 	if err := validateModelConfigMap(body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
+		return
+	}
+	if catalogPath := maibotcfg.SharedCatalogPath(); catalogPath != "" {
+		revision := strings.TrimSpace(r.URL.Query().Get("catalog_revision"))
+		if shared, ok := body["_shared_catalog"].(map[string]any); ok && revision == "" {
+			revision = strings.TrimSpace(stringValue(shared["revision"]))
+		}
+		if _, err := host.SaveEffectiveConfig(catalogPath, path, body, revision); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置已保存",
+			"catalog_revision": maibotcfg.CatalogRevision(catalogPath), "warnings": modelConfigWarnings(body)})
 		return
 	}
 	if err := writeTOMLDocument(path, body); err != nil {
@@ -149,6 +174,12 @@ func (d Deps) handleConfigBotRawUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
 		return
 	}
+	if maibotcfg.SharedSettingsPath() != "" {
+		maibotcfg.StripSharedSettingsDoc(doc)
+		if encoded, err := toml.Marshal(doc); err == nil {
+			text = string(encoded)
+		}
+	}
 	if err := writeFileAtomic(path, []byte(text), 0o644); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "保存配置文件失败: " + err.Error()})
 		return
@@ -187,6 +218,9 @@ func (d Deps) handleConfigBotSectionUpdate(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
 		return
 	}
+	if maibotcfg.SharedSettingsPath() != "" {
+		maibotcfg.StripSharedSettingsDoc(doc)
+	}
 	if err := writeTOMLDocument(path, doc); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "更新配置节失败: " + err.Error()})
 		return
@@ -211,6 +245,14 @@ func (d Deps) handleConfigModelSectionUpdate(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "更新配置节失败: " + err.Error()})
 		return
 	}
+	catalogPath := maibotcfg.SharedCatalogPath()
+	catalogRevision := ""
+	if catalogPath != "" {
+		if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
+			doc = merged
+		}
+		catalogRevision = maibotcfg.CatalogRevision(catalogPath)
+	}
 	patch, err := decodeAnyBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
@@ -232,6 +274,17 @@ func (d Deps) handleConfigModelSectionUpdate(w http.ResponseWriter, r *http.Requ
 	}
 	if err := validateModelConfigMap(doc); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
+		return
+	}
+	if catalogPath != "" {
+		if requested := strings.TrimSpace(r.URL.Query().Get("catalog_revision")); requested != "" {
+			catalogRevision = requested
+		}
+		if _, err := host.SaveEffectiveConfig(catalogPath, path, doc, catalogRevision); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "配置数据验证失败: " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置节 '" + section + "' 已保存", "warnings": modelConfigWarnings(doc)})
 		return
 	}
 	if err := writeTOMLDocument(path, doc); err != nil {

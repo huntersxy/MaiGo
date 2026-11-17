@@ -64,31 +64,49 @@ func LoadHostConfig(root string) (HostConfig, error) {
 	return validateHostConfig(payload, hostConfigPath(root))
 }
 
-// SaveHostConfig 写入宿主配置
+// SaveHostConfig 更新宿主配置中的网络字段，保留保留策略与公共界面设置
 func SaveHostConfig(root string, cfg HostConfig) error {
-	if err := os.MkdirAll(filepath.Dir(hostConfigPath(root)), 0o777); err != nil {
+	path := hostConfigPath(root)
+	if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 		return err
 	}
-	payload := map[string]any{
-		"webui": map[string]any{
-			"enabled":           cfg.WebUIEnabled,
-			"hosts":             append([]string(nil), cfg.Hosts...),
-			"port":              cfg.Port,
-			"secure_cookie":     cfg.SecureCookie,
-			"anti_crawler_mode": cfg.AntiCrawlerMode,
-			"allowed_ips":       cfg.AllowedIPs,
-			"trusted_proxies":   cfg.TrustedProxies,
-			"trust_xff":         cfg.TrustXFF,
-			"public_base_url":   cfg.PublicBaseURL,
-			"ssl_certfile":      cfg.SSLCertFile,
-			"ssl_keyfile":       cfg.SSLKeyFile,
-		},
+	document := map[string]any{}
+	if raw, err := os.ReadFile(path); err == nil {
+		if err := toml.Unmarshal(raw, &document); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	encoded, err := toml.Marshal(payload)
+	webui, _ := document["webui"].(map[string]any)
+	if webui == nil {
+		webui = map[string]any{}
+		document["webui"] = webui
+	}
+	webui["enabled"] = cfg.WebUIEnabled
+	webui["hosts"] = append([]string(nil), cfg.Hosts...)
+	webui["port"] = cfg.Port
+	webui["secure_cookie"] = cfg.SecureCookie
+	webui["anti_crawler_mode"] = cfg.AntiCrawlerMode
+	webui["allowed_ips"] = cfg.AllowedIPs
+	webui["trusted_proxies"] = cfg.TrustedProxies
+	webui["trust_xff"] = cfg.TrustXFF
+	webui["public_base_url"] = cfg.PublicBaseURL
+	webui["ssl_certfile"] = cfg.SSLCertFile
+	webui["ssl_keyfile"] = cfg.SSLKeyFile
+	encoded, err := toml.Marshal(document)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(hostConfigPath(root), encoded, 0o666)
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, encoded, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
 }
 
 func validateHostConfig(payload map[string]any, source string) (HostConfig, error) {
@@ -123,7 +141,7 @@ func validateHostConfig(payload map[string]any, source string) (HostConfig, erro
 		cfg.Hosts = hosts
 	}
 	if raw, exists := webui["port"]; exists {
-		port, ok := raw.(int64)
+		port, ok := hostInteger(raw)
 		if !ok || port < 1 || port > 65535 {
 			return HostConfig{}, fmt.Errorf("%s: webui.port 必须是 1 到 65535 的整数", source)
 		}
@@ -280,6 +298,22 @@ func (c HostConfig) AdvertisedBaseURL() string {
 	return c.LocalBaseURL()
 }
 
+func hostInteger(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float64:
+		if typed != float64(int64(typed)) {
+			return 0, false
+		}
+		return int64(typed), true
+	default:
+		return 0, false
+	}
+}
+
 func containsHost(hosts []string, target string) bool {
 	for _, host := range hosts {
 		if host == target {
@@ -296,52 +330,56 @@ func HostConfigFromBot(botConfigPath string) HostConfig {
 	if err != nil {
 		return cfg
 	}
-	var payload struct {
-		HTTP struct {
-			Host string `toml:"host"`
-			Port int    `toml:"port"`
-		} `toml:"http"`
-		WebUI struct {
-			Enabled         *bool  `toml:"enabled"`
-			SecureCookie    *bool  `toml:"secure_cookie"`
-			AntiCrawlerMode string `toml:"anti_crawler_mode"`
-			AllowedIPs      string `toml:"allowed_ips"`
-			TrustedProxies  string `toml:"trusted_proxies"`
-			TrustXFF        *bool  `toml:"trust_xff"`
-		} `toml:"webui"`
-		Files struct {
-			TransferBaseURL string `toml:"transfer_base_url"`
-		} `toml:"files"`
-	}
-	if err := toml.Unmarshal(raw, &payload); err != nil {
+	var document map[string]any
+	if err := toml.Unmarshal(raw, &document); err != nil {
 		return cfg
 	}
-	if payload.WebUI.Enabled != nil {
-		cfg.WebUIEnabled = *payload.WebUI.Enabled
+	httpSection, _ := document["http"].(map[string]any)
+	webui, _ := document["webui"].(map[string]any)
+	files, _ := document["files"].(map[string]any)
+	if value, ok := webui["enabled"].(bool); ok {
+		cfg.WebUIEnabled = value
 	}
-	if host := strings.TrimSpace(payload.HTTP.Host); host != "" {
-		cfg.Hosts = []string{host}
+	switch hosts := httpSection["host"].(type) {
+	case string:
+		if strings.TrimSpace(hosts) != "" {
+			cfg.Hosts = []string{strings.TrimSpace(hosts)}
+		}
+	case []any:
+		parsed := make([]string, 0, len(hosts))
+		for _, rawHost := range hosts {
+			if host, ok := rawHost.(string); ok && strings.TrimSpace(host) != "" {
+				parsed = append(parsed, strings.TrimSpace(host))
+			}
+		}
+		if len(parsed) > 0 {
+			cfg.Hosts = parsed
+		}
 	}
-	if payload.HTTP.Port > 0 && payload.HTTP.Port <= 65535 {
-		cfg.Port = payload.HTTP.Port
+	if port, ok := httpSection["port"].(int64); ok && port > 0 && port <= 65535 {
+		cfg.Port = int(port)
 	}
-	if payload.WebUI.SecureCookie != nil {
-		cfg.SecureCookie = *payload.WebUI.SecureCookie
+	if value, ok := webui["secure_cookie"].(bool); ok {
+		cfg.SecureCookie = value
 	}
-	if mode := strings.TrimSpace(payload.WebUI.AntiCrawlerMode); mode != "" {
-		cfg.AntiCrawlerMode = mode
+	if mode, ok := webui["anti_crawler_mode"].(string); ok && strings.TrimSpace(mode) != "" {
+		cfg.AntiCrawlerMode = strings.TrimSpace(mode)
 	}
-	if ips := strings.TrimSpace(payload.WebUI.AllowedIPs); ips != "" {
-		cfg.AllowedIPs = ips
+	if value, exists := webui["allowed_ips"]; exists {
+		if text, ok := value.(string); ok {
+			cfg.AllowedIPs = text
+		}
 	}
-	if proxies := strings.TrimSpace(payload.WebUI.TrustedProxies); proxies != "" {
-		cfg.TrustedProxies = proxies
+	if value, exists := webui["trusted_proxies"]; exists {
+		if text, ok := value.(string); ok {
+			cfg.TrustedProxies = text
+		}
 	}
-	if payload.WebUI.TrustXFF != nil {
-		cfg.TrustXFF = *payload.WebUI.TrustXFF
+	if value, ok := webui["trust_xff"].(bool); ok {
+		cfg.TrustXFF = value
 	}
-	if base := strings.TrimRight(strings.TrimSpace(payload.Files.TransferBaseURL), "/"); base != "" {
-		cfg.PublicBaseURL = base
+	if base, ok := files["transfer_base_url"].(string); ok {
+		cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
 	}
 	return cfg
 }

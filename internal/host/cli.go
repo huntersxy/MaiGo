@@ -37,6 +37,7 @@ func RunCommand(argv []string) CommandResult {
 	source := fs.String("from", "", "旧实例目录")
 	undo := fs.String("undo", "", "撤销一次 adopt")
 	mode := fs.String("mode", "register", "register 只登记路径；move 同盘重命名")
+	installDeps := fs.Bool("install", false, "停止全部 Bot，安装后按期望状态恢复")
 	if err := fs.Parse(tail[1:]); err != nil {
 		return CommandResult{Handled: true, ExitCode: 2}
 	}
@@ -89,8 +90,17 @@ func RunCommand(argv []string) CommandResult {
 		printJSON(result)
 		return CommandResult{Handled: true}
 	case "plugin-deps":
-		fmt.Fprintln(os.Stderr, "错误: 插件依赖分析需要宿主运行；请在 WebUI 机器人管理中操作")
-		return CommandResult{Handled: true, ExitCode: 2}
+		action := "plugin_dependencies"
+		if *installDeps {
+			action = "install_plugin_dependencies"
+		}
+		result, err := ControlRequest(root, action, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			return CommandResult{Handled: true, ExitCode: 1}
+		}
+		printJSON(result)
+		return CommandResult{Handled: true}
 	default:
 		fmt.Fprintf(os.Stderr, "错误: 未知 host 子命令 %s\n", command)
 		return CommandResult{Handled: true, ExitCode: 2}
@@ -126,58 +136,22 @@ func runWorkspaceCommand(root, command, name, source, undo, mode string) error {
 		return nil
 	default:
 		if undo != "" {
-			record, err := workspace.Registry.GetBot(undo)
-			if err != nil {
+			if err := UndoAdopt(workspace, undo); err != nil {
 				return err
 			}
-			if err := workspace.Registry.RemoveBot(undo); err != nil {
-				return err
-			}
-			marker := filepath.Join(record.Directory, MovedMarker)
-			_ = os.Remove(marker)
 			fmt.Printf("已撤销 %s\n", undo)
 			return nil
 		}
 		if strings.TrimSpace(source) == "" {
 			return fmt.Errorf("adopt 需要 --from 或 --undo")
 		}
-		return adoptWorkspaceBot(workspace, source, name, mode)
-	}
-}
-
-func adoptWorkspaceBot(workspace Workspace, source, name, mode string) error {
-	absSource, err := filepath.Abs(source)
-	if err != nil {
-		return err
-	}
-	absSource = filepath.Clean(absSource)
-	if err := ValidateWorkspaceBot(absSource); err != nil {
-		return err
-	}
-	if strings.TrimSpace(name) == "" {
-		name = filepath.Base(absSource)
-	}
-	if mode == "move" {
-		target := filepath.Join(workspace.Root, "bots", "adopted-"+filepath.Base(absSource))
-		if _, err := os.Stat(target); err == nil {
-			return fmt.Errorf("目标目录已存在：%s", target)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o777); err != nil {
+		record, err := Adopt(workspace, source, mode, name)
+		if err != nil {
 			return err
 		}
-		if err := os.Rename(absSource, target); err != nil {
-			return fmt.Errorf("移动目录失败（需同盘）：%w", err)
-		}
-		_ = os.MkdirAll(absSource, 0o777)
-		_ = os.WriteFile(filepath.Join(absSource, MovedMarker), []byte(target), 0o666)
-		absSource = target
+		printJSON(recordPayload(record))
+		return nil
 	}
-	record, err := workspace.Registry.AddBot(name, absSource, mode == "move", "initialized")
-	if err != nil {
-		return err
-	}
-	printJSON(recordPayload(record))
-	return nil
 }
 
 func recordPayload(record BotRecord) map[string]any {

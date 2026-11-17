@@ -126,6 +126,13 @@ func runMain() (exitCode int) {
 		return runtime.RunRunner()
 	}
 
+	// 对齐 Python src/runtime.py:132：Worker 运行期间持有实例锁，宿主据此拒绝归档、克隆与移动
+	instanceLease, leaseErr := host.LockInstance(config.InstanceRoot())
+	if leaseErr != nil {
+		fmt.Fprintf(os.Stderr, "无法取得 Bot 实例锁，可能已有实例在运行：%v"+string(rune(10)), leaseErr)
+		return 1
+	}
+	defer instanceLease.Release()
 	// 对齐 Python src/runtime.py:107：启动即按 MAIBOT_LOCALE 设置进程级 locale
 	i18n.SetLocale(i18n.EnvLocale())
 	shutdownSignal := runtime.NewShutdownSignal()
@@ -1648,20 +1655,14 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		return platformIOMgr.Stop(ctx)
 	})
 	if maimMsgServer != nil {
-		maimCtx, cancel := context.WithCancel(context.Background())
-		maimMsgCancel = cancel
+		// 协议只挂在 Worker 的进程间 HTTP 上，由宿主 /maim/{bot_id}/{protocol} 转发。
+		if maimMsgCancel != nil {
+			maimMsgCancel()
+		}
 		startup.AddCleanup("停止 maim_message 服务", func(context.Context) error {
 			maimMsgClosed.Store(true)
-			maimMsgCancel()
 			return nil
 		})
-		startupTasksWG.Add(1)
-		go func() {
-			defer startupTasksWG.Done()
-			if err := maimMsgServer.Start(maimCtx); err != nil {
-				zap.L().Error("maim_message WS 服务异常退出", zap.Error(err))
-			}
-		}()
 	}
 
 	telemetryCtx, telemetryCancel := context.WithCancel(context.Background())
@@ -1790,6 +1791,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		}
 	}
 	consoleDecision := cli.DecideBotConsoleStart(consoleEnabled, os.Stdin)
+	var hostConsole *cli.HeadlessConsole
+	if host.HasRuntimeContext() && consoleEnabled && chatPipeline.chat != nil && chatPipeline.chat.ChatBot != nil {
+		hostConsole = cli.NewHeadlessConsole(backgroundCtx, platformIOMgr, chatPipeline.chat.ChatBot, maiAgent.BotName)
+	}
 	switch {
 	case consoleDecision.Start && chatPipeline.chat != nil && chatPipeline.chat.ChatBot != nil:
 		zap.L().Info(consoleDecision.Notice)
@@ -1842,6 +1847,20 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		return chatRelay.RelayPluginChatMessage(ctx, "builtin.desktop_pet", text, nil)
 	}
 	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, desktopPetSvc, desktopPetChat, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
+	if maimMsgServer != nil {
+		var apiHandler http.HandlerFunc
+		if maimMsgCfg.APIEnabled {
+			apiHandler = maimMsgServer.MaimAPIHandler()
+		}
+		app.SetMaimHandlers(maimMsgServer.MaimLegacyHandler(), apiHandler)
+	}
+	if hostConsole != nil {
+		app.SetHostConsole(hostConsole.Submit, hostConsole.Completions)
+		startup.AddCleanup("关闭宿主终端输入", func(ctx context.Context) error {
+			hostConsole.Close(ctx)
+			return nil
+		})
+	}
 	app.SetSessionSchedulerStats(chatPipeline.SessionSchedulerStats)
 	app.SetSessionTaskSubmitter(chatPipeline.SessionTaskSubmitter())
 	app.SetEnforcePublicOutboundProvider(func() bool {
