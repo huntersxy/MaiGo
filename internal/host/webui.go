@@ -135,6 +135,9 @@ func (w *WebUI) TemporaryToken() string {
 // Handler 构造宿主 HTTP 路由
 func (w *WebUI) Handler() http.Handler {
 	router := chi.NewRouter()
+	router.Get("/health", func(rw http.ResponseWriter, r *http.Request) {
+		httputil2.WriteJSON(rw, http.StatusOK, map[string]any{"status": "ok"})
+	})
 	router.Get("/robots.txt", func(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		rw.Header().Set("Cache-Control", "public, max-age=86400")
@@ -1093,7 +1096,7 @@ func (w *WebUI) ListenAndServe(ctx context.Context) error {
 	listeners := make([]net.Listener, 0, len(hosts))
 	for _, host := range hosts {
 		address := net.JoinHostPort(host, fmt.Sprint(w.config.Port))
-		listener, err := net.Listen("tcp", address)
+		listener, err := net.Listen(hostListenNetwork(host), address)
 		if err != nil {
 			for _, opened := range listeners {
 				_ = opened.Close()
@@ -1120,6 +1123,18 @@ func (w *WebUI) ListenAndServe(ctx context.Context) error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+// hostListenNetwork 显式区分 IPv4/IPv6，避免 wildcard 监听同时占用 IPv6 地址
+func hostListenNetwork(host string) string {
+	address := net.ParseIP(strings.TrimSpace(host))
+	if address == nil {
+		return "tcp"
+	}
+	if address.To4() != nil {
+		return "tcp4"
+	}
+	return "tcp6"
 }
 
 // Close 关闭宿主 WebUI

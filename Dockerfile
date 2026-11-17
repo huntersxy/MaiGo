@@ -1,31 +1,59 @@
 # syntax=docker/dockerfile:1
 
+# 国内构建可用 --build-arg 覆盖：APK_MIRROR / PIP_INDEX_URL / GOPROXY / GOSUMDB
+ARG APK_MIRROR=dl-cdn.alpinelinux.org
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
+
 # 原版 Dashboard 以 PyPI 包发布；构建期取静态 dist，运行镜像不需要 Python
 FROM --platform=$BUILDPLATFORM python:3.13-alpine AS dashboard
-RUN pip install --no-cache-dir --no-deps --target /out maibot-dashboard==1.10.5
+ARG APK_MIRROR
+ARG PIP_INDEX_URL
+RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+        sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi
+RUN pip install --no-cache-dir --no-deps --index-url "$PIP_INDEX_URL" --target /out maibot-dashboard==1.10.5
 
 # 插件 Runner 复用 MaiBot 原版 Python 实现，只装 runner 真正需要的依赖
 # （maibot wheel 提供 src.plugin_runtime.runner，--no-deps 避免拉入 faiss/playwright 等）
 # 必须与运行镜像同发行版同 Python 版本：pydantic_core/msgpack 是编译扩展
 FROM --platform=$TARGETPLATFORM alpine:3.23 AS plugin-runtime
-RUN apk add --no-cache python3 py3-pip && \
+ARG APK_MIRROR
+ARG PIP_INDEX_URL
+RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+        sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache python3 py3-pip && \
     python3 -m venv /runner && \
-    /runner/bin/pip install --no-cache-dir --no-input --no-deps "maibot==1.4.5" && \
-    /runner/bin/pip install --no-cache-dir --no-input \
+    /runner/bin/pip install --no-cache-dir --no-input --no-deps --index-url "$PIP_INDEX_URL" "maibot==1.4.5" && \
+    /runner/bin/pip install --no-cache-dir --no-input --index-url "$PIP_INDEX_URL" \
         pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk \
         "aiohttp>=3.14.3,<4" "httpx>=0.28,<1" "socksio>=1,<2" "pillow>=12.3" "qrcode>=8.2" \
         "cryptography>=50.0.0" "imageio-ffmpeg>=0.6,<1" "rlottie-python>=1.3.7,<2" \
         "pycryptodome>=3.20,<4" "jieba>=0.42.1" "pypinyin>=0.54.0"
 
 FROM --platform=$TARGETPLATFORM alpine:3.23 AS pycompat
-RUN apk add --no-cache python3 py3-pip && \
+ARG APK_MIRROR
+ARG PIP_INDEX_URL
+RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+        sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache python3 py3-pip && \
     python3 -m venv /compat && \
-    /compat/bin/pip install --no-cache-dir --no-input \
+    /compat/bin/pip install --no-cache-dir --no-input --index-url "$PIP_INDEX_URL" \
         "numpy>=2.2" "jieba>=0.42.1" "pypinyin>=0.54.0"
 
 # go-webp 依赖 libwebp，cgo 必须按目标架构构建
 FROM --platform=$TARGETPLATFORM golang:1.26.5-alpine AS build
-RUN apk add --no-cache build-base libwebp-dev libwebp-static
+ARG APK_MIRROR
+ARG GOPROXY
+ARG GOSUMDB
+ENV GOPROXY=$GOPROXY GOSUMDB=$GOSUMDB
+RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+        sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache build-base libwebp-dev libwebp-static
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -38,11 +66,15 @@ ENV CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm"
 RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" -o /out/maigo .
 
 FROM alpine:3.23
+ARG APK_MIRROR
 ENV TZ=Asia/Shanghai
 # 数据库是 SQLite（对齐 MaiBot src/common/database/database.py:33），
 # 库文件在 /app/data/MaiBot.db，随 data 卷一起备份，无需 postgresql 客户端
 # git 供插件市场下载/更新插件使用
-RUN apk add --no-cache ca-certificates su-exec tzdata wget python3 git && \
+RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
+        sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
+    fi && \
+    apk add --no-cache ca-certificates su-exec tzdata wget python3 git && \
     addgroup -S maibot && adduser -S -G maibot maibot
 WORKDIR /app
 COPY --chown=maibot:maibot --from=build /out/maigo /app/maigo
@@ -66,4 +98,4 @@ ENV MAIBOT_PLUGIN_PYTHON=/app/plugin-runtime/bin/python
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["/app/maigo"]
+CMD ["/app/maigo", "run"]

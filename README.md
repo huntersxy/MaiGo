@@ -18,11 +18,24 @@ MaiBot 拥有丰富的功能模块，支持 QQ 群聊/私聊智能对话、多�
 
 ```bash
 docker compose up -d --build
-docker compose logs maigo | grep "WebUI 登录 Token"
+docker compose logs maigo | grep "WebUI 临时登录密码"
 ```
 
 WebUI 在 `http://<host>:7468`。容器内以宿主模式运行，Bot 在 `bots/<id>/` 下由宿主拉起，
-`maigo host list` 可查询（容器中为 `docker compose exec maigo /app/maigo host list`）。
+运行状态用 `docker compose exec maigo /app/maigo host status` 查询。
+
+compose 默认使用清华 APK/PyPI 与 `goproxy.cn` 构建，可在 `.env` 中覆盖：
+
+```bash
+MAIGO_APK_MIRROR=mirrors.tuna.tsinghua.edu.cn
+MAIGO_PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+MAIGO_GOPROXY=https://goproxy.cn,direct
+MAIGO_GOSUMDB=sum.golang.google.cn
+MAIBOT_PLUGIN_DEP_INDEX_URLS=https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+Docker Hub 拉取基础镜像失败时，把 `deploy/daemon.json.example` 的
+`registry-mirrors` 合并进 Docker 的 `daemon.json` 并重启引擎。
 
 端口冲突时：
 

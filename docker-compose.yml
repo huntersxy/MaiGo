@@ -1,8 +1,17 @@
+# 国内网络默认使用国内构建镜像；国外网络或镜像故障时可在 .env 覆盖
+x-build-args: &maigo-build-args
+  APK_MIRROR: ${MAIGO_APK_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
+  PIP_INDEX_URL: ${MAIGO_PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+  GOPROXY: ${MAIGO_GOPROXY:-https://goproxy.cn,direct}
+  GOSUMDB: ${MAIGO_GOSUMDB:-sum.golang.google.cn}
+
 services:
   # 平台接入走插件适配器（WebUI「适配器设置」），本体不内置协议端连接
   maigo:
     image: maigo:local
-    build: .
+    build:
+      context: .
+      args: *maigo-build-args
     pull_policy: never
     restart: unless-stopped
     init: true
@@ -12,11 +21,17 @@ services:
     stop_grace_period: 70s
     environment:
       MAIBOT_INSTANCE_DIR: /app
+      # 宿主对外 WebUI 端口；镜像内固定 7468，与端口映射和 healthcheck 一致
+      MAIBOT_HOST_PORT: "7468"
+      # 容器没有交互终端，旧版 0.x 配置升级需预先确认
+      MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED: "1"
       # 未设置时由入口脚本生成并保存到 data 卷的 .secret_key
       MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:-}
       # 错别字注入与表达向量聚类委托 Python 原版侧车（pypinyin / numpy）
       MAIBOT_COMPAT_URL: http://python-compat:8767
       MAIBOT_COMPAT_TIMEOUT: "60"
+      # 插件 Python 依赖安装走国内镜像，避免首次启用插件时长时间阻塞
+      MAIBOT_PLUGIN_DEP_INDEX_URLS: ${MAIBOT_PLUGIN_DEP_INDEX_URLS:-https://pypi.tuna.tsinghua.edu.cn/simple}
       # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
       HTTP_HOST: 0.0.0.0
     depends_on:
@@ -28,6 +43,8 @@ services:
     volumes:
       - maibot-config:/app/config
       - maibot-data:/app/data
+      - maibot-host:/app/host
+      - maibot-bots:/app/bots
       - maibot-logs:/app/logs
       - maibot-plugins:/app/plugins
       - stickers:/app/stickers
@@ -48,7 +65,9 @@ services:
   # Python 原版能力侧车：错别字生成（pypinyin + jieba）与表达向量聚类（numpy）
   python-compat:
     image: maigo:local
-    build: .
+    build:
+      context: .
+      args: *maigo-build-args
     pull_policy: never
     restart: unless-stopped
     init: true
@@ -77,6 +96,8 @@ services:
 volumes:
   maibot-config:
   maibot-data:
+  maibot-host:
+  maibot-bots:
   maibot-logs:
   maibot-plugins:
   maibot-compat-data:

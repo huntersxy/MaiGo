@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -35,13 +36,29 @@ type HostConfig struct {
 
 // DefaultHostConfig 与 Python HostConfig 默认值一致
 func DefaultHostConfig() HostConfig {
+	port := defaultHostPort
+	if value, ok := hostPortEnv(); ok {
+		port = value
+	}
 	return HostConfig{
 		WebUIEnabled:    true,
 		Hosts:           append([]string(nil), defaultHosts...),
-		Port:            defaultHostPort,
+		Port:            port,
 		AntiCrawlerMode: "basic",
 		AllowedIPs:      "127.0.0.1",
 	}
+}
+
+func hostPortEnv() (int, bool) {
+	raw, exists := os.LookupEnv("MAIBOT_HOST_PORT")
+	if !exists || strings.TrimSpace(raw) == "" {
+		return 0, false
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value < 1 || value > 65535 {
+		return 0, false
+	}
+	return value, true
 }
 
 func hostConfigPath(root string) string {
@@ -61,7 +78,14 @@ func LoadHostConfig(root string) (HostConfig, error) {
 	if err := toml.Unmarshal(raw, &payload); err != nil {
 		return HostConfig{}, err
 	}
-	return validateHostConfig(payload, hostConfigPath(root))
+	cfg, err := validateHostConfig(payload, hostConfigPath(root))
+	if err != nil {
+		return HostConfig{}, err
+	}
+	if port, ok := hostPortEnv(); ok {
+		cfg.Port = port
+	}
+	return cfg, nil
 }
 
 // SaveHostConfig 更新宿主配置中的网络字段，保留保留策略与公共界面设置
@@ -380,6 +404,9 @@ func HostConfigFromBot(botConfigPath string) (HostConfig, error) {
 	}
 	if base, ok := files["transfer_base_url"].(string); ok {
 		cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
+	}
+	if port, ok := hostPortEnv(); ok {
+		cfg.Port = port
 	}
 	return cfg, nil
 }
