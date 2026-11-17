@@ -399,11 +399,8 @@ func (s *GraphAdminService) deleteEdge(ctx context.Context, payload map[string]a
 		result["hash"] = hashValue
 		return result
 	}
-	subject := strings.TrimSpace(asString(payload["subject"]))
-	object := strings.TrimSpace(asString(payload["object"]))
-	if subject == "" || object == "" {
-		return map[string]any{"success": false, "error": "hash 或 subject/object 不能为空"}
-	}
+	subject := strings.TrimSpace(firstNonEmpty(payload["subject"], payload["source"]))
+	object := strings.TrimSpace(firstNonEmpty(payload["object"], payload["target"]))
 	rows, err := s.Meta().GetRelations(subject, "", "", true)
 	if err != nil {
 		return map[string]any{"success": false, "error": err.Error()}
