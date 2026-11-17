@@ -316,6 +316,20 @@ func (d Deps) handlePluginMarketplaceDetail(w http.ResponseWriter, r *http.Reque
 	httputil.WriteJSON(w, http.StatusOK, response.Payload())
 }
 
+// handlePluginMarketplaceStatsSummary 对齐 GET /marketplace/stats/summary
+func (d Deps) handlePluginMarketplaceStatsSummary(w http.ResponseWriter, r *http.Request) {
+	if d.PluginMarket == nil {
+		httputil.WriteAPIError(w, http.StatusServiceUnavailable, "插件市场服务未初始化")
+		return
+	}
+	response, err := d.PluginMarket.Summary(r.Context(), queryBool(r, "force_refresh", false))
+	if err != nil {
+		writeMarketFailure(w, err, "插件市场请求失败：")
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
 // handlePluginMarketplaceStats 对齐 GET /marketplace/{plugin_id}/stats
 func (d Deps) handlePluginMarketplaceStats(w http.ResponseWriter, r *http.Request) {
 	if d.PluginMarket == nil {

@@ -321,7 +321,7 @@ func memoryRecordPayload(recordType string, row map[string]any) map[string]any {
 			"summary": trimMemoryText(content, 240), "source": source,
 			// 段落来源可能是导入批次等本身可读的标记，允许直接展示
 			"source_label": memoryRecordOriginLabel(row, true),
-			"status": status, "created_at": memoryFloatOrNil(row["created_at"]),
+			"status":       status, "created_at": memoryFloatOrNil(row["created_at"]),
 			"updated_at": memoryFloatOrNil(row["updated_at"]),
 			"metadata": map[string]any{
 				"knowledge_type": firstNonEmptyText(row["knowledge_type"], "mixed"),
@@ -364,10 +364,10 @@ func memoryRecordPayload(recordType string, row map[string]any) map[string]any {
 			"type": recordType, "id": anyTrimmed(row["hash"]),
 			"title":   formatMemoryRelation(subject, predicate, object),
 			"summary": fmt.Sprintf("置信度 %.2f", confidence),
-			"source": strings.TrimSpace(anyTrimmed(row["source_paragraph"])),
+			"source":  strings.TrimSpace(anyTrimmed(row["source_paragraph"])),
 			// 关系来源是证据段落哈希，只在解析出聊天流/人物名称时展示
 			"source_label": memoryRecordOriginLabel(row, false),
-			"status": status, "created_at": memoryFloatOrNil(row["created_at"]),
+			"status":       status, "created_at": memoryFloatOrNil(row["created_at"]),
 			"updated_at": memoryFloatOrNil(row["last_reinforced"]),
 			"metadata": map[string]any{
 				"subject": subject, "predicate": predicate, "object": object,
@@ -840,6 +840,9 @@ func (d Deps) handleMemoryTimeline(w http.ResponseWriter, r *http.Request) {
 	events = append(events, memoryTimelineDeleteEvents(chatID, timeStart, timeEnd, accepted, limit)...)
 	events = append(events, memoryTimelineProfileEvents(chatID, timeStart, timeEnd, accepted, limit)...)
 	events = append(events, memoryTimelineMaintenanceEvents(chatID, timeStart, timeEnd, accepted, limit)...)
+	for _, event := range events {
+		event["chat_name"] = chatName
+	}
 	events = memoryDedupeEvents(events)
 	sort.SliceStable(events, func(i, j int) bool {
 		left, _ := anyFloat(events[i]["occurred_at"])

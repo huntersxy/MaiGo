@@ -42,7 +42,7 @@ func ResolveTaskConfig(file maibot.ModelConfigFile, task TaskName) (TaskConfigRe
 		effective = fallback
 	}
 	if task == TaskImageEmbedding && !hasModelList(cfg) {
-		return TaskConfigResult{}, fmt.Errorf("image_embedding 未配置模型")
+		return TaskConfigResult{}, fmt.Errorf("图片嵌入任务未配置模型，请在 image_embedding 中指定支持图片嵌入的模型")
 	}
 	return TaskConfigResult{Requested: task, Effective: effective, Config: cfg}, nil
 }

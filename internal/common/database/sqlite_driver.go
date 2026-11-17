@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -94,7 +95,11 @@ func (c *pythonTimeConn) QueryContext(ctx context.Context, query string, args []
 	if !ok {
 		return nil, driver.ErrSkip
 	}
-	return queryer.QueryContext(ctx, query, pythonTimeArgs(args))
+	rows, err := queryer.QueryContext(ctx, query, pythonTimeArgs(args))
+	if err != nil {
+		return nil, err
+	}
+	return &pythonTimeRows{Rows: rows}, nil
 }
 
 func (c *pythonTimeConn) ResetSession(ctx context.Context) error {
@@ -121,7 +126,11 @@ func (s *pythonTimeStmt) Exec(args []driver.Value) (driver.Result, error) {
 }
 
 func (s *pythonTimeStmt) Query(args []driver.Value) (driver.Rows, error) {
-	return s.Stmt.Query(pythonTimeValues(args))
+	rows, err := s.Stmt.Query(pythonTimeValues(args))
+	if err != nil {
+		return nil, err
+	}
+	return &pythonTimeRows{Rows: rows}, nil
 }
 
 // ExecContext 上游 stmt 未实现 StmtExecContext，这里降级到 Value 语义
@@ -168,11 +177,68 @@ func pythonTimeArgs(args []driver.NamedValue) []driver.NamedValue {
 	return out
 }
 
-// formatPythonTime 输出 Python 的朴素时间文本（不带时区）
+// pythonTimeRows 把驱动按 UTC 解析出的无时区文本还原成本地墙钟
 //
-// 统一先转 UTC 再截掉时区，保证同一时刻在两侧落库字节一致。
+// glebarez 对无时区 DATETIME 文本使用 time.ParseInLocation(..., time.UTC)，
+// 而 Python SQLAlchemy 返回的是 naive 本地 datetime；这里按本地时区重建同一墙钟值。
+type pythonTimeRows struct {
+	driver.Rows
+}
+
+func (r *pythonTimeRows) Next(dest []driver.Value) error {
+	if err := r.Rows.Next(dest); err != nil {
+		return err
+	}
+	for i, value := range dest {
+		if parsed, ok := value.(time.Time); ok {
+			dest[i] = time.Date(parsed.Year(), parsed.Month(), parsed.Day(),
+				parsed.Hour(), parsed.Minute(), parsed.Second(), parsed.Nanosecond(), time.Local)
+		}
+	}
+	return nil
+}
+
+func (r *pythonTimeRows) ColumnTypeDatabaseTypeName(index int) string {
+	if rows, ok := r.Rows.(driver.RowsColumnTypeDatabaseTypeName); ok {
+		return rows.ColumnTypeDatabaseTypeName(index)
+	}
+	return ""
+}
+
+func (r *pythonTimeRows) ColumnTypeLength(index int) (int64, bool) {
+	if rows, ok := r.Rows.(driver.RowsColumnTypeLength); ok {
+		return rows.ColumnTypeLength(index)
+	}
+	return 0, false
+}
+
+func (r *pythonTimeRows) ColumnTypeNullable(index int) (bool, bool) {
+	if rows, ok := r.Rows.(driver.RowsColumnTypeNullable); ok {
+		return rows.ColumnTypeNullable(index)
+	}
+	return false, false
+}
+
+func (r *pythonTimeRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
+	if rows, ok := r.Rows.(driver.RowsColumnTypePrecisionScale); ok {
+		return rows.ColumnTypePrecisionScale(index)
+	}
+	return 0, 0, false
+}
+
+func (r *pythonTimeRows) ColumnTypeScanType(index int) reflect.Type {
+	if rows, ok := r.Rows.(driver.RowsColumnTypeScanType); ok {
+		return rows.ColumnTypeScanType(index)
+	}
+	return reflect.TypeOf(new(any)).Elem()
+}
+
+// formatPythonTime 输出 Python 的朴素本地时间文本（不带时区）
+//
+// Python 侧写入的是 datetime.now() 的本地墙钟值，Go 必须按同一口径落库，
+// 否则按本地时间范围查询会整体偏移时区差。
 func formatPythonTime(t time.Time) string {
-	return t.UTC().Format(sqliteTimeLayout)
+	return t.In(time.Local).Format(sqliteTimeLayout)
 }
 
 // sqliteTimeString 供调试与测试断言使用

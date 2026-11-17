@@ -270,6 +270,7 @@ MaiBot Dashboard 市场列表为 **`GET /api/webui/plugins/marketplace`**（非 
 | --- | --- | --- |
 | GET | `/marketplace` | **done**（官方源/Git/CNB/releases 合并快照 + `List`；query `compatible_only`/`force_refresh`） |
 | GET/PUT | `/marketplace/source` | **done**（信息源、下载源、自定义下载前缀） |
+| GET | `/marketplace/stats/summary` | **done**（官方统计汇总 + 缓存元数据） |
 | GET | `/marketplace/user-states` | **done**（点赞/点踩/评分用户态） |
 | POST | `/marketplace/like`、`/dislike`、`/rate`、`/download` | **done**（engagement 计数与下载源解析） |
 | POST | `/marketplace/install`、`/plugins/install` | **done**（Git 克隆或发布包真实解压到 `plugins/<plugin_id>`，`_manifest.json` 校验失败回滚） |

@@ -8,6 +8,7 @@ import (
 // 独立成函数便于测试直接校验路由表，不依赖 Mount 中其它子系统的注册
 func mountPluginMarketRoutes(pr chi.Router, d Deps) {
 	pr.Get("/marketplace", d.handlePluginMarketplaceList)
+	pr.Get("/marketplace/stats/summary", d.handlePluginMarketplaceStatsSummary)
 	pr.Get("/marketplace/source", d.handlePluginMarketplaceSourceGet)
 	pr.Put("/marketplace/source", d.handlePluginMarketplaceSourceUpdate)
 	pr.Get("/marketplace/user-states", d.handlePluginMarketplaceUserStates)

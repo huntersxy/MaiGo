@@ -12,27 +12,6 @@ func (d Deps) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := stats.ProcessSnapshot(d.buildVersion())
-	inbound, outbound := int64(0), int64(0)
-	var pending map[string]int64
-	if c := stats.DefaultMessageCounters(); c != nil {
-		inbound, outbound = c.Totals()
-		pending = c.PendingChatTotals()
-	}
-	hours := queryInt(r, "hours", 24, 1, 168)
-	since := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
-	var topChats []stats.TopChatRow
-	if d.Memory != nil {
-		topChats, _ = stats.QueryTopChats(r.Context(), d.Memory.GetDB(), since, 10, pending)
-	} else {
-		topChats, _ = stats.QueryTopChats(r.Context(), nil, since, 10, pending)
-	}
-	var online stats.OnlineSnapshot
-	if ot := stats.DefaultOnlineTracker(); ot != nil {
-		online = ot.Snapshot(r.Context())
-	} else if d.Memory != nil {
-		today, total := stats.QueryOnlineTotals(r.Context(), d.Memory.GetDB(), nil)
-		online = stats.OnlineSnapshot{TodaySeconds: float64(today), TotalSeconds: float64(total)}
-	}
 	startTime := ""
 	if !snap.StartTime.IsZero() {
 		startTime = formatSystemStartTime(snap.StartTime.Local())
@@ -42,14 +21,6 @@ func (d Deps) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		"uptime":     snap.UptimeSec,
 		"version":    snap.Version,
 		"start_time": startTime,
-		"backend":    snap.Backend,
-		"messages": map[string]int64{
-			"inbound":  inbound,
-			"outbound": outbound,
-		},
-		"online_time": online,
-		"top_chats":   topChats,
-		"hours":       hours,
 	})
 }
 

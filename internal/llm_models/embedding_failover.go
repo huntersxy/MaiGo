@@ -238,8 +238,12 @@ func (r *Router) resolveEmbeddingCandidates(ctx context.Context, task TaskName, 
 		return single()
 	}
 	taskRes, models, err := TaskModelList(*r.file, task)
-	if err != nil || len(models) == 0 {
-		// 任务未配置 model_list 时回退到 Resolve 的档案路由
+	if err != nil {
+		// image_embedding 空配置必须直接报任务配置错误，不能回退成档案查询的“模型不存在”
+		return nil, ResolvedRoute{}, err
+	}
+	if len(models) == 0 {
+		// 其余嵌入任务未配置 model_list 时回退到 Resolve 的档案路由
 		return single()
 	}
 	candidates := make([]embeddingCandidate, 0, len(models))

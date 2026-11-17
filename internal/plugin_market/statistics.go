@@ -108,6 +108,21 @@ func parseStatisticsSummary(data map[string]any) (map[string]map[string]any, err
 	return stats, nil
 }
 
+// Summary 对齐 get_summary：返回官方统计汇总与缓存元数据
+func (s *Service) Summary(ctx context.Context, forceRefresh bool) (map[string]any, error) {
+	stats, info, sourceURL, err := s.statisticsSnapshot(ctx, forceRefresh)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"success":    true,
+		"stats":      stats,
+		"source":     "official",
+		"source_url": sourceURL,
+		"cache":      info,
+	}, nil
+}
+
 // statisticsSnapshot 读取独立统计汇总；只有验证成功的数据才能进入缓存
 func (s *Service) statisticsSnapshot(ctx context.Context, forceRefresh bool) (map[string]map[string]any, CacheInfo, string, error) {
 	targetURL := marketBaseURL() + "/stats/summary"
