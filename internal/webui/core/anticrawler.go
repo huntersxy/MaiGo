@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"MaiGo/internal/host"
 	"MaiGo/internal/webui/middleware"
 )
 
@@ -280,6 +281,9 @@ func containsAny(value string, candidates []string) bool {
 }
 
 func (m *antiCrawlerMiddleware) hasValidSession(r *http.Request) bool {
+	if host.HasRuntimeContext() {
+		return true
+	}
 	if m.auth == nil {
 		return false
 	}

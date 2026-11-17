@@ -61,6 +61,9 @@ func (d Deps) handleWSToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) authenticated(r *http.Request) bool {
+	if authutil.HostManaged() {
+		return true
+	}
 	cookie, err := r.Cookie(auth.WebUISessionCookieName)
 	if err != nil {
 		return false
@@ -73,6 +76,9 @@ func (d Deps) authenticated(r *http.Request) bool {
 // auth/check、ws-token 与 WebSocket 握手共用这一判定；任何一处口径不同都会造成
 // 「页面认为已登录、WebSocket 认为未登录」的死循环。
 func (d Deps) sessionTokenValid(token string) bool {
+	if authutil.HostManaged() {
+		return true
+	}
 	token = strings.TrimSpace(token)
 	if token == "" || d.AdminAuth == nil {
 		return false

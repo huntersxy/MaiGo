@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -415,6 +416,10 @@ type errText string
 func (e errText) Error() string { return string(e) }
 
 func adminSessionOK(r *http.Request, adminAuth *auth.Manager) bool {
+	// 宿主模式下浏览器只持有宿主会话，Bot 的文件接口由宿主代理鉴权
+	if strings.TrimSpace(os.Getenv("MAIBOT_RUNTIME_CONTEXT")) != "" {
+		return true
+	}
 	if adminAuth == nil {
 		return false
 	}

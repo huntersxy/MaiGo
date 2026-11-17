@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"MaiGo/internal/host"
 	auth "MaiGo/internal/webui/middleware"
 )
 
@@ -84,13 +85,24 @@ func SessionToken(r *http.Request) string {
 	return strings.TrimSpace(cookie.Value)
 }
 
+// HostManaged 判断 Bot 是否运行在宿主下；此时认证由宿主完成，Worker 业务接口不再校验 Bot 令牌
+func HostManaged() bool {
+	return host.HasRuntimeContext()
+}
+
 // ValidSessionToken 校验会话令牌是否有效
 func ValidSessionToken(manager *auth.Manager, token string) bool {
+	if HostManaged() {
+		return true
+	}
 	return manager.ValidateToken(strings.TrimSpace(token))
 }
 
 // AuthorizeWebSocket 支持 query token（一次性 WS 令牌或有效会话）与 Cookie 会话
 func AuthorizeWebSocket(manager *auth.Manager, r *http.Request) bool {
+	if HostManaged() {
+		return true
+	}
 	if manager == nil || !manager.Enabled() || r == nil {
 		return false
 	}
@@ -110,6 +122,9 @@ func AuthorizeWebSocket(manager *auth.Manager, r *http.Request) bool {
 // 一次性 WS 令牌只在握手期有效，必须换成它绑定的会话令牌做后续校验。
 // validate 为空时退回内置判定（仅内存会话 + admin key）。
 func HandshakeSession(manager *auth.Manager, r *http.Request, validate ...func(string) bool) string {
+	if HostManaged() {
+		return "host"
+	}
 	if manager == nil || !manager.Enabled() || r == nil {
 		return ""
 	}
