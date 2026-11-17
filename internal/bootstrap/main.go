@@ -24,6 +24,7 @@ import (
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/i18n"
 	"MaiGo/internal/common/logger"
+	"MaiGo/internal/common/media"
 	"MaiGo/internal/common/message_server"
 	maimserver "MaiGo/internal/common/message_server/server"
 	"MaiGo/internal/config"
@@ -36,6 +37,7 @@ import (
 	"MaiGo/internal/files"
 	"MaiGo/internal/learners"
 	"MaiGo/internal/llm_models"
+	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/display"
 	"MaiGo/internal/maisaka/monitor"
 	maisaruntime "MaiGo/internal/maisaka/runtime"
@@ -71,6 +73,7 @@ import (
 	"MaiGo/internal/webui/routers"
 
 	"github.com/bytedance/sonic"
+	"github.com/cloudwego/eino/schema"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -594,6 +597,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		},
 		desktopPetEnv.SpawnEnv,
 	)
+	desktoppet.SetDefaultService(desktopPetSvc)
 	desktopPetSvc.SetHookEmitter(func(ctx context.Context, hookName string, kwargs map[string]any) {
 		pluginHost.EmitHook(ctx, hookName, kwargs)
 	})
@@ -994,6 +998,102 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		return 1
 	}
 	startScheduleService(instanceDir, db, maiAgent, desktopPetSvc, promptMgr)
+	desktopPetSvc.SetPromptRenderer(func(name string) (string, error) {
+		return promptMgr.Render(name, nil)
+	})
+	desktopPetSvc.SetOwnerTaskEnqueuer(func(ctx context.Context, sourceKind, text, reason string, images []media.Ref) error {
+		kind, targetID, err := resolveOwnerAgentTarget(ctx, db)
+		if err != nil {
+			return err
+		}
+		_, err = maiAgent.EnqueueInternalTaskWithImages(ctx, kind, targetID, strings.TrimSpace(text), sourceKind, reason, images)
+		return err
+	})
+	desktopPetSvc.SetOwnerSessionID(func(ctx context.Context) (string, error) {
+		return resolveOwnerSessionID(ctx, db)
+	})
+	desktopPetSvc.SetCaptionSummarizer(func(ctx context.Context, data map[string]any) (string, error) {
+		template, err := promptMgr.Render("desktop_pet_thinking_caption", nil)
+		if err != nil {
+			return "", err
+		}
+		stageContext := map[string]string{}
+		for _, key := range []string{"stage", "detail", "round_text"} {
+			value := []rune(anyString(data[key]))
+			if len(value) > 240 {
+				value = value[:240]
+			}
+			stageContext[key] = string(value)
+		}
+		encoded, err := sonic.Marshal(stageContext)
+		if err != nil {
+			return "", err
+		}
+		router := maiAgent.LLMRouter()
+		if router == nil {
+			return "", fmt.Errorf("LLM 路由器未接入")
+		}
+		_, client, err := router.NewClientForTaskWithFailover(ctx, llm.TaskFastModel)
+		if err != nil {
+			return "", err
+		}
+		message, err := client.Generate(ctx, []*schema.AgenticMessage{schema.UserAgenticMessage(template + "\n" + string(encoded))})
+		if err != nil {
+			return "", err
+		}
+		var builder strings.Builder
+		for _, block := range message.ContentBlocks {
+			if block != nil && block.AssistantGenText != nil {
+				builder.WriteString(block.AssistantGenText.Text)
+			}
+		}
+		return builder.String(), nil
+	})
+	monitor.StageObserver = desktopPetSvc.ObserveStage
+	maisaka.TodoContextProvider = func(sessionID string) string {
+		ownerID, err := resolveOwnerSessionID(context.Background(), db)
+		if err != nil || ownerID != sessionID {
+			return ""
+		}
+		items := make([]map[string]any, 0)
+		for _, item := range schedules.Default().ListItems() {
+			itemSession := anyString(item["session_id"])
+			if itemSession != "" && itemSession != sessionID {
+				continue
+			}
+			copied := map[string]any{}
+			for key, value := range item {
+				copied[key] = value
+			}
+			if due, ok := copied["due_at"].(float64); ok {
+				copied["due_at_local"] = time.Unix(0, int64(due*1e9)).In(time.Local).Format("2006-01-02T15:04:05-07:00")
+			}
+			items = append(items, copied)
+		}
+		encoded, err := sonic.Marshal(items)
+		if err != nil {
+			return ""
+		}
+		rendered, err := promptMgr.Render("desktop_pet_todo_context", map[string]string{"todos": string(encoded)})
+		if err != nil {
+			return ""
+		}
+		return rendered
+	}
+	maisaka.ExplorationReuseContextProvider = func(sessionID string) string {
+		if !desktopPetSvc.Config().ExplorationEnabled {
+			return ""
+		}
+		ownerID, err := resolveOwnerSessionID(context.Background(), db)
+		if err != nil || ownerID != sessionID {
+			return ""
+		}
+		rendered, err := promptMgr.Render("desktop_pet_exploration_reuse", nil)
+		if err != nil {
+			return ""
+		}
+		return rendered
+	}
 	desktopPetSvc.SetProactiveWake(func(ctx context.Context) error {
 		text, err := promptMgr.Render("desktop_pet_proactive_wake", nil)
 		if err != nil {
@@ -2565,4 +2665,20 @@ func resolveOwnerAgentTarget(ctx context.Context, db *gorm.DB) (string, int64, e
 		return "", 0, fmt.Errorf("主人聊天流缺少可投递身份")
 	}
 	return kind, targetID, nil
+}
+
+// resolveOwnerSessionID 解析唯一的主人内部私聊 session_id
+func resolveOwnerSessionID(ctx context.Context, db *gorm.DB) (string, error) {
+	ownerID := strconv.FormatInt(internalchat.OwnerNumericID, 10)
+	var records []chatsession.Record
+	if err := db.WithContext(ctx).
+		Where("platform = ? AND (group_id IS NULL OR group_id = '') AND (user_id = ? OR user_id = ?)",
+			internalchat.Platform, internalchat.OwnerUserID, ownerID).
+		Limit(2).Find(&records).Error; err != nil {
+		return "", err
+	}
+	if len(records) != 1 {
+		return "", fmt.Errorf("请先在桌宠或网页聊天中建立唯一的主人会话")
+	}
+	return records[0].SessionID, nil
 }

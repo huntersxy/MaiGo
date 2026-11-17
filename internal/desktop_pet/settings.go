@@ -16,15 +16,25 @@ import (
 // DesktopPetSettings 对齐 MaiBot DesktopPetConfig
 type DesktopPetSettings struct {
 	Enabled                      bool
+	Mode                         string
 	ChatToolsEnabled             bool
+	ShowCurrentTask              bool
 	SkinID                       string
 	ProactiveWakeEnabled         bool
 	ProactiveWakeIntervalMinutes int
+	ScreenReadEnabled            bool
+	ScreenReadIntervalSeconds    int
+	ScreenSampleIntervalSeconds  float64
+	ScreenChangeThreshold        float64
+	ExplorationEnabled           bool
 }
 
 // DefaultDesktopPetSettings 返回 Python 侧默认值
 func DefaultDesktopPetSettings() DesktopPetSettings {
-	return DesktopPetSettings{SkinID: "builtin", ProactiveWakeIntervalMinutes: 30}
+	return DesktopPetSettings{
+		Mode: "local", SkinID: "builtin", ProactiveWakeIntervalMinutes: 30,
+		ScreenReadIntervalSeconds: 10, ScreenSampleIntervalSeconds: 2, ScreenChangeThreshold: 0.015,
+	}
 }
 
 // Normalize 补齐空皮肤 ID 与主动思考间隔
@@ -38,6 +48,18 @@ func (s DesktopPetSettings) Normalize() DesktopPetSettings {
 	}
 	if s.ProactiveWakeIntervalMinutes > 1440 {
 		s.ProactiveWakeIntervalMinutes = 1440
+	}
+	if s.Mode != "remote" {
+		s.Mode = "local"
+	}
+	if s.ScreenReadIntervalSeconds <= 0 {
+		s.ScreenReadIntervalSeconds = 10
+	}
+	if s.ScreenSampleIntervalSeconds <= 0 {
+		s.ScreenSampleIntervalSeconds = 2
+	}
+	if s.ScreenChangeThreshold <= 0 {
+		s.ScreenChangeThreshold = 0.015
 	}
 	return s
 }
@@ -63,9 +85,16 @@ func LoadDesktopPetSettings() DesktopPetSettings {
 			if err := toml.Unmarshal(raw, &file); err == nil {
 				settings.Enabled = file.DesktopPet.Enabled
 				settings.ChatToolsEnabled = file.DesktopPet.ChatToolsEnabled
+				settings.ShowCurrentTask = file.DesktopPet.ShowCurrentTask
 				settings.SkinID = file.DesktopPet.SkinId
+				settings.Mode = file.DesktopPet.Mode
 				settings.ProactiveWakeEnabled = file.DesktopPet.ProactiveWakeEnabled
 				settings.ProactiveWakeIntervalMinutes = file.DesktopPet.ProactiveWakeIntervalMinutes
+				settings.ScreenReadEnabled = file.DesktopPet.ScreenReadEnabled
+				settings.ScreenReadIntervalSeconds = file.DesktopPet.ScreenReadIntervalSeconds
+				settings.ScreenSampleIntervalSeconds = file.DesktopPet.ScreenSampleIntervalSeconds
+				settings.ScreenChangeThreshold = file.DesktopPet.ScreenChangeThreshold
+				settings.ExplorationEnabled = file.Experimental.DesktopPetExplorationEnabled
 			}
 		}
 	}

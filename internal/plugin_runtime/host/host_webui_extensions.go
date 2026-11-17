@@ -57,11 +57,12 @@ func (h *Host) ReplaceWebUIDocuments(pluginID string, payload map[string]any) er
 	}
 	rawDocuments, ok := payload["documents"].([]any)
 	if !ok || len(rawDocuments) > 20 {
-		return fmt.Errorf("documents 必须是不超过 20 项的列表")
+		return fmt.Errorf("documents 必须是列表")
 	}
 	type documentKey struct{ ID, Entry string }
 	documents := map[documentKey]string{}
 	expected := map[documentKey]struct{}{}
+	totalBytes := 0
 	pages, _ := extension["pages"].([]any)
 	for _, rawPage := range pages {
 		page, ok := rawPage.(map[string]any)
@@ -77,8 +78,12 @@ func (h *Host) ReplaceWebUIDocuments(pluginID string, payload map[string]any) er
 		}
 		key := documentKey{ID: stringValue(document["id"]), Entry: stringValue(document["entry"])}
 		content := stringValue(document["document"])
-		if content == "" || len(content) > MaxWebUICustomDocBytes {
-			return fmt.Errorf("自定义页面必须非空且不超过 2 MiB")
+		if content == "" {
+			return fmt.Errorf("自定义页面必须非空")
+		}
+		totalBytes += len(content)
+		if totalBytes > MaxWebUIDocumentsBytes {
+			return fmt.Errorf("自定义页面总量不能超过 8 MiB")
 		}
 		if _, duplicate := documents[key]; duplicate {
 			return fmt.Errorf("页面声明已改变或重复，请重载插件")

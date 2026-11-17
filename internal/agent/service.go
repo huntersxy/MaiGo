@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bytedance/sonic"
 )
@@ -525,12 +526,14 @@ func (s *Service) loadRuntimeState() error {
 		}
 		return err
 	}
-	if len(strings.TrimSpace(string(raw))) == 0 {
-		return nil
-	}
-	var state runtimeState
-	if err := sonic.ConfigStd.Unmarshal(raw, &state); err != nil {
-		return err
+	state, parseErr := parseRuntimeState(raw)
+	if parseErr != nil {
+		backup := s.runtimePath() + ".corrupt-" + time.Now().Format("20060102150405.000000000")
+		_ = os.Rename(s.runtimePath(), backup)
+		state = runtimeState{Paused: true, Error: "运行状态文件损坏，原文件已保留：" + backup, ManualPause: true}
+		if err := s.writeRuntimeState(state); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	s.paused = state.Paused
@@ -540,10 +543,38 @@ func (s *Service) loadRuntimeState() error {
 	return nil
 }
 
+func parseRuntimeState(raw []byte) (runtimeState, error) {
+	var payload map[string]any
+	if err := sonic.ConfigStd.Unmarshal(raw, &payload); err != nil || payload == nil {
+		return runtimeState{}, errors.New("运行状态文件无法解析")
+	}
+	paused, ok := payload["paused"].(bool)
+	if !ok {
+		return runtimeState{}, errors.New("运行状态必须包含布尔 paused")
+	}
+	errorText, ok := payload["error"].(string)
+	if !ok {
+		return runtimeState{}, errors.New("运行状态必须包含字符串 error")
+	}
+	manualPause := false
+	if rawManual, exists := payload["manual_pause"]; exists {
+		value, ok := rawManual.(bool)
+		if !ok {
+			return runtimeState{}, errors.New("manual_pause 必须为布尔值")
+		}
+		manualPause = value
+	}
+	return runtimeState{Paused: paused, Error: errorText, ManualPause: manualPause}, nil
+}
+
 func (s *Service) saveRuntimeState() error {
 	s.mu.RLock()
 	state := runtimeState{Paused: s.paused, Error: s.errMsg, ManualPause: s.manualPause}
 	s.mu.RUnlock()
+	return s.writeRuntimeState(state)
+}
+
+func (s *Service) writeRuntimeState(state runtimeState) error {
 	if err := os.MkdirAll(s.root, 0o755); err != nil {
 		return err
 	}
@@ -551,7 +582,15 @@ func (s *Service) saveRuntimeState() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.runtimePath(), raw, 0o644)
+	temporary := s.runtimePath() + ".tmp"
+	if err := os.WriteFile(temporary, raw, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, s.runtimePath()); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
 }
 
 func configEqual(a Config, b Config) bool {

@@ -329,9 +329,12 @@ func EmitSessionStart(sessionID, sessionName string, isGroupChat bool, groupID, 
 	})
 }
 
+// StageObserver 桌宠像素字幕的阶段观察器；由宿主注入
+var StageObserver func(data map[string]any)
+
 // EmitStageStatus 广播单个聊天流的当前阶段状态
 func EmitStageStatus(sessionID, sessionName, stage, detail, roundText, agentState string, waitUntil *float64, stageStartedAt, updatedAt, timestamp float64) {
-	Publish(EventStageStatus, map[string]any{
+	data := map[string]any{
 		"session_id":       sessionID,
 		"session_name":     sessionName,
 		"stage":            stage,
@@ -342,7 +345,11 @@ func EmitStageStatus(sessionID, sessionName, stage, detail, roundText, agentStat
 		"stage_started_at": stageStartedAt,
 		"updated_at":       updatedAt,
 		"timestamp":        timestamp,
-	})
+	}
+	Publish(EventStageStatus, data)
+	if observer := StageObserver; observer != nil {
+		observer(data)
+	}
 }
 
 // EmitStageRemoved 广播聊天流阶段状态移除事件

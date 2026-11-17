@@ -74,8 +74,8 @@ func parseWebUIPage(raw any, index int) (*WebUIPage, error) {
 			return nil, fmt.Errorf("%s.entry 必须是插件内的相对 HTML 路径", where)
 		}
 		page.Document, _ = object["document"].(string)
-		if strings.TrimSpace(page.Document) == "" || len(page.Document) > MaxWebUICustomDocBytes {
-			return nil, fmt.Errorf("自定义页面必须非空且不超过 2 MiB")
+		if strings.TrimSpace(page.Document) == "" {
+			return nil, fmt.Errorf("自定义页面必须非空")
 		}
 		for name, binding := range page.Queries {
 			if binding.Confirmation != "" {
@@ -86,8 +86,8 @@ func parseWebUIPage(raw any, index int) (*WebUIPage, error) {
 		rawUploads, exists := object["uploads"]
 		if exists && rawUploads != nil {
 			uploads, ok := rawUploads.(map[string]any)
-			if !ok || len(uploads) > 10 {
-				return nil, fmt.Errorf("%s.uploads 最多 10 项", where)
+			if !ok {
+				return nil, fmt.Errorf("%s.uploads 必须为对象", where)
 			}
 			for name, rawUpload := range uploads {
 				if !webUIIdentifierPattern.MatchString(name) {
@@ -136,9 +136,6 @@ func parseWebUIPage(raw any, index int) (*WebUIPage, error) {
 			return nil, err
 		}
 	}
-	if validator.count > 200 {
-		return nil, fmt.Errorf("页面超过 8 层或 200 个组件")
-	}
 	return page, nil
 }
 
@@ -147,7 +144,6 @@ type webUIPageValidator struct {
 	inputs     map[string]struct{}
 	selections map[string]struct{}
 	dialogs    map[string]struct{}
-	count      int
 }
 
 func (v *webUIPageValidator) walk(raw any, depth int, topLevel bool, index int) error {
@@ -155,9 +151,8 @@ func (v *webUIPageValidator) walk(raw any, depth int, topLevel bool, index int) 
 	if !ok {
 		return fmt.Errorf("页面组件必须是对象")
 	}
-	v.count++
-	if depth > 8 || v.count > 200 {
-		return fmt.Errorf("页面超过 8 层或 200 个组件")
+	if depth > 8 {
+		return fmt.Errorf("页面超过 8 层")
 	}
 	nodeType, _ := object["type"].(string)
 	switch nodeType {
@@ -180,9 +175,6 @@ func (v *webUIPageValidator) walk(raw any, depth int, topLevel bool, index int) 
 	children := object["children"].([]any)
 	switch nodeType {
 	case "stack", "card", "grid", "tabs", "collapsible", "dialog":
-		if len(children) > 50 {
-			return fmt.Errorf("children 最多 50 个")
-		}
 		if nodeType == "tabs" {
 			if len(children) == 0 {
 				return fmt.Errorf("tabs 子节点必须有 label")

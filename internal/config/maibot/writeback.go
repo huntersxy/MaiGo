@@ -1,6 +1,7 @@
 package maibot
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -85,10 +86,18 @@ func writeUpgradedConfigBytes(path string, data []byte) error {
 		return fmt.Errorf("备份 %s: %w", filepath.Base(path), err)
 	}
 	data = mergeTOMLPreservingComments(original, data)
-	// 先写临时文件再改名：原地截断写入若被并发读/写打断会留下 0 字节配置
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+	// 先写唯一临时文件并刷盘再改名，避免并发写或中途失败破坏正式配置
+	tmpPath := path + ".tmp-" + strings.ReplaceAll(fmt.Sprint(time.Now().UnixNano()), ":", "")
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
 		return fmt.Errorf("写入 %s.tmp: %w", filepath.Base(path), err)
+	}
+	_, writeErr := file.Write(data)
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if writeErr != nil || syncErr != nil || closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("写入 %s.tmp: %w", filepath.Base(path), errors.Join(writeErr, syncErr, closeErr))
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)
@@ -113,7 +122,11 @@ func backupConfigFile(path string) error {
 		return err
 	}
 	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	backupName := fmt.Sprintf("%s_%s.toml", stem, time.Now().Format("20060102_150405"))
+	backupName := fmt.Sprintf("%s_%s.toml", stem, time.Now().Format("20060102_150405.000000"))
 	backupPath := filepath.Join(backupRoot, backupName)
-	return os.Rename(path, backupPath)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(backupPath, raw, 0o600)
 }

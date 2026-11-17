@@ -58,8 +58,9 @@ func (s *Service) call(ctx context.Context, command map[string]any) (any, error)
 		ctx = context.Background()
 	}
 	s.mu.Lock()
-	ready, closing, stdin := s.ready, s.closing, s.stdin
-	if !ready || closing || stdin == nil {
+	ready, closing := s.ready, s.closing
+	hasTransport := s.stdin != nil || s.remote != nil
+	if !ready || closing || !hasTransport {
 		s.mu.Unlock()
 		return nil, errIPCNotReady
 	}
@@ -83,6 +84,12 @@ func (s *Service) call(ctx context.Context, command map[string]any) (any, error)
 	if kind == "skin" {
 		timeout = skinTimeout
 	}
+	s.mu.RLock()
+	remoteTransport := s.remote != nil
+	s.mu.RUnlock()
+	if remoteTransport && (kind == "capture_screen" || kind == "sample_screen" || kind == "applications") {
+		timeout = 30 * time.Second
+	}
 
 	payload := make(map[string]any, len(command)+1)
 	for key, value := range command {
@@ -93,13 +100,8 @@ func (s *Service) call(ctx context.Context, command map[string]any) (any, error)
 	if err != nil {
 		return nil, fmt.Errorf("编码桌宠指令失败: %w", err)
 	}
-	encoded = append(encoded, '\n')
-
-	s.writeMu.Lock()
-	_, writeErr := stdin.Write(encoded)
-	s.writeMu.Unlock()
-	if writeErr != nil {
-		return nil, fmt.Errorf("向桌宠窗口写入指令失败: %w", writeErr)
+	if writeErr := s.writePayload(ctx, encoded); writeErr != nil {
+		return nil, writeErr
 	}
 
 	timer := time.NewTimer(timeout)
@@ -191,6 +193,19 @@ func (s *Service) handleEvent(ctx context.Context, event map[string]any) error {
 		requestID, _ := event["request_id"].(string)
 		go s.handleChat(ctx, requestID)
 		return nil
+	case "screen_action":
+		action, _ := event["action"].(string)
+		go s.handleScreenAction(ctx, action)
+		return nil
+	case "exploration_tasks":
+		taskID, _ := event["task_id"].(string)
+		requestID, _ := event["request_id"].(string)
+		go s.publishExplorationTasks(ctx, taskID, requestID)
+		return nil
+	case "explore":
+		goal, _ := event["goal"].(string)
+		go s.handleExplore(ctx, goal)
+		return nil
 	case "todo_request":
 		go s.handleTodoRequest(ctx, event)
 		return nil
@@ -219,28 +234,26 @@ func (s *Service) markReady(ctx context.Context) {
 	}()
 	s.emitHook(ctx, "ready", nil)
 	s.buttonsChanged()
+	s.startAppTodoLoop()
 	s.restartProactiveWake()
+	s.publishScreenState(ctx)
+	s.publishExplorationState(ctx)
 }
 
-// sendEvent 直接写入窗口管道，不等待回执
+// sendEvent 直接写入当前传输，不等待回执
 func (s *Service) sendEvent(ctx context.Context, payload map[string]any) error {
 	s.mu.Lock()
-	ready, closing, stdin := s.ready, s.closing, s.stdin
+	ready, closing := s.ready, s.closing
+	hasTransport := s.stdin != nil || s.remote != nil
 	s.mu.Unlock()
-	if !ready || closing || stdin == nil {
+	if !ready || closing || !hasTransport {
 		return errIPCNotReady
 	}
 	encoded, err := sonic.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	encoded = append(encoded, '\n')
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if _, err := stdin.Write(encoded); err != nil {
-		return errIPCClosed
-	}
-	return nil
+	return s.writePayload(ctx, encoded)
 }
 
 // handleTodoRequest 执行窗口的事项管理请求，所有持久化由主程序完成

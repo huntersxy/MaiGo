@@ -46,6 +46,11 @@ func DesktopPetToolBuilders() []func() (tool.BaseTool, error) {
 		NewDesktopPetTodoTool,
 		NewListChatSessionsTool,
 		NewHandoffToChatTool,
+		func() (tool.BaseTool, error) { return NewDesktopPetScreenTool() },
+		NewExplorationTaskTool,
+		NewSearchExplorationProductsTool,
+		NewRecordExperienceReuseTool,
+		NewExplorationSchemaTool,
 	}
 }
 
@@ -62,21 +67,39 @@ func DesktopPetChatToolsEnabled() bool {
 
 // DesktopPetToolVisible 对齐 Python list_tools 的 owner 会话过滤
 func DesktopPetToolVisible(ctx context.Context, name string) bool {
-	switch name {
-	case "desktop_pet_todo", "list_chat_sessions", "handoff_to_chat":
-	default:
+	ownerOnly := map[string]string{
+		"desktop_pet_todo": "chat", "list_chat_sessions": "chat", "handoff_to_chat": "chat",
+		"desktop_pet_screen":           "screen",
+		"desktop_pet_exploration_task": "exploration", "search_exploration_products": "exploration",
+		"record_experience_reuse": "exploration", "desktop_pet_schema": "exploration",
+	}
+	capability, guarded := ownerOnly[name]
+	if !guarded {
 		return true
 	}
 	tc := GetToolContext(ctx)
 	if tc == nil {
 		return false
 	}
-	if !desktopPetChatToolsEnabled() {
-		return false
-	}
-	return tc.Platform == internalchat.Platform &&
+	owner := tc.Platform == internalchat.Platform &&
 		tc.ConversationKind == memory.ConversationKindPrivate &&
 		tc.TargetID == internalchat.OwnerNumericID
+	if !owner {
+		return false
+	}
+	service := currentDesktopPetService()
+	if service == nil {
+		return false
+	}
+	config := service.Config()
+	switch capability {
+	case "screen":
+		return config.ScreenReadEnabled
+	case "exploration":
+		return config.ExplorationEnabled
+	default:
+		return config.ChatToolsEnabled
+	}
 }
 
 func desktopPetOwnerContext(ctx context.Context, message string) (*ToolContext, error) {

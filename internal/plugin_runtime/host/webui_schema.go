@@ -13,7 +13,6 @@ import (
 // WebUI 协议常量，对齐 webui_schema.py
 const (
 	MaxWebUIDeclarationBytes  = 131072
-	MaxWebUICustomDocBytes    = 2 * 1024 * 1024
 	MaxWebUIDocumentsBytes    = 8 * 1024 * 1024
 	MaxWebUIRegistrationBytes = 524288
 	MaxWebUIArgumentBytes     = 65536

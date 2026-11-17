@@ -294,7 +294,8 @@ func readModelVersionManifest(configDir string) (*modelVersionManifest, error) {
 	}
 	var manifest modelVersionManifest
 	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return nil, fmt.Errorf("模型配置副本清单损坏: %s", path)
+		quarantineModelVersionManifest(path)
+		return &modelVersionManifest{ActiveLabel: "默认配置"}, nil
 	}
 	if strings.TrimSpace(manifest.ActiveLabel) == "" {
 		manifest.ActiveLabel = "默认配置"
@@ -318,7 +319,13 @@ func writeModelVersionManifest(configDir string, manifest *modelVersionManifest)
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, append(raw, '\n'), 0o644)
+	return writeFileAtomic(path, append(raw, '\n'), 0o600)
+}
+
+// quarantineModelVersionManifest 保留损坏清单并把正式路径释放给下一次写入
+func quarantineModelVersionManifest(path string) {
+	backup := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano())
+	_ = os.Rename(path, backup)
 }
 
 func (m *modelVersionManifest) metadataByID() map[string]map[string]any {

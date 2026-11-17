@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"MaiGo/internal/common/media"
 )
 
 // stopTimeout 关闭 stdin 后等待窗口自行退出的时长，对齐 STOP_TIMEOUT
@@ -23,10 +25,17 @@ const stderrTailLines = 30
 // Config 对齐 global_config.desktop_pet 子集
 type Config struct {
 	Enabled                      bool
+	Mode                         string
 	ChatToolsEnabled             bool
+	ShowCurrentTask              bool
 	SkinID                       string
 	ProactiveWakeEnabled         bool
 	ProactiveWakeIntervalMinutes int
+	ScreenReadEnabled            bool
+	ScreenReadIntervalSeconds    int
+	ScreenSampleIntervalSeconds  float64
+	ScreenChangeThreshold        float64
+	ExplorationEnabled           bool
 }
 
 // Status 对齐 DesktopPetService.status
@@ -41,6 +50,8 @@ type Status struct {
 	PID       int    `json:"pid"`
 	Thinking  bool   `json:"thinking"`
 	Bubble    string `json:"bubble"`
+	Mode      string `json:"mode"`
+	ClientID  string `json:"client_id"`
 }
 
 // Service 桌宠窗口进程与行协议客户端，对齐 DesktopPetService
@@ -73,11 +84,27 @@ type Service struct {
 
 	chatRelay ChatRelay
 
+	activeMode        string
+	remote            *RemotePeer
 	proactiveWake     func(ctx context.Context) error
 	proactiveCancel   context.CancelFunc
 	proactiveInterval int
 	lastOwnerActivity time.Time
 	unansweredWakes   int
+
+	screenCancel      context.CancelFunc
+	screenGeneration  uint64
+	screenBusy        bool
+	screenLastCapture string
+	screenError       string
+	appTodoCancel     context.CancelFunc
+	promptRenderer    func(name string) (string, error)
+	ownerTaskEnqueuer func(ctx context.Context, sourceKind, text, reason string, images []media.Ref) error
+	ownerSessionID    func(ctx context.Context) (string, error)
+	captionSummarizer func(ctx context.Context, data map[string]any) (string, error)
+	captionRevision   uint64
+	captionKey        string
+	captionCancel     context.CancelFunc
 }
 
 // NewService 创建桌宠服务；未显式指定皮肤时读取 desktop_pet 配置段
@@ -89,6 +116,9 @@ func NewService(cfg Config, spawn SpawnEnv) *Service {
 	if !cfg.ChatToolsEnabled {
 		cfg.ChatToolsEnabled = settings.ChatToolsEnabled
 	}
+	if !cfg.ShowCurrentTask {
+		cfg.ShowCurrentTask = settings.ShowCurrentTask
+	}
 	if !cfg.ProactiveWakeEnabled {
 		cfg.ProactiveWakeEnabled = settings.ProactiveWakeEnabled
 	}
@@ -99,8 +129,27 @@ func NewService(cfg Config, spawn SpawnEnv) *Service {
 	if skin == "" {
 		skin = "builtin"
 	}
+	if cfg.Mode == "" {
+		cfg.Mode = settings.Mode
+	}
+	if !cfg.ScreenReadEnabled {
+		cfg.ScreenReadEnabled = settings.ScreenReadEnabled
+	}
+	if cfg.ScreenReadIntervalSeconds <= 0 {
+		cfg.ScreenReadIntervalSeconds = settings.ScreenReadIntervalSeconds
+	}
+	if cfg.ScreenSampleIntervalSeconds <= 0 {
+		cfg.ScreenSampleIntervalSeconds = settings.ScreenSampleIntervalSeconds
+	}
+	if cfg.ScreenChangeThreshold <= 0 {
+		cfg.ScreenChangeThreshold = settings.ScreenChangeThreshold
+	}
+	if !cfg.ExplorationEnabled {
+		cfg.ExplorationEnabled = settings.ExplorationEnabled
+	}
 	return &Service{
 		cfg:               cfg,
+		activeMode:        cfg.Mode,
 		spawn:             spawn,
 		skinID:            skin,
 		pending:           make(map[string]chan callResult),
@@ -128,6 +177,15 @@ func (s *Service) Start(ctx context.Context) error {
 		s.clearProcessLocked()
 		s.errMsg = ""
 		s.mu.Unlock()
+		return nil
+	}
+	if s.cfg.Mode == "remote" {
+		s.activeMode = "remote"
+		s.closing = false
+		s.running = false
+		s.mu.Unlock()
+		s.restartProactiveWake()
+		s.startAppTodoLoop()
 		return nil
 	}
 	if runtime.GOOS != "windows" {
@@ -214,8 +272,13 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	ready := s.ready
 	currentSkin := s.skinID
 	s.cfg = cfg
+	s.activeMode = cfg.Mode
+	remote := s.remote
 	if !cfg.Enabled {
 		s.mu.Unlock()
+		if remote != nil {
+			s.DetachRemote(remote)
+		}
 		if running {
 			if err := s.Stop(ctx); err != nil {
 				return err
@@ -225,6 +288,26 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 		s.errMsg = ""
 		s.mu.Unlock()
 		return nil
+	}
+	if cfg.Mode == "remote" {
+		s.mu.Unlock()
+		if running {
+			if err := s.Stop(ctx); err != nil {
+				return err
+			}
+		}
+		s.mu.Lock()
+		s.closing = false
+		s.errMsg = ""
+		s.mu.Unlock()
+		s.startAppTodoLoop()
+		s.restartProactiveWake()
+		return nil
+	}
+	if remote != nil {
+		s.mu.Unlock()
+		s.DetachRemote(remote)
+		s.mu.Lock()
 	}
 	if running && !ready {
 		s.skinID = cfg.SkinID
@@ -262,10 +345,17 @@ func (s *Service) Reload(ctx context.Context) error {
 	settings := LoadDesktopPetSettings()
 	return s.ApplyConfig(ctx, Config{
 		Enabled:                      settings.Enabled,
+		Mode:                         settings.Mode,
 		ChatToolsEnabled:             settings.ChatToolsEnabled,
+		ShowCurrentTask:              settings.ShowCurrentTask,
 		SkinID:                       settings.SkinID,
 		ProactiveWakeEnabled:         settings.ProactiveWakeEnabled,
 		ProactiveWakeIntervalMinutes: settings.ProactiveWakeIntervalMinutes,
+		ScreenReadEnabled:            settings.ScreenReadEnabled,
+		ScreenReadIntervalSeconds:    settings.ScreenReadIntervalSeconds,
+		ScreenSampleIntervalSeconds:  settings.ScreenSampleIntervalSeconds,
+		ScreenChangeThreshold:        settings.ScreenChangeThreshold,
+		ExplorationEnabled:           settings.ExplorationEnabled,
 	})
 }
 
@@ -377,7 +467,17 @@ func (s *Service) serviceContext() context.Context {
 
 // Stop 对齐 stop/_stop：关闭 stdin 让窗口自行退出，超时后强制结束
 func (s *Service) Stop(ctx context.Context) error {
+	s.stopScreenReader()
+	s.stopAppTodoLoop()
 	s.mu.Lock()
+	if s.remote != nil {
+		peer := s.remote
+		s.closing = true
+		s.mu.Unlock()
+		peer.Close("桌宠已停止")
+		s.DetachRemote(peer)
+		return nil
+	}
 	cmd := s.cmd
 	stdin := s.stdin
 	waitCh := s.waitCh
@@ -436,9 +536,14 @@ func (s *Service) Status() Status {
 	} else {
 		running = false
 	}
+	clientID := ""
+	if s.remote != nil {
+		running = true
+		clientID = s.remote.clientID
+	}
 	return Status{
 		Enabled:   s.cfg.Enabled,
-		Supported: runtime.GOOS == "windows",
+		Supported: s.cfg.Mode == "remote" || runtime.GOOS == "windows",
 		Running:   running,
 		Ready:     s.ready && !s.closing,
 		Visible:   s.visible,
@@ -447,5 +552,7 @@ func (s *Service) Status() Status {
 		PID:       pid,
 		Thinking:  s.thinking && s.ready && !s.closing,
 		Bubble:    s.bubble,
+		Mode:      s.cfg.Mode,
+		ClientID:  clientID,
 	}
 }

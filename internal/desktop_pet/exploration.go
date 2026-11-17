@@ -467,3 +467,43 @@ func normalizeExplorationProducts(products map[string]any) (map[string]any, erro
 	}
 	return out, nil
 }
+
+// SchemaRecords 查询或保存主人会话的候选图式
+func SchemaRecords(dataDir, sessionID string, record map[string]any) ([]map[string]any, error) {
+	path := filepath.Join(dataDir, "desktop_pet", "exploration_schemas.json")
+	explorationStoreMu.Lock()
+	defer explorationStoreMu.Unlock()
+	records := make([]map[string]any, 0)
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &records)
+	}
+	if record != nil {
+		saved := copyAnyMap(record)
+		saved["id"] = uuid.NewString()
+		saved["session_id"] = sessionID
+		saved["status"] = "candidate"
+		records = append(records, saved)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, err
+		}
+		encoded, err := json.MarshalIndent(records, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		temporary := path + ".tmp"
+		if err := os.WriteFile(temporary, encoded, 0o600); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(temporary, path); err != nil {
+			return nil, err
+		}
+		return []map[string]any{saved}, nil
+	}
+	items := make([]map[string]any, 0)
+	for _, item := range records {
+		if asString(item["session_id"]) == sessionID {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}

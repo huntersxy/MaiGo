@@ -196,6 +196,12 @@ func Mount(r chi.Router, d Deps) {
 			pr.Get("/status", d.handleDesktopPetStatus)
 			pr.Post("/visibility", d.handleDesktopPetVisibility)
 			pr.Post("/chat", d.handleDesktopPetChat)
+			pr.Route("/remote", func(rr chi.Router) {
+				rr.Get("/ws", d.handleDesktopPetRemoteWS)
+				rr.Post("/chat/{request_id}", d.handleDesktopPetRemoteChat)
+				rr.Post("/todos", d.handleDesktopPetRemoteTodos)
+				rr.Get("/todos/images/{image_id}", d.handleDesktopPetRemoteTodoImage)
+			})
 		})
 
 		api.Get("/html-render/status", d.handleHTMLRenderStatus)

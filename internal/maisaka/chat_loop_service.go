@@ -44,6 +44,12 @@ var ModelTaskNameByRequestKind = map[string]string{
 	"expression_selector": "fast_model",
 }
 
+// TodoContextProvider 主人私聊每轮重建的待办上下文；由宿主注入
+var TodoContextProvider func(sessionID string) string
+
+// ExplorationReuseContextProvider 主人私聊的探索复用规则上下文；由宿主注入
+var ExplorationReuseContextProvider func(sessionID string) string
+
 // PassivePlannerFinalUserReminders 被动式 Planner 的末尾提醒
 var PassivePlannerFinalUserReminders = map[string]string{
 	"zh-CN": "需要信息或操作时调用工具；决定发言时直接输出指导正文，不附带工具调用；不发言用 stop，需要稍后判断用 wait。",
@@ -506,6 +512,16 @@ func (s *ChatLoopService) buildRequestMessages(
 		resolvedSystemPrompt = s.BuildSystemPrompt("", botNicknameNotice)
 	} else if notice := strings.TrimSpace(botNicknameNotice); notice != "" {
 		resolvedSystemPrompt = notice + "\n\n" + resolvedSystemPrompt
+	}
+	if TodoContextProvider != nil {
+		if todoContext := strings.TrimSpace(TodoContextProvider(s.SessionID)); todoContext != "" {
+			resolvedSystemPrompt += "\n\n" + todoContext
+		}
+	}
+	if ExplorationReuseContextProvider != nil {
+		if explorationContext := strings.TrimSpace(ExplorationReuseContextProvider(s.SessionID)); explorationContext != "" {
+			resolvedSystemPrompt += "\n\n" + explorationContext
+		}
 	}
 	items = append(items, ContextItem{Role: RoleSystem, Text: resolvedSystemPrompt})
 

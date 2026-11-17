@@ -350,3 +350,11 @@ func maxInt(left, right int) int {
 	}
 	return right
 }
+
+// ValidateRemoteRequestID 校验远端请求 ID
+func ValidateRemoteRequestID(requestID string) error {
+	if !remoteRequestIDPattern.MatchString(requestID) {
+		return fmt.Errorf("请求 ID 必须为 32 位十六进制 UUID")
+	}
+	return nil
+}

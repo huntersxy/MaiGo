@@ -185,7 +185,7 @@ func ValidateWebUIExtension(raw map[string]any) (map[string]any, error) {
 		}
 	}
 	pagesRaw, ok := raw["pages"].([]any)
-	if !ok || len(pagesRaw) == 0 || len(pagesRaw) > 20 {
+	if !ok || len(pagesRaw) == 0 {
 		return nil, fmt.Errorf("每插件需要 1 到 20 个页面")
 	}
 	workspaceTitle, _ := raw["workspace_title"].(string)

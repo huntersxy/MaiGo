@@ -229,6 +229,15 @@ func (s *Service) Tick(ctx context.Context) error {
 
 // TriggerCondition 模型判断条件成立后领取并立即投递
 func (s *Service) TriggerCondition(ctx context.Context, todoID, revision, evidence string) (map[string]any, error) {
+	return s.triggerCondition(ctx, todoID, revision, evidence, false)
+}
+
+// TriggerConditionForApp 桌面应用条件已由设备侧确认后领取并投递
+func (s *Service) TriggerConditionForApp(ctx context.Context, todoID, revision, evidence string) (map[string]any, error) {
+	return s.triggerCondition(ctx, todoID, revision, evidence, true)
+}
+
+func (s *Service) triggerCondition(ctx context.Context, todoID, revision, evidence string, appEvidence bool) (map[string]any, error) {
 	s.mu.Lock()
 	store := s.store
 	hooks := s.hooks
@@ -246,7 +255,7 @@ func (s *Service) TriggerCondition(ctx context.Context, todoID, revision, eviden
 	if original == nil || asString(original["revision"]) != revision {
 		return nil, errors.New("待办已修改或删除，请重新查询")
 	}
-	if asString(original["condition_type"]) == "app" {
+	if asString(original["condition_type"]) == "app" && !appEvidence {
 		return nil, errors.New("应用条件需要桌面进程检测，不能由模型直接触发")
 	}
 	item, err := store.ClaimCondition(todoID, revision, evidence)
@@ -290,4 +299,15 @@ func (s *Service) finish(todoID, revision, errorText string) {
 	_, _ = s.Command(context.Background(), map[string]any{
 		"action": "finish", "todo_id": todoID, "revision": revision, "error": errorText,
 	}, "")
+}
+
+// ListItems 返回未完成事项副本，供每轮待办上下文重建
+func (s *Service) ListItems() []map[string]any {
+	s.mu.Lock()
+	store := s.store
+	s.mu.Unlock()
+	if store == nil {
+		return nil
+	}
+	return store.List(false)
 }

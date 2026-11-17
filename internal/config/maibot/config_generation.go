@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 //go:embed default_model_config.toml
@@ -36,7 +37,7 @@ func writeGeneratedConfigIfMissing(path, version string, body []byte) error {
 		return fmt.Errorf("检查配置文件 %s: %w", path, err)
 	}
 	var builder strings.Builder
-	builder.WriteString("# 本文件由 MaiGo 按 MaiBot 1.4.0 默认配置生成\n")
+	builder.WriteString("# 本文件由 MaiGo 按 MaiBot 1.4.5 默认配置生成\n")
 	builder.WriteString("[inner]\nversion = ")
 	builder.WriteString(fmt.Sprintf("%q", version))
 	builder.WriteString("\n\n")
@@ -44,7 +45,12 @@ func writeGeneratedConfigIfMissing(path, version string, body []byte) error {
 	if !strings.HasSuffix(builder.String(), "\n") {
 		builder.WriteString("\n")
 	}
-	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
+	temporary := path + ".tmp-" + fmt.Sprint(time.Now().UnixNano())
+	if err := os.WriteFile(temporary, []byte(builder.String()), 0o600); err != nil {
+		return fmt.Errorf("生成配置文件 %s: %w", path, err)
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
 		return fmt.Errorf("生成配置文件 %s: %w", path, err)
 	}
 	return nil
