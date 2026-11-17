@@ -74,7 +74,13 @@ func (s *MigrationStore) Initialize(ctx context.Context) error {
 	if s == nil || s.DB == nil {
 		return errors.New("数据库未接线")
 	}
-	return s.DB.WithContext(ctx).AutoMigrate(&memory.ChatMigrationJob{}, &memory.ChatMigrationCopy{})
+	// 正式库由 schema 迁移创建，表含复合 UNIQUE 约束；AutoMigrate 会把该约束
+	// 误当成列并重建表，导致启动失败。已有表时不再交给 GORM 改写结构。
+	db := s.DB.WithContext(ctx)
+	if db.Migrator().HasTable(&memory.ChatMigrationJob{}) && db.Migrator().HasTable(&memory.ChatMigrationCopy{}) {
+		return nil
+	}
+	return db.AutoMigrate(&memory.ChatMigrationJob{}, &memory.ChatMigrationCopy{})
 }
 
 // migrateEncode 对齐 Python encode：bytes 与 datetime 使用显式标记

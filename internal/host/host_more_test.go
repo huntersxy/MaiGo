@@ -2,6 +2,7 @@ package host
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -216,4 +217,20 @@ func waitTransferStatus(t *testing.T, service *TransferService, jobID, status st
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("任务未在期限内完成: %s", jobID)
+}
+
+func TestMaintenanceDependencyInstallDoesNotDeadlock(t *testing.T) {
+	t.Setenv("MAIBOT_PLUGIN_PYTHON", "missing-python")
+	workspace, _ := testBot(t)
+	maintenance := NewHostMaintenance(NewSupervisor(workspace))
+	done := make(chan error, 1)
+	go func() {
+		_, err := maintenance.InstallPluginDependencies(context.Background())
+		done <- err
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("插件依赖检查持有维护锁时死锁")
+	}
 }

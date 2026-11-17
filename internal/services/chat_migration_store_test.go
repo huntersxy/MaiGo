@@ -100,3 +100,37 @@ func TestChatMigrationSnapshotAndApply(t *testing.T) {
 		t.Fatalf("迁移账本行数 = %d", ledgerCount)
 	}
 }
+
+func TestChatMigrationInitializeKeepsMigratedSchema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statements := []string{
+		`CREATE TABLE chat_migration_jobs (
+			id VARCHAR NOT NULL PRIMARY KEY,
+			status VARCHAR NOT NULL, source VARCHAR NOT NULL, target VARCHAR NOT NULL,
+			created_at VARCHAR NOT NULL, payload TEXT NOT NULL, error TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE chat_migration_copies (
+			id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			table_name VARCHAR NOT NULL, origin VARCHAR NOT NULL, target VARCHAR NOT NULL,
+			target_key TEXT NOT NULL, amounts TEXT NOT NULL DEFAULT '{}',
+			UNIQUE (table_name, origin, target)
+		)`,
+	}
+	for _, statement := range statements {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := NewMigrationStore(db).Initialize(context.Background()); err != nil {
+		t.Fatalf("已有迁移表不应被 AutoMigrate 重建: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO chat_migration_copies (table_name, origin, target, target_key) VALUES ('m', 'o', 't', 'k')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO chat_migration_copies (table_name, origin, target, target_key) VALUES ('m', 'o', 't', 'k2')`).Error; err == nil {
+		t.Fatal("复合唯一约束应在初始化后保留")
+	}
+}

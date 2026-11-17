@@ -449,6 +449,10 @@ func loadModelConfigFile(path string, out *InstanceConfig) error {
 			if merged, mergeErr := MergeSharedCatalogDoc(document); mergeErr == nil {
 				if encoded, encodeErr := toml.Marshal(merged); encodeErr == nil {
 					raw = encoded
+					// 合并后的定义必须回填到结构体，否则运行期只看到 Bot 本地任务选择
+					if err := toml.Unmarshal(raw, &doc); err != nil {
+						return fmt.Errorf("解析合并后的 model_config.toml: %w", err)
+					}
 				}
 			}
 		}

@@ -18,9 +18,9 @@ func (ChatMigrationJob) TableName() string { return "chat_migration_jobs" }
 // ChatMigrationCopy 来源记录到目标记录的幂等账本
 type ChatMigrationCopy struct {
 	ID        int    `gorm:"column:id;primaryKey;autoIncrement"`
-	Table     string `gorm:"column:table_name;type:varchar;not null"`
-	Origin    string `gorm:"column:origin;type:varchar;not null"`
-	Target    string `gorm:"column:target;type:varchar;not null"`
+	Table     string `gorm:"column:table_name;type:varchar;not null;uniqueIndex:ux_chat_migration_copies_origin_target,priority:1"`
+	Origin    string `gorm:"column:origin;type:varchar;not null;uniqueIndex:ux_chat_migration_copies_origin_target,priority:2"`
+	Target    string `gorm:"column:target;type:varchar;not null;uniqueIndex:ux_chat_migration_copies_origin_target,priority:3"`
 	TargetKey string `gorm:"column:target_key;type:text;not null"`
 	Amounts   string `gorm:"column:amounts;type:text;not null;default:'{}'"`
 }

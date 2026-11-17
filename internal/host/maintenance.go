@@ -24,6 +24,7 @@ import (
 type HostMaintenance struct {
 	supervisor               *Supervisor
 	mu                       sync.Mutex
+	depMu                    sync.Mutex
 	busy                     atomic.Bool
 	dependencyWG             sync.WaitGroup
 	dependencyRunning        atomic.Bool
@@ -39,8 +40,8 @@ func NewHostMaintenance(supervisor *Supervisor) *HostMaintenance {
 
 // DependencyError 最近一次自动依赖准备失败原因
 func (m *HostMaintenance) DependencyError() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.depMu.Lock()
+	defer m.depMu.Unlock()
 	return m.dependencyError
 }
 
@@ -98,9 +99,9 @@ func (m *HostMaintenance) QueuePluginDependencies() {
 		defer m.dependencyWG.Done()
 		defer m.dependencyRunning.Store(false)
 		if _, err := m.InstallPluginDependencies(context.Background()); err != nil {
-			m.mu.Lock()
+			m.depMu.Lock()
 			m.dependencyError = err.Error()
-			m.mu.Unlock()
+			m.depMu.Unlock()
 		}
 	}()
 }
@@ -334,10 +335,10 @@ func (m *HostMaintenance) installPluginDependencies(ctx context.Context, automat
 	snapshotBytes, _ := json.Marshal(report.Bots)
 	snapshot := string(snapshotBytes)
 	if automatic {
-		m.mu.Lock()
+		m.depMu.Lock()
 		failed := m.failedDependencySnapshot
 		message := m.dependencyError
-		m.mu.Unlock()
+		m.depMu.Unlock()
 		if failed == snapshot && (len(report.Requirements) > 0 || len(report.Conflicts) > 0) {
 			if message == "" {
 				message = "插件依赖准备失败"
@@ -346,7 +347,7 @@ func (m *HostMaintenance) installPluginDependencies(ctx context.Context, automat
 		}
 	}
 	defer func() {
-		m.mu.Lock()
+		m.depMu.Lock()
 		if err != nil {
 			m.failedDependencySnapshot = snapshot
 			m.dependencyError = err.Error()
@@ -354,7 +355,7 @@ func (m *HostMaintenance) installPluginDependencies(ctx context.Context, automat
 			m.failedDependencySnapshot = ""
 			m.dependencyError = ""
 		}
-		m.mu.Unlock()
+		m.depMu.Unlock()
 	}()
 	if len(report.Conflicts) > 0 {
 		return nil, errors.New("插件依赖与共享环境冲突，未修改环境：\n" + strings.Join(report.Conflicts, "\n"))
