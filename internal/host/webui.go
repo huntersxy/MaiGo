@@ -272,8 +272,9 @@ func (w *WebUI) hostModePayload(r *http.Request, authenticated bool, requested s
 
 func (w *WebUI) handleHostMode(rw http.ResponseWriter, r *http.Request) {
 	authenticated := w.requireSession(r)
-	payload := w.hostModePayload(r, authenticated, strings.TrimSpace(r.URL.Query().Get("bot_id")))
-	if !authenticated {
+	requested := strings.TrimSpace(r.URL.Query().Get("bot_id"))
+	payload := w.hostModePayload(r, authenticated, requested)
+	if !authenticated || requested == "" && r.URL.Query().Has("bot_id") {
 		payload["selected_bot_id"] = nil
 		payload["selected_bot_running"] = false
 	}
@@ -293,17 +294,16 @@ func (w *WebUI) handleHostSelection(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	requested := ""
+	clear := body.BotID == nil
 	if body.BotID != nil {
 		requested = strings.TrimSpace(*body.BotID)
-		if requested != "" {
-			if _, err := w.supervisor.workspace.Registry.GetBot(requested); err != nil {
-				httputil2.WriteJSON(rw, http.StatusNotFound, map[string]any{"detail": "未找到 Bot"})
-				return
-			}
+		if _, err := w.supervisor.workspace.Registry.GetBot(requested); err != nil {
+			httputil2.WriteJSON(rw, http.StatusNotFound, map[string]any{"detail": "未找到 Bot"})
+			return
 		}
 	}
 	payload := w.hostModePayload(r, true, requested)
-	if requested == "" {
+	if clear {
 		http.SetCookie(rw, &http.Cookie{
 			Name: w.sessions.SelectName, Value: "", MaxAge: -1, HttpOnly: true,
 			SameSite: http.SameSiteLaxMode, Path: "/", Secure: w.config.SecureCookie,
