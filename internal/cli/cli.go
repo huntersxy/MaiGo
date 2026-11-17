@@ -48,7 +48,8 @@ func Dispatch(argv []string) Outcome {
 		}
 		return Outcome{Handled: true, ExitCode: code}
 	case cmdRun:
-		if err := prepareRun(p.directory); err != nil {
+		// 宿主按目录内容决定布局：已有配置原地运行，空目录创建工作区
+		if err := prepareWorkspace(p.directory); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			return Outcome{Handled: true, ExitCode: 2}
 		}

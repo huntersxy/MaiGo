@@ -46,7 +46,9 @@ docker compose up -d --build
 docker compose logs maigo | grep "WebUI 登录 Token"
 ```
 
-WebUI 在 `http://<host>:7468`。无需创建 `.env`；端口冲突时：
+WebUI 在 `http://<host>:7468`。容器内以宿主模式运行，Bot 在 `bots/<id>/` 下由宿主拉起，
+`maigo host list` 可查询（容器中为 `docker compose exec maigo /app/maigo host list`）。
+无需创建 `.env`；端口冲突时：
 
 ```bash
 MAIBOT_WEB_PORT=8080 docker compose up -d

@@ -64,3 +64,17 @@ func joinMissing(names []string) string {
 		return out
 	}
 }
+
+// prepareWorkspace 设置工作区环境并切换目录；不要求配置已存在
+func prepareWorkspace(directory string) error {
+	if err := os.MkdirAll(directory, 0o777); err != nil {
+		return fmt.Errorf("创建工作区目录: %w", err)
+	}
+	if err := os.Setenv(InstanceDirEnv, directory); err != nil {
+		return fmt.Errorf("设置 %s: %w", InstanceDirEnv, err)
+	}
+	if err := os.Chdir(directory); err != nil {
+		return fmt.Errorf("切换工作目录: %w", err)
+	}
+	return nil
+}

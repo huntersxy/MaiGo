@@ -102,7 +102,7 @@ func runMain() (exitCode int) {
 	default:
 		return out.ExitCode
 	}
-	if dispatched.HostMode && !host.HasRuntimeContext() {
+	if dispatched.HostMode && !host.HasRuntimeContext() && os.Getenv(runtime.EnvRuntimeMode) == "" {
 		workspace, err := host.OpenWorkspace(config.InstanceRoot())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "宿主启动失败：%v"+string(rune(10)), err)
