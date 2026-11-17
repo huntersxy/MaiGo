@@ -153,10 +153,14 @@ func (d Deps) handlePluginConfigRawUpdate(w http.ResponseWriter, r *http.Request
 		writePluginRouteFailure(w, err)
 		return
 	}
-	runtimeStatus, syncErr := d.pluginConfigRuntimeStatus(r.Context(), pluginID)
-	if syncErr != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + syncErr.Error()})
-		return
+	runtimeStatus := "stopped"
+	if d.PluginHost != nil {
+		status, syncErr := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID)
+		if syncErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + syncErr.Error()})
+			return
+		}
+		runtimeStatus = status
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"success":        true,
@@ -299,17 +303,15 @@ func (d Deps) handlePluginConfigToggle(w http.ResponseWriter, r *http.Request) {
 		writePluginRouteFailure(w, err)
 		return
 	}
-	// 对齐 Python integration.py:278-292：启用插件前先同步依赖，环境或阻止列表变化时重启运行时
-	if newEnabled {
-		if err := d.syncPluginDependenciesOnEnable(r.Context(), pluginID); err != nil {
-			httputil.WriteJSON(w, http.StatusConflict, map[string]any{"detail": "启用插件时同步依赖失败：" + err.Error()})
+	runtimeStatus := "stopped"
+	if d.PluginHost != nil {
+		// 对齐 Python apply_plugin_config：写盘后立即解析、加载/卸载并通知运行时
+		status, syncErr := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID)
+		if syncErr != nil {
+			httputil.WriteJSON(w, http.StatusConflict, map[string]any{"detail": "插件状态同步失败：" + syncErr.Error()})
 			return
 		}
-	}
-	runtimeStatus, syncErr := d.pluginConfigRuntimeStatus(r.Context(), pluginID)
-	if syncErr != nil {
-		httputil.WriteJSON(w, http.StatusConflict, map[string]any{"detail": "插件状态同步失败：" + syncErr.Error()})
-		return
+		runtimeStatus = status
 	}
 	statusText := "启用"
 	if !newEnabled {

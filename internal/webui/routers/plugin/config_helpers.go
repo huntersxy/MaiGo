@@ -1,9 +1,8 @@
 package plugin
 
 import (
-	"context"
-	"errors"
 	"MaiGo/internal/webui/httputil"
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -102,46 +101,12 @@ func (d Deps) configWidgets(ctx context.Context, pluginID, actionID string) (map
 	return snapshot, nil
 }
 
-// pluginConfigRuntimeStatus 近似 Python apply_plugin_config 返回的 runtime_status
-func (d Deps) pluginConfigRuntimeStatus(ctx context.Context, pluginID string) (string, error) {
-	if d.PluginHost == nil {
-		return "stopped", nil
+func runnerUnavailable(err error) bool {
+	if err == nil {
+		return false
 	}
-	result, err := d.PluginHost.InspectPluginConfig(ctx, pluginID, nil, false)
-	if err != nil {
-		if runnerUnavailable(err) {
-			return "stopped", nil
-		}
-		return "stopped", err
-	}
-	if result.ConfigError != "" {
-		return "config_error", nil
-	}
-	return "running", nil
-}
-
-// syncPluginDependenciesOnEnable 启用插件前同步依赖，必要时重启 Runner
-// 对齐 Python integration.py:278-292：依赖环境或阻止列表变化时以 config_enabled_dependencies 重启
-func (d Deps) syncPluginDependenciesOnEnable(ctx context.Context, pluginID string) error {
-	if d.PluginHost == nil {
-		return nil
-	}
-	pipeline := pluginruntime.NewPluginDependencyPipeline("")
-	result, changed := d.PluginHost.SyncPluginDependencies(ctx, pipeline, d.PluginHost.PluginDirs(), nil)
-	if blocked := d.PluginHost.BlockedPluginReasons()[pluginID]; blocked != "" {
-		return errors.New(blocked)
-	}
-	if !result.EnvironmentChanged && len(changed) == 0 {
-		return nil
-	}
-	restarted, err := d.PluginHost.RestartWithLastOptions(ctx)
-	if err != nil {
-		return err
-	}
-	if !restarted {
-		return nil
-	}
-	return nil
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "未连接") || strings.Contains(message, "not connected")
 }
 
 func pluginConfigStatusNote(status string) string {
@@ -153,14 +118,6 @@ func pluginConfigStatusNote(status string) string {
 	default:
 		return "配置已同步到插件运行时"
 	}
-}
-
-func runnerUnavailable(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "未连接") || strings.Contains(message, "not connected")
 }
 
 func writePluginRouteFailure(w http.ResponseWriter, err error) {
