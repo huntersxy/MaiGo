@@ -31,7 +31,7 @@ type EmbeddingServiceClient struct {
 // taskName 为空时对齐 Python 默认使用 embedding 任务；requestType/sessionID 仅用于调用链元数据
 func NewEmbeddingServiceClient(router *Router, taskName TaskName, requestType string, sessionID string) (*EmbeddingServiceClient, error) {
 	if router == nil {
-		return nil, fmt.Errorf("LLM 路由器未初始化")
+		return nil, fmt.Errorf("模型服务未初始化")
 	}
 	return newEmbeddingServiceClient(router, taskName, requestType, sessionID, nil)
 }
@@ -52,7 +52,7 @@ func newEmbeddingServiceClient(
 		return nil, err
 	}
 	if router == nil && factory == nil {
-		return nil, fmt.Errorf("LLM 路由器未初始化")
+		return nil, fmt.Errorf("模型服务未初始化")
 	}
 	return &EmbeddingServiceClient{
 		router:        router,
@@ -164,7 +164,7 @@ func (c *EmbeddingServiceClient) EmbedImage(ctx context.Context, input ImageEmbe
 // factory 分支保留旧的单路由构造；生产路径走 Router 的候选 failover
 func (c *EmbeddingServiceClient) clientForTask(ctx context.Context, task TaskName) (EmbeddingClient, error) {
 	if c == nil {
-		return nil, fmt.Errorf("EmbeddingServiceClient 未初始化")
+		return nil, fmt.Errorf("嵌入服务未初始化")
 	}
 	meta := embeddingRequestMetadata{
 		taskName:    c.taskName,
@@ -184,7 +184,7 @@ func (c *EmbeddingServiceClient) clientForTask(ctx context.Context, task TaskNam
 		return c.clientFactory(ctx, resolved)
 	}
 	if c.router == nil {
-		return nil, fmt.Errorf("LLM 路由器未初始化")
+		return nil, fmt.Errorf("模型服务未初始化")
 	}
 	_, client, err := c.router.newEmbeddingClientForTask(ctx, task, meta)
 	return client, err

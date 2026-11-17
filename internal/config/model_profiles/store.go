@@ -35,7 +35,7 @@ type Profile struct {
 func (Profile) TableName() string { return "model_profiles" }
 
 var (
-	ErrNotFound      = errors.New("模型不存在")
+	ErrNotFound      = errors.New("未找到指定的模型")
 	ErrActiveModel   = errors.New("当前模型不能删除")
 	ErrInvalidModel  = errors.New("模型配置无效")
 	thinkingTypes    = map[string]bool{"": true, "enabled": true, "disabled": true}
@@ -125,8 +125,8 @@ func (s *Store) Update(ctx context.Context, row Profile, apiKey string) (Profile
 		"thinking_type":    row.ThinkingType,
 		"reasoning_effort": row.ReasoningEffort,
 		"version":          gorm.Expr("version + 1"),
-			"updated_at":       time.Now().UTC(),
-		}
+		"updated_at":       time.Now().UTC(),
+	}
 	if strings.TrimSpace(apiKey) != "" {
 		ciphertext, nonce, version, err := secrets.EncryptString(strings.TrimSpace(apiKey))
 		if err != nil {
@@ -159,14 +159,14 @@ func (s *Store) SetActive(ctx context.Context, id uint) error {
 			return err
 		}
 		now := time.Now().UTC()
-			if err := tx.Model(&Profile{}).Where("active").Updates(map[string]any{
-				"active": false, "version": gorm.Expr("version + 1"), "updated_at": now,
-			}).Error; err != nil {
-				return fmt.Errorf("取消旧当前模型失败: %w", err)
-			}
-			result := tx.Model(&Profile{}).Where("id = ?", id).Updates(map[string]any{
-				"active": true, "version": gorm.Expr("version + 1"), "updated_at": now,
-			})
+		if err := tx.Model(&Profile{}).Where("active").Updates(map[string]any{
+			"active": false, "version": gorm.Expr("version + 1"), "updated_at": now,
+		}).Error; err != nil {
+			return fmt.Errorf("取消旧当前模型失败: %w", err)
+		}
+		result := tx.Model(&Profile{}).Where("id = ?", id).Updates(map[string]any{
+			"active": true, "version": gorm.Expr("version + 1"), "updated_at": now,
+		})
 		if result.Error != nil {
 			return fmt.Errorf("切换当前模型失败: %w", result.Error)
 		}
@@ -237,6 +237,6 @@ func keyHint(apiKey string) string {
 // ClearActive 取消当前模型，用于切换失败回滚
 func (s *Store) ClearActive(ctx context.Context, id uint) error {
 	return s.db.WithContext(ctx).Model(&Profile{}).Where("id = ? AND active", id).Updates(map[string]any{
-			"active": false, "version": gorm.Expr("version + 1"), "updated_at": time.Now().UTC(),
-		}).Error
+		"active": false, "version": gorm.Expr("version + 1"), "updated_at": time.Now().UTC(),
+	}).Error
 }

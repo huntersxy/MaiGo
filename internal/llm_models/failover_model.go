@@ -99,7 +99,7 @@ func (m *failoverModel) Generate(ctx context.Context, input []*schema.AgenticMes
 		m.emitFinalError(lastErr)
 		return nil, lastErr
 	}
-	err := fmt.Errorf("任务 %q 无可用模型", m.task)
+	err := fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
 	m.emitFinalError(err)
 	return nil, err
 }
@@ -139,7 +139,7 @@ func (m *failoverModel) Stream(ctx context.Context, input []*schema.AgenticMessa
 		m.emitFinalError(lastErr)
 		return nil, lastErr
 	}
-	err := fmt.Errorf("任务 %q 无可用模型", m.task)
+	err := fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
 	m.emitFinalError(err)
 	return nil, err
 }

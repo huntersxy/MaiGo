@@ -60,7 +60,7 @@ func newEmbeddingFailoverClient(task TaskName, router *Router, candidates []embe
 
 func (c *embeddingFailoverClient) EmbedText(ctx context.Context, text string) (EmbeddingResult, error) {
 	if c == nil {
-		return EmbeddingResult{}, fmt.Errorf("嵌入客户端未初始化")
+		return EmbeddingResult{}, fmt.Errorf("嵌入服务未初始化")
 	}
 	return c.run(ctx, func(client EmbeddingClient) (EmbeddingResult, error) {
 		return client.EmbedText(ctx, text)
@@ -94,7 +94,7 @@ func (c *embeddingFailoverClient) EmbedTextsConcurrent(ctx context.Context, text
 
 func (c *embeddingFailoverClient) EmbedImage(ctx context.Context, input ImageEmbeddingInput) (EmbeddingResult, error) {
 	if c == nil {
-		return EmbeddingResult{}, fmt.Errorf("嵌入客户端未初始化")
+		return EmbeddingResult{}, fmt.Errorf("嵌入服务未初始化")
 	}
 	return c.run(ctx, func(client EmbeddingClient) (EmbeddingResult, error) {
 		return client.EmbedImage(ctx, input)
@@ -104,10 +104,10 @@ func (c *embeddingFailoverClient) EmbedImage(ctx context.Context, input ImageEmb
 // run 依次尝试候选；单候选失败保留底层错误，多候选失败聚合
 func (c *embeddingFailoverClient) run(ctx context.Context, call func(EmbeddingClient) (EmbeddingResult, error)) (EmbeddingResult, error) {
 	if c == nil {
-		return EmbeddingResult{}, fmt.Errorf("嵌入客户端未初始化")
+		return EmbeddingResult{}, fmt.Errorf("嵌入服务未初始化")
 	}
 	if len(c.candidates) == 0 {
-		return EmbeddingResult{}, fmt.Errorf("任务 %q 无可用嵌入模型", c.task)
+		return EmbeddingResult{}, fmt.Errorf("embedding 任务未配置模型")
 	}
 	var failures []embeddingAttemptFailure
 	for _, candidate := range c.candidates {
@@ -180,7 +180,7 @@ func (e *embeddingFailoverError) Error() string {
 	for _, failure := range e.Failures {
 		parts = append(parts, fmt.Sprintf("%s: %v", failure.Model, failure.Err))
 	}
-	return fmt.Sprintf("任务 %q 全部候选嵌入模型失败: %s", e.Task, strings.Join(parts, "; "))
+	return fmt.Sprintf("embedding 任务的所有候选模型均失败：%s", strings.Join(parts, "；"))
 }
 
 func (e *embeddingFailoverError) Unwrap() []error {
@@ -197,10 +197,10 @@ func (e *embeddingFailoverError) Unwrap() []error {
 // newEmbeddingClientForTask 解析候选并构造失败切换客户端
 func (r *Router) newEmbeddingClientForTask(ctx context.Context, task TaskName, meta embeddingRequestMetadata) (ResolvedRoute, EmbeddingClient, error) {
 	if task != TaskEmbedding && task != TaskImageEmbedding {
-		return ResolvedRoute{}, nil, fmt.Errorf("任务 %q 不是嵌入任务", task)
+		return ResolvedRoute{}, nil, fmt.Errorf("任务 '%s' 不是嵌入任务", task)
 	}
 	if r == nil || r.profiles == nil {
-		return ResolvedRoute{}, nil, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, nil, fmt.Errorf("模型服务未初始化")
 	}
 	candidates, initial, err := r.resolveEmbeddingCandidates(ctx, task, meta)
 	if err != nil {
@@ -270,7 +270,7 @@ func (r *Router) resolveEmbeddingCandidates(ctx context.Context, task TaskName, 
 	}
 	if len(candidates) == 0 {
 		if lastErr != nil {
-			return nil, ResolvedRoute{}, fmt.Errorf("任务 %q 全部候选嵌入模型创建客户端失败: %w", task, lastErr)
+			return nil, ResolvedRoute{}, fmt.Errorf("任务 '%s' 的候选嵌入模型全部初始化失败：%w", task, lastErr)
 		}
 		return single()
 	}

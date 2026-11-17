@@ -131,19 +131,19 @@ func ResolveEmbeddingModelFingerprint(
 ) (EmbeddingFingerprint, error) {
 	modelName = trimTask(modelName)
 	if modelName == "" {
-		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型名不能为空")
+		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型名称不能为空")
 	}
 	info, ok := findModelInfo(file.Models, modelName)
 	if !ok {
-		return EmbeddingFingerprint{}, fmt.Errorf("model_config 中未找到模型 %q", modelName)
+		return EmbeddingFingerprint{}, fmt.Errorf("未找到名为 '%s' 的模型", modelName)
 	}
 	providerName := trimTask(apiProvider)
 	if providerName == "" {
-		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型 %q 的 api_provider 不能为空", modelName)
+		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型 '%s' 未配置 API 提供商", modelName)
 	}
 	provider, ok := findAPIProvider(file.ApiProviders, providerName)
 	if !ok {
-		return EmbeddingFingerprint{}, fmt.Errorf("未找到 api_provider %q", providerName)
+		return EmbeddingFingerprint{}, fmt.Errorf("未找到名为 '%s' 的 API 提供商", providerName)
 	}
 	if modelIdentifier == "" {
 		modelIdentifier = trimTask(info.ModelIdentifier)
@@ -167,7 +167,7 @@ func EmbeddingFingerprintFromConfig(cfg ModelConfig, dimension int) (EmbeddingFi
 		model = trimTask(cfg.Model)
 	}
 	if model == "" {
-		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型名为空")
+		return EmbeddingFingerprint{}, fmt.Errorf("embedding 模型名称不能为空")
 	}
 	return BuildEmbeddingFingerprint(EmbeddingFingerprintInput{
 		Model:                model,

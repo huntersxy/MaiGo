@@ -13,7 +13,7 @@ func (a *Agent) wireNativeImageEmbedding() {
 	native.SetImageEmbeddingClientProvider(func(ctx context.Context) (llm.EmbeddingClient, error) {
 		router := a.llmRouterSnapshot()
 		if router == nil {
-			return nil, errors.New("模型路由未就绪")
+			return nil, errors.New("模型服务未初始化")
 		}
 		_, client, err := router.NewEmbeddingClientForTask(ctx, llm.TaskImageEmbedding)
 		if err != nil {

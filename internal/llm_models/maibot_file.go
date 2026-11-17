@@ -31,26 +31,26 @@ var supportedMaiBotClientTypes = map[string]bool{
 func ModelConfigFromMaiBotFile(file maibot.ModelConfigFile, modelName string) (ModelConfig, error) {
 	modelName = trimTask(modelName)
 	if modelName == "" {
-		return ModelConfig{}, fmt.Errorf("模型名为空")
+		return ModelConfig{}, fmt.Errorf("模型名称不能为空")
 	}
 	info, ok := findModelInfo(file.Models, modelName)
 	if !ok {
-		return ModelConfig{}, fmt.Errorf("model_config 中未找到模型 %q", modelName)
+		return ModelConfig{}, fmt.Errorf("未找到名为 '%s' 的模型", modelName)
 	}
 	providerName := trimTask(info.ApiProvider)
 	if providerName == "" {
-		return ModelConfig{}, fmt.Errorf("模型 %q 未配置 api_provider", modelName)
+		return ModelConfig{}, fmt.Errorf("模型 '%s' 未配置 API 提供商", modelName)
 	}
 	provider, ok := findAPIProvider(file.ApiProviders, providerName)
 	if !ok {
-		return ModelConfig{}, fmt.Errorf("未找到 api_provider %q", providerName)
+		return ModelConfig{}, fmt.Errorf("未找到名为 '%s' 的 API 提供商", providerName)
 	}
 	if errors := maibot.ProviderConfigurationErrors(providerName, provider); len(errors) > 0 {
 		return ModelConfig{}, fmt.Errorf("供应商 %s 配置无效：%s", providerName, strings.Join(errors, "；"))
 	}
 	clientType := normalizeClientType(provider.ClientType)
 	if !supportedMaiBotClientTypes[clientType] && !pluginProviderAvailable(clientType) {
-		return ModelConfig{}, fmt.Errorf("client_type %q 未注册（既非内置类型，也没有插件 Provider 声明）", provider.ClientType)
+		return ModelConfig{}, fmt.Errorf("客户端类型 '%s' 未注册，请检查 model_config 的 api_providers.client_type", provider.ClientType)
 	}
 	apiKey := trimTask(provider.ApiKey)
 	baseURL := trimTask(provider.BaseUrl)
@@ -60,7 +60,7 @@ func ModelConfigFromMaiBotFile(file maibot.ModelConfigFile, modelName string) (M
 		authType = authTypeBearer
 	}
 	if modelID == "" {
-		return ModelConfig{}, fmt.Errorf("模型 %q 的 Provider 配置不完整", modelName)
+		return ModelConfig{}, fmt.Errorf("模型 '%s' 的 API 提供商配置不完整", modelName)
 	}
 	maxRetry := provider.MaxRetry
 	if !provider.MaxRetrySet && maxRetry == 0 {

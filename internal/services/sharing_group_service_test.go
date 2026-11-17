@@ -41,6 +41,21 @@ func TestSharingGroupScopeAndRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	empty, err := SaveSharingGroup(ctx, SharingGroupInput{Name: "空组", Color: "#397FAE", Enabled: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range ListSharingGroups(ctx) {
+		if item.ID != empty.ID {
+			continue
+		}
+		if item.MemberIDs == nil || item.Rules == nil || item.ResolvedIDs == nil {
+			t.Fatalf("空组集合必须编码为数组: %#v", item)
+		}
+	}
+	if err := DeleteSharingGroup(ctx, empty.ID, empty.Revision); err != nil {
+		t.Fatal(err)
+	}
 	ids, global, err := ResolveSharingScope("source", "expression")
 	if err != nil {
 		t.Fatal(err)

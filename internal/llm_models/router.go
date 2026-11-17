@@ -37,6 +37,23 @@ var (
 	errUnknownTask = contract.ErrUnknownTask
 )
 
+// modelNotFoundError 保留 ErrNotFound 的 errors.Is 语义，同时输出面向用户的模型名
+type modelNotFoundError struct {
+	name string
+}
+
+func (e *modelNotFoundError) Error() string {
+	return fmt.Sprintf("未找到名为 '%s' 的模型", e.name)
+}
+
+func (e *modelNotFoundError) Is(target error) bool {
+	return target == modelprofiles.ErrNotFound
+}
+
+func newModelNotFoundError(name string) error {
+	return &modelNotFoundError{name: name}
+}
+
 // Router 按 MaiBot 任务名选择模型档案；未命中时回退到数据库当前活跃模型
 type Router struct {
 	profiles modelprofiles.Source
@@ -78,7 +95,7 @@ func (r *Router) BindProfile(task TaskName, profileName string) {
 // Resolve 解析任务对应的模型档案与客户端配置
 func (r *Router) Resolve(ctx context.Context, task TaskName) (ResolvedRoute, error) {
 	if r == nil || r.profiles == nil {
-		return ResolvedRoute{}, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, fmt.Errorf("模型服务未初始化")
 	}
 	task, err := NormalizeTaskName(string(task))
 	if err != nil {
@@ -241,7 +258,7 @@ func (r *Router) profileByName(ctx context.Context, name string) (modelprofiles.
 			return row, nil
 		}
 	}
-	return modelprofiles.Profile{}, fmt.Errorf("%w: %s", modelprofiles.ErrNotFound, name)
+	return modelprofiles.Profile{}, newModelNotFoundError(name)
 }
 
 func (r *Router) adjustModelUsage(modelName string, delta ModelUsage) {
@@ -295,7 +312,7 @@ func (r *Router) profileByMaiBotModelName(ctx context.Context, maiBotModelName s
 	}
 	switch len(matched) {
 	case 0:
-		return modelprofiles.Profile{}, modelprofiles.ErrNotFound
+		return modelprofiles.Profile{}, newModelNotFoundError(maiBotModelName)
 	case 1:
 		return matched[0], nil
 	default:
@@ -303,6 +320,8 @@ func (r *Router) profileByMaiBotModelName(ctx context.Context, maiBotModelName s
 		for _, row := range matched {
 			names = append(names, row.Name)
 		}
-		return modelprofiles.Profile{}, fmt.Errorf("模型标识 %q 对应多个档案（%s），无法唯一路由", maiBotModelName, strings.Join(names, ", "))
+		return modelprofiles.Profile{}, fmt.Errorf(
+			"模型标识 '%s' 对应多个模型档案（%s），请在任务配置中改用模型档案名称",
+			maiBotModelName, strings.Join(names, "、"))
 	}
 }

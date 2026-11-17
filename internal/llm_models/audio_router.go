@@ -77,14 +77,14 @@ func (r *Router) TranscribeAudioForTask(ctx context.Context, task TaskName, requ
 
 func (r *Router) newAudioTranscriberForTask(ctx context.Context, task TaskName, meta audioRequestMetadata) (ResolvedRoute, AudioTranscriber, error) {
 	if r == nil || r.profiles == nil {
-		return ResolvedRoute{}, nil, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, nil, fmt.Errorf("模型服务未初始化")
 	}
 	task, err := NormalizeTaskName(string(task))
 	if err != nil {
 		return ResolvedRoute{}, nil, err
 	}
 	if task == TaskWebSearch {
-		return ResolvedRoute{}, nil, fmt.Errorf("任务 %q 不支持语音转写", task)
+		return ResolvedRoute{}, nil, fmt.Errorf("任务 '%s' 不支持语音转写", task)
 	}
 	candidates, initial, err := r.resolveAudioCandidates(ctx, task, meta)
 	if err != nil {
@@ -142,7 +142,7 @@ func (r *Router) resolveAudioCandidates(ctx context.Context, task TaskName, meta
 	}
 	if len(candidates) == 0 {
 		if lastErr != nil {
-			return nil, ResolvedRoute{}, fmt.Errorf("任务 %q 全部候选语音模型创建客户端失败: %w", task, lastErr)
+			return nil, ResolvedRoute{}, fmt.Errorf("任务 '%s' 的候选语音模型全部初始化失败：%w", task, lastErr)
 		}
 		return single()
 	}
@@ -251,7 +251,7 @@ func (c *audioFailoverClient) Transcribe(ctx context.Context, req AudioTranscrip
 		ctx = context.Background()
 	}
 	if len(c.candidates) == 0 {
-		return AudioTranscriptionResult{}, fmt.Errorf("任务 %q 无可用语音模型", c.task)
+		return AudioTranscriptionResult{}, fmt.Errorf("voice 任务未配置模型")
 	}
 	// 同一次语音请求共享尝试记录器，失败快照按候选尝试聚合
 	ctx, _ = ensureSnapshotAttemptRecorder(ctx)
@@ -336,7 +336,7 @@ func (e *audioFailoverError) Error() string {
 	for _, failure := range e.Failures {
 		parts = append(parts, fmt.Sprintf("%s: %v", failure.Model, failure.Err))
 	}
-	return fmt.Sprintf("任务 %q 全部候选语音模型失败: %s", e.Task, strings.Join(parts, "; "))
+	return fmt.Sprintf("voice 任务的所有候选模型均失败：%s", strings.Join(parts, "；"))
 }
 
 func (e *audioFailoverError) Unwrap() []error {

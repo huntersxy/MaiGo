@@ -254,7 +254,7 @@ func (h *HostImageEmbedder) failedProbeLocked(ctx context.Context, cause error) 
 	h.nextProbeAt = h.now().Add(h.probeRetry)
 	// 未配置视觉嵌入模型时每轮探测都会失败，属于预期配置状态，降到 Debug；
 	// 其余失败（网络、鉴权等）仍按 Warning 提示。
-	if strings.Contains(cause.Error(), "模型不存在") {
+	if strings.Contains(cause.Error(), "未配置模型") {
 		h.logger.Debug("图片嵌入探测失败: " + cause.Error())
 	} else {
 		h.logger.Warning("图片嵌入探测失败: " + cause.Error())

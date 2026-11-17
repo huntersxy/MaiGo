@@ -40,7 +40,7 @@ func withEmbeddingTaskTimeout(task TaskName, resolved ResolvedRoute, kind string
 
 func (c *embeddingTimeoutClient) EmbedText(ctx context.Context, text string) (EmbeddingResult, error) {
 	if c == nil || c.inner == nil {
-		return EmbeddingResult{}, errors.New("嵌入客户端未初始化")
+		return EmbeddingResult{}, errors.New("嵌入服务未初始化")
 	}
 	runCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -78,7 +78,7 @@ func (c *embeddingTimeoutClient) EmbedTextsConcurrent(ctx context.Context, texts
 
 func (c *embeddingTimeoutClient) EmbedImage(ctx context.Context, input ImageEmbeddingInput) (EmbeddingResult, error) {
 	if c == nil || c.inner == nil {
-		return EmbeddingResult{}, errors.New("嵌入客户端未初始化")
+		return EmbeddingResult{}, errors.New("嵌入服务未初始化")
 	}
 	runCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

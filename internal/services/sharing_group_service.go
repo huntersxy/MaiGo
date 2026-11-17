@@ -118,7 +118,7 @@ func ListSharingGroups(ctx context.Context) []SharingGroupSnapshot {
 	sharingGroupsMu.RLock()
 	defer sharingGroupsMu.RUnlock()
 	if sharingSnapshot == nil {
-		return nil
+		return []SharingGroupSnapshot{}
 	}
 	return cloneSharingSnapshot(sharingSnapshot)
 }
@@ -194,6 +194,7 @@ func SharingGroupIsGlobal(group SharingGroupSnapshot) bool {
 
 // SaveSharingGroup 新建或按 revision 乐观更新组
 func SaveSharingGroup(ctx context.Context, input SharingGroupInput, groupID *string) (SharingGroupSnapshot, error) {
+	input.Name = strings.TrimSpace(input.Name)
 	if err := validateSharingGroupInput(input); err != nil {
 		return SharingGroupSnapshot{}, err
 	}
@@ -347,17 +348,20 @@ func DeleteSharingGroup(ctx context.Context, groupID string, revision int) error
 
 func validateSharingGroupInput(input SharingGroupInput) error {
 	name := strings.TrimSpace(input.Name)
-	if name == "" || len([]rune(name)) > 100 {
+	if name == "" {
 		return errors.New("相通组名称不能为空")
 	}
+	if len([]rune(name)) > 100 {
+		return errors.New("相通组名称不能超过 100 个字符")
+	}
 	if !sharingColorPattern.MatchString(input.Color) {
-		return errors.New("相通组颜色必须是十六进制颜色")
+		return errors.New("相通组颜色必须是 #RRGGBB 格式")
 	}
 	if len([]rune(input.Note)) > 4000 {
-		return errors.New("相通组备注过长")
+		return errors.New("相通组备注不能超过 4000 个字符")
 	}
 	if input.Revision != nil && *input.Revision < 1 {
-		return errors.New("相通组版本号无效")
+		return errors.New("相通组版本号必须大于等于 1")
 	}
 	for capability := range input.Capabilities {
 		if _, ok := SharingCapabilities[capability]; !ok {
@@ -367,20 +371,20 @@ func validateSharingGroupInput(input SharingGroupInput) error {
 	seenMembers := make(map[string]struct{}, len(input.MemberIDs))
 	for _, id := range input.MemberIDs {
 		if _, exists := seenMembers[id]; exists {
-			return errors.New("成员不能重复")
+			return fmt.Errorf("成员不能重复：%s", id)
 		}
 		seenMembers[id] = struct{}{}
 	}
 	seenRules := make(map[string]struct{}, len(input.Rules))
 	for _, rule := range input.Rules {
 		if rule.Platform == "" || len([]rune(rule.Platform)) > 100 {
-			return errors.New("成员规则平台无效")
+			return errors.New("成员规则平台不能为空且不能超过 100 个字符")
 		}
 		if rule.ItemID == "" || len([]rune(rule.ItemID)) > 255 {
-			return errors.New("成员规则目标无效")
+			return errors.New("成员规则目标不能为空且不能超过 255 个字符")
 		}
 		if rule.RuleType != "group" && rule.RuleType != "private" && rule.RuleType != "all" {
-			return errors.New("成员规则类型无效")
+			return fmt.Errorf("成员规则类型无效：%s（可选 group、private、all）", rule.RuleType)
 		}
 		key := rule.Platform + "\x00" + rule.ItemID + "\x00" + rule.RuleType
 		if _, exists := seenRules[key]; exists {
@@ -491,9 +495,10 @@ func cloneSharingSnapshot(source []SharingGroupSnapshot) []SharingGroupSnapshot 
 	cloned := make([]SharingGroupSnapshot, len(source))
 	for index, group := range source {
 		cloned[index] = group
-		cloned[index].MemberIDs = append([]string(nil), group.MemberIDs...)
-		cloned[index].ResolvedIDs = append([]string(nil), group.ResolvedIDs...)
-		cloned[index].Rules = append([]SharingMemberRule(nil), group.Rules...)
+		// 管理端按数组遍历；空集合必须编码为 []，不能是 null
+		cloned[index].MemberIDs = append([]string{}, group.MemberIDs...)
+		cloned[index].ResolvedIDs = append([]string{}, group.ResolvedIDs...)
+		cloned[index].Rules = append([]SharingMemberRule{}, group.Rules...)
 		cloned[index].Capabilities = make(map[string]bool, len(group.Capabilities))
 		for key, value := range group.Capabilities {
 			cloned[index].Capabilities[key] = value

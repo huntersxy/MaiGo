@@ -17,7 +17,7 @@ import (
 // 但仍包一层 413/data URI 压缩重试
 func (r *Router) NewClientForTaskWithFailover(ctx context.Context, task TaskName) (ResolvedRoute, model.AgenticModel, error) {
 	if r == nil || r.profiles == nil {
-		return ResolvedRoute{}, nil, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, nil, fmt.Errorf("模型服务未初始化")
 	}
 	task, err := NormalizeTaskName(string(task))
 	if err != nil {
@@ -69,9 +69,9 @@ func (r *Router) NewClientForTaskWithFailover(ctx context.Context, task TaskName
 	}
 	if len(clients) == 0 {
 		if lastErr != nil {
-			return ResolvedRoute{}, nil, fmt.Errorf("任务 %q 全部候选模型创建客户端失败: %w", task, lastErr)
+			return ResolvedRoute{}, nil, fmt.Errorf("任务 '%s' 的候选模型全部初始化失败：%w", task, lastErr)
 		}
-		return ResolvedRoute{}, nil, fmt.Errorf("任务 %q 无可用模型", task)
+		return ResolvedRoute{}, nil, fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
 	}
 
 	available := make([]string, 0, len(models))
@@ -90,7 +90,7 @@ func (r *Router) NewClientForTaskWithFailover(ctx context.Context, task TaskName
 		},
 	})
 	if !ok {
-		return ResolvedRoute{}, nil, fmt.Errorf("任务 %q 无可用模型", task)
+		return ResolvedRoute{}, nil, fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
 	}
 	return routes[initial], newFailoverModel(r, task, models, strategy, clients, attempts, configs), nil
 }
@@ -101,7 +101,7 @@ func (r *Router) NewClientForTaskWithFailover(ctx context.Context, task TaskName
 // 仅活跃档案部署（model_config 未加载）也能解析显式模型。
 func (r *Router) NewClientForTaskWithFailoverAndModel(ctx context.Context, task TaskName, modelName string) (ResolvedRoute, model.AgenticModel, error) {
 	if r == nil {
-		return ResolvedRoute{}, nil, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, nil, fmt.Errorf("模型服务未初始化")
 	}
 	task, err := NormalizeTaskName(string(task))
 	if err != nil {
@@ -112,7 +112,7 @@ func (r *Router) NewClientForTaskWithFailoverAndModel(ctx context.Context, task 
 		return r.NewClientForTaskWithFailover(ctx, task)
 	}
 	if r.file == nil && r.profiles == nil {
-		return ResolvedRoute{}, nil, fmt.Errorf("LLM 路由器未初始化")
+		return ResolvedRoute{}, nil, fmt.Errorf("模型服务未初始化")
 	}
 
 	taskCfg := maibot.TaskConfig{}
@@ -163,7 +163,7 @@ func (r *Router) resolveMaiBotModel(
 ) (ResolvedRoute, error) {
 	modelName = trimTask(modelName)
 	if modelName == "" {
-		return ResolvedRoute{}, fmt.Errorf("模型名为空")
+		return ResolvedRoute{}, fmt.Errorf("模型名称不能为空")
 	}
 	if r.profiles != nil {
 		profile, err := r.profileByMaiBotModelName(ctx, modelName)
@@ -189,7 +189,7 @@ func (r *Router) resolveMaiBotModel(
 		}
 	}
 	if r.file == nil {
-		return ResolvedRoute{}, fmt.Errorf("未找到名为 %q 的模型（model_config 未加载且活跃模型档案未命中）: %w", modelName, modelprofiles.ErrNotFound)
+		return ResolvedRoute{}, newModelNotFoundError(modelName)
 	}
 	cfg, err := ModelConfigFromMaiBotFile(*r.file, modelName)
 	if err != nil {

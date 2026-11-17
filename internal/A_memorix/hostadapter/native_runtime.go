@@ -86,11 +86,11 @@ func BuildNativeOptions(deps NativeRuntimeDeps) native.Options {
 		// image_embedding 任务；provider 每次按当前路由重新建客户端，模型热重载后仍有效
 		native.SetImageEmbeddingClientProvider(func(ctx context.Context) (llm.EmbeddingClient, error) {
 			if router == nil {
-				return nil, errors.New("图片嵌入模型路由未初始化")
+				return nil, errors.New("模型服务未初始化")
 			}
 			_, client, err := router.NewEmbeddingClientForTask(ctx, llm.TaskImageEmbedding)
 			if err != nil {
-				return nil, fmt.Errorf("图片嵌入任务路由失败: %w", err)
+				return nil, err
 			}
 			return client, nil
 		})
