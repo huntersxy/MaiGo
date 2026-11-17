@@ -7,3 +7,5 @@
 - **Windows 进程回收**：Python 使用 Job Object；Go 使用进程树信号与 `taskkill /T /F`，语义同为停止 Worker 及其子进程。
 - **插件依赖分析**：Python 在 Bot 目录启动 `requirements_report` 子进程；Go 直接读取插件 Manifest，并调用同一套 PEP 440 与依赖流水线代码。
 - **打包安装自更新**：Python 支持 uv tool 包替换；Go 仅对 git 源码部署执行快进、构建和回滚，非 git 部署在检查阶段报告 `not_git_repo`。
+- **配置文件回写**：Go 的 TOML 编码器不保留原文件注释与列对齐；Python 使用 tomlkit 保留。字段值、校验与事务语义一致。
+- **Dashboard 版本检查**：宿主启动仍解析原版 dashboard 构建目录；Go 不读取 Python 包元数据做前后端版本兼容提示。

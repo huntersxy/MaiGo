@@ -432,9 +432,39 @@ func (s *Supervisor) startDesired(prepareDependencies bool) []string {
 		}
 		if err := s.spawn(context.Background(), instance); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", bot.Name, err))
+			continue
+		}
+		s.waitSettled(instance)
+		instance.mu.Lock()
+		status := instance.status
+		message := instance.errMsg
+		instance.mu.Unlock()
+		if status != "running" {
+			failures = append(failures, fmt.Sprintf("%s: %s", bot.Name, message))
 		}
 	}
 	return failures
+}
+
+// waitSettled 等待 Worker 就绪或启动失败，按顺序启动避免多个迁移同时争抢磁盘
+func (s *Supervisor) waitSettled(instance *SupervisedBot) {
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.mu.Lock()
+		closing := s.closing
+		s.mu.Unlock()
+		if closing {
+			return
+		}
+		instance.mu.Lock()
+		status := instance.status
+		alive := instance.process != nil
+		instance.mu.Unlock()
+		if !alive || (status != "starting" && status != "migrating") {
+			return
+		}
+	}
 }
 
 // Shutdown 停止全部 Bot；任一未能正常停止时返回错误

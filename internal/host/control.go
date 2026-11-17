@@ -126,6 +126,8 @@ func writeControlResponse(conn net.Conn, payload map[string]any) {
 
 // RunHost 持有工作区运行锁启动宿主，直到信号或控制通道请求关闭
 func RunHost(ctx context.Context, workspace Workspace, confirmed map[string]struct{}) error {
+	// 仅宿主入口提供此标记，Worker 不得自行升级共享环境
+	_ = os.Setenv("MAIBOT_PACKAGE_RUNNER", "1")
 	runLock, err := LockFilePath(filepath.Join(workspace.HostDirectory(), "run.lock"))
 	if err != nil {
 		return errors.New("宿主工作区正在被其他进程使用")
@@ -160,7 +162,7 @@ func RunHost(ctx context.Context, workspace Workspace, confirmed map[string]stru
 		fmt.Fprintln(os.Stderr, "WebUI 前端资源不可用，请执行 pip install maibot-dashboard 或构建 dashboard")
 	}
 	supervisor.prepareDependencies = func() error {
-		_, err := control.maintenance.InstallPluginDependencies(context.Background())
+		_, err := control.maintenance.InstallPluginDependenciesAutomatic(context.Background())
 		return err
 	}
 	control.webui = webui

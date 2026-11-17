@@ -173,9 +173,12 @@ func transferTarget(bot BotRecord, host string, name string) string {
 		return ""
 	}
 	current := target
-	for current != bot.Directory && current != filepath.Dir(bot.Directory) {
+	for current != filepath.Dir(bot.Directory) {
 		if isDirectoryLink(current) {
 			return ""
+		}
+		if current == bot.Directory {
+			break
 		}
 		current = filepath.Dir(current)
 	}

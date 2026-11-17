@@ -324,15 +324,15 @@ func containsHost(hosts []string, target string) bool {
 }
 
 // HostConfigFromBot 旧用户首次进入宿主时沿用原 Bot 的对外地址；只读取，不改写原配置
-func HostConfigFromBot(botConfigPath string) HostConfig {
+func HostConfigFromBot(botConfigPath string) (HostConfig, error) {
 	cfg := DefaultHostConfig()
 	raw, err := os.ReadFile(botConfigPath)
 	if err != nil {
-		return cfg
+		return HostConfig{}, err
 	}
 	var document map[string]any
 	if err := toml.Unmarshal(raw, &document); err != nil {
-		return cfg
+		return HostConfig{}, err
 	}
 	httpSection, _ := document["http"].(map[string]any)
 	webui, _ := document["webui"].(map[string]any)
@@ -381,5 +381,5 @@ func HostConfigFromBot(botConfigPath string) HostConfig {
 	if base, ok := files["transfer_base_url"].(string); ok {
 		cfg.PublicBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
 	}
-	return cfg
+	return cfg, nil
 }

@@ -91,12 +91,22 @@ func NewWebUI(supervisor *Supervisor, config HostConfig, stopping chan struct{})
 	webui.credentials = credentials
 	webui.sessions = sessions
 	webui.auth = newHostAuth(sessions, credentials, resolver)
-	root, ok := dashboardstatic.ResolveRoot(supervisor.workspace.Root)
+	root, ok := resolveHostStaticRoot(supervisor.workspace.Root)
 	if ok {
 		webui.staticRoot = root
 		webui.static = NewStaticHandler(root)
 	}
 	return webui, nil
+}
+
+func resolveHostStaticRoot(workspace string) (string, bool) {
+	if value := strings.ToLower(strings.TrimSpace(os.Getenv("MAIBOT_WEBUI_USE_LOCAL_DASHBOARD"))); value == "1" || value == "true" || value == "yes" || value == "on" {
+		candidate := filepath.Join(maintenanceRoot(), "dashboard", "dist")
+		if info, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil && !info.IsDir() {
+			return filepath.Clean(candidate), true
+		}
+	}
+	return dashboardstatic.ResolveRoot(workspace)
 }
 
 // Management 是否启用管理界面

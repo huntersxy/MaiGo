@@ -5,6 +5,7 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,6 +26,7 @@ type HostMaintenance struct {
 	mu                       sync.Mutex
 	busy                     atomic.Bool
 	dependencyWG             sync.WaitGroup
+	dependencyRunning        atomic.Bool
 	updateRequested          atomic.Bool
 	dependencyError          string
 	failedDependencySnapshot string
@@ -88,9 +90,13 @@ func (m *HostMaintenance) ManageBot(botID, action, name string) (map[string]any,
 
 // QueuePluginDependencies 在控制回执后异步准备插件依赖
 func (m *HostMaintenance) QueuePluginDependencies() {
+	if !m.dependencyRunning.CompareAndSwap(false, true) {
+		return
+	}
 	m.dependencyWG.Add(1)
 	go func() {
 		defer m.dependencyWG.Done()
+		defer m.dependencyRunning.Store(false)
 		if _, err := m.InstallPluginDependencies(context.Background()); err != nil {
 			m.mu.Lock()
 			m.dependencyError = err.Error()
@@ -307,6 +313,15 @@ func (m *HostMaintenance) AnalyzePluginDependencies(ctx context.Context) (Plugin
 
 // InstallPluginDependencies 停止全部 Bot 后安装共享环境缺失依赖
 func (m *HostMaintenance) InstallPluginDependencies(ctx context.Context) (map[string]any, error) {
+	return m.installPluginDependencies(ctx, false)
+}
+
+// InstallPluginDependenciesAutomatic 启动流程自动补装；相同失败声明只自动尝试一次
+func (m *HostMaintenance) InstallPluginDependenciesAutomatic(ctx context.Context) (map[string]any, error) {
+	return m.installPluginDependencies(ctx, true)
+}
+
+func (m *HostMaintenance) installPluginDependencies(ctx context.Context, automatic bool) (result map[string]any, err error) {
 	unlock, err := m.tryLock()
 	if err != nil {
 		return nil, err
@@ -316,6 +331,31 @@ func (m *HostMaintenance) InstallPluginDependencies(ctx context.Context) (map[st
 	if err != nil {
 		return nil, err
 	}
+	snapshotBytes, _ := json.Marshal(report.Bots)
+	snapshot := string(snapshotBytes)
+	if automatic {
+		m.mu.Lock()
+		failed := m.failedDependencySnapshot
+		message := m.dependencyError
+		m.mu.Unlock()
+		if failed == snapshot && (len(report.Requirements) > 0 || len(report.Conflicts) > 0) {
+			if message == "" {
+				message = "插件依赖准备失败"
+			}
+			return nil, errors.New(message)
+		}
+	}
+	defer func() {
+		m.mu.Lock()
+		if err != nil {
+			m.failedDependencySnapshot = snapshot
+			m.dependencyError = err.Error()
+		} else {
+			m.failedDependencySnapshot = ""
+			m.dependencyError = ""
+		}
+		m.mu.Unlock()
+	}()
 	if len(report.Conflicts) > 0 {
 		return nil, errors.New("插件依赖与共享环境冲突，未修改环境：\n" + strings.Join(report.Conflicts, "\n"))
 	}

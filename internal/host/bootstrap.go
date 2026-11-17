@@ -5,9 +5,13 @@ package host
 
 import (
 	"bufio"
+	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	_ "github.com/glebarez/go-sqlite"
 
 	maibotcfg "MaiGo/internal/config/maibot"
 )
@@ -27,7 +31,7 @@ func confirmHostUpgrades(workspace Workspace, confirmed map[string]struct{}) map
 		if bot.DesiredState != "running" || bot.Initialization != "initialized" {
 			continue
 		}
-		reasons := maibotcfg.CollectLegacyUpgradeReasons(bot.Directory, nil)
+		reasons := maibotcfg.CollectLegacyUpgradeReasons(bot.Directory, detectLegacy0XDatabase)
 		if len(reasons) == 0 {
 			continue
 		}
@@ -61,4 +65,21 @@ func confirmHostUpgrades(workspace Workspace, confirmed map[string]struct{}) map
 		fmt.Printf("未确认升级，本次不启动 %s。\n", bot.Name)
 	}
 	return confirmed
+}
+
+// detectLegacy0XDatabase 只按旧库的 user_version 判定，避免加载数据库层
+func detectLegacy0XDatabase(path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro")
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return false
+	}
+	return version == 1
 }

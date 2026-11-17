@@ -177,7 +177,11 @@ func MigrateLegacyWebUIData(directory, credentialsPath string) error {
 func adoptInPlace(root string, registry *Registry) error {
 	botConfig := filepath.Join(root, "config", "bot_config.toml")
 	if _, err := os.Stat(hostConfigPath(root)); os.IsNotExist(err) {
-		if err := SaveHostConfig(root, HostConfigFromBot(botConfig)); err != nil {
+		config, err := HostConfigFromBot(botConfig)
+		if err != nil {
+			return err
+		}
+		if err := SaveHostConfig(root, config); err != nil {
 			return err
 		}
 	}
