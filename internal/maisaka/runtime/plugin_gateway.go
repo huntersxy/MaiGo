@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -12,8 +13,15 @@ import (
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
-// fallbackGatewayArrivalSeq 为插件网关入站提供单调递增的运行时序号
-var fallbackGatewayArrivalSeq atomic.Uint64
+// gatewayArrivalSeqByTarget 为每个会话提供独立的单调递增到达序号
+// 提交重排队列按会话等待连续序号，不能使用跨会话共享的全局计数器
+var gatewayArrivalSeqByTarget sync.Map // map[string]*atomic.Uint64
+
+func nextGatewayArrivalSeq(kind string, targetID int64) uint64 {
+	key := kind + ":" + strconv.FormatInt(targetID, 10)
+	counter, _ := gatewayArrivalSeqByTarget.LoadOrStore(key, &atomic.Uint64{})
+	return counter.(*atomic.Uint64).Add(1)
+}
 
 // ReceiveExternalPluginMessage 接收消息网关入站的外部平台消息并进入 Agent 会话调度
 // 对齐 src/plugin_runtime/host/message_gateway.py receive_external_message
@@ -143,7 +151,7 @@ func (a *Agent) ReceiveExternalPluginMessage(ctx context.Context, message map[st
 		Time:              now,
 		ReceivedAt:        now,
 	}
-	msg.ArrivalSeq = fallbackGatewayArrivalSeq.Add(1)
+	msg.ArrivalSeq = nextGatewayArrivalSeq(kind, targetID)
 	a.onMessage(msg)
 	_ = ctx
 	return nil
