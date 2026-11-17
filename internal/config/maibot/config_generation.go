@@ -55,3 +55,13 @@ func writeGeneratedConfigIfMissing(path, version string, body []byte) error {
 	}
 	return nil
 }
+
+// WriteDefaultBotConfig 在缺失时生成默认 bot_config.toml
+func WriteDefaultBotConfig(path string) error {
+	return writeGeneratedConfigIfMissing(path, BotConfigTargetVersion, defaultBotConfigTOML)
+}
+
+// WriteDefaultModelConfig 在缺失时生成默认 model_config.toml
+func WriteDefaultModelConfig(path string) error {
+	return writeGeneratedConfigIfMissing(path, ModelConfigTargetVersion, defaultModelConfigTOML)
+}

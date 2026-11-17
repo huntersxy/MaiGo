@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"MaiGo/internal/common/version"
+	"MaiGo/internal/host"
 )
 
 // Dispatch 解析 os.Args；Handled 为 false 时 main 应走原有默认启动路径
@@ -14,6 +15,10 @@ func Dispatch(argv []string) Outcome {
 	}
 	// argv[0] 为程序名
 	args := argv[1:]
+	if len(args) > 0 && args[0] == "host" {
+		result := host.RunCommand(args)
+		return Outcome{Handled: result.Handled, ExitCode: result.ExitCode}
+	}
 	if !isCLISubcommand(args) {
 		return Outcome{}
 	}
@@ -47,7 +52,7 @@ func Dispatch(argv []string) Outcome {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			return Outcome{Handled: true, ExitCode: 2}
 		}
-		return Outcome{Handled: true, StartBot: true}
+		return Outcome{Handled: true, StartBot: true, HostMode: true}
 	case cmdMaisaka:
 		if err := prepareRun(p.directory); err != nil {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)

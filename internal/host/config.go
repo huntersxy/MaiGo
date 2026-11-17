@@ -20,17 +20,17 @@ var wildcardHosts = map[string]struct{}{"0.0.0.0": {}, "::": {}}
 
 // HostConfig 宿主对外服务配置
 type HostConfig struct {
-	WebUIEnabled   bool
-	Hosts          []string
-	Port           int
-	SecureCookie   bool
+	WebUIEnabled    bool
+	Hosts           []string
+	Port            int
+	SecureCookie    bool
 	AntiCrawlerMode string
-	AllowedIPs     string
-	TrustedProxies string
-	TrustXFF       bool
-	PublicBaseURL  string
-	SSLCertFile    string
-	SSLKeyFile     string
+	AllowedIPs      string
+	TrustedProxies  string
+	TrustXFF        bool
+	PublicBaseURL   string
+	SSLCertFile     string
+	SSLKeyFile      string
 }
 
 // DefaultHostConfig 与 Python HostConfig 默认值一致
@@ -287,4 +287,61 @@ func containsHost(hosts []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// HostConfigFromBot 旧用户首次进入宿主时沿用原 Bot 的对外地址；只读取，不改写原配置
+func HostConfigFromBot(botConfigPath string) HostConfig {
+	cfg := DefaultHostConfig()
+	raw, err := os.ReadFile(botConfigPath)
+	if err != nil {
+		return cfg
+	}
+	var payload struct {
+		HTTP struct {
+			Host string `toml:"host"`
+			Port int    `toml:"port"`
+		} `toml:"http"`
+		WebUI struct {
+			Enabled         *bool  `toml:"enabled"`
+			SecureCookie    *bool  `toml:"secure_cookie"`
+			AntiCrawlerMode string `toml:"anti_crawler_mode"`
+			AllowedIPs      string `toml:"allowed_ips"`
+			TrustedProxies  string `toml:"trusted_proxies"`
+			TrustXFF        *bool  `toml:"trust_xff"`
+		} `toml:"webui"`
+		Files struct {
+			TransferBaseURL string `toml:"transfer_base_url"`
+		} `toml:"files"`
+	}
+	if err := toml.Unmarshal(raw, &payload); err != nil {
+		return cfg
+	}
+	if payload.WebUI.Enabled != nil {
+		cfg.WebUIEnabled = *payload.WebUI.Enabled
+	}
+	if host := strings.TrimSpace(payload.HTTP.Host); host != "" {
+		cfg.Hosts = []string{host}
+	}
+	if payload.HTTP.Port > 0 && payload.HTTP.Port <= 65535 {
+		cfg.Port = payload.HTTP.Port
+	}
+	if payload.WebUI.SecureCookie != nil {
+		cfg.SecureCookie = *payload.WebUI.SecureCookie
+	}
+	if mode := strings.TrimSpace(payload.WebUI.AntiCrawlerMode); mode != "" {
+		cfg.AntiCrawlerMode = mode
+	}
+	if ips := strings.TrimSpace(payload.WebUI.AllowedIPs); ips != "" {
+		cfg.AllowedIPs = ips
+	}
+	if proxies := strings.TrimSpace(payload.WebUI.TrustedProxies); proxies != "" {
+		cfg.TrustedProxies = proxies
+	}
+	if payload.WebUI.TrustXFF != nil {
+		cfg.TrustXFF = *payload.WebUI.TrustXFF
+	}
+	if base := strings.TrimRight(strings.TrimSpace(payload.Files.TransferBaseURL), "/"); base != "" {
+		cfg.PublicBaseURL = base
+	}
+	return cfg
 }

@@ -35,6 +35,7 @@ import (
 	"MaiGo/internal/desktop_pet"
 	"MaiGo/internal/emoji_system"
 	"MaiGo/internal/files"
+	"MaiGo/internal/host"
 	"MaiGo/internal/learners"
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka"
@@ -92,13 +93,26 @@ func Run() {
 
 // runMain 在 Worker 初始化前安装信号，首次中断取消启动上下文，第二次中断直接退出
 func runMain() (exitCode int) {
+	var dispatched cli.Outcome
 	switch out := cli.Dispatch(os.Args); {
 	case !out.Handled:
 		break
 	case out.StartBot:
-		break
+		dispatched = out
 	default:
 		return out.ExitCode
+	}
+	if dispatched.HostMode && !host.HasRuntimeContext() {
+		workspace, err := host.OpenWorkspace(config.InstanceRoot())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "宿主启动失败：%v"+string(rune(10)), err)
+			return 2
+		}
+		if err := host.RunHost(context.Background(), workspace, map[string]struct{}{}); err != nil {
+			fmt.Fprintf(os.Stderr, "宿主关闭未完成。%v"+string(rune(10)), err)
+			return 1
+		}
+		return 0
 	}
 
 	if runtime.IsRunner() {
@@ -364,6 +378,9 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	var startupTasksWG sync.WaitGroup
 	var memoryMgr *memory.Manager
 	instanceDir := strings.TrimSpace(os.Getenv("MAIBOT_INSTANCE_DIR"))
+	if host.HasRuntimeContext() {
+		host.ReportPhase(host.PhaseStarting, "")
+	}
 	db, err := memory.OpenDB(boot.DatabaseDSN)
 	if err != nil {
 		zap.L().Error("打开数据库失败", zap.Error(err))
@@ -1862,14 +1879,25 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	})
 
 	// 对齐 Python http_service/server.py:126-178：按 http.host 列表多地址绑定并输出访问地址
-	bindHosts := app.BindHosts()
-	if len(bindHosts) == 0 {
-		zap.L().Error("没有可绑定的 HTTP 监听地址，管理后台未启动")
+	// 在宿主下运行时只监听宿主分配的进程间通道，端口由宿主持有
+	bindHosts := []string{""}
+	if host.HasRuntimeContext() {
+		if contract, err := host.CurrentRuntimeContext(); err == nil {
+			zap.L().Info("Worker 仅在宿主分配的通道上监听", zap.String("endpoint", contract.HTTPEndpoint))
+		}
 	} else {
-		app.LogBindAddresses(bindHosts)
+		bindHosts = app.BindHosts()
+		if len(bindHosts) == 0 {
+			zap.L().Error("没有可绑定的 HTTP 监听地址，管理后台未启动")
+		} else {
+			app.LogBindAddresses(bindHosts)
+		}
 	}
 	httpCtx, cancelHTTP := context.WithCancel(context.Background())
 	startup.AddCleanup("取消 HTTP 监听", func(context.Context) error {
+		if host.HasRuntimeContext() {
+			host.ReportPhase(host.PhaseStopping, "")
+		}
 		cancelHTTP()
 		return nil
 	})
@@ -1880,13 +1908,16 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			return
 		}
 		zap.L().Info("管理后台启动", zap.Strings("hosts", bindHosts), zap.Int("port", boot.ServerPort))
-		if err := app.ListenAndServeMulti(httpCtx, bindHosts); err != nil && err != http.ErrServerClosed {
+		if err := app.Listen(httpCtx, bindHosts); err != nil && err != http.ErrServerClosed {
 			zap.L().Error("管理后台异常退出", zap.Error(err))
 		}
 	}()
 
 	if !startup.Check("Platform IO 与 HTTP 启动") {
 		return 1
+	}
+	if host.HasRuntimeContext() {
+		host.ReportPhase(host.PhaseReady, "")
 	}
 	// 模型来源有两处：model_config.toml 的任务路由与 WebUI 模型档案。
 	// 不能只看档案表是否存在活跃记录，否则纯 TOML 部署永远不会 Activate。

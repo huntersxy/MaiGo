@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/glebarez/go-sqlite"
+	"github.com/google/uuid"
 )
 
 const registrySchemaVersion = 1
@@ -89,7 +89,7 @@ func (r *Registry) Create() error {
 	return err
 }
 
-func (r *Registry) open(writable bool) (*sql.DB, error) {
+func (r *Registry) open() (*sql.DB, error) {
 	if !r.Exists() {
 		return nil, fmt.Errorf("宿主工作区未初始化: %s", r.Root)
 	}
@@ -106,13 +106,25 @@ func (r *Registry) open(writable bool) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("不支持的宿主注册表版本: %d，当前支持 %d", version, registrySchemaVersion)
 	}
-	if writable {
-		if _, err := db.Exec("BEGIN IMMEDIATE"); err != nil {
-			_ = db.Close()
-			return nil, err
-		}
-	}
 	return db, nil
+}
+
+// write 在单个事务内执行写入，保证连接一致且提交后再返回
+func (r *Registry) write(fn func(tx *sql.Tx) error) error {
+	db, err := r.open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Registry) storedDirectory(directory string) string {
@@ -150,7 +162,7 @@ func (r *Registry) record(row *sql.Rows) (BotRecord, error) {
 
 // ListBots 按创建时间列出全部 Bot
 func (r *Registry) ListBots() ([]BotRecord, error) {
-	db, err := r.open(false)
+	db, err := r.open()
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +188,7 @@ func (r *Registry) GetBot(botID string) (BotRecord, error) {
 	if !botIDPattern.MatchString(botID) {
 		return BotRecord{}, fmt.Errorf("无效的 Bot ID: %s", botID)
 	}
-	db, err := r.open(false)
+	db, err := r.open()
 	if err != nil {
 		return BotRecord{}, err
 	}
@@ -213,16 +225,14 @@ func (r *Registry) AddBot(name, directory string, owned bool, initialization str
 		}
 	}
 	botID := newBotID()
-	db, err := r.open(true)
-	if err != nil {
-		return BotRecord{}, err
-	}
-	defer db.Close()
-	_, err = db.Exec(
-		"INSERT INTO bots (bot_id, name, directory, owned, created_at, initialization, desired_state, restart_policy) "+
-			"VALUES (?, ?, ?, ?, ?, ?, 'running', 'on-failure')",
-		botID, name, r.storedDirectory(directory), boolToInt(owned), time.Now().UTC().Format(time.RFC3339Nano), initialization,
-	)
+	err = r.write(func(tx *sql.Tx) error {
+		_, execErr := tx.Exec(
+			"INSERT INTO bots (bot_id, name, directory, owned, created_at, initialization, desired_state, restart_policy) "+
+				"VALUES (?, ?, ?, ?, ?, ?, 'running', 'on-failure')",
+			botID, name, r.storedDirectory(directory), boolToInt(owned), time.Now().UTC().Format(time.RFC3339Nano), initialization,
+		)
+		return execErr
+	})
 	if err != nil {
 		return BotRecord{}, err
 	}
@@ -230,16 +240,19 @@ func (r *Registry) AddBot(name, directory string, owned bool, initialization str
 }
 
 func (r *Registry) update(botID, assignments string, values ...any) (BotRecord, error) {
-	db, err := r.open(true)
-	if err != nil {
-		return BotRecord{}, err
-	}
-	defer db.Close()
-	result, err := db.Exec("UPDATE bots SET "+assignments+" WHERE bot_id = ?", append(values, botID)...)
-	if err != nil {
-		return BotRecord{}, err
-	}
-	affected, err := result.RowsAffected()
+	affected := int64(0)
+	err := r.write(func(tx *sql.Tx) error {
+		result, execErr := tx.Exec("UPDATE bots SET "+assignments+" WHERE bot_id = ?", append(values, botID)...)
+		if execErr != nil {
+			return execErr
+		}
+		count, countErr := result.RowsAffected()
+		if countErr != nil {
+			return countErr
+		}
+		affected = count
+		return nil
+	})
 	if err != nil {
 		return BotRecord{}, err
 	}
@@ -284,16 +297,19 @@ func (r *Registry) SetDirectory(botID, directory string, owned bool) (BotRecord,
 
 // RemoveBot 删除登记
 func (r *Registry) RemoveBot(botID string) error {
-	db, err := r.open(true)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	result, err := db.Exec("DELETE FROM bots WHERE bot_id = ?", botID)
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
+	affected := int64(0)
+	err := r.write(func(tx *sql.Tx) error {
+		result, execErr := tx.Exec("DELETE FROM bots WHERE bot_id = ?", botID)
+		if execErr != nil {
+			return execErr
+		}
+		count, countErr := result.RowsAffected()
+		if countErr != nil {
+			return countErr
+		}
+		affected = count
+		return nil
+	})
 	if err != nil {
 		return err
 	}

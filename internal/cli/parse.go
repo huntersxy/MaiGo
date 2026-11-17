@@ -22,6 +22,8 @@ type Outcome struct {
 	ExitCode   int
 	StartBot   bool
 	MaisakaCLI bool // StartBot 后挂载 BufferCLI，取代 prompt 预览 stub
+	// HostMode run 子命令启动宿主，管理 bots/ 下的 Worker
+	HostMode bool
 }
 
 // maisakaCLIRequested 由 Dispatch 在 maisaka 子命令成功准备后置位，供 bootstrap 读取
