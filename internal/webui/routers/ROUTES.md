@@ -366,3 +366,31 @@ WebSocket（挂在 `/api/webui` 下无额外 prefix 或 plugin 子路径）：
 - `/api/webui/*` 未注册路径 → `{"detail":"Not Found"}`（`handleWebUINotFound`）
 - `/api/chat/*` 未注册路径 → `{"detail":"Not Found"}`；已注册端点见上表
 - `/api/config/*`（除已列 GET）→ `{"detail":"Not Found"}`
+
+## 相通组 `/api/webui/sharing-groups`（v1.4.4）
+
+| 方法 | 路径 | 状态 |
+| --- | --- | --- |
+| GET | `/api/webui/sharing-groups` | **done**（快照 + 解析成员） |
+| POST | `/api/webui/sharing-groups` | **done** |
+| PUT | `/api/webui/sharing-groups/{group_id}` | **done**（revision 乐观锁） |
+| DELETE | `/api/webui/sharing-groups/{group_id}?revision=` | **done** |
+
+## 在线聊天迁移 `/api/webui/chat-migrations`（v1.4.4）
+
+| 方法 | 路径 | 状态 |
+| --- | --- | --- |
+| GET | `/api/webui/chat-migrations` | **done** |
+| POST | `/api/webui/chat-migrations/preview` | **done** |
+| GET | `/api/webui/chat-migrations/{job_id}` | **done** |
+| POST | `/api/webui/chat-migrations/{job_id}/execute` | **done** |
+| POST | `/api/webui/chat-migrations/{job_id}/recover` | **done** |
+
+## 远端桌宠 `/api/webui/desktop-pet/remote`（v1.4.4）
+
+| 方法 | 路径 | 状态 |
+| --- | --- | --- |
+| WS | `/api/webui/desktop-pet/remote/ws` | **done**（握手/心跳/事件） |
+| POST | `/api/webui/desktop-pet/remote/chat/{request_id}` | **done**（幂等重放） |
+| POST | `/api/webui/desktop-pet/remote/todos` | **done** |
+| GET | `/api/webui/desktop-pet/remote/todos/images/{image_id}` | **done** |
