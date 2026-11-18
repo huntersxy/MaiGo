@@ -48,7 +48,9 @@ func (a *Agent) assembleMessages(ctx context.Context, session *Session) ([]*sche
 		messages = a.refreshJargonReference(ctx, session, messages)
 	}
 	messages = a.refreshExpressionHabits(ctx, session, messages)
-	return a.refreshFocusContext(ctx, session, messages), nil
+	messages = a.refreshFocusContext(ctx, session, messages)
+	// 只编码最终保留的图片；被裁掉的惰性块不会读盘
+	return resolveDeferredMediaBlocks(messages), nil
 }
 
 // headPriority 决定代头行在上下文里的固定位置，非代头返回 -1

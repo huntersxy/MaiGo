@@ -226,6 +226,8 @@ func (s *Session) RestoreUser(msg *onebot.ConversationMessage, logID uint, media
 		if text := agenticMessageText(payload); text != "" {
 			user.Text = text
 		}
+		// 恢复出的消息不含图片字节；补惰性块，请求构建时才读盘编码
+		user.Msg = attachDeferredMediaBlocks(user.Msg, mediaRefs)
 	}
 	if visible {
 		s.seen = append(s.seen, sessionEntry{user: user, msg: user.Msg, transcriptID: transcriptID, visibleSeq: visibleSeq})
@@ -501,6 +503,99 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 		return schema.UserAgenticMessage(text)
 	}
 	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeUser, ContentBlocks: blocks}
+}
+
+// deferredMediaMarkerPrefix 惰性图片占位前缀，对齐 Python deferred-image
+const deferredMediaMarkerPrefix = "deferred-media:"
+
+// deferredMediaImageBlock 生成惰性图片块：只带本地路径占位，请求构建时才读盘编码
+func deferredMediaImageBlock(ref media.Ref) *schema.UserInputImage {
+	path := strings.TrimSpace(ref.Path)
+	if path == "" {
+		return nil
+	}
+	return &schema.UserInputImage{
+		Base64Data: deferredMediaMarkerPrefix + path,
+		MIMEType:   strings.TrimSpace(ref.Mime),
+	}
+}
+
+// attachDeferredMediaBlocks 为恢复出的消息补惰性图片块，不读盘
+func attachDeferredMediaBlocks(message *schema.AgenticMessage, mediaRefs []media.Ref) *schema.AgenticMessage {
+	if message == nil || len(mediaRefs) == 0 {
+		return message
+	}
+	blocks := make([]*schema.ContentBlock, 0, len(message.ContentBlocks)+len(mediaRefs))
+	blocks = append(blocks, message.ContentBlocks...)
+	added := false
+	for _, ref := range mediaRefs {
+		if len(blocks) > 8 {
+			break
+		}
+		image := deferredMediaImageBlock(ref)
+		if image == nil {
+			continue
+		}
+		blocks = append(blocks, schema.NewContentBlock(image))
+		added = true
+	}
+	if !added {
+		return message
+	}
+	copied := *message
+	copied.ContentBlocks = blocks
+	return &copied
+}
+
+// resolveDeferredMediaBlocks 把惰性图片块替换为真实 base64；被裁掉的块不会读盘。
+// 返回新的消息列表，不修改会话共享的消息对象，避免 base64 沉淀到工作集。
+func resolveDeferredMediaBlocks(messages []*schema.AgenticMessage) []*schema.AgenticMessage {
+	if len(messages) == 0 {
+		return messages
+	}
+	resolved := make([]*schema.AgenticMessage, len(messages))
+	for messageIndex, message := range messages {
+		resolved[messageIndex] = message
+		if message == nil {
+			continue
+		}
+		blocks := make([]*schema.ContentBlock, 0, len(message.ContentBlocks))
+		changed := false
+		for _, block := range message.ContentBlocks {
+			if block == nil || block.UserInputImage == nil {
+				blocks = append(blocks, block)
+				continue
+			}
+			marker := block.UserInputImage.Base64Data
+			if !strings.HasPrefix(marker, deferredMediaMarkerPrefix) {
+				blocks = append(blocks, block)
+				continue
+			}
+			path := strings.TrimPrefix(marker, deferredMediaMarkerPrefix)
+			raw, err := os.ReadFile(path)
+			if err != nil || len(raw) == 0 || len(raw) > 12<<20 {
+				changed = true
+				continue
+			}
+			mime := strings.TrimSpace(block.UserInputImage.MIMEType)
+			if mime == "" {
+				mime = "image/png"
+			}
+			replaced := *block.UserInputImage
+			replaced.Base64Data = base64.StdEncoding.EncodeToString(raw)
+			replaced.MIMEType = mime
+			copied := *block
+			copied.UserInputImage = &replaced
+			blocks = append(blocks, &copied)
+			changed = true
+		}
+		if changed {
+			copied := *message
+			copied.ContentBlocks = blocks
+			resolved[messageIndex] = &copied
+		}
+	}
+	return resolved
 }
 
 // mediaRefImageBlock 读取本地媒体并转成模型可用的 base64 图片块
