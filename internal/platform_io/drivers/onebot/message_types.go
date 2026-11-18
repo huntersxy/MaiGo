@@ -44,6 +44,7 @@ type ConversationMessage struct {
 	Time              time.Time        `json:"time"`                        // 消息时间
 	ReceivedAt        time.Time        `json:"-"`                           // 当前进程从 OneBot 收到事件的时间
 	ArrivalSeq        uint64           `json:"-"`                           // 该会话运行时顺序序号，Agent 按此提交
+	SessionID         string           `json:"-"`                           // 运行期解析出的 MaiBot 会话 ID，仅进程内使用
 	ParseFailed       bool             `json:"-"`                           // 消息段解析失败占位，仅用于消费序号
 	Images            []ImageInfo      `json:"images,omitempty"`            // 图片列表
 	Voices            []VoiceInfo      `json:"voices,omitempty"`            // 语音列表

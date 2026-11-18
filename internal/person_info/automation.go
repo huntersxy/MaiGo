@@ -289,7 +289,8 @@ func (a *MemoryAutomation) OnAgentMessageSent(ctx context.Context, message *oneb
 	}
 	return a.processSent(ctx, SentMessage{
 		Platform: message.Platform, ConversationKind: message.ConversationKind,
-		TargetID: strconv.FormatInt(message.TargetID, 10), MessageID: strconv.FormatInt(message.MessageID, 10),
+		SessionID: message.SessionID,
+		TargetID:  strconv.FormatInt(message.TargetID, 10), MessageID: strconv.FormatInt(message.MessageID, 10),
 		UserID: strconv.FormatInt(message.UserID, 10), GroupID: groupID,
 		Nickname: message.Nickname, CardName: message.GroupCard,
 		Content: message.Content, FinalContent: message.FinalContent,

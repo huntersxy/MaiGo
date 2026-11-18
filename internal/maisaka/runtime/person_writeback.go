@@ -10,8 +10,8 @@ import (
 	"MaiGo/internal/person_info"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
-	"go.uber.org/zap"
 	"MaiGo/internal/platform_io"
+	"go.uber.org/zap"
 )
 
 // SetSentMessageHandler 注入发送成功后的记忆自动化通知端口
@@ -27,13 +27,18 @@ func (a *Agent) notifySentMessage(ctx context.Context, msg *onebot.ConversationM
 	if a == nil || msg == nil {
 		return
 	}
+	notifyCtx := context.WithoutCancel(ctx)
+	// 出站消息不带会话号；摘要写回按 MaiBot session_id 统计消息，缺号会被静默跳过
+	if msg.SessionID == "" {
+		msg.SessionID = a.resolveMaiBotSessionID(notifyCtx, msg.ConversationKind, msg.TargetID)
+	}
 	a.callbacksMu.RLock()
 	handler := a.callbacks.SentMessageHandler
 	a.callbacksMu.RUnlock()
 	if handler == nil {
 		return
 	}
-	if err := handler(context.WithoutCancel(ctx), msg); err != nil {
+	if err := handler(notifyCtx, msg); err != nil {
 		zap.L().Warn("发送后记忆自动化失败", zap.Error(err))
 	}
 }
