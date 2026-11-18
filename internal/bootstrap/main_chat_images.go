@@ -14,6 +14,7 @@ import (
 
 	"MaiGo/internal/chat/image_system"
 	"MaiGo/internal/common/utils"
+	"MaiGo/internal/emoji_system"
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
@@ -138,6 +139,18 @@ func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, imag
 		data = retained[0].Image.Data
 		image.URL = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
 		image.File = ""
+	}
+	// 表情包走表情系统缓存与描述，才能入库并参与收藏与维护；描述异步构建不阻塞入站
+	if image.SubType == 1 {
+		digest := sha256.Sum256(data)
+		hash := hex.EncodeToString(digest[:])
+		description, _, emojiErr := emojisystem.EnsureEmojiDescription(ctx, data, hash, false)
+		if emojiErr != nil {
+			zap.L().Warn("表情包缓存失败", zap.String("url", ref), zap.Error(emojiErr))
+		} else if text := strings.TrimSpace(description); text != "" {
+			image.Desc = text
+		}
+		return image, true, nil
 	}
 	description, descErr := p.manager.GetImageDescription(ctx, "", data, true)
 	if descErr != nil {

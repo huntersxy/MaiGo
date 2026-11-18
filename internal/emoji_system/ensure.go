@@ -62,6 +62,20 @@ func EnsureEmojiSaved(ctx context.Context, content []byte, hash string) (*Emoji,
 	return DefaultRegistry().EnsureEmojiSaved(ctx, content, hash)
 }
 
+// EnsureEmojiDescription 缓存表情包并按需生成描述，对齐 process_emoji_component
+// 返回描述文本、是否命中已注册记录与错误；未命中且未配置 VLM 时仍会落库，描述为空
+func EnsureEmojiDescription(ctx context.Context, content []byte, hash string, wait bool) (string, bool, error) {
+	registry := DefaultRegistry()
+	if registry == nil {
+		return "", false, errMemoryUnavailable
+	}
+	description, found, err := registry.GetEmojiDescription(ctx, content, hash, wait)
+	if err != nil {
+		return "", false, err
+	}
+	return strings.TrimSpace(description.Description), found, nil
+}
+
 func (m *Manager) ensureSaved(ctx context.Context, content []byte, hash string, maxSizeBytes int64) (*Emoji, bool, error) {
 	if len(content) == 0 {
 		return nil, false, fmt.Errorf("emojisystem: 表情图片为空")
