@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,61 +29,85 @@ var (
 // DefaultTimeout 对齐 Python sqlite3.connect 的 timeout 默认值
 const DefaultTimeout = 30 * time.Second
 
-// Conn 对应 Python ManagedSQLiteConnection 的受管语义
-// 额外持有独立数据库句柄，保证 BEGIN/SAVEPOINT 状态不被其他调用者打断
-type Conn struct {
-	mu    sync.Mutex
-	db    *sql.DB
-	inTx  bool
-	depth int
-	// 按深度记录回滚请求，对齐 Python _managed_rollback_requests
+const (
+	// maxOpenConns 每份连接句柄的物理连接上限；读写与后台任务可并行取用
+	maxOpenConns = 16
+	// maxIdleConns 空闲物理连接保留数
+	maxIdleConns = 4
+	// connMaxIdleTime 空闲物理连接回收时间
+	connMaxIdleTime = 5 * time.Minute
+)
+
+// managedState 一次顶层事务的受管状态，对齐 Python ManagedSQLiteConnection 实例字段。
+// 基础连接没有事务状态，事务视图从池中取出独立物理连接后独占使用
+type managedState struct {
+	mu               sync.Mutex
+	inTx             bool
+	depth            int
 	rollbackRequests map[int]struct{}
 	savepointCounter int
-	closed           bool
+}
+
+func newManagedState() *managedState {
+	return &managedState{rollbackRequests: make(map[int]struct{})}
+}
+
+// Conn 对应 Python ManagedSQLiteConnection 的受管语义。
+// session 非空时是事务视图：所有语句固定走同一条物理连接，BEGIN/SAVEPOINT 状态不会被其他调用者打断
+type Conn struct {
+	mu      sync.Mutex
+	db      *sql.DB
+	session *sql.Conn
+	state   *managedState
+	closed  bool
 }
 
 func newConn(path string, timeout time.Duration) (*Conn, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path, timeout))
 	if err != nil {
 		return nil, err
 	}
-	// 单连接句柄，避免 database/sql 在事务中切换底层连接
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	c := &Conn{db: db, rollbackRequests: make(map[int]struct{})}
-	if err := c.applyPragmas(timeout); err != nil {
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
+	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return c, nil
+	return &Conn{db: db}, nil
 }
 
-// applyPragmas 对齐 Python _create_connection 的 PRAGMA 顺序与取值
-func (c *Conn) applyPragmas(timeout time.Duration) error {
+// sqliteDSN 把 Python 建连时的 PRAGMA 落到每条物理连接上
+func sqliteDSN(path string, timeout time.Duration) string {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA cache_size=-64000",
-		"PRAGMA temp_store=MEMORY",
-		"PRAGMA foreign_keys = ON",
-		fmt.Sprintf("PRAGMA busy_timeout=%d", timeout.Milliseconds()),
+	query := url.Values{}
+	for _, pragma := range []string{
+		"journal_mode(WAL)",
+		"synchronous(NORMAL)",
+		"cache_size(-64000)",
+		"temp_store(MEMORY)",
+		"foreign_keys(1)",
+		fmt.Sprintf("busy_timeout(%d)", timeout.Milliseconds()),
+	} {
+		query.Add("_pragma", pragma)
 	}
-	for _, stmt := range pragmas {
-		if _, err := c.db.Exec(stmt); err != nil {
-			return fmt.Errorf("%s: %w", stmt, err)
-		}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
 	}
-	return nil
+	return path + separator + query.Encode()
 }
 
 // Commit 受管事务中为空操作，对齐 Python 延迟提交
 func (c *Conn) Commit() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.depth > 0 {
+	if c == nil || c.state == nil {
+		return nil
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	if c.state.depth > 0 {
 		return nil
 	}
 	return c.forceCommitLocked()
@@ -89,10 +115,13 @@ func (c *Conn) Commit() error {
 
 // Rollback 受管事务中仅记录回滚请求，对齐 Python 语义
 func (c *Conn) Rollback() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.depth > 0 {
-		c.rollbackRequests[c.depth] = struct{}{}
+	if c == nil || c.state == nil {
+		return nil
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	if c.state.depth > 0 {
+		c.state.rollbackRequests[c.state.depth] = struct{}{}
 		return nil
 	}
 	return c.forceRollbackLocked()
@@ -100,114 +129,170 @@ func (c *Conn) Rollback() error {
 
 // ForceCommit 忽略受管深度直接提交
 func (c *Conn) ForceCommit() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c == nil || c.state == nil {
+		return nil
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
 	return c.forceCommitLocked()
 }
 
 // ForceRollback 忽略受管深度直接回滚
 func (c *Conn) ForceRollback() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c == nil || c.state == nil {
+		return nil
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
 	return c.forceRollbackLocked()
 }
 
 func (c *Conn) forceCommitLocked() error {
-	if !c.inTx {
+	if !c.state.inTx {
 		return nil
 	}
-	_, err := c.db.Exec("COMMIT")
-	if err != nil {
+	if _, err := c.exec("COMMIT"); err != nil {
 		return err
 	}
-	c.inTx = false
+	c.state.inTx = false
 	return nil
 }
 
 func (c *Conn) forceRollbackLocked() error {
-	if !c.inTx {
+	if !c.state.inTx {
 		return nil
 	}
-	_, err := c.db.Exec("ROLLBACK")
-	if err != nil {
+	if _, err := c.exec("ROLLBACK"); err != nil {
 		return err
 	}
-	c.inTx = false
+	c.state.inTx = false
 	return nil
 }
 
 // NextSavepointName 生成 a_memorix_tx_N 名称，对齐 Python 计数器
 func (c *Conn) NextSavepointName() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.savepointCounter++
-	return fmt.Sprintf("a_memorix_tx_%d", c.savepointCounter)
+	if c == nil || c.state == nil {
+		return ""
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	c.state.savepointCounter++
+	return fmt.Sprintf("a_memorix_tx_%d", c.state.savepointCounter)
 }
 
 // BeginManagedScope 进入受管作用域并返回深度
 func (c *Conn) BeginManagedScope() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.depth++
-	return c.depth
+	if c == nil || c.state == nil {
+		return 0
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	c.state.depth++
+	return c.state.depth
 }
 
 // EndManagedScope 结束作用域，返回该深度是否请求过回滚
 func (c *Conn) EndManagedScope(scopeDepth int) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, requested := c.rollbackRequests[scopeDepth]
-	delete(c.rollbackRequests, scopeDepth)
-	c.depth--
+	if c == nil || c.state == nil {
+		return false
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	_, requested := c.state.rollbackRequests[scopeDepth]
+	delete(c.state.rollbackRequests, scopeDepth)
+	c.state.depth--
 	return requested
 }
 
 // InTransaction 对齐 Python Connection.in_transaction
 func (c *Conn) InTransaction() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.inTx
+	if c == nil || c.state == nil {
+		return false
+	}
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	return c.state.inTx
 }
 
-// Exec 直连执行，业务方法在事务内直接复用同一连接
+func (c *Conn) setInTx(value bool) {
+	if c == nil || c.state == nil {
+		return
+	}
+	c.state.mu.Lock()
+	c.state.inTx = value
+	c.state.mu.Unlock()
+}
+
+// Exec 直连执行；事务视图固定使用自己的物理连接
 func (c *Conn) Exec(query string, args ...any) (sql.Result, error) {
+	return c.exec(query, args...)
+}
+
+func (c *Conn) exec(query string, args ...any) (sql.Result, error) {
+	if c.session != nil {
+		return c.session.ExecContext(context.Background(), query, args...)
+	}
 	return c.db.Exec(query, args...)
 }
 
 // ExecContext 带上下文执行
 func (c *Conn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if c.session != nil {
+		return c.session.ExecContext(ctx, query, args...)
+	}
 	return c.db.ExecContext(ctx, query, args...)
 }
 
 // Query 查询多行
 func (c *Conn) Query(query string, args ...any) (*sql.Rows, error) {
+	if c.session != nil {
+		return c.session.QueryContext(context.Background(), query, args...)
+	}
 	return c.db.Query(query, args...)
 }
 
 // QueryContext 带上下文查询多行
 func (c *Conn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if c.session != nil {
+		return c.session.QueryContext(ctx, query, args...)
+	}
 	return c.db.QueryContext(ctx, query, args...)
 }
 
 // QueryRow 查询单行
 func (c *Conn) QueryRow(query string, args ...any) *sql.Row {
+	if c.session != nil {
+		return c.session.QueryRowContext(context.Background(), query, args...)
+	}
 	return c.db.QueryRow(query, args...)
 }
 
 // QueryRowContext 带上下文查询单行
 func (c *Conn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if c.session != nil {
+		return c.session.QueryRowContext(ctx, query, args...)
+	}
 	return c.db.QueryRowContext(ctx, query, args...)
 }
 
-// Close 关闭连接
+// Close 关闭基础连接或事务视图持有的物理连接
 func (c *Conn) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return nil
 	}
 	c.closed = true
-	return c.db.Close()
+	session := c.session
+	db := c.db
+	c.mu.Unlock()
+	if session != nil {
+		return session.Close()
+	}
+	if db == nil {
+		return nil
+	}
+	return db.Close()
 }
 
 // Closed 报告连接是否已关闭
@@ -218,7 +303,7 @@ func (c *Conn) Closed() bool {
 }
 
 // Manager 对应 Python SQLiteConnectionManager
-// Python 按线程持连接；Go 侧由调用方显式持有 Conn（NewConn 生成独立连接）
+// Python 按线程持连接；Go 侧基础连接从池中取用物理连接，事务独占一条直到提交或回滚
 type Manager struct {
 	path    string
 	timeout time.Duration

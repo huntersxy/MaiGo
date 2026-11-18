@@ -3,15 +3,10 @@ package storage
 // A_memorix 受管事务，对齐 Python core/storage/sqlite_connection.py 与 transaction.py
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
-
-func (c *Conn) setInTx(value bool) {
-	c.mu.Lock()
-	c.inTx = value
-	c.mu.Unlock()
-}
 
 // Tx 表示一次事务作用域，业务代码通过它执行语句
 type Tx struct {
@@ -19,7 +14,7 @@ type Tx struct {
 	savepoint string
 }
 
-// Conn 返回底层受管连接
+// Conn 返回底层受管连接；顶层事务返回独占物理连接的事务视图
 func (t *Tx) Conn() *Conn { return t.conn }
 
 // Savepoint 返回本次作用域使用的保存点名称（顶层事务为空）
@@ -40,37 +35,80 @@ func (t *Tx) QueryRow(query string, args ...any) *sql.Row {
 	return t.conn.QueryRow(query, args...)
 }
 
-// beginScope 开启作用域，对齐 Python transaction() 的 BEGIN/SAVEPOINT 选择
+// beginScope 开启作用域，对齐 Python transaction() 的 BEGIN/SAVEPOINT 选择。
+// 顶层事务从连接池取出专用物理连接并独占，嵌套作用域在同一连接上使用 SAVEPOINT
 func beginScope(c *Conn, immediate bool) (*Tx, error) {
-	tx := &Tx{conn: c}
+	if c == nil {
+		return nil, ErrUnmanagedConn
+	}
 	if c.InTransaction() {
+		tx := &Tx{conn: c}
 		tx.savepoint = c.NextSavepointName()
 		if _, err := c.Exec("SAVEPOINT " + tx.savepoint); err != nil {
 			return nil, err
 		}
 		return tx, nil
 	}
+	session, err := c.db.Conn(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	stmt := "BEGIN"
 	if immediate {
 		stmt = "BEGIN IMMEDIATE"
 	}
-	if _, err := c.Exec(stmt); err != nil {
+	if _, err := session.ExecContext(context.Background(), stmt); err != nil {
+		_ = session.Close()
 		return nil, err
 	}
-	c.setInTx(true)
-	return tx, nil
+	view := &Conn{db: c.db, session: session, state: newManagedState()}
+	view.state.inTx = true
+	return &Tx{conn: view}, nil
 }
 
-// rollbackScope 回滚当前作用域，对齐 Python _rollback_scope_without_depth_change
-func rollbackScope(c *Conn, savepoint string) error {
-	if savepoint != "" {
-		if _, err := c.Exec("ROLLBACK TO SAVEPOINT " + savepoint); err != nil {
-			return err
-		}
-		_, err := c.Exec("RELEASE SAVEPOINT " + savepoint)
+// commitScope 提交当前作用域；顶层事务提交后归还物理连接
+func commitScope(tx *Tx) error {
+	if tx.savepoint != "" {
+		_, err := tx.conn.Exec("RELEASE SAVEPOINT " + tx.savepoint)
 		return err
 	}
-	return c.ForceRollback()
+	return closeTop(tx, true)
+}
+
+// rollbackScope 回滚当前作用域；顶层事务回滚后归还物理连接
+func rollbackScope(tx *Tx) error {
+	if tx.savepoint != "" {
+		if _, err := tx.conn.Exec("ROLLBACK TO SAVEPOINT " + tx.savepoint); err != nil {
+			return err
+		}
+		_, err := tx.conn.Exec("RELEASE SAVEPOINT " + tx.savepoint)
+		return err
+	}
+	return closeTop(tx, false)
+}
+
+// closeTop 结束顶层事务并关闭专用物理连接；业务方法已提前提交时不再重复提交
+func closeTop(tx *Tx, commit bool) error {
+	view := tx.conn
+	if view == nil || view.session == nil {
+		return nil
+	}
+	var execErr error
+	if view.InTransaction() {
+		stmt := "ROLLBACK"
+		if commit {
+			stmt = "COMMIT"
+		}
+		if _, err := view.exec(stmt); err != nil {
+			execErr = err
+		}
+		view.setInTx(false)
+	}
+	closeErr := view.session.Close()
+	if execErr != nil {
+		return execErr
+	}
+	return closeErr
 }
 
 // Transaction 在管理器主连接上执行受管事务
@@ -91,30 +129,38 @@ func TransactionOn(c *Conn, immediate bool, fn func(tx *Tx) error) error {
 	if err != nil {
 		return err
 	}
-	depth := c.BeginManagedScope()
+	scope := tx.conn
+	depth := scope.BeginManagedScope()
+	finished := false
+	// 业务 panic 时同样要回滚并归还物理连接，否则连接池会被泄漏
+	defer func() {
+		if !finished {
+			_ = rollbackScope(tx)
+		}
+	}()
 
 	if bodyErr := fn(tx); bodyErr != nil {
-		c.EndManagedScope(depth)
-		if rbErr := rollbackScope(c, tx.savepoint); rbErr != nil {
+		scope.EndManagedScope(depth)
+		rbErr := rollbackScope(tx)
+		finished = true
+		if rbErr != nil {
 			return fmt.Errorf("%w（回滚失败：%v）", bodyErr, rbErr)
 		}
 		return bodyErr
 	}
 
-	if c.EndManagedScope(depth) {
-		if rbErr := rollbackScope(c, tx.savepoint); rbErr != nil {
+	if scope.EndManagedScope(depth) {
+		rbErr := rollbackScope(tx)
+		finished = true
+		if rbErr != nil {
 			return fmt.Errorf("%w（回滚失败：%v）", ErrRollbackRequested, rbErr)
 		}
 		return ErrRollbackRequested
 	}
 
-	if tx.savepoint != "" {
-		if _, err := c.Exec("RELEASE SAVEPOINT " + tx.savepoint); err != nil {
-			return err
-		}
-		return nil
-	}
-	return c.ForceCommit()
+	commitErr := commitScope(tx)
+	finished = true
+	return commitErr
 }
 
 // ConnTransaction 为外部注入的受管连接提供事务语义，对齐 Python ConnectionTransaction
@@ -122,7 +168,7 @@ func TransactionOn(c *Conn, immediate bool, fn func(tx *Tx) error) error {
 type ConnTransaction struct {
 	conn      *Conn
 	immediate bool
-	savepoint string
+	tx        *Tx
 	active    bool
 }
 
@@ -139,23 +185,11 @@ func (t *ConnTransaction) Begin() (*Tx, error) {
 	if t.active {
 		return nil, fmt.Errorf("事务已开启")
 	}
-	tx := &Tx{conn: t.conn}
-	if t.conn.InTransaction() {
-		t.savepoint = t.conn.NextSavepointName()
-		if _, err := t.conn.Exec("SAVEPOINT " + t.savepoint); err != nil {
-			return nil, err
-		}
-		tx.savepoint = t.savepoint
-	} else {
-		stmt := "BEGIN"
-		if t.immediate {
-			stmt = "BEGIN IMMEDIATE"
-		}
-		if _, err := t.conn.Exec(stmt); err != nil {
-			return nil, err
-		}
-		t.conn.setInTx(true)
+	tx, err := beginScope(t.conn, t.immediate)
+	if err != nil {
+		return nil, err
 	}
+	t.tx = tx
 	t.active = true
 	return tx, nil
 }
@@ -166,11 +200,7 @@ func (t *ConnTransaction) Commit() error {
 		return nil
 	}
 	t.active = false
-	if t.savepoint != "" {
-		_, err := t.conn.Exec("RELEASE SAVEPOINT " + t.savepoint)
-		return err
-	}
-	return t.conn.Commit()
+	return commitScope(t.tx)
 }
 
 // Rollback 回滚事务
@@ -179,8 +209,5 @@ func (t *ConnTransaction) Rollback() error {
 		return nil
 	}
 	t.active = false
-	if t.savepoint != "" {
-		return rollbackScope(t.conn, t.savepoint)
-	}
-	return t.conn.Rollback()
+	return rollbackScope(t.tx)
 }
