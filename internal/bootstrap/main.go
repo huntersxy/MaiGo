@@ -778,6 +778,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	}
 	personinfo.DefaultRegistry().SetMemory(memoryMgr)
 	emojisystem.DefaultRegistry().SetMemory(memoryMgr)
+	wireReasoningPreviewSessionLookup(memoryMgr.GetDB())
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(startup.Context(), 30*time.Second)
 	if err := emojisystem.DefaultRegistry().Reload(bootstrapCtx); err != nil {
 		zap.L().Warn("加载表情包内存池失败", zap.Error(err))

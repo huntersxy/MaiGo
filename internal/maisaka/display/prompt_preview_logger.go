@@ -79,6 +79,9 @@ func (l *PromptPreviewLogger) SavePreviewFile(chatID, category, content string, 
 func (l *PromptPreviewLogger) SavePreviewFileWithTrace(
 	chatID, category, content string, images []PreviewImageAsset, lookup PreviewSessionLookup, traceID string,
 ) (string, error) {
+	if lookup == nil {
+		lookup = defaultPreviewSessionLookup()
+	}
 	categoryDir := NormalizePreviewName(category)
 	chatDir := filepath.Join(l.BaseDir, categoryDir, BuildPreviewChatDirName(chatID, lookup))
 	stem := l.allocateStem(chatDir)

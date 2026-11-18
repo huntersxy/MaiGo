@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 var safeNamePattern = regexp.MustCompile("[^A-Za-z0-9._-]+")
@@ -20,6 +21,24 @@ type PreviewSessionInfo struct {
 
 // PreviewSessionLookup 按会话编号查询预览会话信息
 type PreviewSessionLookup func(sessionID string) (PreviewSessionInfo, bool)
+
+var (
+	previewSessionLookupMu sync.RWMutex
+	previewSessionLookup   PreviewSessionLookup
+)
+
+// SetPreviewSessionLookup 注入默认会话解析器，供未显式传 lookup 的调用方使用
+func SetPreviewSessionLookup(lookup PreviewSessionLookup) {
+	previewSessionLookupMu.Lock()
+	previewSessionLookup = lookup
+	previewSessionLookupMu.Unlock()
+}
+
+func defaultPreviewSessionLookup() PreviewSessionLookup {
+	previewSessionLookupMu.RLock()
+	defer previewSessionLookupMu.RUnlock()
+	return previewSessionLookup
+}
 
 // RepoRoot 提供实例根目录，对齐 Python get_instance_root：优先 MAIBOT_INSTANCE_DIR，
 // 未设置时回退进程工作目录

@@ -2,6 +2,8 @@ package webuiapi
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -9,6 +11,7 @@ import (
 
 	chatsession "MaiGo/internal/chat/session"
 	memory "MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka/display"
 )
 
 // 对齐 MaiBot reasoning_process.py 的 session_infos：目录名解析 + chat_sessions 回填展示名/resolved_session_id。
@@ -234,6 +237,111 @@ func (d Deps) configuredReasoningBotAccounts(ctx context.Context) map[[2]string]
 	return accounts
 }
 
+// reasoningSessionHashPattern 判断日志目录名是否为聊天会话 MD5
+func isReasoningSessionHash(name string) bool {
+	if len(name) != 32 {
+		return false
+	}
+	for _, char := range name {
+		if (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func reasoningSessionRecordByID(db *gorm.DB, sessionID string) (chatsession.Record, bool) {
+	var zero chatsession.Record
+	if db == nil || !isReasoningSessionHash(sessionID) {
+		return zero, false
+	}
+	var row chatsession.Record
+	if err := db.Where("session_id = ?", sessionID).First(&row).Error; err != nil {
+		return zero, false
+	}
+	return row, true
+}
+
+func reasoningSessionMatchesConfiguredAccount(rec chatsession.Record, configuredAccounts map[[2]string]struct{}) bool {
+	if rec.AccountID == nil {
+		return false
+	}
+	platform := strings.ToLower(strings.TrimSpace(rec.Platform))
+	accountID := strings.TrimSpace(*rec.AccountID)
+	if platform == "" || accountID == "" {
+		return false
+	}
+	_, ok := configuredAccounts[[2]string{platform, accountID}]
+	return ok
+}
+
+// applyReasoningSessionRecord 用 chat_sessions 记录补齐目录对应的真实会话身份
+func applyReasoningSessionRecord(info *reasoningSessionInfo, rec chatsession.Record, matchedCurrent bool, db *gorm.DB) {
+	info.Platform = strings.TrimSpace(rec.Platform)
+	if rec.GroupID != nil && strings.TrimSpace(*rec.GroupID) != "" {
+		info.ChatType = "group"
+		info.TargetID = strings.TrimSpace(*rec.GroupID)
+	} else if rec.UserID != nil && strings.TrimSpace(*rec.UserID) != "" {
+		info.ChatType = "private"
+		info.TargetID = strings.TrimSpace(*rec.UserID)
+	}
+	if sessionID := strings.TrimSpace(rec.SessionID); sessionID != "" {
+		info.ResolvedSessionID = stringPointer(sessionID)
+	}
+	info.DisplayName = reasoningChatDisplayName(db, rec)
+	if rec.AccountID != nil {
+		if accountID := strings.TrimSpace(*rec.AccountID); accountID != "" {
+			info.AccountID = stringPointer(accountID)
+		}
+	}
+	info.MatchedCurrentAccount = matchedCurrent
+}
+
+// reasoningDirectoryNameForRecord 返回聊天会话对应的平台目录名
+func reasoningDirectoryNameForRecord(rec chatsession.Record) string {
+	platform := display.NormalizePlatformName(rec.Platform)
+	if platform == "" {
+		return ""
+	}
+	if rec.GroupID != nil {
+		if groupID := strings.TrimSpace(*rec.GroupID); groupID != "" {
+			return platform + "_group_" + display.NormalizePreviewName(groupID)
+		}
+	}
+	if rec.UserID != nil {
+		if userID := strings.TrimSpace(*rec.UserID); userID != "" {
+			return platform + "_private_" + display.NormalizePreviewName(userID)
+		}
+	}
+	return ""
+}
+
+// resolveMigratedPromptPreviewPath 把历史哈希会话路径回退到迁移后的平台命名目录
+func (d Deps) resolveMigratedPromptPreviewPath(root, relative string) (string, bool) {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if len(parts) < 3 || !isReasoningSessionHash(parts[1]) {
+		return "", false
+	}
+	var db *gorm.DB
+	if d.Memory != nil {
+		db = d.Memory.GetDB()
+	}
+	record, found := reasoningSessionRecordByID(db, parts[1])
+	if !found {
+		return "", false
+	}
+	named := reasoningDirectoryNameForRecord(record)
+	if named == "" || named == parts[1] {
+		return "", false
+	}
+	candidate := filepath.Join(root, filepath.FromSlash(parts[0]), named, filepath.FromSlash(strings.Join(parts[2:], "/")))
+	if !strings.HasPrefix(candidate, root+string(os.PathSeparator)) || !pathExists(candidate) {
+		return "", false
+	}
+	return candidate, true
+}
+
 func resolveReasoningSessionInfo(
 	name string,
 	configuredAccounts map[[2]string]struct{},
@@ -243,6 +351,10 @@ func resolveReasoningSessionInfo(
 	info := &reasoningSessionInfo{Name: name, DisplayName: name}
 	platform, chatType, targetID, ok := parseReasoningSessionDirectoryName(name)
 	if !ok {
+		// 历史目录名直接使用会话 MD5，按 chat_sessions 回填真实身份
+		if record, found := reasoningSessionRecordByID(db, name); found {
+			applyReasoningSessionRecord(info, record, reasoningSessionMatchesConfiguredAccount(record, configuredAccounts), db)
+		}
 		return info
 	}
 	info.Platform = platform
@@ -256,17 +368,7 @@ func resolveReasoningSessionInfo(
 		info.DisplayName = fallbackReasoningSessionDisplayName(name, platform, chatType, targetID)
 		return info
 	}
-	resolved := strings.TrimSpace(matched.SessionID)
-	if resolved != "" {
-		info.ResolvedSessionID = stringPointer(resolved)
-	}
-	info.DisplayName = reasoningChatDisplayName(db, matched)
-	if matched.AccountID != nil {
-		if accountID := strings.TrimSpace(*matched.AccountID); accountID != "" {
-			info.AccountID = stringPointer(accountID)
-		}
-	}
-	info.MatchedCurrentAccount = matchedCurrent
+	applyReasoningSessionRecord(info, matched, matchedCurrent, db)
 	return info
 }
 

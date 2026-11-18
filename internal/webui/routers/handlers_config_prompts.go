@@ -526,6 +526,11 @@ func (d Deps) handleConfigMaisakaPromptPreview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if !pathExists(target) {
+		if migrated, ok := d.resolveMigratedPromptPreviewPath(root, relative); ok {
+			target = migrated
+		}
+	}
+	if !pathExists(target) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "Prompt 预览文件不存在"})
 		return
 	}
