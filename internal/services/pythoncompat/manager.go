@@ -112,7 +112,9 @@ func (p *sidecarProc) spawn(ctx context.Context, c *Client, pidPath string) erro
 		case <-p.waitDone:
 		default:
 			_ = terminateProcess(p.cmd)
-			<-p.waitDone
+			if !p.waitExit(p.waitDone, 2*time.Second) {
+				return fmt.Errorf("pythoncompat: 旧侧车进程未能及时退出")
+			}
 		}
 		p.cmd = nil
 		p.waitDone = make(chan struct{})
@@ -327,6 +329,36 @@ func stopManagedSidecar() {
 	shutdownOnce.Do(func() {
 		managedSidecar.stop()
 	})
+}
+
+// ManagedSidecarPID 返回本进程拉起的侧车 pid；未拉起或生命周期锁被占用时为 0，不触发探活。
+func ManagedSidecarPID() int {
+	if !managedSidecar.mu.TryLock() {
+		return 0
+	}
+	defer managedSidecar.mu.Unlock()
+	if managedSidecar.cmd == nil || managedSidecar.cmd.Process == nil {
+		return 0
+	}
+	return managedSidecar.cmd.Process.Pid
+}
+
+// waitExit 在超时后强杀子进程，避免持生命周期锁无限等待 waitDone。
+func (p *sidecarProc) waitExit(waitDone <-chan struct{}, timeout time.Duration) bool {
+	select {
+	case <-waitDone:
+		return true
+	case <-time.After(timeout):
+	}
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+	select {
+	case <-waitDone:
+		return true
+	case <-time.After(time.Second):
+		return false
+	}
 }
 
 func loadIdleSeconds() int {

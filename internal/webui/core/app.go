@@ -25,6 +25,7 @@ import (
 	botservices "MaiGo/internal/services"
 	"MaiGo/internal/services/html_render"
 	"MaiGo/internal/services/news"
+	systemprobe "MaiGo/internal/services/system_probe"
 	"MaiGo/internal/webui/dashboardstatic"
 	"MaiGo/internal/webui/middleware"
 	"MaiGo/internal/webui/routers"
@@ -68,6 +69,9 @@ type App struct {
 	schedulerMu           sync.RWMutex
 	sessionSchedulerStats func() any
 	sessionTaskSubmitter  func(context.Context, string, func(context.Context) error) error
+
+	resourceProbeMu sync.RWMutex
+	resourceProbe   func() *systemprobe.Probe
 }
 
 func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, desktopPet webuiapi.DesktopPetControl, desktopPetChat func(context.Context, string) (string, error), botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService) *App {
@@ -153,6 +157,30 @@ func (a *App) sessionSchedulerStatsSnapshot() any {
 	a.schedulerMu.RLock()
 	provider := a.sessionSchedulerStats
 	a.schedulerMu.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider()
+}
+
+// SetResourceProbe 注入系统资源探针；必须在开始服务前调用。
+func (a *App) SetResourceProbe(probe *systemprobe.Probe) {
+	if a == nil {
+		return
+	}
+	a.resourceProbeMu.Lock()
+	a.resourceProbe = func() *systemprobe.Probe { return probe }
+	a.resourceProbeMu.Unlock()
+}
+
+// resourceProbeSnapshot 在请求时读取探针 provider，避免装配顺序限制。
+func (a *App) resourceProbeSnapshot() *systemprobe.Probe {
+	if a == nil {
+		return nil
+	}
+	a.resourceProbeMu.RLock()
+	provider := a.resourceProbe
+	a.resourceProbeMu.RUnlock()
 	if provider == nil {
 		return nil
 	}
@@ -257,6 +285,7 @@ func (a *App) routes() http.Handler {
 		BuildVersion:          version.String(),
 		SessionSchedulerStats: a.sessionSchedulerStatsSnapshot,
 		SessionTaskSubmitter:  a.sessionTaskSubmitterSnapshot,
+		ResourceProbe:         a.resourceProbeSnapshot,
 	})
 
 	if dashboardMounted {

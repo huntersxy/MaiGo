@@ -1,0 +1,18 @@
+Name:	my proc
+Umask:	0022
+State:	S (sleeping)
+Tgid:	1234
+Pid:	1234
+PPid:	1
+Uid:	1000	1000	1000	1000
+Gid:	1000	1000	1000	1000
+VmPeak:	  200000 kB
+VmSize:	  150000 kB
+VmHWM:	   50000 kB
+VmRSS:	   40000 kB
+RssAnon:	   30000 kB
+RssFile:	    8000 kB
+RssShmem:	    2000 kB
+VmSwap:	     100 kB
+VmPTE:	     500 kB
+Threads:	7

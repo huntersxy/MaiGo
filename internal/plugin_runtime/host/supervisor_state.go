@@ -190,6 +190,29 @@ func (h *Host) AllRunnerStatuses() []RunnerStatus {
 	return out
 }
 
+// RunnerProcessIDs 返回已拉起 Runner 分组及其子进程 pid；未拉起的分组不出现。
+func (h *Host) RunnerProcessIDs() map[RunnerGroup]int {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make(map[RunnerGroup]int, len(h.runners))
+	for group, state := range h.runners {
+		if state == nil {
+			continue
+		}
+		child := state.Child()
+		if child == nil {
+			continue
+		}
+		if pid := child.ProcessID(); pid > 0 {
+			out[group] = pid
+		}
+	}
+	return out
+}
+
 // WaitForRunnerReady 等待 Runner 上报 runner.ready，超时返回明确错误
 func (h *Host) WaitForRunnerReady(ctx context.Context, group RunnerGroup, timeout time.Duration) (protocol.RunnerReadyPayload, error) {
 	if h == nil {
