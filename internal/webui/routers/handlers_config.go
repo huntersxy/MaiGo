@@ -1,6 +1,8 @@
 package webuiapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -248,10 +250,18 @@ func (d Deps) handleConfigModelSectionUpdate(w http.ResponseWriter, r *http.Requ
 	catalogPath := maibotcfg.SharedCatalogPath()
 	catalogRevision := ""
 	if catalogPath != "" {
-		if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
+		// 读取与定版必须基于同一份内容；分两次读取会在并发重写时让 doc 与 revision 不同源
+		catalogRaw, readErr := os.ReadFile(catalogPath)
+		if readErr == nil {
+			var catalogDoc map[string]any
+			if tomlErr := toml.Unmarshal(catalogRaw, &catalogDoc); tomlErr == nil {
+				doc = maibotcfg.MergeCatalogWith(doc, catalogDoc)
+			}
+			sum := sha256.Sum256(catalogRaw)
+			catalogRevision = hex.EncodeToString(sum[:])
+		} else if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
 			doc = merged
 		}
-		catalogRevision = maibotcfg.CatalogRevision(catalogPath)
 	}
 	patch, err := decodeAnyBody(r)
 	if err != nil {

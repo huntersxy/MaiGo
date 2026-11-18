@@ -378,6 +378,8 @@ func startLogCleanupLoop(opts logger.FileOptions) {
 func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal *runtime.ShutdownSignal) (exitCode int) {
 	stats.MarkProcessStarted()
 
+	startup.AddCleanup("停止 pprof", startPprofServer())
+
 	if err := secrets.Configure(boot.SecretKey); err != nil {
 		zap.L().Warn("加密密钥不可用，模型和 MCP 配置暂时无法应用", zap.Error(err))
 	}

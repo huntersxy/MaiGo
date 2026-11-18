@@ -34,6 +34,9 @@ services:
       MAIBOT_PLUGIN_DEP_INDEX_URLS: ${MAIBOT_PLUGIN_DEP_INDEX_URLS:-https://pypi.tuna.tsinghua.edu.cn/simple}
       # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
       HTTP_HOST: 0.0.0.0
+      # Go 常驻进程的堆上限；不设时按 GOGC=100 会把堆放大到存活量的两倍
+      GOMEMLIMIT: ${MAIGO_GOMEMLIMIT:-384MiB}
+      GOGC: ${MAIGO_GOGC:-80}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
