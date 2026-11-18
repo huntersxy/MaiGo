@@ -64,7 +64,7 @@ func (m *Manager) EnqueueSessionAgentMessage(ctx context.Context, fromKind strin
 		if err != nil {
 			return err
 		}
-		entry = &TranscriptEntry{ConversationKind: toKind, TargetID: toTarget, InputSeq: &inputSeq, EntryKind: "agent_message", Payload: payload}
+		entry = &TranscriptEntry{ConversationKind: toKind, TargetID: toTarget, InputSeq: &inputSeq, EntryKind: "agent_message", Payload: RawJSON(payload)}
 		return tx.Create(entry).Error
 	})
 	if err != nil {

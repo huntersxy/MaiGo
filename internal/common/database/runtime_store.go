@@ -41,10 +41,10 @@ func allocateSequenceRange(tx *gorm.DB, kind string, targetID int64, column stri
 		return 0, 0, err
 	}
 	var end uint64
-		sql := "UPDATE conversation_sessions SET " + column + "=" + column + "+?,updated_at=? WHERE conversation_kind=? AND target_id=? RETURNING " + column
-		if err := tx.Raw(sql, count, time.Now().UTC(), kind, targetID).Scan(&end).Error; err != nil {
-			return 0, 0, err
-		}
+	sql := "UPDATE conversation_sessions SET " + column + "=" + column + "+?,updated_at=? WHERE conversation_kind=? AND target_id=? RETURNING " + column
+	if err := tx.Raw(sql, count, time.Now().UTC(), kind, targetID).Scan(&end).Error; err != nil {
+		return 0, 0, err
+	}
 	if end < count {
 		return 0, 0, fmt.Errorf("会话序号分配失败")
 	}
@@ -57,7 +57,7 @@ func (m *Manager) AppendTranscript(ctx context.Context, entry *TranscriptEntry) 
 		return fmt.Errorf("transcript 参数无效")
 	}
 	if len(entry.Payload) == 0 {
-		entry.Payload = json.RawMessage(`{}`)
+		entry.Payload = RawJSON(`{}`)
 	}
 	return m.db.WithContext(ctx).Create(entry).Error
 }
@@ -82,7 +82,7 @@ func (m *Manager) AppendUserTranscript(ctx context.Context, kind string, targetI
 		}
 		entry = &TranscriptEntry{
 			ConversationKind: kind, TargetID: targetID, InputSeq: &inputSeq,
-			EntryKind: entryKind, MessageLogID: messageLogID, RunID: runID, Payload: payload,
+			EntryKind: entryKind, MessageLogID: messageLogID, RunID: runID, Payload: RawJSON(payload),
 		}
 		return tx.Create(entry).Error
 	})
@@ -149,22 +149,22 @@ func (m *Manager) markVisibleAndPersistReceipts(ctx context.Context, kind string
 				unvisible = append(unvisible, id)
 			}
 		}
-	if len(unvisible) > 0 {
-				start, _, err := allocateSequenceRange(tx, kind, targetID, "next_visible_seq", uint64(len(unvisible)))
-				if err != nil {
+		if len(unvisible) > 0 {
+			start, _, err := allocateSequenceRange(tx, kind, targetID, "next_visible_seq", uint64(len(unvisible)))
+			if err != nil {
+				return err
+			}
+			for i, id := range unvisible {
+				seq := start + uint64(i)
+				if err := tx.Exec(
+					"UPDATE conversation_transcript SET visible_seq=? WHERE id=? AND conversation_kind=? AND target_id=? AND visible_seq IS NULL",
+					int64(seq), id, kind, targetID,
+				).Error; err != nil {
 					return err
 				}
-				for i, id := range unvisible {
-					seq := start + uint64(i)
-					if err := tx.Exec(
-						"UPDATE conversation_transcript SET visible_seq=? WHERE id=? AND conversation_kind=? AND target_id=? AND visible_seq IS NULL",
-						int64(seq), id, kind, targetID,
-					).Error; err != nil {
-						return err
-					}
-					result[id] = seq
-				}
+				result[id] = seq
 			}
+		}
 		if kind != "" && targetID > 0 && receipt != nil && (len(receipt.Auto) > 0 || len(receipt.Tool) > 0 || len(receipt.AutoDelete) > 0) {
 			if err := m.mergeReferenceSeen(tx, kind, targetID, receipt); err != nil {
 				return err
@@ -388,7 +388,7 @@ func (m *Manager) EnsureToolTranscript(ctx context.Context, entry *TranscriptEnt
 		return nil, false, fmt.Errorf("工具回执参数无效")
 	}
 	if len(entry.Payload) == 0 {
-		entry.Payload = json.RawMessage(`{}`)
+		entry.Payload = RawJSON(`{}`)
 	}
 	result := m.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(entry)
 	if result.Error != nil {
@@ -433,7 +433,7 @@ func (m *Manager) SeedTranscriptIfEmpty(ctx context.Context, kind string, target
 			}
 			entry := TranscriptEntry{
 				ConversationKind: kind, TargetID: targetID, EntryKind: seed.EntryKind,
-				MessageLogID: &seed.MessageLogID, Payload: seed.Payload, CreatedAt: seed.CreatedAt,
+				MessageLogID: &seed.MessageLogID, Payload: RawJSON(seed.Payload), CreatedAt: seed.CreatedAt,
 			}
 			if seed.EntryKind == "user" {
 				inputSeq, err := m.AllocateInputSeq(tx, kind, targetID)
@@ -448,7 +448,7 @@ func (m *Manager) SeedTranscriptIfEmpty(ctx context.Context, kind string, target
 			}
 			entry.VisibleSeq = &visibleSeq
 			if len(entry.Payload) == 0 {
-				entry.Payload = json.RawMessage(`{}`)
+				entry.Payload = RawJSON(`{}`)
 			}
 			if err := tx.Create(&entry).Error; err != nil {
 				return err

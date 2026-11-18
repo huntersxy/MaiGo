@@ -1,9 +1,50 @@
 package memory
 
 import (
-	"encoding/json"
+	"database/sql/driver"
+	"fmt"
 	"time"
 )
+
+// RawJSON 兼容 SQLite 以 TEXT 返回的 JSON 列，避免 *json.RawMessage 扫描失败。
+type RawJSON []byte
+
+// Scan 接受 TEXT/BLOB/NULL 三种存储形态。
+func (r *RawJSON) Scan(value any) error {
+	switch typed := value.(type) {
+	case nil:
+		*r = nil
+	case string:
+		*r = append((*r)[:0], typed...)
+	case []byte:
+		*r = append((*r)[:0], typed...)
+	default:
+		return fmt.Errorf("RawJSON 不支持扫描类型 %T", value)
+	}
+	return nil
+}
+
+// Value 以 TEXT 写回，保持与 Python 侧可直接读取的 JSON 文本一致。
+func (r RawJSON) Value() (driver.Value, error) {
+	if len(r) == 0 {
+		return "null", nil
+	}
+	return string(r), nil
+}
+
+// MarshalJSON 原样输出 JSON，避免 []byte 被编码成 base64。
+func (r RawJSON) MarshalJSON() ([]byte, error) {
+	if len(r) == 0 {
+		return []byte("null"), nil
+	}
+	return r, nil
+}
+
+// UnmarshalJSON 保留原始 JSON 字节。
+func (r *RawJSON) UnmarshalJSON(data []byte) error {
+	*r = append((*r)[:0], data...)
+	return nil
+}
 
 const (
 	SubjectGroup  = "group"
@@ -37,38 +78,38 @@ func (ConversationSession) TableName() string { return "conversation_sessions" }
 
 // TranscriptEntry 是当前工作集的一行，压缩后对应的旧行会删除
 type TranscriptEntry struct {
-	ID               uint            `gorm:"primaryKey" json:"id"`
-	ConversationKind string          `gorm:"type:text;not null" json:"conversation_kind"`
-	TargetID         int64           `gorm:"column:target_id;not null" json:"target_id"`
-	InputSeq         *uint64         `json:"input_seq,omitempty"`
-	VisibleSeq       *uint64         `json:"visible_seq,omitempty"`
-	EntryKind        string          `gorm:"type:text;not null" json:"entry_kind"`
-	MessageLogID     *uint           `json:"message_log_id,omitempty"`
-	RunID            string          `gorm:"type:text;not null;default:''" json:"run_id"`
-	ToolCallID       string          `gorm:"type:text;not null;default:''" json:"tool_call_id"`
-	ToolName         string          `gorm:"type:text;not null;default:''" json:"tool_name"`
-	ToolStatus       string          `gorm:"type:text;not null;default:''" json:"tool_status"`
-	Payload          json.RawMessage `gorm:"type:text;not null" json:"payload"`
-	ResultRef        string          `gorm:"type:text;not null;default:''" json:"result_ref,omitempty"`
-	CreatedAt        time.Time       `json:"created_at"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	ConversationKind string    `gorm:"type:text;not null" json:"conversation_kind"`
+	TargetID         int64     `gorm:"column:target_id;not null" json:"target_id"`
+	InputSeq         *uint64   `json:"input_seq,omitempty"`
+	VisibleSeq       *uint64   `json:"visible_seq,omitempty"`
+	EntryKind        string    `gorm:"type:text;not null" json:"entry_kind"`
+	MessageLogID     *uint     `json:"message_log_id,omitempty"`
+	RunID            string    `gorm:"type:text;not null;default:''" json:"run_id"`
+	ToolCallID       string    `gorm:"type:text;not null;default:''" json:"tool_call_id"`
+	ToolName         string    `gorm:"type:text;not null;default:''" json:"tool_name"`
+	ToolStatus       string    `gorm:"type:text;not null;default:''" json:"tool_status"`
+	Payload          RawJSON   `gorm:"type:text;not null" json:"payload"`
+	ResultRef        string    `gorm:"type:text;not null;default:''" json:"result_ref,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func (TranscriptEntry) TableName() string { return "conversation_transcript" }
 
 // CompactionCheckpoint 保存当前可见上下文的摘要快照
 type CompactionCheckpoint struct {
-	ConversationKind    string          `gorm:"primaryKey;type:text" json:"conversation_kind"`
-	TargetID            int64           `gorm:"primaryKey;column:target_id" json:"target_id"`
-	Version             uint64          `gorm:"not null;default:0" json:"version"`
-	ThroughVisibleSeq   *uint64         `json:"through_visible_seq,omitempty"`
-	ThroughMessageLogID *uint           `json:"through_message_log_id,omitempty"`
-	Overview            string          `gorm:"type:text;not null;default:''" json:"overview"`
-	ActiveTopicVersions json.RawMessage `gorm:"type:text;not null;default:'[]'" json:"active_topic_versions"`
-	ReferenceBaseline   string          `gorm:"type:text;not null;default:''" json:"reference_baseline"`
-	ReferenceVersions   json.RawMessage `gorm:"type:text;not null;default:'{}'" json:"reference_versions"`
-	BatchID             string          `gorm:"type:text;not null;default:''" json:"batch_id"`
-	CreatedAt           time.Time       `json:"created_at"`
-	UpdatedAt           time.Time       `json:"updated_at"`
+	ConversationKind    string    `gorm:"primaryKey;type:text" json:"conversation_kind"`
+	TargetID            int64     `gorm:"primaryKey;column:target_id" json:"target_id"`
+	Version             uint64    `gorm:"not null;default:0" json:"version"`
+	ThroughVisibleSeq   *uint64   `json:"through_visible_seq,omitempty"`
+	ThroughMessageLogID *uint     `json:"through_message_log_id,omitempty"`
+	Overview            string    `gorm:"type:text;not null;default:''" json:"overview"`
+	ActiveTopicVersions RawJSON   `gorm:"type:text;not null;default:'[]'" json:"active_topic_versions"`
+	ReferenceBaseline   string    `gorm:"type:text;not null;default:''" json:"reference_baseline"`
+	ReferenceVersions   RawJSON   `gorm:"type:text;not null;default:'{}'" json:"reference_versions"`
+	BatchID             string    `gorm:"type:text;not null;default:''" json:"batch_id"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 func (CompactionCheckpoint) TableName() string { return "context_compaction_checkpoints" }
