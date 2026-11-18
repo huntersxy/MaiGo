@@ -168,7 +168,14 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 			// Agent 已经拥有运行时生命周期，心流 Manager 不得重复启动或停止底层循环
 			StartRuntime: func(heartflow.Runtime) {},
 			StopRuntime:  func(heartflow.Runtime) error { return nil },
-			Now:          options.Now,
+			// StopRuntime 为空实现时仍需回收 Agent.sessions 工作集
+			OnEvict: func(_ context.Context, session heartflow.ChatSession, _ string) {
+				if options.Agent == nil {
+					return
+				}
+				_ = options.Agent.DropChatSession(session.IsGroup, session.GroupID, session.UserID)
+			},
+			Now: options.Now,
 		},
 		FrequencyFallback: chatFrequencyFallback(options.ReplyTiming),
 		InboundFilter:     options.MessageFilter,

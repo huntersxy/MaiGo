@@ -30,6 +30,6 @@
 //
 // 容器内 compose 会配置 loopback URL；进程由 CreateTypoSentences / RunKMeans
 // 首次调用时按需拉起（/app/pycompat/bin/python /app/pycompat_sidecar.py，cwd=/app），
-// 健康检查通过后再发请求，空闲后退出。多 Worker 先探测后抢锁启动。
-// 进程级客户端由 DefaultClient 提供；测试可用 SetDefaultClient 注入。
+// 健康检查通过后再发请求。侧车空闲后自行退出，僵死时由 Go 按 lastActive 收割。
+// 多 Worker 先探测后抢锁启动。进程级客户端由 DefaultClient 提供；测试可用 SetDefaultClient 注入。
 package pythoncompat

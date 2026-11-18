@@ -295,6 +295,17 @@ class Handler(BaseHTTPRequestHandler):
             self._end_flight()
 
 
+def _force_exit(code: int = 0, delay: float = 1.0) -> None:
+    """ThreadingHTTPServer.shutdown 可能卡住 serve_forever；超时后强退释放 RSS。"""
+
+    def _exit_later() -> None:
+        time.sleep(delay)
+        print(f"[compat] force exit after {delay:.1f}s", file=sys.stderr, flush=True)
+        os._exit(code)
+
+    threading.Thread(target=_exit_later, daemon=True).start()
+
+
 def _idle_watch(httpd: ThreadingHTTPServer) -> None:
     if IDLE_SECONDS <= 0:
         return
@@ -309,7 +320,10 @@ def _idle_watch(httpd: ThreadingHTTPServer) -> None:
             file=sys.stderr,
             flush=True,
         )
+        _IDLE_STOP.set()
         threading.Thread(target=httpd.shutdown, daemon=True).start()
+        # shutdown 汇合失败时进程会僵死占内存；1s 后 os._exit 兜底
+        _force_exit(0, 1.0)
         return
 
 
@@ -319,6 +333,7 @@ def main() -> int:
     def shutdown(_signum: int, _frame: Any) -> None:
         _IDLE_STOP.set()
         threading.Thread(target=httpd.shutdown, daemon=True).start()
+        _force_exit(0, 2.0)
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
@@ -330,7 +345,7 @@ def main() -> int:
     finally:
         _IDLE_STOP.set()
         httpd.server_close()
-    return 0
+    return 0}Report the result once you have determined it. Use a tool if needed to gather more information before reporting. Use multiple tools in parallel if needed. Do what you can to continue making progress if you can. Then summarize your findings.
 
 
 if __name__ == "__main__":

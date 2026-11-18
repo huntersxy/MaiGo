@@ -137,6 +137,52 @@ func (s *sessionStore) get(kind string, targetID int64) *Session {
 	return session
 }
 
+// Drop 释放会话工作集并从 map 删除；再次消息可经 get 重建并 restore
+func (s *sessionStore) Drop(kind string, targetID int64) bool {
+	if s == nil {
+		return false
+	}
+	key := chatsession.ConversationKey(kind, targetID)
+	s.mu.Lock()
+	session, ok := s.sessions[key]
+	if ok {
+		delete(s.sessions, key)
+	}
+	s.mu.Unlock()
+	if !ok || session == nil {
+		return false
+	}
+	session.release()
+	return true
+}
+
+func (s *Session) release() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	loop := s.maisakaLoop
+	s.maisakaLoop = nil
+	s.maisakaRuntime = nil
+	s.maisakaSummary = nil
+	s.maisakaSummaryPersisted = ""
+	s.maisakaFocusGroup = nil
+	s.focusRuntime = nil
+	s.seen = nil
+	s.pending = nil
+	s.media = nil
+	s.selfAt = nil
+	s.notes = nil
+	s.pendingReferenceReceipt = nil
+	s.mu.Unlock()
+	if loop != nil {
+		loop.Stop()
+	}
+	s.replyTargetsMu.Lock()
+	s.replyTargets = nil
+	s.replyTargetsMu.Unlock()
+}
+
 func (s *Session) AppendUser(msg *onebot.ConversationMessage, logID uint, mediaRefs []media.Ref) *sessionUser {
 	if msg == nil {
 		return nil

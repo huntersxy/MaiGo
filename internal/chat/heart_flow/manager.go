@@ -119,6 +119,9 @@ type ManagerOptions struct {
 	// 宿主负责运行时生命周期时可注入空实现，避免淘汰或关停时停止仍在使用的运行时
 	// 返回 error 对齐 Python chat.stop() 可抛异常；Shutdown 会聚合失败
 	StopRuntime func(Runtime) error
+	// OnEvict 淘汰会话后回调；宿主可据此回收 Agent.sessions 等工作集
+	// StopRuntime 为空实现时仍会调用，避免工作集只增不减
+	OnEvict func(ctx context.Context, session ChatSession, reason string)
 	// Now 可注入时钟，测试用
 	Now func() time.Time
 	// MaxActiveChats 为 0 时使用 100
@@ -373,6 +376,7 @@ func (m *Manager) ClearChatHistoryContext(ctx context.Context, sessionID string)
 				return false, err
 			}
 		}
+		m.dropAgentSession(ctx, sessionID)
 		if m.opts.Planner != nil {
 			if err := m.opts.Planner.ResetPlannerSession(ctx, sessionID); err != nil {
 				return false, err
@@ -569,7 +573,21 @@ func (m *Manager) evictChat(ctx context.Context, sessionID, reason string) {
 			return
 		}
 	}
+	if m.opts.OnEvict != nil {
+		m.opts.OnEvict(ctx, entry.session, reason)
+	}
 	zap.L().Info("已淘汰心流聊天", zap.String("session_id", sessionID), zap.String("reason", reason))
+}
+
+func (m *Manager) dropAgentSession(ctx context.Context, sessionID string) {
+	if m.opts.OnEvict == nil || m.opts.Sessions == nil {
+		return
+	}
+	session, ok, err := m.opts.Sessions.SessionByID(ctx, sessionID)
+	if err != nil || !ok {
+		return
+	}
+	m.opts.OnEvict(ctx, session, "clear_context_command")
 }
 
 func (m *Manager) isSessionAllowed(ctx context.Context, session ChatSession) (bool, error) {

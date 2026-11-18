@@ -31,11 +31,14 @@ const (
 
 // sidecarProc 本进程拉起的侧车子进程；多 Worker 共享 127.0.0.1 端口时，
 // 先探测再抢锁启动，避免并发绑定失败后静默回落本地实现。
-// 空闲退出由侧车进程按 in-flight 引用计数自行处理，避免跨 Worker 误杀。
+// 空闲退出由侧车自行处理；本结构按 lastActive 收割僵死进程。
 type sidecarProc struct {
-	mu       sync.Mutex
-	cmd      *exec.Cmd
-	waitDone chan struct{}
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	waitDone   chan struct{}
+	lastActive time.Time
+	reapStop   chan struct{}
+	idleSecs   int
 }
 
 var (
@@ -59,6 +62,7 @@ func (c *Client) ensureRunning(ctx context.Context) (func(), error) {
 	if err := ensureSidecarReady(ctx, c); err != nil {
 		return nil, err
 	}
+	managedSidecar.touch()
 	return func() {}, nil
 }
 
@@ -161,13 +165,65 @@ func (p *sidecarProc) spawn(ctx context.Context, c *Client, pidPath string) erro
 	}
 	_ = os.WriteFile(pidPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0o644)
 	p.cmd = cmd
+	p.lastActive = time.Now()
+	p.idleSecs = idleSeconds
 	waitDone := p.waitDone
+	p.startReaperLocked(idleSeconds)
 	go func() {
 		_ = cmd.Wait()
 		_ = os.Remove(pidPath)
 		close(waitDone)
 	}()
 	return nil
+}
+
+func (p *sidecarProc) touch() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.lastActive = time.Now()
+}
+
+func (p *sidecarProc) startReaperLocked(idleSeconds int) {
+	if idleSeconds <= 0 {
+		return
+	}
+	if p.reapStop != nil {
+		close(p.reapStop)
+	}
+	stop := make(chan struct{})
+	p.reapStop = stop
+	grace := time.Duration(idleSeconds)*time.Second + 30*time.Second
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				// 不打 /health：探活会刷新侧车 LAST_ACTIVE，反而拖死空闲退出
+				if !p.shouldReap(grace) {
+					continue
+				}
+				p.stop()
+				return
+			}
+		}
+	}()
+}
+
+func (p *sidecarProc) shouldReap(grace time.Duration) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cmd == nil || p.cmd.Process == nil || p.lastActive.IsZero() {
+		return false
+	}
+	select {
+	case <-p.waitDone:
+		return false
+	default:
+	}
+	return time.Since(p.lastActive) >= grace
 }
 
 func waitUntilReady(ctx context.Context, c *Client) error {
@@ -223,6 +279,10 @@ func (p *sidecarProc) stop() {
 	p.mu.Lock()
 	cmd := p.cmd
 	waitDone := p.waitDone
+	if p.reapStop != nil {
+		close(p.reapStop)
+		p.reapStop = nil
+	}
 	p.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
 		return
