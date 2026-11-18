@@ -40,6 +40,11 @@ func (c *Client) CreateTypoSentences(ctx context.Context, sentences []string, cf
 	if len(sentences) == 0 {
 		return nil, nil
 	}
+	release, err := c.ensureRunning(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var response typoResponse
 	if err := c.post(ctx, "/typo", typoRequest{Sentences: sentences, Config: cfg, Seed: seed}, &response); err != nil {
 		return nil, err

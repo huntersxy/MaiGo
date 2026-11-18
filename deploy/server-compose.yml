@@ -16,7 +16,7 @@ services:
       MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED: "1"
       # 未设置时由入口脚本生成并保存到 data 卷的 .secret_key
       MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:-}
-      # 错别字注入与表达向量聚类由容器内 vendored Python 侧车提供
+      # 启用 loopback 兼容侧车；进程由 Go 首次调用时按需拉起
       MAIBOT_COMPAT_URL: http://127.0.0.1:8767
       MAIBOT_COMPAT_TIMEOUT: "60"
       # 插件 Python 依赖安装走国内镜像，直连 PyPI 太慢会长时间阻塞启动
@@ -54,7 +54,7 @@ services:
       retries: 5
       start_period: 20s
 
-  # Python 原版能力侧车不是独立服务：入口脚本在主容器内拉起
+  # Python 原版能力侧车不是独立服务：Go 在主容器内按需拉起
   # /app/pycompat_sidecar.py，只加载 data/pycompat 里 vendored 的两个模块。
 
 volumes:

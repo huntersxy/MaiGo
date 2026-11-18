@@ -12,8 +12,9 @@ stub 屏蔽 ``src.common.logger``、``src.config.config`` 等重依赖，避免�
 k-means 去初始化整个机器人。
 
 约定：
-- 只监听容器网络，不对外暴露；token 为空表示不校验（仅限内网）。
+- 默认只监听 127.0.0.1，不对外暴露；token 为空表示不校验。
 - 请求/响应均为 JSON；错误统一 HTTP 500 + ``{"detail": "..."}``。
+- 进程由 Go 按需拉起；空闲超时按 in-flight 计数自行退出。
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import random
 import signal
 import sys
 import threading
+import time
 import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -32,9 +34,17 @@ from typing import Any, Callable, Dict, List, Optional
 
 INSTANCE_DIR = Path(os.environ.get("MAIBOT_INSTANCE_DIR", "/MaiMBot"))
 SOURCE_ROOT = Path(os.environ.get("MAIBOT_SOURCE_ROOT", str(INSTANCE_DIR)))
+HOST = os.environ.get("MAIBOT_COMPAT_SIDECAR_HOST", "127.0.0.1").strip() or "127.0.0.1"
 PORT = int(os.environ.get("MAIBOT_COMPAT_SIDECAR_PORT", "8767") or "8767")
 TOKEN = os.environ.get("MAIBOT_COMPAT_SIDECAR_TOKEN", "").strip()
+IDLE_SECONDS = float(os.environ.get("MAIBOT_COMPAT_SIDECAR_IDLE", "300") or "300")
 MAX_BODY = 64 << 20
+
+_IN_FLIGHT = 0
+_IN_FLIGHT_LOCK = threading.Lock()
+_LAST_ACTIVE = time.monotonic()
+_IDLE_STOP = threading.Event()
+
 
 
 # --------------------------------------------------------------------------- #
@@ -226,6 +236,23 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(401, {"detail": "unauthorized"})
         return False
 
+    def _mark_active(self) -> None:
+        global _LAST_ACTIVE
+        with _IN_FLIGHT_LOCK:
+            _LAST_ACTIVE = time.monotonic()
+
+    def _begin_flight(self) -> None:
+        global _IN_FLIGHT, _LAST_ACTIVE
+        with _IN_FLIGHT_LOCK:
+            _IN_FLIGHT += 1
+            _LAST_ACTIVE = time.monotonic()
+
+    def _end_flight(self) -> None:
+        global _IN_FLIGHT, _LAST_ACTIVE
+        with _IN_FLIGHT_LOCK:
+            _IN_FLIGHT = max(0, _IN_FLIGHT - 1)
+            _LAST_ACTIVE = time.monotonic()
+
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         if path not in {"/", "/health", "/status"}:
@@ -233,6 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authorized():
             return
+        self._mark_active()
         self._send_json(
             200,
             {
@@ -250,6 +278,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._authorized():
             return
+        self._begin_flight()
         try:
             length = int(self.headers.get("Content-Length", "0") or "0")
             if length <= 0 or length > MAX_BODY:
@@ -262,20 +291,44 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(200, handler(payload))
         except Exception as exc:  # noqa: BLE001 - 侧车把失败统一报给调用方
             self._send_json(500, {"detail": str(exc)})
+        finally:
+            self._end_flight()
+
+
+def _idle_watch(httpd: ThreadingHTTPServer) -> None:
+    if IDLE_SECONDS <= 0:
+        return
+    while not _IDLE_STOP.wait(1.0):
+        with _IN_FLIGHT_LOCK:
+            idle_for = time.monotonic() - _LAST_ACTIVE
+            busy = _IN_FLIGHT > 0
+        if busy or idle_for < IDLE_SECONDS:
+            continue
+        print(
+            f"[compat] idle {idle_for:.1f}s >= {IDLE_SECONDS}s, shutting down",
+            file=sys.stderr,
+            flush=True,
+        )
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
+        return
 
 
 def main() -> int:
-    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    httpd = ThreadingHTTPServer((HOST, PORT), Handler)
 
     def shutdown(_signum: int, _frame: Any) -> None:
+        _IDLE_STOP.set()
         threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    print(f"[compat] listening on 0.0.0.0:{PORT} (source_root={SOURCE_ROOT})", file=sys.stderr, flush=True)
+    print(f"[compat] listening on {HOST}:{PORT} (source_root={SOURCE_ROOT})", file=sys.stderr, flush=True)
+    idle_thread = threading.Thread(target=_idle_watch, args=(httpd,), daemon=True)
+    idle_thread.start()
     try:
         httpd.serve_forever()
     finally:
+        _IDLE_STOP.set()
         httpd.server_close()
     return 0
 

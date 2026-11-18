@@ -22,11 +22,14 @@
 // 两者都有 Go 侧的本地实现作为回落：侧车未配置、超时或返回异常时，
 // 调用方会警告并继续用本地实现，功能不会因为侧车挂掉而消失。
 //
-// # 配置
+// # 配置与生命周期
 //
 //	MAIBOT_COMPAT_URL      侧车根地址，如 http://127.0.0.1:8767；为空表示不启用
 //	MAIBOT_COMPAT_TOKEN    可选 Bearer token
 //	MAIBOT_COMPAT_TIMEOUT  秒，默认 30（内部最小 120，聚类批量上传较慢）
 //
+// 容器内 compose 会配置 loopback URL；进程由 CreateTypoSentences / RunKMeans
+// 首次调用时按需拉起（/app/pycompat/bin/python /app/pycompat_sidecar.py，cwd=/app），
+// 健康检查通过后再发请求，空闲后退出。多 Worker 先探测后抢锁启动。
 // 进程级客户端由 DefaultClient 提供；测试可用 SetDefaultClient 注入。
 package pythoncompat

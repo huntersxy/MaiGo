@@ -50,6 +50,11 @@ type kmeansResponse struct {
 // 侧车内部先做 l2_normalize 再聚类，与 Go 侧 buildExpressionVectorClusters
 // 的输入约定一致；seed 为 0 时由侧车回落 Python 默认的 20260621。
 func (c *Client) RunKMeans(ctx context.Context, req KMeansRequest) (*KMeansResult, error) {
+	release, err := c.ensureRunning(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	payload := kmeansRequestPayload{
 		Rows:           req.Rows,
 		Cols:           req.Cols,
