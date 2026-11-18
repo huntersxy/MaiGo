@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"MaiGo/internal/common/network_security"
+	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/llm_models/model_client"
 )
 
@@ -55,13 +56,27 @@ func (d Deps) handleModelsClientTypes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (d Deps) modelProviderByName(name string) (map[string]any, bool) {
+// modelCatalogDoc 读取供应商与模型定义；宿主模式下必须叠加共享模型目录
+func (d Deps) modelCatalogDoc() (map[string]any, bool) {
 	path, ok := d.modelConfigPath()
 	if !ok {
 		return nil, false
 	}
 	doc, err := readTOMLDocument(path)
 	if err != nil {
+		return nil, false
+	}
+	merged, err := maibotcfg.MergeSharedCatalogDoc(doc)
+	if err != nil {
+		// 共享目录损坏时保留实例配置，避免整页不可用
+		return doc, true
+	}
+	return merged, true
+}
+
+func (d Deps) modelProviderByName(name string) (map[string]any, bool) {
+	doc, ok := d.modelCatalogDoc()
+	if !ok {
 		return nil, false
 	}
 	providers, _ := doc["api_providers"].([]any)
@@ -75,12 +90,8 @@ func (d Deps) modelProviderByName(name string) (map[string]any, bool) {
 }
 
 func (d Deps) modelConfigModelByName(name string) (map[string]any, bool) {
-	path, ok := d.modelConfigPath()
+	doc, ok := d.modelCatalogDoc()
 	if !ok {
-		return nil, false
-	}
-	doc, err := readTOMLDocument(path)
-	if err != nil {
 		return nil, false
 	}
 	models, _ := doc["models"].([]any)
