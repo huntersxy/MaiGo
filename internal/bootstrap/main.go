@@ -65,6 +65,7 @@ import (
 	"MaiGo/internal/manager/asynctask"
 	"MaiGo/internal/runtime"
 	"MaiGo/internal/runtime/execution"
+	"MaiGo/internal/runtime/execution/committer"
 	"MaiGo/internal/runtime/execution/policy"
 	chatscheduler "MaiGo/internal/runtime/execution/scheduler"
 	botservices "MaiGo/internal/services"
@@ -78,9 +79,6 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
-
-// fallbackArrivalSeq 为入站消息提供单调递增的运行时序号
-var fallbackArrivalSeq atomic.Uint64
 
 // newMessageService 构造消息服务；自查身份由 Bot 平台账号按 (platform, account) 判定
 func newMessageService(db *gorm.DB, selfID int64, botName string) *botservices.MessageService {
@@ -1310,10 +1308,13 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		zap.L().Warn("读取功能开关失败，全部按关闭处理", zap.Error(featureErr))
 		featureToggles = execution.DefaultFeatureToggles()
 	}
-	nativeSessionScheduler := execution.NativeModeActive(executionProfile, featureToggles)
+	nativeMode := executionProfile.Mode == execution.ModeNative
+	nativeSessionScheduler := nativeMode && execution.IsFeatureImplemented("native_session_scheduler") && featureToggles.NativeSessionScheduler
+	nativeMessageCommitter := nativeMode && execution.IsFeatureImplemented("native_message_committer") && featureToggles.NativeMessageCommitter
 	zap.L().Info("执行配置已加载",
 		zap.String("execution_mode", string(executionProfile.Mode)),
 		zap.Bool("native_session_scheduler", nativeSessionScheduler),
+		zap.Bool("native_message_committer", nativeMessageCommitter),
 		zap.Int("worker_pool_size", executionProfile.WorkerPoolSize),
 	)
 	executionPolicies := policy.NewRegistry()
@@ -1329,6 +1330,12 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			zap.String("execution_mode", string(execution.ModeNative)),
 			zap.Int("workers", nativeScheduler.Workers()),
 		)
+	}
+	if nativeMessageCommitter {
+		nativeCommitter := committer.NewNative()
+		executionPolicies.MessageCommitter.Set(nativeCommitter)
+		maiAgent.SetMessageCommitter(nativeCommitter)
+		zap.L().Info("原生动入站提交器已启动", zap.String("execution_mode", string(execution.ModeNative)))
 	}
 	chatPipeline := newChatRuntimePipelineWithOptions(context.Background(), chatPipelineOptions{
 		Agent:        maiAgent,
@@ -1638,7 +1645,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 					zap.String("external_message_id", envelope.ExternalMessageID))
 				return nil
 			}
-			msg.ArrivalSeq = fallbackArrivalSeq.Add(1)
 			chatPipeline.Handle(ctx, msg)
 			return nil
 		}

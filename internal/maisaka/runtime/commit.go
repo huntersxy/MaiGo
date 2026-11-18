@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	commitQueueSize    = 256
 	recallPendingTTL   = 5 * time.Minute
 	persistenceTimeout = 30 * time.Second
 )
@@ -37,14 +36,9 @@ func (a *Agent) persistenceContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(a.ctx), persistenceTimeout)
 }
 
-// SkipConversationEvent 消费未处理事件的到达序号，避免提交重排器等待永久缺口
+// SkipConversationEvent 消费未处理事件的到达序号，避免定序实现等待永久缺口
 func (a *Agent) SkipConversationEvent(kind string, targetID int64, arrivalSeq uint64) {
-	item := commitItem{skip: true}
-	if kind == memory.ConversationKindPrivate {
-		a.privateCommits.enqueue(targetID, arrivalSeq, item)
-	} else {
-		a.groupCommits.enqueue(targetID, arrivalSeq, item)
-	}
+	a.messageCommitter().Skip(kind, targetID, arrivalSeq)
 }
 
 func (a *Agent) messageAllowed(ctx context.Context, msg *onebot.ConversationMessage) bool {
@@ -202,7 +196,7 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commit
 	if !created {
 		return
 	}
-	// 引用缓存只由按序提交写入，避免并行解析在撤回后写回旧值
+	// 引用缓存只由提交阶段写入，避免并行解析在撤回后写回旧值
 	if replyErr == nil && msg.Reply != nil && msg.Reply.MessageID != 0 {
 		a.replyCache.Set(replyCacheKey(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID), *msg.Reply, ttlcache.DefaultTTL)
 	}
@@ -235,25 +229,26 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commit
 	}
 }
 
-// commitItem 提交队列项：消息、戳一戳、撤回统一按会话内到达序号重排提交；
-// skip 用于消费不会产生实际处理的序号（解析失败、无效事件、未启用会话），避免重排器死等
+// commitItem 提交项：消息、戳一戳、撤回统一交给提交策略按会话处理
 type commitItem struct {
-	skip     bool
 	recall   *recallCommit
 	msg      *onebot.ConversationMessage
 	media    []media.Ref
 	forwards []messagereceive.ForwardDraft
 }
 
-// commitOne 群聊与私聊提交队列共用的分发逻辑，会话隔离由各自队列实例保证
-func (a *Agent) commitOne(item commitItem) {
-	switch {
-	case item.skip:
-	case item.recall != nil:
+// submitCommit 把提交项交给当前提交策略
+func (a *Agent) submitCommit(kind string, targetID int64, seq uint64, item commitItem) {
+	a.messageCommitter().Submit(kind, targetID, seq, func() { a.commitItem(item) })
+}
+
+// commitItem 执行单个提交项
+func (a *Agent) commitItem(item commitItem) {
+	if item.recall != nil {
 		a.commitRecall(item.recall)
-	default:
-		a.commitConversationMessage(item)
+		return
 	}
+	a.commitConversationMessage(item)
 }
 
 // messageGroupFields 取消息所属群信息；WebUI 虚拟群优先使用原始 group_id

@@ -16,7 +16,7 @@ import (
 )
 
 func (a *Agent) onPrivateMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.privateCommits.enqueue(msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
+	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
 }
 
 func (a *Agent) schedulePrivateThink(targetID int64, receivedAt time.Time) {

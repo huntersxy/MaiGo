@@ -3,6 +3,7 @@ package execution
 // FeatureToggles Go 平台特有功能开关；所有字段默认 false（对齐 Python 行为）
 type FeatureToggles struct {
 	NativeSessionScheduler bool `json:"native_session_scheduler" toml:"native_session_scheduler"`
+	NativeMessageCommitter bool `json:"native_message_committer" toml:"native_message_committer"`
 	NativeEventDispatcher  bool `json:"native_event_dispatcher" toml:"native_event_dispatcher"`
 	NativeWriteCoordinator bool `json:"native_write_coordinator" toml:"native_write_coordinator"`
 	AsyncMemoryWriteback   bool `json:"async_memory_writeback" toml:"async_memory_writeback"`
@@ -21,7 +22,7 @@ type FeatureInfo struct {
 	GoState     string `json:"go_state"`
 	// Implemented 表示该开关是否已经接入运行时；未接入时页面只展示规划状态。
 	Implemented bool `json:"implemented"`
-	// Phase 对应 RUNTIME_MODES.md 的分阶段实施编号，0 表示未排期。
+	// Phase 分阶段实施编号，0 表示未排期。
 	Phase   int  `json:"phase"`
 	Enabled bool `json:"enabled"`
 }
@@ -33,8 +34,8 @@ func DefaultFeatureToggles() FeatureToggles {
 
 // FeatureDescriptions 返回所有功能开关的静态元数据与双模式对照。
 //
-// 只有已经接入运行时的功能才会把 Implemented 置为 true；其余功能按
-// RUNTIME_MODES.md 的阶段 2–4 逐步接入，页面只展示规划状态。
+// 只有已经接入运行时的功能才会把 Implemented 置为 true；其余功能按阶段逐步接入，
+// 页面只展示规划状态。
 func FeatureDescriptions() []FeatureInfo {
 	return []FeatureInfo{
 		{
@@ -44,6 +45,16 @@ func FeatureDescriptions() []FeatureInfo {
 			Description: "在 native 模式且开启本开关时，按会话建立 FIFO 邮箱，跨会话交给有界工作池处理；同一会话内保持严格顺序。",
 			PythonState: "兼容：按 Python 单事件循环的节奏串行排队。",
 			GoState:     "原生：跨会话并行，单会话 FIFO 保序。",
+			Implemented: true,
+			Phase:       2,
+		},
+		{
+			Key:         "native_message_committer",
+			Name:        "入站提交定序",
+			Category:    "调度",
+			Description: "同一会话的入站提交按到达序号定序，跨会话并发执行；关闭后按 Python 的独立任务方式就地提交。",
+			PythonState: "兼容：每条入站事件作为独立任务直接执行，无队列与序号。",
+			GoState:     "原生：会话内按序号保序，会话间并行，不占用调用方协程。",
 			Implemented: true,
 			Phase:       2,
 		},
@@ -151,6 +162,7 @@ func UnimplementedEnabledKeys(features map[string]bool) []string {
 func (t FeatureToggles) toMap() map[string]bool {
 	return map[string]bool{
 		"native_session_scheduler": t.NativeSessionScheduler,
+		"native_message_committer": t.NativeMessageCommitter,
 		"native_event_dispatcher":  t.NativeEventDispatcher,
 		"native_write_coordinator": t.NativeWriteCoordinator,
 		"async_memory_writeback":   t.AsyncMemoryWriteback,
@@ -165,6 +177,8 @@ func (t *FeatureToggles) SetByKey(key string, enabled bool) bool {
 	switch key {
 	case "native_session_scheduler":
 		t.NativeSessionScheduler = enabled
+	case "native_message_committer":
+		t.NativeMessageCommitter = enabled
 	case "native_event_dispatcher":
 		t.NativeEventDispatcher = enabled
 	case "native_write_coordinator":

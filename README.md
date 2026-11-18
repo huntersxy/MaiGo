@@ -77,9 +77,10 @@ worker_pool_size = 0     # 仅 native 生效，0 表示按 CPU 核心数
 
 [features]
 native_session_scheduler = false  # 已接入
+native_message_committer = false  # 已接入
 ```
 
-当前已接入的开关只有 `native_session_scheduler`（会话并发调度）；其余开关在 `FeatureDescriptions()` 中按阶段登记，标记为未接入时 WebUI 只展示规划状态，不允许开启。
+当前已接入的开关：`native_session_scheduler`（会话并发调度）、`native_message_committer`（入站提交定序）。其余开关在 `FeatureDescriptions()` 中按阶段登记，标记为未接入时 WebUI 只展示规划状态，不允许开启。
 
 临时覆盖模式：`MAIBOT_EXECUTION_MODE=native`。设置接口在 `/api/webui/go/settings`。
 

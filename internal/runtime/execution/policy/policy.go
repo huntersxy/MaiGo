@@ -23,6 +23,7 @@ type Key string
 
 const (
 	SessionSchedulerKey Key = "native_session_scheduler"
+	MessageCommitterKey Key = "native_message_committer"
 	EventDispatcherKey  Key = "native_event_dispatcher"
 	WriteCoordinatorKey Key = "native_write_coordinator"
 	MemoryWritebackKey  Key = "async_memory_writeback"
@@ -122,9 +123,10 @@ type Registry struct {
 	mu    sync.RWMutex
 	slots map[Key]any
 
-	// SessionScheduler 是当前唯一已接入的 typed 槽；其余模块在实现时用
-	// RegisterSlot 注册自己的 typed 槽，不需要修改本结构体。
+	// 已接入的 typed 槽；其余模块实现时用 RegisterSlot 注册自己的槽，
+	// 不需要修改本结构体。
 	SessionScheduler *Slot[SessionScheduler]
+	MessageCommitter *Slot[MessageCommitter]
 }
 
 // NewRegistry 创建默认全 compatibility 的注册表。
@@ -132,6 +134,8 @@ func NewRegistry() *Registry {
 	registry := &Registry{slots: make(map[Key]any)}
 	registry.SessionScheduler, _ = RegisterSlot[SessionScheduler](registry, SessionSchedulerKey)
 	registry.SessionScheduler.Set(DirectScheduler{})
+	registry.MessageCommitter, _ = RegisterSlot[MessageCommitter](registry, MessageCommitterKey)
+	registry.MessageCommitter.Set(InlineCommitter{})
 	for _, key := range []Key{
 		EventDispatcherKey,
 		WriteCoordinatorKey,

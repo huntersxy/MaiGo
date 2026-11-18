@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	messagereceive "MaiGo/internal/chat/message_receive"
@@ -31,6 +32,9 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 	}
 	if msg.ConversationKind == "" {
 		msg.ConversationKind = memory.ConversationKindGroup
+	}
+	if msg.ArrivalSeq == 0 {
+		msg.ArrivalSeq = a.nextArrivalSeq(msg.ConversationKind, msg.TargetID)
 	}
 	a.noteConversationPlatform(msg)
 	builtin_tool.NotifyDesktopPetUserMessage(msg.Platform, msg.UserID, msg.GroupKey != "")
@@ -84,10 +88,16 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 }
 
 func (a *Agent) onGroupMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.groupCommits.enqueue(msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
+	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
 }
 
-// onRecall 撤回事件入口：带到达序号进入提交队列，与会话内消息保持顺序
+// nextArrivalSeq 分配会话内单调递增的到达序号，作为提交定序的唯一来源
+func (a *Agent) nextArrivalSeq(kind string, targetID int64) uint64 {
+	counter, _ := a.arrivalSeq.LoadOrStore(recallScopeKey(kind, targetID), &atomic.Uint64{})
+	return counter.(*atomic.Uint64).Add(1)
+}
+
+// onRecall 撤回事件入口：带到达序号进入提交策略，与会话内消息保持顺序
 func (a *Agent) onRecall(kind string, targetID, messageID int64, arrivalSeq uint64) {
 	if kind == "" {
 		kind = memory.ConversationKindGroup
@@ -95,21 +105,20 @@ func (a *Agent) onRecall(kind string, targetID, messageID int64, arrivalSeq uint
 	if targetID <= 0 {
 		return
 	}
+	if arrivalSeq == 0 {
+		arrivalSeq = a.nextArrivalSeq(kind, targetID)
+	}
 	if messageID == 0 {
-		// 无效撤回同样消费序号，避免会话重排等待永久缺口
+		// 无效撤回同样消费序号，避免定序实现等待永久缺口
 		a.SkipConversationEvent(kind, targetID, arrivalSeq)
 		return
 	}
 	// 撤回修正已有原文，不受会话拉黑、退群或数据库暂时不可用影响
 	recall := &recallCommit{kind: kind, targetID: targetID, messageID: messageID}
-	if kind == memory.ConversationKindPrivate {
-		a.privateCommits.enqueue(targetID, arrivalSeq, commitItem{recall: recall})
-		return
-	}
-	a.groupCommits.enqueue(targetID, arrivalSeq, commitItem{recall: recall})
+	a.submitCommit(kind, targetID, arrivalSeq, commitItem{recall: recall})
 }
 
-// onInteractionMessage 只构造戳一戳的展示内容，返回是否有效；缓冲和思考调度由提交队列统一处理
+// onInteractionMessage 只构造戳一戳的展示内容，返回是否有效；缓冲和思考调度由提交策略统一处理
 func (a *Agent) onInteractionMessage(msg *onebot.ConversationMessage) bool {
 	if msg.UserID <= 0 || len(msg.AtList) == 0 || msg.AtList[0] <= 0 {
 		return false
