@@ -9,3 +9,4 @@
 - **打包安装自更新**：Python 支持 uv tool 包替换；Go 仅对 git 源码部署执行快进、构建和回滚，非 git 部署在检查阶段报告 `not_git_repo`。
 - **配置文件回写**：Go 的 TOML 编码器不保留原文件注释与列对齐；Python 使用 tomlkit 保留。字段值、校验与事务语义一致。
 - **Dashboard 版本检查**：宿主启动仍解析原版 dashboard 构建目录；Go 不读取 Python 包元数据做前后端版本兼容提示。
+- **榫卯设置页**：`/go` 是 Go 平台专属页面，Python 无对应界面。宿主输出该页面，并把 `/api/webui/go/*` 转发给当前选中的 Bot，使宿主模式下仍可配置执行模式与开关。

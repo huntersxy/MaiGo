@@ -102,3 +102,61 @@ func TestHostMutationRequiresHeader(t *testing.T) {
 		t.Fatalf("缺少管理标识应 403，实际 %d", recorder.Code)
 	}
 }
+
+func loginTestHost(t *testing.T, webui *WebUI) []*http.Cookie {
+	t.Helper()
+	ticket, err := webui.sessions.IssueTicket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/host/session", strings.NewReader(`{"ticket":"`+ticket+`"}`))
+	request.Header.Set("X-MaiBot-Host", "1")
+	recorder := httptest.NewRecorder()
+	webui.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("票据登录应成功，实际 %d", recorder.Code)
+	}
+	return recorder.Result().Cookies()
+}
+
+func TestGoDeveloperPageHostedByHost(t *testing.T) {
+	webui, _, _ := newTestWebUI(t)
+	request := httptest.NewRequest(http.MethodGet, "/go", nil)
+	for _, cookie := range loginTestHost(t, webui) {
+		request.AddCookie(cookie)
+	}
+	recorder := httptest.NewRecorder()
+	webui.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("登录后应返回开发者设置页，实际 %d", recorder.Code)
+	}
+	if !strings.Contains(recorder.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("Content-Type = %s", recorder.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(recorder.Body.String(), "开发者设置") {
+		t.Fatal("页面内容缺失")
+	}
+}
+
+func TestGoSettingsProxyRequiresSession(t *testing.T) {
+	webui, _, _ := newTestWebUI(t)
+	recorder := httptest.NewRecorder()
+	webui.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/webui/go/settings", nil))
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401，实际 %d", recorder.Code)
+	}
+}
+
+func TestGoSettingsProxyTargetsSelectedBot(t *testing.T) {
+	webui, _, _ := newTestWebUI(t)
+	request := httptest.NewRequest(http.MethodGet, "/api/webui/go/settings", nil)
+	for _, cookie := range loginTestHost(t, webui) {
+		request.AddCookie(cookie)
+	}
+	recorder := httptest.NewRecorder()
+	webui.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Bot 未运行时转发应返回 503，实际 %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+

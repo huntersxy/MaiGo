@@ -27,6 +27,7 @@ import (
 
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/webui/dashboardstatic"
+	"MaiGo/internal/webui/gopage"
 	httputil2 "MaiGo/internal/webui/httputil"
 )
 
@@ -148,6 +149,7 @@ func (w *WebUI) Handler() http.Handler {
 	router.HandleFunc("/api/files/bots/*", w.handleTransferProxy)
 	if w.Management() {
 		w.mountManagement(router)
+		w.mountGoDeveloper(router)
 	} else if w.managementError != "" {
 		router.Get("/api/host/mode", func(rw http.ResponseWriter, r *http.Request) {
 			httputil2.WriteJSON(rw, http.StatusServiceUnavailable, map[string]any{"detail": w.managementError})
@@ -238,6 +240,60 @@ func (w *WebUI) mountManagement(router chi.Router) {
 	router.Put("/api/host/settings", w.handleSaveCommonSettings)
 	router.Patch("/api/host/settings/appearance", w.handleSaveAppearance)
 	w.mountDataTransfer(router)
+}
+
+// mountGoDeveloper 提供榫卯设置页，并把配置接口转发到当前选中的 Bot。
+func (w *WebUI) mountGoDeveloper(router chi.Router) {
+	router.Get("/go", w.handleGoDeveloperPage)
+	router.Get("/go/", w.handleGoDeveloperPage)
+	router.HandleFunc("/api/webui/go/*", w.handleGoSettingsProxy)
+}
+
+func (w *WebUI) handleGoDeveloperPage(rw http.ResponseWriter, r *http.Request) {
+	if !w.requireSession(r) {
+		http.Redirect(rw, r, "/", http.StatusFound)
+		return
+	}
+	gopage.Handler(rw, r)
+}
+
+func (w *WebUI) handleGoSettingsProxy(rw http.ResponseWriter, r *http.Request) {
+	if !w.requireSession(r) {
+		httputil2.WriteJSON(rw, http.StatusUnauthorized, map[string]any{"detail": "请先登录 WebUI"})
+		return
+	}
+	botID, ok := w.selectedBotID(r)
+	if !ok {
+		httputil2.WriteJSON(rw, http.StatusServiceUnavailable, map[string]any{"detail": "未找到可用的 Bot"})
+		return
+	}
+	w.forwardToBot(rw, r, botID, strings.TrimPrefix(r.URL.Path, "/"))
+}
+
+// selectedBotID 按显式 bot_id、宿主选择 Cookie、第一个 Bot 的顺序确定目标。
+func (w *WebUI) selectedBotID(r *http.Request) (string, bool) {
+	candidate := strings.TrimSpace(r.URL.Query().Get("bot_id"))
+	if candidate == "" {
+		if cookie, err := r.Cookie(w.sessions.SelectName); err == nil {
+			candidate = strings.TrimSpace(cookie.Value)
+		}
+	}
+	statuses, err := w.supervisor.Statuses()
+	if err != nil {
+		return "", false
+	}
+	if candidate == "" {
+		if len(statuses) == 0 {
+			return "", false
+		}
+		return statuses[0].BotID, true
+	}
+	for _, status := range statuses {
+		if status.BotID == candidate {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 func (w *WebUI) hostModePayload(r *http.Request, authenticated bool, requested string) map[string]any {

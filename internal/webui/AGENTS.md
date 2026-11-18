@@ -12,7 +12,7 @@
 - `routers/`：`/api/webui/*` 与 WebSocket 路由（对齐 Python `src/webui/routers/`）。
 - `dashboardstatic/`：原版 Dashboard 构建产物的目录解析与静态托管。
 - `services/ai_search/`：搜索工具所需的文档与配置查询。
-- `assets/go_developer_page.html`：内嵌的 Go 平台开发者设置页；其余前端仍复用原版 Dashboard。
+- `gopage/`：内嵌的 Go 平台开发者设置页与输出处理器，Bot 与宿主共用；其余前端仍复用原版 Dashboard。
 
 ## 页面与文案
 

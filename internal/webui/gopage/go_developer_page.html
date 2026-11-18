@@ -1482,8 +1482,9 @@
         }
         restartTimer = window.setInterval(function () {
           attempts += 1;
-          fetch("/health", { cache: "no-store" }).then(function (response) {
-            if (response.ok) {
+          fetch("/api/webui/go/settings", { cache: "no-store" }).then(function (response) {
+            // 502/503 表示 Bot 尚未就绪；其余响应说明请求已经到达，可以刷新。
+            if (response.status !== 502 && response.status !== 503) {
               window.clearInterval(restartTimer);
               restartTimer = null;
               window.location.reload();

@@ -82,6 +82,8 @@ native_message_committer = false  # 已接入
 
 当前已接入的开关：`native_session_scheduler`（会话并发调度）、`native_message_committer`（入站提交定序）。其余开关在 `FeatureDescriptions()` 中按阶段登记，标记为未接入时 WebUI 只展示规划状态，不允许开启。
 
+浏览器打开 `http://<host>:7468/go` 调整执行模式与开关；宿主模式下作用于当前选中的 Bot。
+
 临时覆盖模式：`MAIBOT_EXECUTION_MODE=native`。设置接口在 `/api/webui/go/settings`。
 
 ## 贡献

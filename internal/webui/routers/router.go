@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"MaiGo/internal/webui/gopage"
 )
 
 // Mount 注册 MaiBot Dashboard 兼容 API；独立于 templ 管理后台会话，不修改 /admin 鉴权链
@@ -225,8 +227,8 @@ func Mount(r chi.Router, d Deps) {
 	})
 
 	// Go 平台专属开发者设置页；配置 API 统一走 /api/webui/go（受 requireAuthMiddleware 保护）。
-	r.Get("/go", d.handleGoDeveloperPage)
-	r.Get("/go/", d.handleGoDeveloperPage)
+	r.Get("/go", gopage.Handler)
+	r.Get("/go/", gopage.Handler)
 }
 
 func (d Deps) handleWebUINotFound(w http.ResponseWriter, r *http.Request) {

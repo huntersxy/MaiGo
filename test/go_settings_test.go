@@ -161,11 +161,16 @@ func TestGoSettingsLifecycle(t *testing.T) {
 	if len(initial.Features) == 0 {
 		t.Fatal("expected a non-empty features list")
 	}
+	// 已接入运行时的开关与规划中的开关必须在快照里区分。
+	implementedFeatures := map[string]bool{
+		"native_session_scheduler": true,
+		"native_message_committer": true,
+	}
 	for _, feature := range initial.Features {
 		if feature.Enabled {
 			t.Fatalf("expected feature %s to be disabled", feature.Key)
 		}
-		expectedImplemented := feature.Key == "native_session_scheduler"
+		expectedImplemented := implementedFeatures[feature.Key]
 		if feature.Implemented != expectedImplemented {
 			t.Fatalf("feature %s implemented=%v, want %v", feature.Key, feature.Implemented, expectedImplemented)
 		}
