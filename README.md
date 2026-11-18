@@ -52,6 +52,37 @@ Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.5` 后把 `MAIBOT_D
 装好 `maibot==1.4.5` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 非 Docker 首次启动需设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 
+## 榫卯（Sunmao）· Go 平台特调系统
+
+主线代码与 Python 逐行对齐，Go 平台独有的并发、批处理等优化不写进主线，而是通过**榫卯**在启动装配时插入：结构（业务主线）不动，只替换局部构件。槽位是榫眼，实现是榫头。
+
+- `internal/runtime/execution` — 执行模式与功能开关
+- `internal/runtime/execution/policy` — 插槽与注册表（`Slot[T]` / `Registry`）
+- `config/runtime.toml` — 持久化配置，与 Python 的 `bot_config.toml` 互不影响
+
+每个槽位有两个实现：
+
+| 实现 | 含义 |
+| --- | --- |
+| `compatibility` | 默认，行为与 Python 一致 |
+| `native` | Go 特调实现，仅在 `mode = "native"` 且对应开关打开时装配 |
+
+业务代码只读取槽位，不出现 `if native` 判断；新增特调只需定义接口、注册 typed 槽、在装配时 `Set`。
+
+```toml
+# config/runtime.toml
+[execution]
+mode = "compatibility"   # compatibility | native
+worker_pool_size = 0     # 仅 native 生效，0 表示按 CPU 核心数
+
+[features]
+native_session_scheduler = false  # 已接入
+```
+
+当前已接入的开关只有 `native_session_scheduler`（会话并发调度）；其余开关在 `FeatureDescriptions()` 中按阶段登记，标记为未接入时 WebUI 只展示规划状态，不允许开启。
+
+临时覆盖模式：`MAIBOT_EXECUTION_MODE=native`。设置接口在 `/api/webui/go/settings`。
+
 ## 贡献
 
 欢迎任何形式的贡献！请遵循以下步骤：
