@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>开发者设置 · MaiBot</title>
+  <title>榫卯设置 · MaiBot</title>
   <script>
     (function () {
       var mode = "system";
@@ -15,76 +15,75 @@
   <style>
     :root {
       color-scheme: light;
-      --color-primary: 28.9 94.8% 45.1%;
-      --color-primary-foreground: 210 40% 98%;
-      --color-secondary: 188.5 35% 96%;
-      --color-secondary-foreground: 222.2 47.4% 11.2%;
-      --color-muted: 188.5 12% 96%;
-      --color-muted-foreground: 188.5 20% 46.9%;
-      --color-accent: 112.7 40.2% 47.8%;
-      --color-accent-foreground: 210 40% 98%;
-      --color-destructive: 0 84.2% 45%;
-      --color-destructive-foreground: 210 40% 98%;
-      --color-background: 0 0% 100%;
-      --color-foreground: 222.2 84% 4.9%;
-      --color-card: 188.5 14% 98.6%;
-      --color-card-foreground: 222.2 84% 4.9%;
-      --color-popover: 188.5 16% 99.3%;
-      --color-border: 188.5 20% 91.4%;
-      --color-input: 188.5 20% 91.4%;
-      --color-ring: 28.9 94.8% 45.1%;
-      --success-text: 112.7 40.2% 32%;
-      --warning-text: 28.9 80% 36%;
-      --danger-text: 0 72% 45%;
+      --primary: 28.9 94.8% 45.1%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 188.5 35% 96%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+      --muted: 188.5 12% 96%;
+      --muted-foreground: 188.5 20% 40%;
+      --accent: 112.7 40.2% 47.8%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 84.2% 60.2%;
+      --destructive-foreground: 210 40% 98%;
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 188.5 14% 98.6%;
+      --card-foreground: 222.2 84% 4.9%;
+      --popover: 188.5 16% 99.3%;
+      --border: 188.5 20% 89.5%;
+      --input: 188.5 16% 83%;
+      --ring: 28.9 94.8% 45.1%;
+      --success: 112.7 40.2% 32%;
+      --warning: 28.9 80% 36%;
+      --danger: 0 72% 45%;
+      --radius: 0.5rem;
       --radius-sm: 0.25rem;
       --radius-md: 0.375rem;
-      --radius-lg: 0.5rem;
-      --radius-xl: 0.75rem;
+      --control-height: 2.25rem;
+      --control-height-sm: 2rem;
+      --header-height: 3.5rem;
       --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
       --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --font-mono: "JetBrains Mono", Monaco, "Courier New", monospace;
+      --space-page: 1.5rem;
+      --page-max: 56rem;
     }
 
     html.dark {
       color-scheme: dark;
-      --color-primary: 28.9 94.8% 45.1%;
-      --color-primary-foreground: 210 40% 98%;
-      --color-secondary: 188.5 35% 17.5%;
-      --color-secondary-foreground: 210 40% 98%;
-      --color-muted: 188.5 12% 17.5%;
-      --color-muted-foreground: 188.5 20% 65.1%;
-      --color-accent: 112.7 40.2% 34%;
-      --color-accent-foreground: 210 40% 98%;
-      --color-destructive: 0 62.8% 30.6%;
-      --color-destructive-foreground: 210 40% 98%;
-      --color-background: 222.2 84% 4.9%;
-      --color-foreground: 210 40% 98%;
-      --color-card: 188.5 18% 8.8%;
-      --color-card-foreground: 210 40% 98%;
-      --color-popover: 188.5 21% 10.5%;
-      --color-border: 188.5 20% 17.5%;
-      --color-input: 188.5 20% 17.5%;
-      --color-ring: 28.9 94.8% 45.1%;
-      --success-text: 112.7 45% 60%;
-      --warning-text: 28.9 90% 60%;
-      --danger-text: 0 80% 65%;
+      --primary: 28.9 94.8% 45.1%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 188.5 35% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+      --muted: 188.5 12% 17.5%;
+      --muted-foreground: 188.5 20% 65.1%;
+      --accent: 112.7 40.2% 34%;
+      --accent-foreground: 210 40% 98%;
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 210 40% 98%;
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 188.5 18% 8.8%;
+      --card-foreground: 210 40% 98%;
+      --popover: 188.5 21% 10.5%;
+      --border: 188.5 20% 17.5%;
+      --input: 188.5 20% 17.5%;
+      --ring: 28.9 94.8% 45.1%;
+      --success: 112.7 45% 60%;
+      --warning: 28.9 90% 60%;
+      --danger: 0 80% 65%;
       --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.45), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    [hidden] {
-      display: none !important;
-    }
+    [hidden] { display: none !important; }
 
-    html,
-    body {
+    html, body {
       margin: 0;
       padding: 0;
     }
@@ -93,88 +92,104 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      background: hsl(var(--color-background));
-      color: hsl(var(--color-foreground));
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
       font-family: var(--font-sans);
-      font-size: 14px;
+      font-size: 0.875rem;
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
-      transition: background-color 0.2s ease, color 0.2s ease;
+      transition: background-color 150ms ease, color 150ms ease;
     }
 
-    code,
-    .mono {
-      font-family: var(--font-mono);
+    ::selection {
+      background: hsl(var(--primary) / 0.18);
+      color: hsl(var(--foreground));
     }
+
+    :focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+    }
+
+    code, .mono {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+    }
+
+    a { color: inherit; }
 
     .app-header {
       position: sticky;
       top: 0;
-      z-index: 20;
-      border-bottom: 1px solid hsl(var(--color-border));
-      background: hsl(var(--color-background) / 0.92);
-      backdrop-filter: blur(12px);
+      z-index: 30;
+      height: var(--header-height);
+      border-bottom: 1px solid hsl(var(--border));
+      background: hsl(var(--background) / 0.92);
+      backdrop-filter: blur(10px);
     }
 
     .header-inner {
       width: 100%;
-      max-width: 1120px;
-      height: 56px;
+      max-width: var(--page-max);
+      height: 100%;
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 0 var(--space-page);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 1rem;
     }
 
     .brand {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
-      color: inherit;
+      gap: 0.75rem;
+      min-width: 0;
       text-decoration: none;
     }
 
     .brand-mark {
-      width: 32px;
-      height: 32px;
-      border-radius: var(--radius-lg);
+      width: 2rem;
+      height: 2rem;
+      border-radius: var(--radius-md);
       display: grid;
       place-items: center;
-      background: hsl(var(--color-primary));
-      color: hsl(var(--color-primary-foreground));
-      font-size: 15px;
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      font-size: 0.875rem;
       font-weight: 700;
+      flex: none;
     }
 
     .brand-text {
       display: flex;
       flex-direction: column;
+      min-width: 0;
       line-height: 1.2;
     }
 
     .brand-text strong {
-      font-size: 14px;
+      font-size: 0.875rem;
       font-weight: 600;
     }
 
     .brand-text span {
-      font-size: 12px;
-      color: hsl(var(--color-muted-foreground));
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 0.5rem;
+      flex: none;
     }
 
     .page {
       width: 100%;
-      max-width: 1120px;
+      max-width: var(--page-max);
       margin: 0 auto;
-      padding: 28px 24px 40px;
+      padding: 1.75rem var(--space-page) 7rem;
       flex: 1;
     }
 
@@ -182,148 +197,176 @@
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      gap: 16px;
+      gap: 1rem;
       flex-wrap: wrap;
-      margin-bottom: 20px;
+      margin-bottom: 1.5rem;
     }
 
     .page-heading h1 {
-      margin: 0 0 6px;
-      font-size: 24px;
-      line-height: 1.25;
-      font-weight: 700;
-      letter-spacing: -0.01em;
+      margin: 0 0 0.375rem;
+      font-size: 1.75rem;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
     }
 
     .page-heading p {
       margin: 0;
-      max-width: 720px;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 13px;
+      max-width: 42rem;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.875rem;
     }
 
     .heading-badges {
       display: flex;
-      gap: 6px;
+      gap: 0.375rem;
       flex-wrap: wrap;
-      padding-top: 4px;
+      padding-top: 0.25rem;
     }
 
-    .card {
-      border: 1px solid hsl(var(--color-border));
-      border-radius: var(--radius-lg);
-      background: hsl(var(--color-card));
-      color: hsl(var(--color-card-foreground));
-      box-shadow: var(--shadow-sm);
+    .panel {
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      background: hsl(var(--card));
+      color: hsl(var(--card-foreground));
     }
 
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
+    .panel + .panel,
+    .section + .section,
+    .panel + .section,
+    .section + .panel {
+      margin-top: 1.25rem;
     }
 
-    .status-card {
-      padding: 14px 16px;
-      min-width: 0;
-    }
-
-    .status-label {
-      display: block;
-      margin-bottom: 4px;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12px;
-    }
-
-    .status-value {
-      font-size: 14px;
-      font-weight: 600;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .status-value.mono {
-      font-size: 12px;
-      font-weight: 400;
-      color: hsl(var(--color-muted-foreground));
-    }
-
-    .section {
-      margin-bottom: 20px;
-    }
-
-    .section.card {
-      padding: 20px;
+    .panel-body {
+      padding: 1.125rem 1.25rem 1.25rem;
     }
 
     .section-head {
       display: flex;
-      align-items: flex-start;
+      align-items: baseline;
       justify-content: space-between;
-      gap: 12px;
+      gap: 0.75rem 1rem;
       flex-wrap: wrap;
-      margin-bottom: 16px;
+      margin-bottom: 1rem;
     }
 
     .section-head h2 {
-      margin: 0 0 4px;
-      font-size: 16px;
-      font-weight: 600;
+      margin: 0;
+      font-size: 1.125rem;
+      font-weight: 400;
+      line-height: 1.5;
     }
 
     .section-head p {
-      margin: 0;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12.5px;
+      margin: 0.25rem 0 0;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
+    }
+
+    .meta-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .meta-item {
+      min-width: 0;
+      padding: 0.875rem 1rem;
+      border-right: 1px solid hsl(var(--border));
+    }
+
+    .meta-item:last-child {
+      border-right: 0;
+    }
+
+    .meta-label {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
+    }
+
+    .meta-value {
+      font-size: 0.875rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    .meta-value.mono {
+      font-weight: 400;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .paths {
+      display: grid;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px dashed hsl(var(--border));
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
+    }
+
+    .paths div {
+      display: grid;
+      grid-template-columns: 4.5rem minmax(0, 1fr);
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .paths span {
+      overflow-wrap: anywhere;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
-      height: 22px;
-      padding: 0 8px;
+      height: 1.375rem;
+      padding: 0 0.5rem;
       border: 1px solid transparent;
       border-radius: 999px;
-      font-size: 11px;
+      font-size: 0.6875rem;
       font-weight: 500;
       white-space: nowrap;
     }
 
     .badge-muted {
-      background: hsl(var(--color-muted));
-      color: hsl(var(--color-muted-foreground));
+      background: hsl(var(--muted));
+      color: hsl(var(--muted-foreground));
     }
 
     .badge-success {
-      border-color: hsl(var(--success-text) / 0.3);
-      background: hsl(var(--success-text) / 0.1);
-      color: hsl(var(--success-text));
+      border-color: hsl(var(--success) / 0.28);
+      background: hsl(var(--success) / 0.1);
+      color: hsl(var(--success));
     }
 
     .badge-warning {
-      border-color: hsl(var(--warning-text) / 0.3);
-      background: hsl(var(--warning-text) / 0.1);
-      color: hsl(var(--warning-text));
+      border-color: hsl(var(--warning) / 0.28);
+      background: hsl(var(--warning) / 0.1);
+      color: hsl(var(--warning));
     }
 
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      height: 36px;
-      padding: 0 14px;
+      gap: 0.375rem;
+      height: var(--control-height);
+      padding: 0 0.875rem;
       border: 1px solid transparent;
       border-radius: var(--radius-md);
+      background: transparent;
+      color: inherit;
       font: inherit;
-      font-size: 13px;
+      font-size: 0.8125rem;
       font-weight: 500;
       white-space: nowrap;
       text-decoration: none;
       cursor: pointer;
-      transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
     }
 
     .btn:disabled {
@@ -332,52 +375,50 @@
     }
 
     .btn-primary {
-      background: hsl(var(--color-primary));
-      color: hsl(var(--color-primary-foreground));
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
     }
 
     .btn-primary:hover:not(:disabled) {
-      opacity: 0.9;
+      filter: brightness(0.96);
     }
 
     .btn-outline {
-      border-color: hsl(var(--color-input));
-      background: hsl(var(--color-background));
-      color: hsl(var(--color-foreground));
+      border-color: hsl(var(--input));
+      background: hsl(var(--background));
+      color: hsl(var(--foreground));
     }
 
     .btn-outline:hover:not(:disabled) {
-      background: hsl(var(--color-accent) / 0.12);
+      background: hsl(var(--muted));
     }
 
     .btn-ghost {
-      background: transparent;
-      color: hsl(var(--color-muted-foreground));
+      color: hsl(var(--muted-foreground));
     }
 
     .btn-ghost:hover:not(:disabled) {
-      background: hsl(var(--color-muted));
-      color: hsl(var(--color-foreground));
+      background: hsl(var(--muted));
+      color: hsl(var(--foreground));
     }
 
     .btn-danger-outline {
-      border-color: hsl(var(--danger-text) / 0.4);
-      background: transparent;
-      color: hsl(var(--danger-text));
+      border-color: hsl(var(--danger) / 0.4);
+      color: hsl(var(--danger));
     }
 
     .btn-danger-outline:hover:not(:disabled) {
-      background: hsl(var(--danger-text) / 0.08);
+      background: hsl(var(--danger) / 0.08);
     }
 
     .btn-icon {
-      width: 36px;
+      width: var(--control-height);
       padding: 0;
     }
 
     .btn svg {
-      width: 16px;
-      height: 16px;
+      width: 1rem;
+      height: 1rem;
       flex: none;
     }
 
@@ -388,30 +429,31 @@
 
     .mode-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
     }
 
     .mode-option {
       position: relative;
       display: flex;
-      gap: 12px;
-      padding: 16px;
-      border: 1px solid hsl(var(--color-border));
-      border-radius: var(--radius-lg);
-      background: hsl(var(--color-background));
+      gap: 0.75rem;
+      min-height: 4.5rem;
+      padding: 0.875rem;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      background: hsl(var(--background));
       cursor: pointer;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+      transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
     }
 
     .mode-option:hover {
-      border-color: hsl(var(--color-primary) / 0.45);
+      border-color: hsl(var(--primary) / 0.45);
     }
 
     .mode-option.selected {
-      border-color: hsl(var(--color-primary));
-      background: hsl(var(--color-primary) / 0.04);
-      box-shadow: 0 0 0 1px hsl(var(--color-primary) / 0.3);
+      border-color: hsl(var(--primary));
+      background: hsl(var(--primary) / 0.05);
+      box-shadow: 0 0 0 1px hsl(var(--primary) / 0.28);
     }
 
     .mode-option input {
@@ -421,17 +463,17 @@
     }
 
     .mode-radio {
-      width: 16px;
-      height: 16px;
-      margin-top: 3px;
+      width: 1rem;
+      height: 1rem;
+      margin-top: 0.2rem;
       flex: none;
-      border: 2px solid hsl(var(--color-input));
+      border: 2px solid hsl(var(--input));
       border-radius: 50%;
     }
 
     .mode-option.selected .mode-radio {
-      border-color: hsl(var(--color-primary));
-      background: radial-gradient(circle, hsl(var(--color-primary)) 0 4px, transparent 4.5px);
+      border-color: hsl(var(--primary));
+      background: radial-gradient(circle, hsl(var(--primary)) 0 0.25rem, transparent 0.28rem);
     }
 
     .mode-option-body {
@@ -441,66 +483,75 @@
     .mode-option-title {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 0.5rem;
       flex-wrap: wrap;
-      margin-bottom: 4px;
-      font-size: 14px;
+      margin-bottom: 0.25rem;
+      font-size: 0.875rem;
       font-weight: 600;
     }
 
     .mode-option p {
       margin: 0;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12.5px;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .notice {
-      margin-top: 14px;
-      padding: 10px 12px;
-      border: 1px solid hsl(var(--warning-text) / 0.3);
+      margin-top: 0.875rem;
+      padding: 0.625rem 0.75rem;
+      border: 1px solid hsl(var(--warning) / 0.28);
       border-radius: var(--radius-md);
-      background: hsl(var(--warning-text) / 0.08);
-      color: hsl(var(--warning-text));
-      font-size: 12.5px;
+      background: hsl(var(--warning) / 0.08);
+      color: hsl(var(--warning));
+      font-size: 0.75rem;
     }
 
     .notice.success {
-      border-color: hsl(var(--success-text) / 0.3);
-      background: hsl(var(--success-text) / 0.08);
-      color: hsl(var(--success-text));
+      border-color: hsl(var(--success) / 0.28);
+      background: hsl(var(--success) / 0.08);
+      color: hsl(var(--success));
     }
 
     .field-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: 6.5rem minmax(0, 1fr);
+      column-gap: 0.875rem;
       align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid hsl(var(--color-border));
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px dashed hsl(var(--border));
     }
 
     .field-row label {
-      font-size: 13px;
+      font-size: 0.8125rem;
       font-weight: 500;
     }
 
+    .field-control {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
     .input {
-      width: 120px;
-      height: 36px;
-      padding: 0 10px;
-      border: 1px solid hsl(var(--color-input));
+      width: 7.5rem;
+      height: var(--control-height);
+      padding: 0 0.625rem;
+      border: 1px solid hsl(var(--input));
       border-radius: var(--radius-md);
-      background: hsl(var(--color-background));
+      background: hsl(var(--background));
       color: inherit;
       font: inherit;
-      font-size: 13px;
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
     }
 
     .input:focus {
       outline: none;
-      border-color: hsl(var(--color-ring));
-      box-shadow: 0 0 0 2px hsl(var(--color-ring) / 0.2);
+      border-color: hsl(var(--ring));
+      box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
     }
 
     .input:disabled {
@@ -509,99 +560,102 @@
     }
 
     .field-hint {
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12px;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
-    .feature-grid {
+    .feature-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      background: hsl(var(--card));
+      overflow: hidden;
+    }
+
+    .feature-row {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: start;
+      padding: 1rem 1.125rem;
     }
 
-    .feature-card {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding: 18px;
+    .feature-row + .feature-row {
+      border-top: 1px dotted hsl(var(--border));
+    }
+
+    .feature-row.enabled {
+      background: hsl(var(--accent) / 0.05);
+    }
+
+    .feature-main {
       min-width: 0;
     }
 
-    .feature-card.enabled {
-      border-color: hsl(var(--color-accent) / 0.45);
-    }
-
-    .feature-head {
+    .feature-title-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+      gap: 0.375rem 0.75rem;
       flex-wrap: wrap;
     }
 
     .feature-title {
       margin: 0;
-      font-size: 15px;
+      font-size: 1rem;
       font-weight: 600;
-    }
-
-    .badges {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
+      overflow-wrap: anywhere;
     }
 
     .feature-desc {
-      flex: 1;
-      margin: 0;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12.5px;
+      margin: 0.375rem 0 0;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .compare {
       display: grid;
-      gap: 6px;
-      padding: 10px 12px;
-      border-radius: var(--radius-md);
-      background: hsl(var(--color-muted));
-      font-size: 12px;
+      gap: 0.25rem;
+      margin-top: 0.625rem;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .compare-row {
       display: grid;
-      grid-template-columns: 36px 1fr;
-      gap: 8px;
+      grid-template-columns: 2.25rem minmax(0, 1fr);
+      gap: 0.5rem;
     }
 
     .compare-label {
-      color: hsl(var(--color-muted-foreground));
       font-weight: 600;
     }
 
     .compare-row.native .compare-label {
-      color: hsl(var(--success-text));
+      color: hsl(var(--success));
     }
 
-    .feature-foot {
+    .feature-side {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding-top: 12px;
-      border-top: 1px solid hsl(var(--color-border));
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+      padding-top: 0.125rem;
     }
 
     .feature-state {
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12px;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
+      text-align: right;
+      max-width: 11rem;
     }
 
     .switch {
       position: relative;
       display: inline-flex;
-      width: 40px;
-      height: 22px;
+      width: 2.25rem;
+      height: 1.25rem;
       flex: none;
     }
 
@@ -619,8 +673,8 @@
       position: absolute;
       inset: 0;
       border-radius: 999px;
-      background: hsl(var(--color-input));
-      transition: background-color 0.15s ease;
+      background: hsl(var(--input));
+      transition: background-color 150ms ease;
     }
 
     .switch .track::after {
@@ -628,24 +682,24 @@
       position: absolute;
       top: 2px;
       left: 2px;
-      width: 18px;
-      height: 18px;
+      width: calc(1.25rem - 4px);
+      height: calc(1.25rem - 4px);
       border-radius: 50%;
-      background: hsl(var(--color-background));
+      background: hsl(var(--background));
       box-shadow: var(--shadow-sm);
-      transition: transform 0.15s ease;
+      transition: transform 150ms ease;
     }
 
     .switch input:checked + .track {
-      background: hsl(var(--color-primary));
+      background: hsl(var(--primary));
     }
 
     .switch input:checked + .track::after {
-      transform: translateX(18px);
+      transform: translateX(1rem);
     }
 
     .switch input:focus-visible + .track {
-      box-shadow: 0 0 0 2px hsl(var(--color-ring) / 0.35);
+      box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
     }
 
     .switch input:disabled {
@@ -657,66 +711,81 @@
     }
 
     .action-bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 40;
+      border-top: 1px solid hsl(var(--border));
+      background: hsl(var(--background) / 0.94);
+      backdrop-filter: blur(10px);
+    }
+
+    .action-inner {
+      width: 100%;
+      max-width: var(--page-max);
+      margin: 0 auto;
+      padding: 0.875rem var(--space-page);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 1rem;
       flex-wrap: wrap;
-      padding: 16px 18px;
     }
 
     .action-info {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12.5px;
+      gap: 0.125rem;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .action-info strong {
-      color: hsl(var(--color-foreground));
-      font-size: 13px;
+      color: hsl(var(--foreground));
+      font-size: 0.8125rem;
       font-weight: 600;
     }
 
     .action-buttons {
       display: flex;
-      gap: 8px;
+      gap: 0.5rem;
       flex-wrap: wrap;
     }
 
     .auth-wrap {
       display: flex;
       justify-content: center;
-      padding-top: 48px;
+      padding-top: 3rem;
     }
 
     .auth-card {
-      width: min(440px, 100%);
-      padding: 28px;
+      width: min(26rem, 100%);
+      padding: 1.5rem;
     }
 
     .auth-card h1 {
-      margin: 0 0 8px;
-      font-size: 20px;
-      font-weight: 700;
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
     }
 
     .auth-card > p {
       margin: 0;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 13px;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.8125rem;
     }
 
     .auth-form {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      margin-top: 20px;
+      gap: 0.625rem;
+      margin-top: 1.25rem;
     }
 
     .auth-form label {
-      font-size: 13px;
+      font-size: 0.8125rem;
       font-weight: 500;
     }
 
@@ -725,60 +794,92 @@
     }
 
     .auth-hint {
-      margin: 16px 0 0;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12px;
-    }
-
-    .app-footer {
-      border-top: 1px solid hsl(var(--color-border));
-      padding: 16px 24px;
-      color: hsl(var(--color-muted-foreground));
-      font-size: 12px;
-      text-align: center;
+      margin: 1rem 0 0;
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
     }
 
     .toast {
       position: fixed;
-      right: 20px;
-      bottom: 20px;
+      right: 1.25rem;
+      bottom: 5.5rem;
       z-index: 50;
-      max-width: 380px;
-      padding: 12px 14px;
-      border: 1px solid hsl(var(--color-border));
+      max-width: 22rem;
+      padding: 0.75rem 0.875rem;
+      border: 1px solid hsl(var(--border));
       border-radius: var(--radius-md);
-      background: hsl(var(--color-card));
-      color: hsl(var(--color-card-foreground));
+      background: hsl(var(--popover));
+      color: hsl(var(--foreground));
       box-shadow: var(--shadow-lg);
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
 
-    .toast.success {
-      border-color: hsl(var(--success-text) / 0.45);
-    }
+    .toast.success { border-color: hsl(var(--success) / 0.45); }
+    .toast.error { border-color: hsl(var(--danger) / 0.45); }
 
-    .toast.error {
-      border-color: hsl(var(--danger-text) / 0.45);
-    }
+    @media (max-width: 720px) {
+      :root { --space-page: 1rem; }
 
-    @media (max-width: 640px) {
-      .header-inner,
       .page {
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-top: 1.25rem;
+        padding-bottom: 8.5rem;
       }
 
       .page-heading h1 {
-        font-size: 20px;
+        font-size: 1.5rem;
       }
 
-      .action-bar {
+      .meta-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .meta-item {
+        border-right: 0;
+        border-bottom: 1px solid hsl(var(--border));
+      }
+
+      .meta-item:last-child {
+        border-bottom: 0;
+      }
+
+      .mode-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+      }
+
+      .feature-row {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+
+      .feature-side {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .feature-state {
+        text-align: left;
+        max-width: none;
+      }
+
+      .action-inner {
         align-items: stretch;
         flex-direction: column;
       }
 
       .action-buttons {
         justify-content: flex-end;
+      }
+
+      .toast {
+        left: 1rem;
+        right: 1rem;
+        max-width: none;
       }
     }
   </style>
@@ -788,10 +889,10 @@
   <header class="app-header">
     <div class="header-inner">
       <a class="brand" href="/">
-        <span class="brand-mark">M</span>
+        <span class="brand-mark">榫</span>
         <span class="brand-text">
-          <strong>MaiBot</strong>
-          <span>开发者设置</span>
+          <strong>榫卯</strong>
+          <span>Go 平台特调</span>
         </span>
       </a>
       <div class="header-actions">
@@ -811,9 +912,9 @@
 
   <main class="page">
     <section id="auth-view" class="auth-wrap" hidden>
-      <div class="card auth-card">
-        <h1>登录开发者设置</h1>
-        <p>此页面使用 WebUI 访问令牌鉴权，令牌与主面板登录相同。</p>
+      <div class="panel auth-card">
+        <h1>登录榫卯设置</h1>
+        <p>使用与主面板相同的 WebUI 访问令牌。</p>
         <form id="auth-form" class="auth-form">
           <label for="auth-token">访问令牌</label>
           <input id="auth-token" class="input" type="password" autocomplete="current-password" placeholder="输入 access_token">
@@ -826,79 +927,89 @@
     <div id="settings-view" hidden>
       <div class="page-heading">
         <div>
-          <h1>开发者设置</h1>
-          <p>Go 平台执行模式与优化引擎。配置写入 <code>config/runtime.toml</code>，与 Python 共用的 <code>bot_config.toml</code> 完全隔离。</p>
+          <h1>榫卯设置</h1>
+          <p>调整 Go 平台执行模式与优化引擎。写入 <code>config/runtime.toml</code>，与 Python 的 <code>bot_config.toml</code> 隔离。</p>
         </div>
         <div class="heading-badges">
           <span id="heading-mode-badge" class="badge badge-muted">compatibility</span>
-          <span id="heading-dirty-badge" class="badge badge-warning" hidden>有未保存修改</span>
+          <span id="heading-dirty-badge" class="badge badge-warning" hidden>未保存</span>
         </div>
       </div>
 
       <div id="load-error" class="notice" hidden></div>
 
-      <div class="status-grid">
-        <div class="card status-card">
-          <span class="status-label">执行模式</span>
-          <div class="status-value" id="status-mode">—</div>
-        </div>
-        <div class="card status-card">
-          <span class="status-label">已开启引擎开关</span>
-          <div class="status-value" id="status-features">—</div>
-        </div>
-        <div class="card status-card">
-          <span class="status-label">本进程会话调度器</span>
-          <div class="status-value" id="status-scheduler" style="font-size: 12.5px; font-weight: 500;">—</div>
-        </div>
-        <div class="card status-card">
-          <span class="status-label">启动时间</span>
-          <div class="status-value mono" id="status-start">—</div>
-        </div>
-        <div class="card status-card">
-          <span class="status-label">配置文件</span>
-          <div class="status-value mono" id="status-config" title="">—</div>
-        </div>
-        <div class="card status-card">
-          <span class="status-label">数据库</span>
-          <div class="status-value mono" id="status-db" title="">—</div>
-        </div>
-      </div>
-
-      <section class="card section">
-        <div class="section-head">
-          <div>
-            <h2>执行模式</h2>
-            <p>兼容模式始终是行为验收基准；原生模式由下方已接入的引擎开关共同决定。</p>
+      <section class="panel">
+        <div class="meta-strip">
+          <div class="meta-item">
+            <span class="meta-label">执行模式</span>
+            <div class="meta-value" id="status-mode">—</div>
           </div>
-          <span id="mode-state-badge" class="badge badge-muted">—</span>
+          <div class="meta-item">
+            <span class="meta-label">已开启开关</span>
+            <div class="meta-value" id="status-features">—</div>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">会话调度</span>
+            <div class="meta-value" id="status-scheduler" style="font-size: 0.8125rem; font-weight: 500;">—</div>
+          </div>
         </div>
-
-        <div class="mode-grid">
-          <label class="mode-option" data-mode="compatibility">
-            <input type="radio" name="execution-mode" value="compatibility">
-            <span class="mode-radio" aria-hidden="true"></span>
-            <span class="mode-option-body">
-              <span class="mode-option-title">兼容模式 <span class="badge badge-muted">默认</span></span>
-              <p>逐项对齐 Python 的事件排队与串行节奏，作为回归与一致性验收基准。</p>
-            </span>
-          </label>
-          <label class="mode-option" data-mode="native">
-            <input type="radio" name="execution-mode" value="native">
-            <span class="mode-radio" aria-hidden="true"></span>
-            <span class="mode-option-body">
-              <span class="mode-option-title">原生模式 <span id="native-badge" class="badge badge-warning">规划中</span></span>
-              <p>启用 Go 并发调度，允许跨会话并行；同一会话内仍保持 FIFO 顺序。</p>
-            </span>
-          </label>
+        <div class="panel-body" style="padding-top: 0;">
+          <div class="paths">
+            <div>
+              <strong>启动时间</strong>
+              <span class="mono" id="status-start">—</span>
+            </div>
+            <div>
+              <strong>配置文件</strong>
+              <span class="mono" id="status-config" title="">—</span>
+            </div>
+            <div>
+              <strong>数据库</strong>
+              <span class="mono" id="status-db" title="">—</span>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <div id="native-notice" class="notice" hidden></div>
-        <div id="env-mode-notice" class="notice" hidden></div>
+      <section class="panel section">
+        <div class="panel-body">
+          <div class="section-head">
+            <div>
+              <h2>执行模式</h2>
+              <p>兼容模式是行为验收基准；原生模式由下方已接入的引擎开关决定。</p>
+            </div>
+            <span id="mode-state-badge" class="badge badge-muted">—</span>
+          </div>
 
-        <div class="field-row">
-          <label for="pool-size">工作池大小</label>
-          <input id="pool-size" class="input" type="number" min="0" max="1024" step="1" value="0">
-          <span class="field-hint">0 表示按 CPU 核心数自动取值，仅原生模式生效。</span>
+          <div class="mode-grid">
+            <label class="mode-option" data-mode="compatibility">
+              <input type="radio" name="execution-mode" value="compatibility">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <span class="mode-option-body">
+                <span class="mode-option-title">兼容模式 <span class="badge badge-muted">默认</span></span>
+                <p>对齐 Python 的事件排队与串行节奏，用作回归与一致性基准。</p>
+              </span>
+            </label>
+            <label class="mode-option" data-mode="native">
+              <input type="radio" name="execution-mode" value="native">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <span class="mode-option-body">
+                <span class="mode-option-title">原生模式 <span id="native-badge" class="badge badge-warning">规划中</span></span>
+                <p>启用 Go 并发调度，跨会话可并行；同一会话仍保持 FIFO。</p>
+              </span>
+            </label>
+          </div>
+
+          <div id="native-notice" class="notice" hidden></div>
+          <div id="env-mode-notice" class="notice" hidden></div>
+
+          <div class="field-row">
+            <label for="pool-size">工作池大小</label>
+            <div class="field-control">
+              <input id="pool-size" class="input" type="number" min="0" max="1024" step="1" value="0">
+              <span class="field-hint">0 表示按 CPU 核心数自动取值，仅原生模式生效。</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -906,30 +1017,28 @@
         <div class="section-head">
           <div>
             <h2>优化引擎</h2>
-            <p>所有引擎默认关闭。标记为“规划中”的开关尚未接入运行时，暂不能开启。</p>
+            <p>默认全部关闭。「规划中」表示尚未接入运行时，暂不可开启。</p>
           </div>
           <span id="feature-count" class="badge badge-muted">0 / 0</span>
         </div>
-        <div id="feature-grid" class="feature-grid"></div>
+        <ul id="feature-grid" class="feature-list"></ul>
       </section>
-
-      <div class="card action-bar">
-        <div class="action-info">
-          <strong id="save-state">尚未修改</strong>
-          <span>保存后需要重启服务才会生效。</span>
-        </div>
-        <div class="action-buttons">
-          <button id="reset-btn" class="btn btn-outline" type="button">重置为默认</button>
-          <button id="restart-btn" class="btn btn-danger-outline" type="button">重启服务</button>
-          <button id="save-btn" class="btn btn-primary" type="button">保存配置</button>
-        </div>
-      </div>
     </div>
   </main>
 
-  <footer class="app-footer">
-    MaiBot Go 平台 · 配置存储在 <code>config/runtime.toml</code> · 与 Python 配置互不影响
-  </footer>
+  <div id="settings-actions" class="action-bar" hidden>
+    <div class="action-inner">
+      <div class="action-info">
+        <strong id="save-state">尚未修改</strong>
+        <span>保存后需重启服务才会生效。</span>
+      </div>
+      <div class="action-buttons">
+        <button id="reset-btn" class="btn btn-outline" type="button">重置为默认</button>
+        <button id="restart-btn" class="btn btn-danger-outline" type="button">重启服务</button>
+        <button id="save-btn" class="btn btn-primary" type="button">保存配置</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 
@@ -950,6 +1059,7 @@
         authToken: document.getElementById("auth-token"),
         authSubmit: document.getElementById("auth-submit"),
         settingsView: document.getElementById("settings-view"),
+        settingsActions: document.getElementById("settings-actions"),
         headingModeBadge: document.getElementById("heading-mode-badge"),
         headingDirtyBadge: document.getElementById("heading-dirty-badge"),
         loadError: document.getElementById("load-error"),
@@ -1046,6 +1156,7 @@
       function showAuth() {
         authenticated = false;
         elements.settingsView.hidden = true;
+        elements.settingsActions.hidden = true;
         elements.authView.hidden = false;
         elements.authToken.focus();
       }
@@ -1054,9 +1165,9 @@
         authenticated = true;
         elements.authView.hidden = true;
         elements.settingsView.hidden = false;
+        elements.settingsActions.hidden = false;
       }
 
-      // showSettingsError 在配置损坏时仍展示设置页，让“重置为默认”恢复入口可用。
       function showSettingsError(message) {
         if (!state) {
           state = {
@@ -1075,7 +1186,7 @@
         showSettings();
         render();
         elements.loadError.hidden = false;
-        elements.loadError.textContent = "读取 runtime.toml 失败：" + (message || "未知错误") + "。可点击“重置为默认”恢复。";
+        elements.loadError.textContent = "读取 runtime.toml 失败：" + (message || "未知错误") + "。可点击「重置为默认」恢复。";
         showToast(message || "读取配置失败，可尝试重置为默认设置", "error");
       }
 
@@ -1118,16 +1229,12 @@
         elements.statusMode.textContent = modeLabel(state.execution_mode);
 
         var enabled = 0;
-        var implemented = 0;
         (state.features || []).forEach(function (feature) {
           if (feature.enabled) {
             enabled += 1;
           }
-          if (feature.implemented) {
-            implemented += 1;
-          }
         });
-        elements.statusFeatures.textContent = enabled + " / " + (state.features || []).length + " 已开启";
+        elements.statusFeatures.textContent = enabled + " / " + (state.features || []).length;
         elements.featureCount.textContent = enabled + " / " + (state.features || []).length;
         elements.statusScheduler.textContent = schedulerSummary();
         elements.statusStart.textContent = state.start_time || "—";
@@ -1147,11 +1254,11 @@
           elements.nativeNotice.textContent = "当前版本的原生模式仅保存配置，尚未接入调度层，实际行为与兼容模式一致。";
         } else if (native && !activeNative) {
           elements.nativeNotice.hidden = false;
-          elements.nativeNotice.textContent = "原生模式已选中，但还没有开启任何已接入的原生引擎；目前需要开启「会话并发调度」才会生效。";
+          elements.nativeNotice.textContent = "原生模式已选中，但还没有开启任何已接入的引擎；开启「会话并发调度」后才会生效。";
         } else if (native && activeNative) {
           elements.nativeNotice.hidden = false;
           elements.nativeNotice.className = "notice success";
-          elements.nativeNotice.textContent = "原生模式与会话并发调度已启用，重启服务后生效。";
+          elements.nativeNotice.textContent = "原生模式与已接入引擎已启用，重启服务后生效。";
         } else {
           elements.nativeNotice.hidden = true;
           elements.nativeNotice.textContent = "";
@@ -1159,7 +1266,7 @@
         if (state.env_execution_mode) {
           elements.envModeNotice.hidden = false;
           elements.envModeNotice.textContent = "环境变量 MAIBOT_EXECUTION_MODE=" + state.env_execution_mode +
-            " 优先于 runtime.toml；在移除该环境变量前，页面对模式的修改不会生效。";
+            " 优先于 runtime.toml；移除该变量前，页面对模式的修改不会生效。";
         } else {
           elements.envModeNotice.hidden = true;
           elements.envModeNotice.textContent = "";
@@ -1230,36 +1337,35 @@
           : '<span class="badge badge-warning">规划中' + escapeHtml(phase) + "</span>";
         var stateText;
         if (!implemented) {
-          stateText = enabled ? "配置已开启，但运行时尚未接入" : "尚未接入运行时，暂不可启用";
+          stateText = enabled ? "配置已开启，运行时尚未接入" : "尚未接入，暂不可启用";
         } else if (enabled && feature.key.indexOf("native_") === 0 && state.execution_mode !== "native") {
           stateText = "已配置，兼容模式下不生效";
         } else {
           stateText = enabled ? "已启用" : "已关闭";
         }
-        // 已接入功能可自由切换；未接入但已开启的开关允许关闭；其余未接入项禁用。
         var canToggle = implemented || enabled;
         var switchDisabled = (!canToggle || busy) ? " disabled" : "";
-        return '' +
-          '<article class="card feature-card' + (implemented && enabled ? " enabled" : "") + '">' +
-            '<div class="feature-head">' +
-              '<h3 class="feature-title">' + escapeHtml(feature.name) + "</h3>" +
-              '<div class="badges">' +
+        return "" +
+          '<li class="feature-row' + (implemented && enabled ? " enabled" : "") + '">' +
+            '<div class="feature-main">' +
+              '<div class="feature-title-row">' +
+                '<h3 class="feature-title">' + escapeHtml(feature.name) + "</h3>" +
                 '<span class="badge badge-muted">' + escapeHtml(feature.category || "其他") + "</span>" +
                 statusBadge +
               "</div>" +
-            "</div>" +
-            '<p class="feature-desc">' + escapeHtml(feature.description) + "</p>" +
-            '<div class="compare">' +
-              '<div class="compare-row">' +
-                '<span class="compare-label">兼容</span>' +
-                "<span>" + escapeHtml(feature.python_state) + "</span>" +
+              '<p class="feature-desc">' + escapeHtml(feature.description) + "</p>" +
+              '<div class="compare">' +
+                '<div class="compare-row">' +
+                  '<span class="compare-label">兼容</span>' +
+                  "<span>" + escapeHtml(feature.python_state) + "</span>" +
+                "</div>" +
+                '<div class="compare-row native">' +
+                  '<span class="compare-label">原生</span>' +
+                  "<span>" + escapeHtml(feature.go_state) + "</span>" +
+                "</div>" +
               "</div>" +
-              '<div class="compare-row native">' +
-                '<span class="compare-label">原生</span>' +
-                "<span>" + escapeHtml(feature.go_state) + "</span>" +
-              "</div>" +
             "</div>" +
-            '<div class="feature-foot">' +
+            '<div class="feature-side">' +
               '<span class="feature-state">' + escapeHtml(stateText) + "</span>" +
               '<label class="switch" title="' + escapeHtml(implemented ? "切换开关" : "尚未接入运行时") + '">' +
                 '<input type="checkbox" data-feature-key="' + escapeHtml(feature.key) + '"' +
@@ -1267,7 +1373,7 @@
                 '<span class="track" aria-hidden="true"></span>' +
               "</label>" +
             "</div>" +
-          "</article>";
+          "</li>";
       }
 
       function updateFeature(key, checked) {
@@ -1483,14 +1589,12 @@
         restartTimer = window.setInterval(function () {
           attempts += 1;
           fetch("/api/webui/go/settings", { cache: "no-store" }).then(function (response) {
-            // 502/503 表示 Bot 尚未就绪；其余响应说明请求已经到达，可以刷新。
             if (response.status !== 502 && response.status !== 503) {
               window.clearInterval(restartTimer);
               restartTimer = null;
               window.location.reload();
             }
           }).catch(function () {
-            // 服务重启期间连接失败是预期行为。
           });
           if (attempts >= 30) {
             window.clearInterval(restartTimer);
@@ -1518,7 +1622,6 @@
         try {
           localStorage.setItem("maibot-theme-mode", next);
         } catch (error) {
-          // localStorage 不可用时只切换当前页面。
         }
         applyTheme(next);
       });
