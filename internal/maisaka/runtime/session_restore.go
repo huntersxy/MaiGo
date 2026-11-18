@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"MaiGo/internal/common/database"
+	"MaiGo/internal/common/media"
 	"MaiGo/internal/config"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
@@ -110,6 +111,9 @@ func (a *Agent) restoreTranscriptSession(kind string, targetID int64) error {
 		var payload schema.AgenticMessage
 		if sonic.Unmarshal(entry.Payload, &payload) != nil {
 			payload = *msgToPayloadWithSession(msg, sessionID, sessionName, includeChatID)
+		} else {
+			// transcript 不存图片字节，按落库的媒体引用重新装配
+			payload = attachRestoredMedia(payload, log.MediaRefs)
 		}
 		session.RestoreUser(msg, log.ID, log.MediaRefs, entry.ID, valueOrZero(entry.VisibleSeq), true, &payload)
 	}
@@ -425,6 +429,30 @@ func msgToPayloadWithSession(msg *onebot.ConversationMessage, sessionID, session
 		"is_notify":           msg.IsNotify,
 	}
 	return message
+}
+
+// attachRestoredMedia 把媒体引用重新装配为图片块，补回落库时剥离的字节
+func attachRestoredMedia(payload schema.AgenticMessage, mediaRefs []media.Ref) schema.AgenticMessage {
+	if len(mediaRefs) == 0 {
+		return payload
+	}
+	blocks := make([]*schema.ContentBlock, 0, len(payload.ContentBlocks)+len(mediaRefs))
+	blocks = append(blocks, payload.ContentBlocks...)
+	for _, ref := range mediaRefs {
+		if len(blocks) > 8 {
+			break
+		}
+		image := mediaRefImageBlock(ref)
+		if image == nil {
+			continue
+		}
+		blocks = append(blocks, schema.NewContentBlock(image))
+	}
+	if len(blocks) == len(payload.ContentBlocks) {
+		return payload
+	}
+	payload.ContentBlocks = blocks
+	return payload
 }
 
 // conversationMessageFromLog 恢复消息时补齐引用目标的发送者，供自动参考选择

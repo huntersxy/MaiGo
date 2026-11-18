@@ -353,7 +353,9 @@ func (a *Agent) appendSessionMessage(ctx context.Context, msg *onebot.Conversati
 	a.requestMaisakaPlannerInterrupt(session)
 	a.recordQuoteInbound(ctx, session, msg)
 	if user != nil {
-		payload, err := sonic.Marshal(user.Msg)
+		// 图片 base64 不落 transcript，否则每条带图消息会在库里留下数 MB 数据，
+		// 重启恢复时整体反序列化进堆；恢复按 mediaRefs 重新读取文件。
+		payload, err := sonic.Marshal(payloadWithoutInlineImages(user.Msg))
 		if err == nil {
 			if entry, err := a.memory.AppendUserTranscript(ctx, msg.ConversationKind, msg.TargetID, logID, payload, ""); err != nil {
 				zap.L().Warn("保存输入 transcript 失败", zap.Error(err))
@@ -362,6 +364,29 @@ func (a *Agent) appendSessionMessage(ctx context.Context, msg *onebot.Conversati
 			}
 		}
 	}
+}
+
+// payloadWithoutInlineImages 复制消息并剥离图片块，保留文本与元信息
+func payloadWithoutInlineImages(msg *schema.AgenticMessage) *schema.AgenticMessage {
+	if msg == nil {
+		return nil
+	}
+	blocks := make([]*schema.ContentBlock, 0, len(msg.ContentBlocks))
+	for _, block := range msg.ContentBlocks {
+		if block == nil {
+			continue
+		}
+		if block.UserInputImage != nil {
+			continue
+		}
+		blocks = append(blocks, block)
+	}
+	if len(blocks) == len(msg.ContentBlocks) {
+		return msg
+	}
+	copied := *msg
+	copied.ContentBlocks = blocks
+	return &copied
 }
 
 // markCollectedStickers 标记哪些表情已经在收藏库，消息里据此显示已收藏
