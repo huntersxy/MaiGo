@@ -16,14 +16,12 @@ services:
       MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED: "1"
       # 未设置时由入口脚本生成并保存到 data 卷的 .secret_key
       MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:-}
-      # 错别字注入与表达向量聚类走 Python 原版侧车
-      MAIBOT_COMPAT_URL: http://python-compat:8767
+      # 错别字注入与表达向量聚类由容器内 vendored Python 侧车提供
+      MAIBOT_COMPAT_URL: http://127.0.0.1:8767
       MAIBOT_COMPAT_TIMEOUT: "60"
       # 插件 Python 依赖安装走国内镜像，直连 PyPI 太慢会长时间阻塞启动
       MAIBOT_PLUGIN_DEP_INDEX_URLS: ${MAIBOT_PLUGIN_DEP_INDEX_URLS:-https://pypi.tuna.tsinghua.edu.cn/simple}
       HTTP_HOST: 0.0.0.0
-    depends_on:
-      - python-compat
     extra_hosts:
       - host.docker.internal:host-gateway
     # 宿主机首个 DNS 会把 cnb.cool 解析成 169.254.1.44（被 SSRF 防护拦下），
@@ -44,6 +42,8 @@ services:
       - media:/app/media
       # Runner venv 必须可写才能安装插件依赖
       - plugin-runtime:/app/plugin-runtime
+      # typo 生成器会在 depends-data 下缓存字频表
+      - maibot-compat-data:/app/depends-data
     tmpfs:
       - /tmp
       - /app/temp
@@ -54,36 +54,8 @@ services:
       retries: 5
       start_period: 20s
 
-  # 错别字（pypinyin + jieba）与表达向量聚类（numpy）直接跑 MaiBot 原版实现
-  python-compat:
-    image: maigo:local
-    pull_policy: never
-    restart: unless-stopped
-    init: true
-    read_only: true
-    entrypoint: ["/app/pycompat/bin/python", "/app/pycompat_sidecar.py"]
-    user: maibot
-    dns:
-      - 223.5.5.5
-      - 119.29.29.29
-    environment:
-      MAIBOT_INSTANCE_DIR: /app
-      MAIBOT_SOURCE_ROOT: /app/pycompat-src
-      MAIBOT_COMPAT_SIDECAR_PORT: "8767"
-      PYTHONDONTWRITEBYTECODE: "1"
-    volumes:
-      # typo 生成器会在 depends-data 下缓存字频表
-      - maibot-compat-data:/app/depends-data
-    tmpfs:
-      - /tmp
-    expose:
-      - "8767"
-    healthcheck:
-      test: ["CMD-SHELL", "/app/pycompat/bin/python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8767), 2); s.close()\""]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+  # Python 原版能力侧车不是独立服务：入口脚本在主容器内拉起
+  # /app/pycompat_sidecar.py，只加载 data/pycompat 里 vendored 的两个模块。
 
 volumes:
   maibot-config:

@@ -24,7 +24,7 @@
 //
 // # 配置
 //
-//	MAIBOT_COMPAT_URL      侧车根地址，如 http://python-compat:8767；为空表示不启用
+//	MAIBOT_COMPAT_URL      侧车根地址，如 http://127.0.0.1:8767；为空表示不启用
 //	MAIBOT_COMPAT_TOKEN    可选 Bearer token
 //	MAIBOT_COMPAT_TIMEOUT  秒，默认 30（内部最小 120，聚类批量上传较慢）
 //

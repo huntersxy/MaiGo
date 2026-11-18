@@ -41,4 +41,31 @@ if [ -z "${MAIBOT_PLUGIN_PROJECT_ROOT:-}" ]; then
     done
 fi
 
+# 错别字注入与表达向量聚类跑 vendored 原版 Python 实现，随主进程在同一容器内启动。
+# 只用 /app/pycompat-src 下的两个模块，不挂载或打包整套 MaiBot 源码。
+compat_python=/app/pycompat/bin/python
+if [ -x "$compat_python" ] && [ -f /app/pycompat_sidecar.py ]; then
+    export MAIBOT_INSTANCE_DIR="${MAIBOT_INSTANCE_DIR:-/app}"
+    export MAIBOT_SOURCE_ROOT="${MAIBOT_SOURCE_ROOT:-/app/pycompat-src}"
+    export MAIBOT_COMPAT_SIDECAR_PORT="${MAIBOT_COMPAT_SIDECAR_PORT:-8767}"
+    export MAIBOT_COMPAT_SIDECAR_TOKEN="${MAIBOT_COMPAT_SIDECAR_TOKEN:-${MAIBOT_COMPAT_TOKEN:-}}"
+    export PYTHONDONTWRITEBYTECODE=1
+    mkdir -p /app/depends-data 2>/dev/null || true
+    chown maibot:maibot /app/depends-data 2>/dev/null || true
+    cd /app
+    su-exec maibot:maibot "$compat_python" /app/pycompat_sidecar.py &
+    compat_pid=$!
+    # 侧车未就绪时 Go 侧会回落到本地实现；短暂等待只是避免首批请求走回落
+    for _ in $(seq 1 40); do
+        if "$compat_python" -c "import socket; socket.create_connection(('127.0.0.1', int('$MAIBOT_COMPAT_SIDECAR_PORT')), 0.2).close()" 2>/dev/null; then
+            break
+        fi
+        if ! kill -0 "$compat_pid" 2>/dev/null; then
+            break
+        fi
+        sleep 0.25
+    done
+    export MAIBOT_COMPAT_URL="${MAIBOT_COMPAT_URL:-http://127.0.0.1:$MAIBOT_COMPAT_SIDECAR_PORT}"
+fi
+
 exec su-exec maibot:maibot "$@"
