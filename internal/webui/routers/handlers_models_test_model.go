@@ -11,14 +11,12 @@ import (
 	"image/png"
 	"math"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
-	"github.com/pelletier/go-toml/v2"
 
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/llm_models"
@@ -61,6 +59,9 @@ type modelTestResponse struct {
 
 // handleModelsTestModel 对应 Python model.py:162 的单模型能力测试
 func (d Deps) handleModelsTestModel(w http.ResponseWriter, r *http.Request) {
+	if !d.requireAuth(w, r) {
+		return
+	}
 	var request modelTestRequest
 	if err := sonic.Unmarshal(readBody(r), &request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
@@ -71,19 +72,10 @@ func (d Deps) handleModelsTestModel(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, "model_name 不能为空")
 		return
 	}
-	path, ok := d.modelConfigPath()
+	// 宿主模式的供应商与模型定义在共享目录，必须叠加后才能找到模型
+	file, ok := d.modelConfigFileMerged()
 	if !ok {
 		writeInstanceDirMissing(w, r.URL.Path)
-		return
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "配置文件不存在"})
-		return
-	}
-	var file maibotcfg.ModelConfigFile
-	if err := toml.Unmarshal(raw, &file); err != nil {
-		writeInternalError(w, fmt.Errorf("解析 model_config.toml 失败: %w", err))
 		return
 	}
 	if _, exists := findModelInfoByName(file.Models, modelName); !exists {

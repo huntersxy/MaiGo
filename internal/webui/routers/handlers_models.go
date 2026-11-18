@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"MaiGo/internal/common/network_security"
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/llm_models/model_client"
@@ -54,6 +56,30 @@ func (d Deps) handleModelsClientTypes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true, "client_types": clientTypes, "count": len(clientTypes),
 	})
+}
+
+// modelConfigFileMerged 读取实例模型配置并叠加宿主共享目录，返回完整结构
+func (d Deps) modelConfigFileMerged() (maibotcfg.ModelConfigFile, bool) {
+	var file maibotcfg.ModelConfigFile
+	path, ok := d.modelConfigPath()
+	if !ok {
+		return file, false
+	}
+	doc, err := readTOMLDocument(path)
+	if err != nil {
+		return file, false
+	}
+	if merged, mergeErr := maibotcfg.MergeSharedCatalogDoc(doc); mergeErr == nil {
+		doc = merged
+	}
+	encoded, err := toml.Marshal(doc)
+	if err != nil {
+		return file, false
+	}
+	if err := toml.Unmarshal(encoded, &file); err != nil {
+		return file, false
+	}
+	return file, true
 }
 
 // modelCatalogDoc 读取供应商与模型定义；宿主模式下必须叠加共享模型目录
