@@ -25,6 +25,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "构造重放请求失败:", err)
 		os.Exit(1)
 	}
+	// MAIBOT_REPLAY_DUMP=1 只输出构造出的请求体，便于离线检查消息序列
+	if os.Getenv("MAIBOT_REPLAY_DUMP") == "1" {
+		if request.Body != nil {
+			raw, _ := io.ReadAll(request.Body)
+			os.Stdout.Write(raw)
+		}
+		return
+	}
 	client := &http.Client{Timeout: 120 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {

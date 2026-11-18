@@ -19,10 +19,13 @@ func BuildChatMessagesFromContextItems(items []ContextItem, includeTools bool) (
 // BuildChatMessagesFromContextItemsWithScope 允许回放指定 Provider 范围的原生推理
 func BuildChatMessagesFromContextItemsWithScope(items []ContextItem, includeTools bool, reasoningScope *ContextProviderScope) ([]map[string]any, error) {
 	messages := make([]map[string]any, 0, len(items))
+	// 只接受紧跟在带 tool_calls 的 assistant 之后的工具结果；历史压缩可能留下孤立结果
+	pendingCalls := make(map[string]struct{})
 	for index := 0; index < len(items); {
 		item := items[index]
 		switch item.Type {
 		case ContextItemSystemMessage:
+			clear(pendingCalls)
 			content, err := chatSystemContentFromContextItem(item)
 			if err != nil {
 				return nil, err
@@ -30,6 +33,7 @@ func BuildChatMessagesFromContextItemsWithScope(items []ContextItem, includeTool
 			messages = append(messages, map[string]any{"role": "system", "content": content})
 			index++
 		case ContextItemUserMessage:
+			clear(pendingCalls)
 			message, err := chatUserMessageFromContextItem(item)
 			if err != nil {
 				return nil, err
@@ -40,20 +44,59 @@ func BuildChatMessagesFromContextItemsWithScope(items []ContextItem, includeTool
 			index++
 		case ContextItemFunctionCallOutput:
 			if includeTools {
-				messages = append(messages, map[string]any{
-					"role":         "tool",
-					"content":      item.Output,
-					"tool_call_id": item.CallID,
-				})
+				if _, ok := pendingCalls[item.CallID]; ok {
+					messages = append(messages, map[string]any{
+						"role":         "tool",
+						"content":      item.Output,
+						"tool_call_id": item.CallID,
+					})
+					delete(pendingCalls, item.CallID)
+				}
 			}
 			index++
 		case ContextItemReasoning, ContextItemAssistantMessage, ContextItemFunctionCall,
 			ContextItemProviderActivity, ContextItemProviderOpaque:
+			clear(pendingCalls)
 			message, next, err := chatAssistantGroupFromContextItems(items, index, includeTools, reasoningScope)
 			if err != nil {
 				return nil, err
 			}
 			if message != nil {
+				// 只保留紧随其后确实有结果的工具调用；缺失结果时协议要求整组补齐
+				outputs := make(map[string]struct{})
+				for scan := next; scan < len(items) && items[scan].Type == ContextItemFunctionCallOutput; scan++ {
+					if callID := items[scan].CallID; callID != "" {
+						outputs[callID] = struct{}{}
+					}
+				}
+				if calls, ok := message["tool_calls"].([]map[string]any); ok {
+					kept := calls[:0]
+					for _, call := range calls {
+						callID, _ := call["id"].(string)
+						if _, exists := outputs[callID]; exists {
+							kept = append(kept, call)
+						}
+					}
+					if len(kept) == 0 {
+						delete(message, "tool_calls")
+						if message["content"] == nil {
+							if _, hasReasoning := message["reasoning_content"]; !hasReasoning {
+								message = nil
+							}
+						}
+					} else {
+						message["tool_calls"] = kept
+					}
+				}
+			}
+			if message != nil {
+				if calls, ok := message["tool_calls"].([]map[string]any); ok {
+					for _, call := range calls {
+						if callID, _ := call["id"].(string); callID != "" {
+							pendingCalls[callID] = struct{}{}
+						}
+					}
+				}
 				messages = append(messages, message)
 			}
 			index = next
