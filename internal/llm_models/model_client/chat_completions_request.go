@@ -318,35 +318,54 @@ func (c *chatCompletionsClient) maxCompletionTokensRetryPayload(err error, items
 	return payload, true
 }
 
-// buildChatMessages 对齐 _convert_messages
+// buildChatMessages 对齐 _convert_messages：连续 assistant 记录合并为一条，
+// 保证工具结果前紧邻带 tool_calls 的 assistant 消息。
 func buildChatMessages(input []*schema.AgenticMessage, includeTools bool) ([]map[string]any, error) {
 	messages := make([]map[string]any, 0, len(input))
+	assistantBlocks := make([]*schema.ContentBlock, 0)
+	flushAssistant := func() error {
+		if len(assistantBlocks) == 0 {
+			return nil
+		}
+		converted, err := buildChatAssistantMessage(assistantBlocks, includeTools)
+		assistantBlocks = assistantBlocks[:0]
+		if err != nil {
+			return err
+		}
+		if converted != nil {
+			messages = append(messages, converted)
+		}
+		return nil
+	}
 	for _, message := range input {
 		if message == nil {
 			continue
 		}
 		switch message.Role {
 		case schema.AgenticRoleTypeSystem:
+			if err := flushAssistant(); err != nil {
+				return nil, err
+			}
 			text, err := chatTextOnlyContent(message.ContentBlocks)
 			if err != nil {
 				return nil, err
 			}
 			messages = append(messages, map[string]any{"role": "system", "content": text})
 		case schema.AgenticRoleTypeAssistant:
-			converted, err := buildChatAssistantMessage(message.ContentBlocks, includeTools)
-			if err != nil {
+			assistantBlocks = append(assistantBlocks, message.ContentBlocks...)
+		default:
+			if err := flushAssistant(); err != nil {
 				return nil, err
 			}
-			if converted != nil {
-				messages = append(messages, converted)
-			}
-		default:
 			converted, err := buildChatUserMessages(message.ContentBlocks, includeTools)
 			if err != nil {
 				return nil, err
 			}
 			messages = append(messages, converted...)
 		}
+	}
+	if err := flushAssistant(); err != nil {
+		return nil, err
 	}
 	return messages, nil
 }
