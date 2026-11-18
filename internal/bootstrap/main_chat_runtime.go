@@ -80,6 +80,18 @@ func (p *chatRuntimeProvider) GetOrCreate(_ context.Context, sessionID string) (
 	return runtime, nil
 }
 
+// Drop 淘汰后丢掉分发适配器缓存，避免继续持有旧 delegate
+func (p *chatRuntimeProvider) Drop(sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if p == nil || sessionID == "" {
+		return
+	}
+	p.mu.Lock()
+	delete(p.runtimes, sessionID)
+	delete(p.attaching, sessionID)
+	p.mu.Unlock()
+}
+
 func (p *chatRuntimeProvider) setDelegate(sessionID string, runtime heartflow.Runtime) {
 	p.mu.Lock()
 	dispatcher := p.runtimes[sessionID]

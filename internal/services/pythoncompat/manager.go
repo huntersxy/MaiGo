@@ -172,6 +172,16 @@ func (p *sidecarProc) spawn(ctx context.Context, c *Client, pidPath string) erro
 	go func() {
 		_ = cmd.Wait()
 		_ = os.Remove(pidPath)
+		p.mu.Lock()
+		if p.cmd == cmd {
+			p.cmd = nil
+			if p.reapStop != nil {
+				close(p.reapStop)
+				p.reapStop = nil
+			}
+			p.waitDone = make(chan struct{})
+		}
+		p.mu.Unlock()
 		close(waitDone)
 	}()
 	return nil

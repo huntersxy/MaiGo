@@ -57,6 +57,12 @@ func TestAgentDropConversationClearsArrivalSeq(t *testing.T) {
 	if _, ok := a.arrivalSeq.Load(key); ok {
 		t.Fatal("arrivalSeq 应被清除")
 	}
+	if len(a.sessions.all()) != 0 {
+		t.Fatal("Drop 后 sessionStore 应为空")
+	}
+	if _, err := a.SessionRuntime("any"); err == nil {
+		t.Fatal("淘汰后 SessionRuntime 不应命中旧运行时")
+	}
 	if a.DropChatSession(false, "", "7") {
 		t.Fatal("会话已删后 DropChatSession 应返回 false")
 	}

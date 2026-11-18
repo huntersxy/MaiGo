@@ -345,7 +345,7 @@ def main() -> int:
     finally:
         _IDLE_STOP.set()
         httpd.server_close()
-    return 0}Report the result once you have determined it. Use a tool if needed to gather more information before reporting. Use multiple tools in parallel if needed. Do what you can to continue making progress if you can. Then summarize your findings.
+    return 0
 
 
 if __name__ == "__main__":
