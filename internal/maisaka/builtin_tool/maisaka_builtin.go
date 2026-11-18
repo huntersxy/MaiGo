@@ -311,11 +311,12 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		tc.RecordReplyTarget(strconv.FormatInt(replyTo, 10), content)
 	}
 	if tc != nil && tc.SendImageURLCallback != nil {
+		attachmentCtx := WithReplyAnchor(ctx, replyTo)
 		for _, picture := range pictures {
 			if strings.TrimSpace(picture.Path) == "" {
 				continue
 			}
-			if err := tc.SendImageURLCallback(ctx, picture.Path); err != nil {
+			if err := tc.SendImageURLCallback(attachmentCtx, picture.Path); err != nil {
 				return nil, fmt.Errorf("发送回复图片失败: %w", err)
 			}
 		}
@@ -324,7 +325,7 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		if tc == nil || tc.SendEmojiAttachment == nil {
 			return nil, fmt.Errorf("发送回复表情失败: 表情发送端口未接入")
 		}
-		if err := tc.SendEmojiAttachment(ctx, tc.TargetID, *emojiAttachment); err != nil {
+		if err := tc.SendEmojiAttachment(WithReplyAnchor(ctx, replyTo), tc.TargetID, *emojiAttachment); err != nil {
 			return nil, fmt.Errorf("发送回复表情失败: %w", err)
 		}
 	}

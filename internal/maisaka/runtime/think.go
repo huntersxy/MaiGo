@@ -289,9 +289,10 @@ func (a *Agent) doSendSticker(ctx context.Context, groupID int64, fileName strin
 
 func (a *Agent) doSendImageURL(ctx context.Context, groupID int64, imageURL string) error {
 	out := &outboundMessage{
-		Kind:      memory.ConversationKindGroup,
-		TargetID:  groupID,
-		ImageFile: imageURL,
+		Kind:        memory.ConversationKindGroup,
+		TargetID:    groupID,
+		ImageFile:   imageURL,
+		ReplyAnchor: tools.ReplyAnchorFromContext(ctx),
 	}
 	msgID, arrivalSeq, sent, err := a.sendOutbound(ctx, out)
 	if err != nil {

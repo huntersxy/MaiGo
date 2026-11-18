@@ -38,9 +38,9 @@ func (a *Agent) doReplySendWith(ctx context.Context, session *Session, kind stri
 		err     error
 	)
 	if kind == memory.ConversationKindPrivate {
-		results, err = a.sendPrivateSpeakSegmentsDetailed(ctx, targetID, segments, effectiveReplyTo, send, true)
+		results, err = a.sendPrivateSpeakSegmentsDetailed(ctx, targetID, segments, replyTo, effectiveReplyTo, send, true)
 	} else {
-		results, err = a.sendGroupSpeakSegmentsDetailed(ctx, targetID, segments, effectiveReplyTo, mentions, send, true)
+		results, err = a.sendGroupSpeakSegmentsDetailed(ctx, targetID, segments, replyTo, effectiveReplyTo, mentions, send, true)
 	}
 	if err != nil {
 		return tools.ReplySendOutcome{}, err

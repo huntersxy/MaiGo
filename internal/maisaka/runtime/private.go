@@ -164,9 +164,10 @@ func (a *Agent) doPrivateSticker(ctx context.Context, targetID int64, fileName s
 
 func (a *Agent) doPrivateImage(ctx context.Context, targetID int64, imageURL string) error {
 	out := &outboundMessage{
-		Kind:      memory.ConversationKindPrivate,
-		TargetID:  targetID,
-		ImageFile: imageURL,
+		Kind:        memory.ConversationKindPrivate,
+		TargetID:    targetID,
+		ImageFile:   imageURL,
+		ReplyAnchor: tools.ReplyAnchorFromContext(ctx),
 	}
 	messageID, seq, sent, err := a.sendOutbound(ctx, out)
 	if err != nil {

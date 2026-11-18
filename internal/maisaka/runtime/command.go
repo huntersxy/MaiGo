@@ -86,7 +86,7 @@ func (a *Agent) handleCommand(ctx context.Context, msg *onebot.ConversationMessa
 	) {
 		a.markCommandMessage(msg, 1)
 		if !config.SilentPermissionDenied {
-			if _, _, err := a.sendConversationMessage(ctx, msg.ConversationKind, msg.TargetID, "你没有权限使用此命令。", 0, nil); err != nil {
+			if _, _, err := a.sendConversationMessage(ctx, msg.ConversationKind, msg.TargetID, "你没有权限使用此命令。", 0, 0, nil); err != nil {
 				zap.L().Warn("发送命令无权限提示失败", zap.String("command", commandName), zap.Error(err))
 			}
 		}

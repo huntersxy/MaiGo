@@ -75,7 +75,7 @@ type speakSender func(ctx context.Context, msg *outboundMessage) (int64, uint64,
 //
 // 发送循环本身在 chat/replyer.SendSegments，这里只做端口适配：
 // 真实发送、打字广播、逐段落库与结束后的门控更新。
-func (a *Agent) speakHooks(ctx context.Context, send speakSender, abortOnFailure, quotePreviousAllowed bool) replyer.SendHooks {
+func (a *Agent) speakHooks(ctx context.Context, send speakSender, abortOnFailure, quotePreviousAllowed bool, anchorReplyTo int64) replyer.SendHooks {
 	if send == nil {
 		send = a.sendOutbound
 	}
@@ -83,6 +83,7 @@ func (a *Agent) speakHooks(ctx context.Context, send speakSender, abortOnFailure
 	hooks := replyer.SendHooks{
 		AbortOnFailure:       abortOnFailure,
 		QuotePreviousAllowed: quotePreviousAllowed,
+		AnchorReplyTo:        anchorReplyTo,
 	}
 	if cfg != nil {
 		hooks.TypingSimulation = cfg.Chat.TypingSimulation
@@ -90,12 +91,13 @@ func (a *Agent) speakHooks(ctx context.Context, send speakSender, abortOnFailure
 	}
 	hooks.Send = func(callCtx context.Context, msg *replyer.OutboundMessage) (int64, uint64, bool, error) {
 		out := &outboundMessage{
-			Kind:     conversationKindForSend(msg.Kind),
-			TargetID: msg.TargetID,
-			Text:     msg.Text,
-			Mentions: msg.Mentions,
-			ReplyTo:  msg.ReplyTo,
-			Typing:   msg.Typing,
+			Kind:        conversationKindForSend(msg.Kind),
+			TargetID:    msg.TargetID,
+			Text:        msg.Text,
+			Mentions:    msg.Mentions,
+			ReplyTo:     msg.ReplyTo,
+			ReplyAnchor: msg.ReplyAnchor,
+			Typing:      msg.Typing,
 		}
 		messageID, arrivalSeq, sent, err := send(callCtx, out)
 		// 回写发送入口可能改写的字段，供 replyer 记录逐段结果
@@ -198,27 +200,27 @@ func conversationKindForSend(kind replyer.SendKind) string {
 }
 
 func (a *Agent) sendGroupSpeakSegments(ctx context.Context, groupID int64, segments []replyer.Segment, initialReplyTo int64, mentions []int64) error {
-	_, err := a.sendGroupSpeakSegmentsDetailed(ctx, groupID, segments, initialReplyTo, mentions, a.sendOutbound, false)
+	_, err := a.sendGroupSpeakSegmentsDetailed(ctx, groupID, segments, initialReplyTo, initialReplyTo, mentions, a.sendOutbound, false)
 	return err
 }
 
 // sendGroupSpeakSegmentsDetailed 逐段发送并返回真实结果；abortOnFailure 对齐 Python reply 的失败即停止
-func (a *Agent) sendGroupSpeakSegmentsDetailed(ctx context.Context, groupID int64, segments []replyer.Segment, initialReplyTo int64, mentions []int64, send speakSender, abortOnFailure bool) ([]tools.ReplySendSegment, error) {
+func (a *Agent) sendGroupSpeakSegmentsDetailed(ctx context.Context, groupID int64, segments []replyer.Segment, anchorReplyTo, initialReplyTo int64, mentions []int64, send speakSender, abortOnFailure bool) ([]tools.ReplySendSegment, error) {
 	// 引用频率为 never 时非首段一律不引用，对齐 Python reply 的 quote_previous 门控
 	quotePreviousAllowed := a.quoteFrequency(true) != quote.FrequencyNever
-	hooks := a.speakHooks(ctx, send, abortOnFailure, quotePreviousAllowed)
+	hooks := a.speakHooks(ctx, send, abortOnFailure, quotePreviousAllowed, anchorReplyTo)
 	return replyer.SendSegments(ctx, replyer.SendKindGroup, groupID, segments, initialReplyTo, mentions, hooks)
 }
 
 func (a *Agent) sendPrivateSpeakSegments(ctx context.Context, targetID int64, segments []replyer.Segment, initialReplyTo int64) error {
-	_, err := a.sendPrivateSpeakSegmentsDetailed(ctx, targetID, segments, initialReplyTo, a.sendOutbound, false)
+	_, err := a.sendPrivateSpeakSegmentsDetailed(ctx, targetID, segments, initialReplyTo, initialReplyTo, a.sendOutbound, false)
 	return err
 }
 
 // sendPrivateSpeakSegmentsDetailed 逐段发送并返回真实结果；abortOnFailure 对齐 Python reply 的失败即停止
-func (a *Agent) sendPrivateSpeakSegmentsDetailed(ctx context.Context, targetID int64, segments []replyer.Segment, initialReplyTo int64, send speakSender, abortOnFailure bool) ([]tools.ReplySendSegment, error) {
+func (a *Agent) sendPrivateSpeakSegmentsDetailed(ctx context.Context, targetID int64, segments []replyer.Segment, anchorReplyTo, initialReplyTo int64, send speakSender, abortOnFailure bool) ([]tools.ReplySendSegment, error) {
 	// 引用频率为 never 时非首段一律不引用，对齐 Python reply 的 quote_previous 门控
 	quotePreviousAllowed := a.quoteFrequency(false) != quote.FrequencyNever
-	hooks := a.speakHooks(ctx, send, abortOnFailure, quotePreviousAllowed)
+	hooks := a.speakHooks(ctx, send, abortOnFailure, quotePreviousAllowed, anchorReplyTo)
 	return replyer.SendSegments(ctx, replyer.SendKindPrivate, targetID, segments, initialReplyTo, nil, hooks)
 }

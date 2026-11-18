@@ -22,15 +22,17 @@ const (
 //
 // 字段与 runtime 的 outboundMessage 对齐，Storage/ShowLog 由调用方在 prepare 时填充。
 type OutboundMessage struct {
-	Kind      SendKind
-	TargetID  int64
-	Text      string
-	Mentions  []int64
-	ReplyTo   int64
-	Typing    bool
-	Storage   bool
-	ShowLog   bool
-	MessageID int64
+	Kind     SendKind
+	TargetID int64
+	Text     string
+	Mentions []int64
+	ReplyTo  int64
+	// ReplyAnchor 被动回复锚点，独立于显示引用，供平台适配器占用被动额度
+	ReplyAnchor int64
+	Typing      bool
+	Storage     bool
+	ShowLog     bool
+	MessageID   int64
 }
 
 // SendFunc 执行一次真实发送；返回平台消息 ID、到达序号、是否已发送
@@ -48,6 +50,8 @@ type SendHooks struct {
 	TypingSpeed int
 	// QuotePreviousAllowed 非首段是否允许引用上一段
 	QuotePreviousAllowed bool
+	// AnchorReplyTo 被动回复锚点；每段消息都携带，不随显示引用变化
+	AnchorReplyTo int64
 	// AbortOnFailure 段发送失败时立即停止；false 时跳过该段继续后续段
 	AbortOnFailure bool
 	// AfterSegment 每段发送成功后回调，收到已发送的消息（含 Storage/ShowLog/最终文本）
@@ -106,12 +110,13 @@ func SendSegments(ctx context.Context, kind SendKind, targetID int64, segments [
 		}
 
 		out := &OutboundMessage{
-			Kind:     kind,
-			TargetID: targetID,
-			Text:     text,
-			Mentions: segmentMentions,
-			ReplyTo:  replyTo,
-			Typing:   typing,
+			Kind:        kind,
+			TargetID:    targetID,
+			Text:        text,
+			Mentions:    segmentMentions,
+			ReplyTo:     replyTo,
+			ReplyAnchor: hooks.AnchorReplyTo,
+			Typing:      typing,
 		}
 		messageID, arrivalSeq, sent, err := hooks.Send(ctx, out)
 		if err != nil {

@@ -251,7 +251,7 @@ func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID i
 	if cleanup {
 		defer os.Remove(path)
 	}
-	if _, _, err := a.sendConversationImage(ctx, kind, targetID, path, true); err != nil {
+	if _, _, err := a.sendConversationImage(ctx, kind, targetID, path, true, tools.ReplyAnchorFromContext(ctx)); err != nil {
 		return err
 	}
 	if hash := strings.TrimSpace(attachment.Hash); hash != "" {

@@ -78,6 +78,7 @@ func (a *Agent) sendConversationMessage(
 	targetID int64,
 	text string,
 	replyTo int64,
+	replyAnchor int64,
 	mentions []int64,
 ) (messageID int64, arrivalSeq uint64, err error) {
 	if a.isInternalConversation(conversationKind, targetID) {
@@ -92,7 +93,7 @@ func (a *Agent) sendConversationMessage(
 	if a.platformIO != nil {
 		if resolved, ok := a.resolvePlatformRoute(conversationKind, targetID); ok {
 			if resolved.HasAdapter {
-				messageID, arrivalSeq, err = a.sendViaPlatformIO(ctx, resolved, conversationKind, targetID, text, replyTo, mentions)
+				messageID, arrivalSeq, err = a.sendViaPlatformIO(ctx, resolved, conversationKind, targetID, text, replyTo, replyAnchor, mentions)
 				if err != nil {
 					return 0, 0, err
 				}
@@ -113,6 +114,7 @@ func (a *Agent) sendConversationImage(
 	targetID int64,
 	filePath string,
 	isSticker bool,
+	replyAnchor int64,
 ) (messageID int64, arrivalSeq uint64, err error) {
 	if a.isInternalConversation(conversationKind, targetID) {
 		messageID, err := a.webChatSender().SendBotImage(ctx, conversationKind, targetID, filePath, isSticker)
@@ -124,7 +126,7 @@ func (a *Agent) sendConversationImage(
 	if a.platformIO != nil {
 		if resolved, ok := a.resolvePlatformRoute(conversationKind, targetID); ok {
 			if resolved.HasAdapter {
-				messageID, arrivalSeq, err = a.sendImageViaPlatformIO(ctx, resolved, conversationKind, filePath, isSticker)
+				messageID, arrivalSeq, err = a.sendImageViaPlatformIO(ctx, resolved, conversationKind, targetID, filePath, isSticker, replyAnchor)
 				if err != nil {
 					return 0, 0, err
 				}
@@ -234,6 +236,7 @@ func (a *Agent) sendViaPlatformIO(
 	targetID int64,
 	text string,
 	replyTo int64,
+	replyAnchor int64,
 	mentions []int64,
 ) (messageID int64, arrivalSeq uint64, err error) {
 	chatType, err := chatTypeForKind(conversationKind)
@@ -254,15 +257,19 @@ func (a *Agent) sendViaPlatformIO(
 		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
 		Segments:    segments,
 	}
-	if replyTo != 0 {
-		// 插件适配器按平台消息号匹配被动回复窗口，优先使用外部编号
-		replyID := strconv.FormatInt(replyTo, 10)
-		externalReplyID := a.externalIdentityFor(conversationKind, targetID, "reply", replyTo)
-		if externalReplyID != "" {
-			replyID = externalReplyID
+	// 被动锚点与显示引用相互独立：对齐 Python，reply_to 取锚点消息，未选中引用时也要携带
+	anchor := replyAnchor
+	if anchor == 0 {
+		anchor = replyTo
+	}
+	if anchor != 0 {
+		anchorID := strconv.FormatInt(anchor, 10)
+		externalAnchorID := a.externalIdentityFor(conversationKind, targetID, "reply", anchor)
+		if externalAnchorID != "" {
+			anchorID = externalAnchorID
 		}
-		outbound.ReplyToMessageID = replyID
-		outbound.ExternalReplyToMessageID = externalReplyID
+		outbound.ReplyToMessageID = anchorID
+		outbound.ExternalReplyToMessageID = externalAnchorID
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
 	if !batch.HasSuccess() {
@@ -287,8 +294,10 @@ func (a *Agent) sendImageViaPlatformIO(
 	ctx context.Context,
 	resolved resolvedPlatformRoute,
 	conversationKind string,
+	targetID int64,
 	filePath string,
 	isSticker bool,
+	replyAnchor int64,
 ) (messageID int64, arrivalSeq uint64, err error) {
 	chatType, err := chatTypeForKind(conversationKind)
 	if err != nil {
@@ -303,6 +312,15 @@ func (a *Agent) sendImageViaPlatformIO(
 		Timestamp:   time.Now(),
 		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
 		Segments:    []platformio.Segment{seg},
+	}
+	if replyAnchor != 0 {
+		anchorID := strconv.FormatInt(replyAnchor, 10)
+		externalAnchorID := a.externalIdentityFor(conversationKind, targetID, "reply", replyAnchor)
+		if externalAnchorID != "" {
+			anchorID = externalAnchorID
+		}
+		outbound.ReplyToMessageID = anchorID
+		outbound.ExternalReplyToMessageID = externalAnchorID
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
 	if !batch.HasSuccess() {

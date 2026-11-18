@@ -26,14 +26,16 @@ type sendHookEmitter interface {
 
 // outboundMessage 描述一条待出站消息（文本或图片），对应 MaiBot 的 SessionMessage
 type outboundMessage struct {
-	Kind      string
-	TargetID  int64
-	SelfID    int64
-	Text      string
-	Mentions  []int64
-	ReplyTo   int64
-	ImageFile string
-	IsSticker bool
+	Kind     string
+	TargetID int64
+	SelfID   int64
+	Text     string
+	Mentions []int64
+	ReplyTo  int64
+	// ReplyAnchor 被动回复锚点，独立于显示引用，供适配器占用被动额度
+	ReplyAnchor int64
+	ImageFile   string
+	IsSticker   bool
 
 	Typing   bool
 	SetReply bool
@@ -250,9 +252,9 @@ func (a *Agent) sendOutboundWith(ctx context.Context, emitter sendHookEmitter, m
 	// 引用段只在 set_reply 为真时生成；reply_to 元数据始终保留，供存储与 Hook 观察
 	replySegment := replySegmentFor(msg)
 	if msg.isImage() {
-		messageID, arrivalSeq, err = a.sendConversationImage(ctx, msg.Kind, msg.TargetID, msg.ImageFile, msg.IsSticker)
+		messageID, arrivalSeq, err = a.sendConversationImage(ctx, msg.Kind, msg.TargetID, msg.ImageFile, msg.IsSticker, msg.ReplyAnchor)
 	} else {
-		messageID, arrivalSeq, err = a.sendConversationMessage(ctx, msg.Kind, msg.TargetID, msg.Text, replySegment, msg.Mentions)
+		messageID, arrivalSeq, err = a.sendConversationMessage(ctx, msg.Kind, msg.TargetID, msg.Text, replySegment, msg.ReplyAnchor, msg.Mentions)
 	}
 	if err != nil {
 		emitAfterSend(ctx, emitter, msg, false)
