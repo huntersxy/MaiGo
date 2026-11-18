@@ -364,6 +364,10 @@ func annotateSessionUserMessage(message *schema.AgenticMessage, user *sessionUse
 	}
 	if len(user.QuoteIDs) > 0 {
 		message.Extra["quote_ids"] = append([]string(nil), user.QuoteIDs...)
+		// 监控引用预览按 reply_to 取目标，入站引用沿用平台消息号
+		if message.Extra["reply_to"] == nil {
+			message.Extra["reply_to"] = user.QuoteIDs[0]
+		}
 	}
 	if user.QuoteSender != "" {
 		message.Extra["quote_sender"] = user.QuoteSender

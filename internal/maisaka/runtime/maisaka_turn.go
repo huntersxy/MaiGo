@@ -558,7 +558,7 @@ func sessionExtraMetadata(extra map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(extra))
-	for _, key := range []string{"message_id", "sender_name", "sender_cardname", "nickname", "platform", "is_mentioned", "is_notify", "bot_platform_nickname", "quote_ids", "quote_sender", "quote_content"} {
+	for _, key := range []string{"message_id", "sender_name", "sender_cardname", "nickname", "platform", "is_mentioned", "is_notify", "bot_platform_nickname", "quote_ids", "reply_to", "quote_sender", "quote_content"} {
 		if value, ok := extra[key]; ok {
 			out[key] = value
 		}

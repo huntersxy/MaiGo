@@ -10,6 +10,7 @@ import (
 
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
@@ -240,6 +241,10 @@ func (a *Agent) sendViaPlatformIO(
 		return 0, 0, err
 	}
 	routeKey := resolved.RouteKey
+	segments := a.outboundSegmentsForText(conversationKind, targetID, text, mentions)
+	if reply, ok := a.replySegment(conversationKind, targetID, replyTo); ok {
+		segments = append([]platformio.Segment{reply}, segments...)
+	}
 	outbound := platformio.OutboundMessageEnvelope{
 		RouteKey:    routeKey,
 		ChatType:    chatType,
@@ -247,11 +252,17 @@ func (a *Agent) sendViaPlatformIO(
 		PlainText:   text,
 		Timestamp:   time.Now(),
 		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
-		Segments:    a.outboundSegmentsForText(conversationKind, targetID, text, mentions),
+		Segments:    segments,
 	}
 	if replyTo != 0 {
-		outbound.ReplyToMessageID = strconv.FormatInt(replyTo, 10)
-		outbound.ExternalReplyToMessageID = a.externalIdentityFor(conversationKind, targetID, "reply", replyTo)
+		// 插件适配器按平台消息号匹配被动回复窗口，优先使用外部编号
+		replyID := strconv.FormatInt(replyTo, 10)
+		externalReplyID := a.externalIdentityFor(conversationKind, targetID, "reply", replyTo)
+		if externalReplyID != "" {
+			replyID = externalReplyID
+		}
+		outbound.ReplyToMessageID = replyID
+		outbound.ExternalReplyToMessageID = externalReplyID
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
 	if !batch.HasSuccess() {
@@ -387,6 +398,59 @@ func (a *Agent) outboundSegmentsForText(conversationKind string, targetID int64,
 	return segments
 }
 
+// replySegment 构造出站引用段；外部平台优先使用缓存的平台消息 ID
+func (a *Agent) replySegment(conversationKind string, targetID int64, replyTo int64) (platformio.Segment, bool) {
+	if replyTo <= 0 {
+		return platformio.Segment{}, false
+	}
+	replyID := strconv.FormatInt(replyTo, 10)
+	if external := a.externalIdentityFor(conversationKind, targetID, "reply", replyTo); external != "" {
+		replyID = external
+	}
+	extra := map[string]string{"id": replyID}
+	content, senderID, nickname, cardname := a.replyPreviewForTarget(conversationKind, targetID, replyTo)
+	if content != "" {
+		extra["target_message_content"] = content
+	}
+	if senderID != "" {
+		extra["sender_id"] = senderID
+	}
+	if nickname != "" {
+		extra["sender_nickname"] = nickname
+	}
+	if cardname != "" {
+		extra["sender_cardname"] = cardname
+	}
+	return platformio.Segment{
+		Kind:  platformio.SegmentReply,
+		Text:  replyID,
+		Extra: extra,
+	}, true
+}
+
+// replyPreviewForTarget 从会话历史取引用目标的正文与发送者，供适配器展示引用预览
+func (a *Agent) replyPreviewForTarget(conversationKind string, targetID int64, replyTo int64) (content, senderID, nickname, cardname string) {
+	if a == nil || a.sessions == nil || replyTo <= 0 {
+		return "", "", "", ""
+	}
+	session := a.sessions.get(conversationKind, targetID)
+	if session == nil {
+		return "", "", "", ""
+	}
+	runtime := session.MaisakaRuntime()
+	if runtime == nil {
+		return "", "", "", ""
+	}
+	source, ok := runtime.FindSourceMessageByID(strconv.FormatInt(replyTo, 10))
+	if !ok {
+		return "", "", "", ""
+	}
+	return strings.TrimSpace(maisaka.BuildMonitorMessageContent(source)),
+		strings.TrimSpace(source.UserID),
+		firstNonEmptyString(source.MetadataString("sender_name"), source.MetadataString("nickname")),
+		source.MetadataString("sender_cardname")
+}
+
 // rememberExternalIdentities 记录入站数字代理 ID 与平台原始字符串 ID 的对应关系，供出站 @/回复还原
 func (a *Agent) rememberExternalIdentities(msg *onebot.ConversationMessage) {
 	if a == nil || a.externalIdentities == nil || msg == nil || msg.TargetID <= 0 {
@@ -403,6 +467,12 @@ func (a *Agent) rememberExternalIdentities(msg *onebot.ConversationMessage) {
 	if msg.Reply != nil && msg.Reply.MessageID > 0 {
 		if external := strings.TrimSpace(msg.Reply.ExternalMessageID); external != "" {
 			a.externalIdentities.Set(externalIdentityCacheKey(msg.ConversationKind, msg.TargetID, "reply", msg.Reply.MessageID), external, ttlcache.DefaultTTL)
+		}
+	}
+	// 记录入站消息自身的内部 ID 与平台 ID，出站引用任意历史消息时都能还原平台消息号
+	if msg.MessageID > 0 {
+		if external := strings.TrimSpace(msg.ExternalMessageID); external != "" {
+			a.externalIdentities.Set(externalIdentityCacheKey(msg.ConversationKind, msg.TargetID, "reply", msg.MessageID), external, ttlcache.DefaultTTL)
 		}
 	}
 }

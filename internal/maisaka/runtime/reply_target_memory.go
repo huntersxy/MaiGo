@@ -68,6 +68,21 @@ func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, con
 	metadata := map[string]any{}
 	if replyTo != 0 {
 		metadata["reply_to"] = strconv.FormatInt(replyTo, 10)
+		// 引用预览在发送时固化，对齐 Python ReplyComponent 携带目标正文与发送者
+		if source, ok := runtime.FindSourceMessageByID(strconv.FormatInt(replyTo, 10)); ok {
+			if content := strings.TrimSpace(maisaka.BuildMonitorMessageContent(source)); content != "" {
+				metadata["quote_content"] = content
+			}
+			if sender := monitorSpeakerName(source); sender != "" {
+				metadata["quote_sender"] = sender
+			}
+			if cardname := source.MetadataString("sender_cardname"); cardname != "" {
+				metadata["quote_sender_cardname"] = cardname
+			}
+			if nickname := firstNonEmptyString(source.MetadataString("sender_name"), source.MetadataString("nickname")); nickname != "" {
+				metadata["quote_sender_nickname"] = nickname
+			}
+		}
 	}
 	message := maisaka.ContextMessage{
 		Role:           maisaka.RoleAssistant,

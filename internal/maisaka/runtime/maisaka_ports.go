@@ -99,14 +99,16 @@ func (d *AgentDebouncer) Deadline() (time.Time, bool) {
 // AgentMonitorEmitter 把 maisaka 监控事件转写到 zap 与既有监控出口
 type AgentMonitorEmitter struct {
 	LogPrefix string
+	// FindSource 按消息编号回查会话历史，供引用预览补齐发送者与原文
+	FindSource func(string) (maisaka.ContextMessage, bool)
 }
 
 // NewAgentMonitorEmitter 创建监控端口
-func NewAgentMonitorEmitter(prefix string) *AgentMonitorEmitter {
+func NewAgentMonitorEmitter(prefix string, findSource func(string) (maisaka.ContextMessage, bool)) *AgentMonitorEmitter {
 	if strings.TrimSpace(prefix) == "" {
 		prefix = "maisaka"
 	}
-	return &AgentMonitorEmitter{LogPrefix: prefix}
+	return &AgentMonitorEmitter{LogPrefix: prefix, FindSource: findSource}
 }
 
 // SessionStart 会话开始，对齐 emit_session_start 的载荷
@@ -118,7 +120,7 @@ func (e *AgentMonitorEmitter) SessionStart(runID, sessionID, sessionName string,
 func (e *AgentMonitorEmitter) MessageIngested(sessionID string, message maisaka.ContextMessage) {
 	monitor.EmitMessage(monitor.EventMessageIngested, sessionID,
 		monitorSpeakerName(message), maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true))
+		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource))
 }
 
 // MessageSent 消息发送，对齐 emit_message_sent 的载荷
@@ -126,14 +128,14 @@ func (e *AgentMonitorEmitter) MessageSent(sessionID, speakerName, sourceKind str
 	monitor.EmitMessage(monitor.EventMessageSent, sessionID,
 		firstNonEmptyString(speakerName, monitorSpeakerName(message)),
 		maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), sourceKind, monitorMessageExtra(message, false))
+		monitorMessageTimestamp(message), sourceKind, monitorMessageExtra(message, false, e.FindSource))
 }
 
 // MessageUpdated 消息更新，对齐 emit_message_updated 的载荷
 func (e *AgentMonitorEmitter) MessageUpdated(sessionID string, refreshKey [2]string, message maisaka.ContextMessage) {
 	monitor.EmitMessage(monitor.EventMessageUpdated, sessionID,
 		monitorSpeakerName(message), maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true))
+		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource))
 }
 
 // monitorSpeakerName 对齐 Python user_cardname or user_nickname or user_id
@@ -155,7 +157,7 @@ func monitorMessageTimestamp(message maisaka.ContextMessage) float64 {
 }
 
 // monitorMessageExtra 构造消息事件的平台与引用附加字段
-func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool) map[string]any {
+func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool, findSource func(string) (maisaka.ContextMessage, bool)) map[string]any {
 	extra := map[string]any{
 		"platform": message.Platform,
 		"user_id":  message.UserID,
@@ -166,7 +168,7 @@ func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool) ma
 	if media := monitorMessageMedia(message); len(media) > 0 {
 		extra["media"] = media
 	}
-	if preview := monitorMessageReplyPreview(message); preview != nil {
+	if preview := monitorMessageReplyPreview(message, findSource); preview != nil {
 		extra["reply_to"] = preview
 	}
 	return extra
@@ -190,14 +192,22 @@ func monitorMessageMedia(message maisaka.ContextMessage) []map[string]any {
 	return media
 }
 
-// monitorMessageReplyPreview 构造回复引用预览
-func monitorMessageReplyPreview(message maisaka.ContextMessage) map[string]any {
+// monitorMessageReplyPreview 构造回复引用预览，缺正文时回查会话历史
+func monitorMessageReplyPreview(message maisaka.ContextMessage, findSource func(string) (maisaka.ContextMessage, bool)) map[string]any {
 	target := map[string]any{
 		"reply_to":              message.MetadataString("reply_to"),
 		"reply_preview":         message.MetadataString("quote_content"),
 		"reply_sender":          message.MetadataString("quote_sender"),
 		"reply_sender_cardname": message.MetadataString("quote_sender_cardname"),
 		"reply_sender_nickname": message.MetadataString("quote_sender_nickname"),
+	}
+	if strings.TrimSpace(message.MetadataString("quote_content")) == "" && findSource != nil {
+		if replyTo := strings.TrimSpace(message.MetadataString("reply_to")); replyTo != "" {
+			if source, ok := findSource(replyTo); ok {
+				target["reply_preview"] = maisaka.BuildMonitorMessageContent(source)
+				target["reply_sender"] = monitorSpeakerName(source)
+			}
+		}
 	}
 	return monitor.BuildMonitorReplyPreview(target, nil, nil)
 }
@@ -958,7 +968,13 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			}
 			return out
 		},
-		Monitor: NewAgentMonitorEmitter(sessionID),
+		Monitor: NewAgentMonitorEmitter(sessionID, func(messageID string) (maisaka.ContextMessage, bool) {
+			runtime := session.MaisakaRuntime()
+			if runtime == nil {
+				return maisaka.ContextMessage{}, false
+			}
+			return runtime.FindSourceMessageByID(messageID)
+		}),
 		Learners: &AgentLearnerPort{
 			Trigger: a.triggerTrimmedHistoryLearning,
 		},

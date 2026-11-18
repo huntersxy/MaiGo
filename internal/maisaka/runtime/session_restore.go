@@ -434,6 +434,7 @@ func (a *Agent) conversationMessageFromLog(log memory.MessageLog) *onebot.Conver
 		return nil
 	}
 	a.noteConversationPlatform(msg)
+	a.rememberExternalIdentities(msg)
 	if log.ReplyTo == nil {
 		return msg
 	}
