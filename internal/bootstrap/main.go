@@ -1534,28 +1534,26 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			if err := pluginruntime.RegisterOfficialNativeAdapterPlaceholders(pluginruntime.ResolveInstanceRoot(), pluginSpawnCfg.ProjectRoot); err != nil {
 				zap.L().Error("登记原生适配器失败", zap.Error(err))
 			} else {
-				for _, pluginID := range []string{
-					"maibot-team.snowluma-adapter",
-					"maibot-team.telegram-adapter",
-					"maibot-team.weixin-clawbot-adapter",
-					"Mai-with-u.qq-adapter",
-				} {
-					pluginHost.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
-				}
-				pluginHost.EnsureNativeMessageGateways()
-				pluginHost.EnsureSnowlumaLocalAPIs()
-				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.snowluma-adapter"); err != nil {
-					zap.L().Warn("snowluma 原生适配器冷启失败", zap.Error(err))
-				}
-				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.telegram-adapter"); err != nil {
-					zap.L().Warn("telegram 原生适配器冷启失败", zap.Error(err))
-				}
-				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.weixin-clawbot-adapter"); err != nil {
-					zap.L().Warn("weixin 原生适配器冷启失败", zap.Error(err))
-				}
-				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "Mai-with-u.qq-adapter"); err != nil {
-					zap.L().Warn("qq official 原生适配器冷启失败", zap.Error(err))
-				}
+pluginHost.EnsureNativeMessageGateways()
+					pluginHost.EnsureSnowlumaLocalAPIs()
+					for _, pluginID := range []string{
+						"maibot-team.snowluma-adapter",
+						"maibot-team.telegram-adapter",
+						"maibot-team.weixin-clawbot-adapter",
+						"Mai-with-u.qq-adapter",
+					} {
+						pluginHost.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+						if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), pluginID); err != nil {
+							zap.L().Warn("原生适配器冷启失败", zap.String("plugin_id", pluginID), zap.Error(err))
+							pluginHost.RememberNativeLoadStatus(pluginID, "failed")
+							continue
+						}
+						if platformio.DefaultNativeRuntime().IsStarted(pluginID) {
+							pluginHost.RememberNativeLoadStatus(pluginID, "success")
+						} else {
+							pluginHost.RememberNativeLoadStatus(pluginID, "inactive")
+						}
+					}
 			}
 
 			// 对齐 Python integration.py:904-908 的 plugin_runtime.sync_dependencies 阶段：

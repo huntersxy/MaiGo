@@ -60,10 +60,11 @@ func (h *Host) NativeTeardown(ctx context.Context, pluginID string) error {
 	if h.components != nil {
 		h.components.RemoveComponentsByPlugin(pluginID)
 	}
-	platformio.DefaultNativeRuntime().StopRuntime(pluginID)
-	h.ClearNativeInProcessReason(pluginID)
-	return firstErr
-}
+platformio.DefaultNativeRuntime().StopRuntime(pluginID)
+		h.ClearNativeInProcessReason(pluginID)
+		h.rememberNativeLoadStatus(pluginID, "inactive")
+		return firstErr
+	}
 
 // RegisterNativeGatewayDriver 注册原生 Adapter：storeMessageGatewayState + 端口 Bind 路由
 func (h *Host) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatewayDriverSpec) error {

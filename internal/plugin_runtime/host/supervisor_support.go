@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_runtime/protocol"
 )
 
@@ -301,47 +302,105 @@ func (h *Host) pluginLoadStatusesLocked() map[string]string {
 			}
 		}
 	}
-	// 热加载/卸载结果覆盖启动快照；配置错误仍在下面统一置为 failed
-	for pluginID, status := range h.runtimeLoadStatuses {
-		if status != "" {
-			out[pluginID] = status
-		}
-	}
-	for pluginID, rec := range h.plugins {
-		if rec.ConfigError != "" {
-			out[pluginID] = "failed"
-		}
-	}
-	return out
-}
-
-// PluginLoadFailureReasons 返回装载失败原因
-func (h *Host) PluginLoadFailureReasons() map[string]string {
-	if h == nil {
-		return nil
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	out := make(map[string]string, len(h.plugins))
-	for _, result := range h.startupLoadResult {
-		for pluginID, reason := range result.FailedPluginReasons {
-			if strings.TrimSpace(pluginID) != "" && strings.TrimSpace(reason) != "" {
-				out[pluginID] = reason
+// 热加载/卸载结果覆盖启动快照；配置错误仍在下面统一置为 failed
+		for pluginID, status := range h.runtimeLoadStatuses {
+			if status != "" {
+				out[pluginID] = status
 			}
 		}
+		for pluginID, rec := range h.plugins {
+			if rec.ConfigError != "" {
+				out[pluginID] = "failed"
+			}
+		}
+		// Runner 把进程内承接记成 failed；WebUI 需伪装成普通已加载/未激活插件
+		h.applyNativeUIDisguiseLocked(out)
+		return out
 	}
-	for pluginID, rec := range h.plugins {
-		if rec.ConfigError != "" {
-			out[pluginID] = rec.ConfigError
+
+	// applyNativeUIDisguiseLocked 将 nativeInProcessReasons 中的插件从 Runner failed 改写为 success/inactive
+	// Python Runner 阻断仍由 blockedReasons / MAIBOT_BLOCKED_PLUGIN_REASONS 负责，此处只影响 WebUI 状态
+	func (h *Host) applyNativeUIDisguiseLocked(statuses map[string]string) {
+		if len(h.nativeInProcessReasons) == 0 {
+			return
+		}
+		for pluginID := range h.nativeInProcessReasons {
+			if rec, ok := h.plugins[pluginID]; ok && strings.TrimSpace(rec.ConfigError) != "" {
+				statuses[pluginID] = "failed"
+				continue
+			}
+			if status, ok := h.runtimeLoadStatuses[pluginID]; ok && status != "" {
+				statuses[pluginID] = status
+				continue
+			}
+			if platformio.DefaultNativeRuntime().IsStarted(pluginID) {
+				statuses[pluginID] = "success"
+				continue
+			}
+			statuses[pluginID] = "inactive"
 		}
 	}
-	for pluginID, status := range h.pluginLoadStatusesLocked() {
-		if status == "timed_out" {
-			out[pluginID] = h.startupLoadReasonLocked()
-		}
+
+	// RememberNativeLoadStatus 记录原生适配器启停结果，供 /plugins/installed 立即反映
+	func (h *Host) RememberNativeLoadStatus(pluginID, status string) {
+		h.rememberNativeLoadStatus(pluginID, status)
 	}
-	return out
-}
+
+	func (h *Host) rememberNativeLoadStatus(pluginID, status string) {
+		if h == nil {
+			return
+		}
+		pluginID = strings.TrimSpace(pluginID)
+		status = strings.TrimSpace(status)
+		if pluginID == "" || status == "" {
+			return
+		}
+		h.mu.Lock()
+		if h.runtimeLoadStatuses == nil {
+			h.runtimeLoadStatuses = make(map[string]string)
+		}
+		h.runtimeLoadStatuses[pluginID] = status
+		h.mu.Unlock()
+		h.notifyStatusChanges()
+	}
+
+	// PluginLoadFailureReasons 返回装载失败原因
+	func (h *Host) PluginLoadFailureReasons() map[string]string {
+		if h == nil {
+			return nil
+		}
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		out := make(map[string]string, len(h.plugins))
+		for _, result := range h.startupLoadResult {
+			for pluginID, reason := range result.FailedPluginReasons {
+				if strings.TrimSpace(pluginID) != "" && strings.TrimSpace(reason) != "" {
+					out[pluginID] = reason
+				}
+			}
+		}
+		for pluginID, rec := range h.plugins {
+			if rec.ConfigError != "" {
+				out[pluginID] = rec.ConfigError
+			}
+		}
+		for pluginID, status := range h.pluginLoadStatusesLocked() {
+			if status == "timed_out" {
+				out[pluginID] = h.startupLoadReasonLocked()
+			}
+		}
+		// 去掉「已由进程内 Go 适配器承接」等阻断文案，避免前端当成加载失败
+		for pluginID := range h.nativeInProcessReasons {
+			if rec, ok := h.plugins[pluginID]; ok && strings.TrimSpace(rec.ConfigError) != "" {
+				continue
+			}
+			if status, ok := h.runtimeLoadStatuses[pluginID]; ok && status == "failed" {
+				continue
+			}
+			delete(out, pluginID)
+		}
+		return out
+	}
 
 // StartupLoadStatus 为尚未进入注册表的插件提供本组启动状态
 func (h *Host) StartupLoadStatus() string {

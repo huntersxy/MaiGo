@@ -159,18 +159,21 @@ func (h *Host) BringAdaptersOnline(ctx context.Context) (AdapterTransitionResult
 				failed[pluginID] = err.Error()
 				continue
 			}
-			if !enabled {
+if !enabled {
+					h.rememberNativeLoadStatus(pluginID, "inactive")
+					clearOfflineAdapterID(pluginID)
+					continue
+				}
+				if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
+					h.rememberNativeLoadStatus(pluginID, "failed")
+					failed[pluginID] = err.Error()
+					continue
+				}
+				h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+				h.rememberNativeLoadStatus(pluginID, "success")
+				changed = append(changed, pluginID)
 				clearOfflineAdapterID(pluginID)
 				continue
-			}
-			if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
-				failed[pluginID] = err.Error()
-				continue
-			}
-			h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
-			changed = append(changed, pluginID)
-			clearOfflineAdapterID(pluginID)
-			continue
 		}
 		pythonPending = append(pythonPending, pluginID)
 	}

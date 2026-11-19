@@ -137,38 +137,43 @@ func (h *Host) applyNativePluginConfig(ctx context.Context, pluginID string) (st
 		h.forgetAppliedConfig(pluginID)
 		return "config_error", nil
 	}
-	started := platformio.DefaultNativeRuntime().IsStarted(pluginID)
-	if h.appliedConfigMatches(pluginID, snapshot.NormalizedConfig) && started == snapshot.Enabled {
-		if started {
-			return "success", nil
+started := platformio.DefaultNativeRuntime().IsStarted(pluginID)
+		if h.appliedConfigMatches(pluginID, snapshot.NormalizedConfig) && started == snapshot.Enabled {
+			if started {
+				h.rememberNativeLoadStatus(pluginID, "success")
+				return "success", nil
+			}
+			h.rememberNativeLoadStatus(pluginID, "inactive")
+			return "inactive", nil
 		}
-		return "inactive", nil
-	}
-	h.setPluginTransition(pluginID, snapshot.Enabled)
-	defer h.clearPluginTransition(pluginID)
-	if !snapshot.Enabled {
+		h.setPluginTransition(pluginID, snapshot.Enabled)
+		defer h.clearPluginTransition(pluginID)
+		if !snapshot.Enabled {
+			if started {
+				if err := h.NativeTeardown(ctx, pluginID); err != nil {
+					return "", fmt.Errorf("原生适配器卸载失败: %w", err)
+				}
+				h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
+			}
+			h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
+			h.rememberNativeLoadStatus(pluginID, "inactive")
+			return "inactive", nil
+		}
 		if started {
 			if err := h.NativeTeardown(ctx, pluginID); err != nil {
-				return "", fmt.Errorf("原生适配器卸载失败: %w", err)
+				return "", fmt.Errorf("原生适配器重启前卸载失败: %w", err)
 			}
-			h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
 		}
+		if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
+			h.rememberNativeLoadStatus(pluginID, "failed")
+			return "", fmt.Errorf("原生适配器启动失败: %w", err)
+		}
+		h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+		h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
 		h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
-		return "inactive", nil
+		h.rememberNativeLoadStatus(pluginID, "success")
+		return "success", nil
 	}
-	if started {
-		if err := h.NativeTeardown(ctx, pluginID); err != nil {
-			return "", fmt.Errorf("原生适配器重启前卸载失败: %w", err)
-		}
-	}
-	if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
-		return "", fmt.Errorf("原生适配器启动失败: %w", err)
-	}
-	h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
-	h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
-	h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
-	return "success", nil
-}
 
 // appliedConfigMatches 判断配置是否与上次应用的一致
 func (h *Host) appliedConfigMatches(pluginID string, config map[string]any) bool {
