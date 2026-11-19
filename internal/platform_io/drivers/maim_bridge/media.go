@@ -370,6 +370,9 @@ func mediaStringValue(value any) string {
 		return strings.TrimSpace(typed)
 	case fmt.Stringer:
 		return strings.TrimSpace(typed.String())
+	case map[string]any:
+		// 旧适配器把文本包成 {"text": ...}；其余键是结构化载荷，不能当正文
+		return strings.TrimSpace(mediaStringValue(typed["text"]))
 	default:
 		return strings.TrimSpace(fmt.Sprint(typed))
 	}

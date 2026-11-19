@@ -132,16 +132,13 @@ func BuildMonitorReplyPreview(target map[string]any, findSourceMessage func(stri
 	if target == nil {
 		return nil
 	}
-	replyToID := strings.TrimSpace(fmt.Sprint(target["reply_to"]))
-	if replyToID == "" || replyToID == "<nil>" {
+	replyToID := monitorContentText(target["reply_to"])
+	if replyToID == "" {
 		return nil
 	}
 	preview := map[string]any{"message_id": replyToID}
 	senderName := firstMonitorText(target["reply_sender"], target["reply_sender_cardname"], target["reply_sender_nickname"])
-	content := strings.TrimSpace(fmt.Sprint(target["reply_preview"]))
-	if content == "<nil>" {
-		content = ""
-	}
+	content := monitorContentText(target["reply_preview"])
 	if content == "" && replyToID != "" && findSourceMessage != nil {
 		if source := findSourceMessage(replyToID); source != nil {
 			if buildSourceContent != nil {
@@ -168,10 +165,26 @@ func firstMonitorText(values ...any) string {
 		if value == nil {
 			continue
 		}
-		text := strings.TrimSpace(fmt.Sprint(value))
-		if text != "" && text != "<nil>" {
+		text := monitorContentText(value)
+		if text != "" {
 			return text
 		}
 	}
 	return ""
+}
+
+// monitorContentText 只接受真正的文本载体；结构化载荷不能格式化成正文
+func monitorContentText(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	case map[string]any:
+		return monitorContentText(typed["text"])
+	default:
+		return ""
+	}
 }
