@@ -23,40 +23,44 @@ func RegisterOfficialNativeAdapterPlaceholders(instanceRoot, projectRoot string)
 	builtinRoot := func(dir string) string {
 		return filepath.Join(instanceRoot, "config", "builtin_plugins", dir)
 	}
-	regs := []platformio.NativeRegistration{
-		{
-			PluginID:      snowluma.PluginID,
-			DirectoryName: snowluma.DirectoryName,
-			ConfigRoot:    filepath.Join(thirdParty, snowluma.DirectoryName),
-			GatewayNames:  []string{snowluma.GatewayName},
-			DefaultConfig: snowluma.DefaultConfigMap(),
-			Factory:       snowluma.NewFactoryStandalone(),
-		},
-		{
-			PluginID:      telegram.PluginID,
-			DirectoryName: telegram.DirectoryName,
-			ConfigRoot:    builtinRoot(telegram.DirectoryName),
-			GatewayNames:  []string{telegram.GatewayName},
-			DefaultConfig: telegram.DefaultConfigMap(),
-			Factory:       telegram.NewFactoryStandalone(),
-		},
-		{
-			PluginID:      weixin_clawbot.PluginID,
-			DirectoryName: weixin_clawbot.DirectoryName,
-			ConfigRoot:    builtinRoot(weixin_clawbot.DirectoryName),
-			GatewayNames:  weixin_clawbot.AllGatewayNames(),
-			DefaultConfig: weixin_clawbot.DefaultConfigMap(),
-			Factory:       weixin_clawbot.NewFactoryStandalone(),
-		},
-		{
-			PluginID:      qq_official.PluginID,
-			DirectoryName: qq_official.DirectoryName,
-			ConfigRoot:    builtinRoot(qq_official.DirectoryName),
-			GatewayNames:  []string{qq_official.GatewayName},
-			DefaultConfig: qq_official.DefaultConfigMap(),
-			Factory:       qq_official.NewFactoryStandalone(),
-		},
-	}
+regs := []platformio.NativeRegistration{
+			{
+				PluginID:      snowluma.PluginID,
+				DirectoryName: snowluma.DirectoryName,
+				ConfigRoot:    filepath.Join(thirdParty, snowluma.DirectoryName),
+				GatewayNames:  []string{snowluma.GatewayName},
+				DefaultConfig: snowluma.DefaultConfigMap(),
+				ConfigSchema:  snowluma.ConfigSchemaMap(),
+				Factory:       snowluma.NewFactoryStandalone(),
+			},
+			{
+				PluginID:      telegram.PluginID,
+				DirectoryName: telegram.DirectoryName,
+				ConfigRoot:    builtinRoot(telegram.DirectoryName),
+				GatewayNames:  []string{telegram.GatewayName},
+				DefaultConfig: telegram.DefaultConfigMap(),
+				ConfigSchema:  telegram.ConfigSchemaMap(),
+				Factory:       telegram.NewFactoryStandalone(),
+			},
+			{
+				PluginID:      weixin_clawbot.PluginID,
+				DirectoryName: weixin_clawbot.DirectoryName,
+				ConfigRoot:    builtinRoot(weixin_clawbot.DirectoryName),
+				GatewayNames:  weixin_clawbot.AllGatewayNames(),
+				DefaultConfig: weixin_clawbot.DefaultConfigMap(),
+				ConfigSchema:  weixin_clawbot.ConfigSchemaMap(),
+				Factory:       weixin_clawbot.NewFactoryStandalone(),
+			},
+			{
+				PluginID:      qq_official.PluginID,
+				DirectoryName: qq_official.DirectoryName,
+				ConfigRoot:    builtinRoot(qq_official.DirectoryName),
+				GatewayNames:  []string{qq_official.GatewayName},
+				DefaultConfig: qq_official.DefaultConfigMap(),
+				ConfigSchema:  qq_official.ConfigSchemaMap(),
+				Factory:       qq_official.NewFactoryStandalone(),
+			},
+		}
 	for _, reg := range regs {
 		if err := platformio.DefaultNativeRuntime().Register(reg); err != nil {
 			return err

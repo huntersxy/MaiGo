@@ -64,29 +64,37 @@ func DefaultSettings() Settings {
 			Enabled:       false,
 			ConfigVersion: SupportedConfigVersion,
 		},
-		Weixin: WeixinOptions{
-			AllowedUsers: nil,
-			RetrySeconds: DefaultRetrySeconds,
-			MaxImageMB:   DefaultMaxImageMB,
-		},
+Weixin: WeixinOptions{
+				AllowedUsers: []string{},
+				RetrySeconds: DefaultRetrySeconds,
+				MaxImageMB:   DefaultMaxImageMB,
+			},
+		}
 	}
-}
 
-// DefaultConfigMap 供 NativeRegistration / Repair
-func DefaultConfigMap() map[string]any {
-	s := DefaultSettings()
-	return map[string]any{
-		"plugin": map[string]any{
-			"enabled":        s.Plugin.Enabled,
-			"config_version": s.Plugin.ConfigVersion,
-		},
-		"weixin": map[string]any{
-			"allowed_users": s.Weixin.AllowedUsers,
-			"retry_seconds": s.Weixin.RetrySeconds,
-			"max_image_mb":  s.Weixin.MaxImageMB,
-		},
+	// DefaultConfigMap 供 NativeRegistration / Repair
+	func DefaultConfigMap() map[string]any {
+		return SettingsToMap(DefaultSettings())
 	}
-}
+
+	// SettingsToMap 序列化为嵌套 map（Validate / Inspect）
+	func SettingsToMap(s Settings) map[string]any {
+		users := s.Weixin.AllowedUsers
+		if users == nil {
+			users = []string{}
+		}
+		return map[string]any{
+			"plugin": map[string]any{
+				"enabled":        s.Plugin.Enabled,
+				"config_version": s.Plugin.ConfigVersion,
+			},
+			"weixin": map[string]any{
+				"allowed_users": append([]string{}, users...),
+				"retry_seconds": s.Weixin.RetrySeconds,
+				"max_image_mb":  s.Weixin.MaxImageMB,
+			},
+		}
+	}
 
 // ParseSettings 从配置 map 解析
 func ParseSettings(config map[string]any) (Settings, error) {

@@ -246,17 +246,27 @@ func (d Deps) handlePluginConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + err.Error()})
 		return
 	}
-	if err := writePluginConfigText(paths.configPath, string(encoded)); err != nil {
-		writePluginRouteFailure(w, err)
-		return
+if err := writePluginConfigText(paths.configPath, string(encoded)); err != nil {
+			writePluginRouteFailure(w, err)
+			return
+		}
+		runtimeStatus := "stopped"
+		if d.PluginHost != nil {
+			status, syncErr := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID)
+			if syncErr != nil {
+				httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + syncErr.Error()})
+				return
+			}
+			runtimeStatus = status
+		}
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"success":        true,
+			"message":        "配置已保存",
+			"runtime_status": runtimeStatus,
+			"note":           pluginConfigStatusNote(runtimeStatus),
+			"config":         configData,
+		})
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "配置已保存",
-		"note":    "配置更改将自动热更新到对应插件",
-		"config":  configData,
-	})
-}
 
 // handlePluginConfigReset 对齐 POST /plugins/config/{plugin_id}/reset
 func (d Deps) handlePluginConfigReset(w http.ResponseWriter, r *http.Request) {

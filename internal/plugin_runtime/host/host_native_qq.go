@@ -152,3 +152,33 @@ func qqOfficialProtocol(metadata map[string]any) string {
 	}
 	return qq_official.ProtocolOfficial
 }
+
+func (h *Host) ensureQQOfficialQRLogin() *qq_official.QRLogin {
+	if h == nil {
+		return qq_official.NewQRLogin(nil)
+	}
+	h.qqOfficialQRMu.Lock()
+	defer h.qqOfficialQRMu.Unlock()
+	if h.qqOfficialQRLogin != nil {
+		return h.qqOfficialQRLogin
+	}
+	h.qqOfficialQRLogin = qq_official.NewQRLogin(h.applyQQOfficialQRCredentials)
+	return h.qqOfficialQRLogin
+}
+
+func (h *Host) applyQQOfficialQRCredentials(ctx context.Context, appID, secret string) error {
+	if h == nil {
+		return fmt.Errorf("Host 未初始化")
+	}
+	path, err := h.ResolveNativePluginConfigPath(qq_official.PluginID)
+	if err != nil {
+		return err
+	}
+	if err := qq_official.SaveCredentials(path, appID, secret); err != nil {
+		return err
+	}
+	if _, err := h.ApplyPluginConfig(ctx, qq_official.PluginID); err != nil {
+		return err
+	}
+	return nil
+}

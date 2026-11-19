@@ -46,10 +46,35 @@ type AdvancedOptions struct {
 	ReconnectDelaySec float64
 }
 
+// MuteOptions 对齐 [mute]
+type MuteOptions struct {
+	Enabled       bool
+	AllowedGroups []string
+	AdminUsers    []string
+	MinDuration   int
+	MaxDuration   int
+}
+
+// RecallOptions 对齐 [recall]
+type RecallOptions struct {
+	Enabled       bool
+	AllowedGroups []string
+}
+
+// KickOptions 对齐 [kick]
+type KickOptions struct {
+	Enabled       bool
+	AllowedGroups []string
+	AdminUsers    []string
+}
+
 // Settings 完整配置
 type Settings struct {
 	Plugin     PluginOptions
 	QQOfficial QQOfficialOptions
+	Mute       MuteOptions
+	Recall     RecallOptions
+	Kick       KickOptions
 	Filter     FilterOptions
 	Advanced   AdvancedOptions
 }
@@ -62,12 +87,28 @@ func DefaultSettings() Settings {
 			ConfigVersion: SupportedConfigVersion,
 		},
 		QQOfficial: QQOfficialOptions{
-			AppID:               "",
-			AppSecret:           "",
-			APIBaseURL:          DefaultAPIBaseURL,
-			UnifiedAccountID:    "",
-			SilentUserSync:      true,
+			AppID:                "",
+			AppSecret:            "",
+			APIBaseURL:           DefaultAPIBaseURL,
+			UnifiedAccountID:     "",
+			SilentUserSync:       true,
 			SnowlumaIdentityOnly: false,
+		},
+		Mute: MuteOptions{
+			Enabled:       true,
+			AllowedGroups: []string{},
+			AdminUsers:    []string{},
+			MinDuration:   60,
+			MaxDuration:   2592000,
+		},
+		Recall: RecallOptions{
+			Enabled:       true,
+			AllowedGroups: []string{},
+		},
+		Kick: KickOptions{
+			Enabled:       false,
+			AllowedGroups: []string{},
+			AdminUsers:    []string{},
 		},
 		Filter: FilterOptions{
 			IgnoreOtherBots: true,
@@ -81,7 +122,11 @@ func DefaultSettings() Settings {
 
 // DefaultConfigMap 供 NativeRegistration / Repair 落盘
 func DefaultConfigMap() map[string]any {
-	s := DefaultSettings()
+	return SettingsToMap(DefaultSettings())
+}
+
+// SettingsToMap 序列化为嵌套 map（Validate / Inspect）
+func SettingsToMap(s Settings) map[string]any {
 	return map[string]any{
 		"plugin": map[string]any{
 			"enabled":        s.Plugin.Enabled,
@@ -96,20 +141,20 @@ func DefaultConfigMap() map[string]any {
 			"snowluma_identity_only": s.QQOfficial.SnowlumaIdentityOnly,
 		},
 		"mute": map[string]any{
-			"enabled":       true,
-			"allowed_groups": []any{},
-			"admin_users":    []any{},
-			"min_duration":   60,
-			"max_duration":   2592000,
+			"enabled":        s.Mute.Enabled,
+			"allowed_groups": append([]string{}, s.Mute.AllowedGroups...),
+			"admin_users":    append([]string{}, s.Mute.AdminUsers...),
+			"min_duration":   s.Mute.MinDuration,
+			"max_duration":   s.Mute.MaxDuration,
 		},
 		"recall": map[string]any{
-			"enabled":        true,
-			"allowed_groups": []any{},
+			"enabled":        s.Recall.Enabled,
+			"allowed_groups": append([]string{}, s.Recall.AllowedGroups...),
 		},
 		"kick": map[string]any{
-			"enabled":        false,
-			"allowed_groups": []any{},
-			"admin_users":    []any{},
+			"enabled":        s.Kick.Enabled,
+			"allowed_groups": append([]string{}, s.Kick.AllowedGroups...),
+			"admin_users":    append([]string{}, s.Kick.AdminUsers...),
 		},
 		"filter": map[string]any{
 			"ignore_other_bots": s.Filter.IgnoreOtherBots,
@@ -154,19 +199,45 @@ func ParseSettings(config map[string]any) (Settings, error) {
 			settings.Filter.IgnoreOtherBots = asBool(v)
 		}
 	}
-	if adv, ok := asMap(config["advanced"]); ok {
-		if v, ok := adv["show_debug_info"]; ok {
-			settings.Advanced.ShowDebugInfo = asBool(v)
+if adv, ok := asMap(config["advanced"]); ok {
+			if v, ok := adv["show_debug_info"]; ok {
+				settings.Advanced.ShowDebugInfo = asBool(v)
+			}
+			if f, ok := asFloat(adv["reconnect_delay_sec"]); ok {
+				settings.Advanced.ReconnectDelaySec = clampFloat(f, 1, 300, DefaultReconnectSec)
+			}
 		}
-		if f, ok := asFloat(adv["reconnect_delay_sec"]); ok {
-			settings.Advanced.ReconnectDelaySec = clampFloat(f, 1, 300, DefaultReconnectSec)
+		if mute, ok := asMap(config["mute"]); ok {
+			if v, ok := mute["enabled"]; ok {
+				settings.Mute.Enabled = asBool(v)
+			}
+			settings.Mute.AllowedGroups = asStringSlice(mute["allowed_groups"])
+			settings.Mute.AdminUsers = asStringSlice(mute["admin_users"])
+			if n, ok := asInt(mute["min_duration"]); ok {
+				settings.Mute.MinDuration = clampInt(n, 1, 2592000, 60)
+			}
+			if n, ok := asInt(mute["max_duration"]); ok {
+				settings.Mute.MaxDuration = clampInt(n, 1, 2592000, 2592000)
+			}
 		}
+		if recall, ok := asMap(config["recall"]); ok {
+			if v, ok := recall["enabled"]; ok {
+				settings.Recall.Enabled = asBool(v)
+			}
+			settings.Recall.AllowedGroups = asStringSlice(recall["allowed_groups"])
+		}
+		if kick, ok := asMap(config["kick"]); ok {
+			if v, ok := kick["enabled"]; ok {
+				settings.Kick.Enabled = asBool(v)
+			}
+			settings.Kick.AllowedGroups = asStringSlice(kick["allowed_groups"])
+			settings.Kick.AdminUsers = asStringSlice(kick["admin_users"])
+		}
+		if settings.Plugin.ConfigVersion == "" {
+			settings.Plugin.ConfigVersion = SupportedConfigVersion
+		}
+		return settings, nil
 	}
-	if settings.Plugin.ConfigVersion == "" {
-		settings.Plugin.ConfigVersion = SupportedConfigVersion
-	}
-	return settings, nil
-}
 
 func asMap(v any) (map[string]any, bool) {
 	m, ok := v.(map[string]any)
@@ -212,24 +283,54 @@ func asBool(v any) bool {
 }
 
 func asFloat(v any) (float64, bool) {
-	switch typed := v.(type) {
-	case float64:
-		return typed, true
-	case float32:
-		return float64(typed), true
-	case int:
-		return float64(typed), true
-	case int64:
-		return float64(typed), true
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		return f, err == nil
-	default:
-		return 0, false
+		switch typed := v.(type) {
+		case float64:
+			return typed, true
+		case float32:
+			return float64(typed), true
+		case int:
+			return float64(typed), true
+		case int64:
+			return float64(typed), true
+		case string:
+			f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+			return f, err == nil
+		default:
+			return 0, false
+		}
 	}
-}
 
-func clampFloat(v, lo, hi, def float64) float64 {
+func asStringSlice(v any) []string {
+		switch typed := v.(type) {
+		case []string:
+			out := make([]string, 0, len(typed))
+			for _, item := range typed {
+				if s := strings.TrimSpace(item); s != "" {
+					out = append(out, s)
+				}
+			}
+			return out
+		case []any:
+			out := make([]string, 0, len(typed))
+			for _, item := range typed {
+				if s := strings.TrimSpace(asString(item)); s != "" {
+					out = append(out, s)
+				}
+			}
+			return out
+		default:
+			return []string{}
+		}
+	}
+
+	func clampInt(v, lo, hi, def int) int {
+		if v < lo || v > hi {
+			return def
+		}
+		return v
+	}
+
+	func clampFloat(v, lo, hi, def float64) float64 {
 	if v < lo || v > hi {
 		return def
 	}

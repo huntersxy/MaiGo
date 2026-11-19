@@ -150,6 +150,21 @@ func (r *NativeRuntime) IsStarted(pluginID string) bool {
 	return state != nil && state.Started
 }
 
+// StartedAdapter 返回已启动的主 Adapter（空槽位）
+func (r *NativeRuntime) StartedAdapter(pluginID string) (Adapter, bool) {
+	if r == nil {
+		return nil, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	state := r.states[strings.TrimSpace(pluginID)]
+	if state == nil || !state.Started || state.Adapters == nil {
+		return nil, false
+	}
+	adapter, ok := state.Adapters[""]
+	return adapter, ok && adapter != nil
+}
+
 // StartRuntime 构造 Adapter 并记入运行态；调用方负责 RegisterNativeGatewayDriver / 拨号
 func (r *NativeRuntime) StartRuntime(ctx context.Context, pluginID string, config map[string]any) (Adapter, error) {
 	if r == nil {

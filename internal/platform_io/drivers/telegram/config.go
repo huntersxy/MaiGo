@@ -65,7 +65,11 @@ func DefaultSettings() Settings {
 
 // DefaultConfigMap 供 NativeRegistration / Repair 落盘
 func DefaultConfigMap() map[string]any {
-	s := DefaultSettings()
+	return SettingsToMap(DefaultSettings())
+}
+
+// SettingsToMap 序列化为嵌套 map（Validate / Inspect）
+func SettingsToMap(s Settings) map[string]any {
 	return map[string]any{
 		"plugin": map[string]any{
 			"enabled":        s.Plugin.Enabled,

@@ -8,6 +8,10 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"MaiGo/internal/platform_io/drivers/qq_official"
+	"MaiGo/internal/platform_io/drivers/snowluma"
+	"MaiGo/internal/platform_io/drivers/telegram"
+	"MaiGo/internal/platform_io/drivers/weixin_clawbot"
 	"MaiGo/internal/plugin_runtime/protocol"
 )
 
@@ -190,8 +194,12 @@ func (h *Host) NotifyPluginConfigUpdated(ctx context.Context, pluginID string, c
 	return payloadBool(resp.Payload, "acknowledged", false), nil
 }
 
-// ValidatePluginConfig 请求 Runner 使用插件自身配置模型校验配置
+// ValidatePluginConfig 请求 Runner 使用插件自身配置模型校验配置；原生适配器本地规范化
 func (h *Host) ValidatePluginConfig(ctx context.Context, pluginID string, configData map[string]any) (map[string]any, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if IsNativeAdapter(pluginID) {
+		return validateNativePluginConfig(pluginID, configData)
+	}
 	rpc := h.activeRPCServer()
 	if rpc == nil {
 		return nil, fmt.Errorf("Runner 未连接")
@@ -199,7 +207,7 @@ func (h *Host) ValidatePluginConfig(ctx context.Context, pluginID string, config
 	if configData == nil {
 		configData = map[string]any{}
 	}
-	resp, err := rpc.SendRequest(ctx, protocol.MethodPluginValidateConfig, strings.TrimSpace(pluginID), map[string]any{
+	resp, err := rpc.SendRequest(ctx, protocol.MethodPluginValidateConfig, pluginID, map[string]any{
 		"config_data": configData,
 	}, 10000)
 	if err != nil {
@@ -218,8 +226,46 @@ func (h *Host) ValidatePluginConfig(ctx context.Context, pluginID string, config
 	return normalized, nil
 }
 
+func validateNativePluginConfig(pluginID string, configData map[string]any) (map[string]any, error) {
+	if configData == nil {
+		configData = map[string]any{}
+	}
+	switch pluginID {
+	case snowluma.PluginID:
+		settings, err := snowluma.ParseSettings(configData)
+		if err != nil {
+			return nil, err
+		}
+		return snowluma.SettingsToMap(settings), nil
+	case telegram.PluginID:
+		settings, err := telegram.ParseSettings(configData)
+		if err != nil {
+			return nil, err
+		}
+		return telegram.SettingsToMap(settings), nil
+	case weixin_clawbot.PluginID:
+		settings, err := weixin_clawbot.ParseSettings(configData)
+		if err != nil {
+			return nil, err
+		}
+		return weixin_clawbot.SettingsToMap(settings), nil
+	case qq_official.PluginID:
+		settings, err := qq_official.ParseSettings(configData)
+		if err != nil {
+			return nil, err
+		}
+		return qq_official.SettingsToMap(settings), nil
+	default:
+		return nil, fmt.Errorf("未登记的原生适配器: %s", pluginID)
+	}
+}
+
 // ConfigWidgets 读取配置页控件或执行声明的按钮，不写入配置
 func (h *Host) ConfigWidgets(ctx context.Context, pluginID, actionID string) (map[string]any, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if IsNativeAdapter(pluginID) {
+		return h.nativeConfigWidgets(ctx, pluginID, actionID)
+	}
 	rpc := h.activeRPCServer()
 	if rpc == nil {
 		return nil, fmt.Errorf("Runner 未连接")
@@ -228,7 +274,7 @@ func (h *Host) ConfigWidgets(ctx context.Context, pluginID, actionID string) (ma
 	if strings.TrimSpace(actionID) != "" {
 		payload["action_id"] = strings.TrimSpace(actionID)
 	}
-	resp, err := rpc.SendRequest(ctx, methodPluginConfigWidgets, strings.TrimSpace(pluginID), payload, 10000)
+	resp, err := rpc.SendRequest(ctx, methodPluginConfigWidgets, pluginID, payload, 10000)
 	if err != nil {
 		return nil, err
 	}
