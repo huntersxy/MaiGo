@@ -4,7 +4,7 @@ import (
 	"MaiGo/internal/platform_io"
 )
 
-// EncodeOutboundSegments 将出站封装转为 OneBot message 段列表（P0 最小实现）
+// EncodeOutboundSegments 将出站封装转为 OneBot message 段列表
 func EncodeOutboundSegments(outbound platformio.OutboundMessageEnvelope, profile ClientProfile) []map[string]any {
 	_ = profile
 	segments := make([]map[string]any, 0, len(outbound.Segments)+1)
@@ -17,6 +17,16 @@ func EncodeOutboundSegments(outbound platformio.OutboundMessageEnvelope, profile
 			segments = append(segments, map[string]any{
 				"type": "text",
 				"data": map[string]any{"text": segment.Text},
+			})
+		case platformio.SegmentReply:
+			// 引用走独立段；缺 id 时整段丢弃，不能退化成正文文本
+			id := firstNonEmpty(segmentExtra(segment, "id"), segment.Text)
+			if id == "" {
+				continue
+			}
+			segments = append(segments, map[string]any{
+				"type": "reply",
+				"data": map[string]any{"id": id},
 			})
 		case platformio.SegmentAt:
 			qq := segment.AtUserID
