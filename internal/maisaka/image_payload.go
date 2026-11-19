@@ -3,14 +3,33 @@ package maisaka
 import (
 	"encoding/base64"
 	"net/http"
+	"os"
 	"strings"
 )
 
-// ImageComponentPayload 解析图片组件的可发送内容；URL、哈希等无法内联的引用返回 false
+// DeferredMediaMarkerPrefix 惰性图片占位前缀，与 runtime deferred-media 主链路一致
+const DeferredMediaMarkerPrefix = "deferred-media:"
+
+// ImageComponentPayload 解析图片组件的可发送内容；deferred-media 路径在此读盘编码，URL/哈希等无法内联的引用返回 false
 func ImageComponentPayload(component ImageComponent) (string, string, bool) {
 	ref := strings.TrimSpace(component.MediaRef)
 	if ref == "" {
 		return "", "", false
+	}
+	if strings.HasPrefix(ref, DeferredMediaMarkerPrefix) {
+		path := strings.TrimPrefix(ref, DeferredMediaMarkerPrefix)
+		raw, err := os.ReadFile(path)
+		if err != nil || len(raw) == 0 || len(raw) > 12<<20 {
+			return "", "", false
+		}
+		mime := normalizeImageMIME(strings.TrimSpace(component.Format))
+		if !strings.HasPrefix(mime, "image/") {
+			mime = strings.TrimSpace(http.DetectContentType(raw))
+		}
+		if !strings.HasPrefix(mime, "image/") {
+			mime = "image/png"
+		}
+		return base64.StdEncoding.EncodeToString(raw), mime, true
 	}
 	mimeHint := ""
 	if strings.HasPrefix(ref, "data:") {

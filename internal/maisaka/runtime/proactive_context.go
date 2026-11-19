@@ -60,7 +60,8 @@ func (a *Agent) restoreProactiveContextMessages(ctx context.Context, kind string
 		}
 		// 回填消息保留图片，避免模型在主动回合看不到历史图片
 		appendMediaImageBlocks(payload, log.MediaRefs)
-		converted, ok := agenticMessageToMaisaka(payload)
+		resolved := resolveDeferredMediaBlocks([]*schema.AgenticMessage{payload})
+		converted, ok := agenticMessageToMaisaka(resolved[0])
 		if !ok {
 			continue
 		}
@@ -92,7 +93,7 @@ func (a *Agent) listRecentMessagesByScope(ctx context.Context, kind string, targ
 	return items, nil
 }
 
-// appendMediaImageBlocks 把消息携带的图片补进模型消息
+// appendMediaImageBlocks 把消息携带的图片以 deferred 占位补进模型消息
 func appendMediaImageBlocks(payload *schema.AgenticMessage, refs []media.Ref) {
 	if payload == nil || len(refs) == 0 {
 		return
@@ -101,7 +102,7 @@ func appendMediaImageBlocks(payload *schema.AgenticMessage, refs []media.Ref) {
 		if len(payload.ContentBlocks) > 8 {
 			break
 		}
-		image := mediaRefImageBlock(ref)
+		image := deferredMediaImageBlock(ref)
 		if image == nil {
 			continue
 		}

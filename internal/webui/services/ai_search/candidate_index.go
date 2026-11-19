@@ -1,23 +1,13 @@
 package search
 
 import (
-	"bytes"
-	"compress/gzip"
-	_ "embed"
-	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"MaiGo/internal/chat/replyer/jiebacut"
 )
-
-// 词典与 Python jieba 0.42.1 一致，来源 internal/replyer/data/jieba_dict.txt.gz
-//
-//go:embed data/jieba_dict.txt.gz
-var searchJiebaDictionaryGz []byte
 
 // queryStopWords 对齐 Python _QUERY_STOP_WORDS
 var queryStopWords = map[string]struct{}{
@@ -26,23 +16,8 @@ var queryStopWords = map[string]struct{}{
 	"一个": {}, "这个": {}, "那个": {},
 }
 
-var (
-	searchJiebaDictionaryOnce sync.Once
-	searchJiebaDictionary     *jiebacut.Dictionary
-	searchJiebaDictionaryErr  error
-)
-
 func loadSearchJiebaDictionary() (*jiebacut.Dictionary, error) {
-	searchJiebaDictionaryOnce.Do(func() {
-		reader, err := gzip.NewReader(bytes.NewReader(searchJiebaDictionaryGz))
-		if err != nil {
-			searchJiebaDictionaryErr = fmt.Errorf("解压 jieba 词典失败: %w", err)
-			return
-		}
-		defer reader.Close()
-		searchJiebaDictionary, searchJiebaDictionaryErr = jiebacut.NewDictionary(reader)
-	})
-	return searchJiebaDictionary, searchJiebaDictionaryErr
+	return jiebacut.DefaultDictionary()
 }
 
 // splitQueryTerms 对齐 Python _split_query_terms：

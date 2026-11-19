@@ -112,14 +112,15 @@ func (a *Agent) EnqueueInternalTaskWithImages(ctx context.Context, kind string, 
 	return map[string]any{"task_id": taskID, "queued": true}, nil
 }
 
-// internalTaskMessage 组装内部任务消息：首块文本、后续图片块，message_id 在编号确定后补齐
+// internalTaskMessage 组装内部任务消息：首块文本、后续 deferred 图片占位，message_id 在编号确定后补齐
+// 内存与 observation 落库均保留 deferred-media:path，禁止剥离；出站由 assemble/resolve 读盘编码
 func internalTaskMessage(text, sourceKind, reason string, images []media.Ref, now time.Time) (*schema.AgenticMessage, error) {
 	blocks := make([]*schema.ContentBlock, 0, len(images)+1)
 	blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: text}))
 	for index, ref := range images {
-		image := mediaRefImageBlock(ref)
+		image := deferredMediaImageBlock(ref)
 		if image == nil {
-			return nil, fmt.Errorf("图片附件读取失败：index=%d hash=%s", index, ref.Hash)
+			return nil, fmt.Errorf("图片附件缺少本地路径：index=%d hash=%s", index, ref.Hash)
 		}
 		blocks = append(blocks, schema.NewContentBlock(image))
 	}

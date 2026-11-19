@@ -450,6 +450,14 @@ func agenticMessagesToMaisakaHistory(messages []*schema.AgenticMessage) []maisak
 }
 
 func agenticMessageToMaisaka(message *schema.AgenticMessage) ([]maisaka.ContextMessage, bool) {
+	if message == nil {
+		return nil, false
+	}
+	// 非 assemble 出站口也先解析 deferred 占位，避免 ImageComponent 只拿到路径标记
+	message = resolveDeferredMediaBlocks([]*schema.AgenticMessage{message})[0]
+	if message == nil {
+		return nil, false
+	}
 	switch message.Role {
 	case schema.AgenticRoleTypeSystem:
 		return nil, false

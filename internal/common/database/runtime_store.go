@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -316,22 +318,65 @@ func (m *Manager) GetTranscript(ctx context.Context, id uint) (*TranscriptEntry,
 	return &row, nil
 }
 
-// VisibleTranscript 返回检查点之后的可见条目和尚未闭合的非用户条目
-// VisibleTranscript 返回检查点之后需要恢复进上下文的工作集记录
-// pending 的 user/observation/agent_message/internal_reference 由各自的 pending 查询恢复
-func (m *Manager) VisibleTranscript(ctx context.Context, kind string, targetID int64, afterVisibleSeq uint64) ([]TranscriptEntry, error) {
-	var rows []TranscriptEntry
-	q := m.db.WithContext(ctx).Where("conversation_kind=? AND target_id=?", kind, targetID)
-	// 代头行在首次成功请求前没有 visible_seq，必须一并恢复，否则重启会重复写入
-	openKinds := "('assistant','tool','system_prompt','context_digest','group_note','system_note')"
-	if afterVisibleSeq > 0 {
-		q = q.Where("(visible_seq>? OR (visible_seq IS NULL AND entry_kind IN "+openKinds+"))", afterVisibleSeq)
-	} else {
-		q = q.Where("visible_seq IS NOT NULL OR entry_kind IN " + openKinds)
+const transcriptOpenKindsSQL = "('assistant','tool','system_prompt','context_digest','group_note','system_note')"
+
+func isTranscriptHeadKind(kind string) bool {
+	return kind == "system_prompt" || kind == "group_note" || kind == "context_digest"
+}
+
+// VisibleTranscript 返回检查点之后需要恢复进上下文的工作集记录。
+// 有 visible_seq 的行按 visible_seq/id 取尾最多 limit 条；再并上 visible_seq IS NULL 的 openKinds 代头/未闭合行。
+// 窗口在 Find/Scan 前生效；pending 的 user/observation/agent_message/internal_reference 由各自查询恢复。
+func (m *Manager) VisibleTranscript(ctx context.Context, kind string, targetID int64, afterVisibleSeq uint64, limit int) ([]TranscriptEntry, error) {
+	if limit < 1 {
+		limit = 1
 	}
-	// 代头三类永远排在最前，其余按交付顺序
-	err := q.Order("CASE WHEN entry_kind IN ('system_prompt','group_note','context_digest') THEN 0 ELSE 1 END, visible_seq NULLS LAST, id").Find(&rows).Error
-	return rows, err
+
+	var sequenced []TranscriptEntry
+	seqQ := m.db.WithContext(ctx).Where("conversation_kind=? AND target_id=? AND visible_seq IS NOT NULL", kind, targetID)
+	if afterVisibleSeq > 0 {
+		seqQ = seqQ.Where("visible_seq>?", afterVisibleSeq)
+	}
+	if err := seqQ.Order("visible_seq DESC, id DESC").Limit(limit).Find(&sequenced).Error; err != nil {
+		return nil, err
+	}
+	slices.Reverse(sequenced)
+
+	// 代头/未闭合行在首次成功请求前没有 visible_seq，必须一并恢复，否则重启会重复写入或断工具链
+	var openRows []TranscriptEntry
+	openQ := m.db.WithContext(ctx).Where(
+		"conversation_kind=? AND target_id=? AND visible_seq IS NULL AND entry_kind IN "+transcriptOpenKindsSQL,
+		kind, targetID,
+	)
+	if err := openQ.Order("id").Find(&openRows).Error; err != nil {
+		return nil, err
+	}
+
+	rows := make([]TranscriptEntry, 0, len(sequenced)+len(openRows))
+	rows = append(rows, sequenced...)
+	rows = append(rows, openRows...)
+	// 代头三类永远排在最前，其余按交付顺序（visible_seq NULLS LAST, id）
+	sort.SliceStable(rows, func(i, j int) bool {
+		hi := isTranscriptHeadKind(rows[i].EntryKind)
+		hj := isTranscriptHeadKind(rows[j].EntryKind)
+		if hi != hj {
+			return hi
+		}
+		si, sj := rows[i].VisibleSeq, rows[j].VisibleSeq
+		switch {
+		case si == nil && sj == nil:
+			return rows[i].ID < rows[j].ID
+		case si == nil:
+			return false
+		case sj == nil:
+			return true
+		case *si != *sj:
+			return *si < *sj
+		default:
+			return rows[i].ID < rows[j].ID
+		}
+	})
+	return rows, nil
 }
 
 // DeleteTranscriptHeads 删除压缩换代的头部行，下一代由新的预设重新写入

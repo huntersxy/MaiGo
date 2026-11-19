@@ -4,17 +4,20 @@
 //   - re_han_default  : ([\u4E00-\u9FD5a-zA-Z0-9+#&._%-]+)
 //   - re_skip_default : (\r\n|\s)
 //   - get_DAG / calc / __cut_DAG 逐行对应
+//   - DefaultDictionary 对应模块级 dt=Tokenizer()
 //
-// 词典数据与 CharFrequency 由 replyer/data 以 go:embed 提供；HMM 未登录词切分复用
-// github.com/wangbin/jiebago/finalseg 的 __cut（与 jieba finalseg 同源），
+// HMM 未登录词切分复用 github.com/wangbin/jiebago/finalseg 的 __cut（与 jieba finalseg 同源），
 // 但**不复用**它的分块正则：jiebago 的 reSkip 是 (\d+\.\d+|[a-zA-Z0-9]+)，
 // Python 是 ([a-zA-Z0-9]+(?:\.\d+)?%?)，且 Python 对非汉字段原样输出不再逐字拆。
-// 直接用 jiebago 的 Cut 会把 "50%" 拆成 "50"/"%"、把 "%-." 拆成 "%"/"-"/"."
+// 直接用 jiebago 的 Cut 会把 "50%" 拆成 "50"/"%"、把 "%-\." 拆成 "%"/"-"/"."
 // 与 Python 不一致，因此见 finalsegCut。
 package jiebacut
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
+	_ "embed"
 	"fmt"
 	"io"
 	"math"
@@ -25,6 +28,9 @@ import (
 
 	"github.com/wangbin/jiebago/finalseg"
 )
+
+//go:embed data/jieba_dict.txt.gz
+var defaultDictionaryGz []byte
 
 const pyWhitespace = `\x{0020}\t\n\v\f\r\x{001C}-\x{001F}\x{0085}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}`
 
@@ -85,6 +91,31 @@ func NewDictionary(r io.Reader) (*Dictionary, error) {
 	}
 	d.logTotal = math.Log(d.total)
 	return d, nil
+}
+
+var (
+	defaultDictionaryOnce sync.Once
+	defaultDictionary     *Dictionary
+	defaultDictionaryErr  error
+)
+
+// DefaultDictionary 返回进程级共享词典，对应 Python jieba.dt
+//
+// LoadUserDict / AddWord 会写入该单例，影响全局切词；Dictionary.mu 保护并发读写。
+func DefaultDictionary() (*Dictionary, error) {
+	defaultDictionaryOnce.Do(func() {
+		reader, err := gzip.NewReader(bytes.NewReader(defaultDictionaryGz))
+		if err != nil {
+			defaultDictionaryErr = fmt.Errorf("解压 jieba 词典失败: %w", err)
+			return
+		}
+		defer reader.Close()
+		defaultDictionary, defaultDictionaryErr = NewDictionary(reader)
+		if defaultDictionaryErr != nil {
+			defaultDictionaryErr = fmt.Errorf("加载 jieba 词典失败: %w", defaultDictionaryErr)
+		}
+	})
+	return defaultDictionary, defaultDictionaryErr
 }
 
 // Frequency 返回词频与是否存在（前缀词频为 0）

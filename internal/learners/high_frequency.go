@@ -1,10 +1,7 @@
 package learners
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	_ "embed"
 	"fmt"
 	"regexp"
 	"sort"
@@ -16,13 +13,8 @@ import (
 	"MaiGo/internal/chat/replyer/jiebacut"
 )
 
-// 高频词学习第三路，对齐 MaiBot src/services/message_word_frequency_service.py
-//
-// jieba 词典从 replyer 的数据文件复制一份并内嵌，保证 learners 包可独立构建；
-// 词典版本与 internal/replyer/data/jieba_dict.txt.gz 保持一致
-
-//go:embed data/jieba_dict.txt.gz
-var highFrequencyJiebaDictGz []byte
+// 高频词学习，对齐 MaiBot src/services/message_word_frequency_service.py
+// 词典取 jiebacut.DefaultDictionary（对应 Python jieba.dt）
 
 const (
 	defaultHighFrequencyLimit    = 1000
@@ -114,13 +106,7 @@ func resolveHighFrequencyTokenizer() (HighFrequencyTokenizer, error) {
 		return override, nil
 	}
 	highFrequencyDefaultOnce.Do(func() {
-		gz, err := gzip.NewReader(bytes.NewReader(highFrequencyJiebaDictGz))
-		if err != nil {
-			highFrequencyDefaultErr = fmt.Errorf("加载高频词 jieba 词典: %w", err)
-			return
-		}
-		defer gz.Close()
-		dict, err := jiebacut.NewDictionary(gz)
+		dict, err := jiebacut.DefaultDictionary()
 		if err != nil {
 			highFrequencyDefaultErr = fmt.Errorf("加载高频词 jieba 词典: %w", err)
 			return

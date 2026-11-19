@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/config"
+	"MaiGo/internal/maisaka"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/bytedance/sonic"
@@ -38,6 +38,11 @@ func (a *Agent) restoreSessions() error {
 	return nil
 }
 
+// restoreContextLimit 启动恢复与主动回填同源的可见条数上限
+func (a *Agent) restoreContextLimit(kind string) int {
+	return maisaka.ContextRestoreLimit(a.maisakaMaxContextSize(kind == memory.ConversationKindGroup))
+}
+
 // restoreTranscriptSession 读取检查点、保留尾部和工作集 pending
 func (a *Agent) restoreTranscriptSession(kind string, targetID int64) error {
 	session := a.sessions.get(kind, targetID)
@@ -50,7 +55,8 @@ func (a *Agent) restoreTranscriptSession(kind string, targetID int64) error {
 	if checkpoint != nil && checkpoint.ThroughVisibleSeq != nil {
 		after = *checkpoint.ThroughVisibleSeq
 	}
-	visible, err := a.memory.VisibleTranscript(a.ctx, kind, targetID, after)
+	limit := a.restoreContextLimit(kind)
+	visible, err := a.memory.VisibleTranscript(a.ctx, kind, targetID, after, limit)
 	if err != nil {
 		return err
 	}
@@ -66,11 +72,11 @@ func (a *Agent) restoreTranscriptSession(kind string, targetID int64) error {
 		// checkpoint 覆盖了全部可见条目时，磁盘上的工作集处于「已消费」状态；
 		// 进程刚启动时内存工作集为空，直接返回会让模型看不到任何聊天记录。
 		// 对齐 Python _restore_recent_context_from_db：内存为空就补最近窗口。
-		logs, getErr := a.memory.GetRecentMessagesScope(a.ctx, kind, targetID, 0, restoreMessageLimit, 0)
+		logs, getErr := a.memory.GetRecentMessagesScope(a.ctx, kind, targetID, 0, limit, 0)
 		if getErr != nil {
 			return getErr
 		}
-		a.restoreSession(kind, targetID, trimRestoreMessages(logs, a.SelfID(), a.contextWindow()))
+		a.restoreSession(kind, targetID, trimRestoreMessages(logs, limit))
 		return nil
 	}
 
@@ -353,36 +359,15 @@ func (a *Agent) restoreSession(kind string, targetID int64, logs []memory.Messag
 	}
 }
 
-// trimRestoreMessages 首次升级时只接续预算内的近期原文，优先保留最新消息
-func trimRestoreMessages(logs []memory.MessageLog, selfID int64, window int) []memory.MessageLog {
-	if len(logs) == 0 {
+// trimRestoreMessages 回退路径按条数取尾，与 VisibleTranscript / ProactiveContextRestoreLimit 同源
+func trimRestoreMessages(logs []memory.MessageLog, limit int) []memory.MessageLog {
+	if limit < 1 {
+		limit = 1
+	}
+	if len(logs) <= limit {
 		return logs
 	}
-	cfg := config.Snapshot()
-	if window <= 0 || cfg.Compactor.RecentTailRatio <= 0 {
-		return logs
-	}
-	budget := int(float64(window) * cfg.Compactor.RecentTailRatio)
-	if budget <= 0 {
-		return logs
-	}
-	keepFrom := len(logs)
-	total := 0
-	for i := len(logs) - 1; i >= 0; i-- {
-		var payload *schema.AgenticMessage
-		if logs[i].UserID == selfID {
-			payload = assistantHistoryMessage(logs[i])
-		} else {
-			payload = msgToPayload(messageLogToSessionMessage(logs[i]))
-		}
-		cost := messageTokens(payload)
-		if keepFrom < len(logs) && total+cost > budget {
-			break
-		}
-		total += cost
-		keepFrom = i
-	}
-	return logs[keepFrom:]
+	return logs[len(logs)-limit:]
 }
 
 func assistantHistoryMessage(log memory.MessageLog) *schema.AgenticMessage {

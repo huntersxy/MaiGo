@@ -37,8 +37,6 @@ const (
 	// externalIdentityTTL 外部字符串 ID 反查缓存时长，覆盖单次会话内的回复与 @ 映射
 	externalIdentityTTL      = 24 * time.Hour
 	externalIdentityCapacity = 4096
-	// restoreMessageLimit 重启后从消息库恢复的会话消息条数
-	restoreMessageLimit = 50
 )
 
 type Agent struct {

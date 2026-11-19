@@ -483,7 +483,7 @@ func (s *Session) newUserLocked(msg *onebot.ConversationMessage, logID uint, med
 	return user
 }
 
-// userSchemaMessage 把用户文本与已缓存媒体组装成含图片块的 schema 消息
+// userSchemaMessage 把用户文本与媒体占位组装成 schema 消息；图片只写 deferred-media 路径，请求构建时再读盘
 func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessage {
 	blocks := make([]*schema.ContentBlock, 0, len(mediaRefs)+1)
 	if strings.TrimSpace(text) != "" {
@@ -493,7 +493,7 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 		if len(blocks) > 8 {
 			break
 		}
-		image := mediaRefImageBlock(ref)
+		image := deferredMediaImageBlock(ref)
 		if image == nil {
 			continue
 		}
@@ -505,9 +505,6 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeUser, ContentBlocks: blocks}
 }
 
-// deferredMediaMarkerPrefix 惰性图片占位前缀，对齐 Python deferred-image
-const deferredMediaMarkerPrefix = "deferred-media:"
-
 // deferredMediaImageBlock 生成惰性图片块：只带本地路径占位，请求构建时才读盘编码
 func deferredMediaImageBlock(ref media.Ref) *schema.UserInputImage {
 	path := strings.TrimSpace(ref.Path)
@@ -515,7 +512,7 @@ func deferredMediaImageBlock(ref media.Ref) *schema.UserInputImage {
 		return nil
 	}
 	return &schema.UserInputImage{
-		Base64Data: deferredMediaMarkerPrefix + path,
+		Base64Data: maisaka.DeferredMediaMarkerPrefix + path,
 		MIMEType:   strings.TrimSpace(ref.Mime),
 	}
 }
@@ -566,12 +563,12 @@ func resolveDeferredMediaBlocks(messages []*schema.AgenticMessage) []*schema.Age
 				blocks = append(blocks, block)
 				continue
 			}
-			marker := block.UserInputImage.Base64Data
-			if !strings.HasPrefix(marker, deferredMediaMarkerPrefix) {
-				blocks = append(blocks, block)
-				continue
-			}
-			path := strings.TrimPrefix(marker, deferredMediaMarkerPrefix)
+				marker := block.UserInputImage.Base64Data
+				if !strings.HasPrefix(marker, maisaka.DeferredMediaMarkerPrefix) {
+					blocks = append(blocks, block)
+					continue
+				}
+				path := strings.TrimPrefix(marker, maisaka.DeferredMediaMarkerPrefix)
 			raw, err := os.ReadFile(path)
 			if err != nil || len(raw) == 0 || len(raw) > 12<<20 {
 				changed = true
@@ -595,31 +592,12 @@ func resolveDeferredMediaBlocks(messages []*schema.AgenticMessage) []*schema.Age
 			resolved[messageIndex] = &copied
 		}
 	}
-	return resolved
-}
+		return resolved
+	}
 
-// mediaRefImageBlock 读取本地媒体并转成模型可用的 base64 图片块
-func mediaRefImageBlock(ref media.Ref) *schema.UserInputImage {
-	if strings.TrimSpace(ref.Path) == "" {
-		return nil
-	}
-	raw, err := os.ReadFile(ref.Path)
-	if err != nil || len(raw) == 0 || len(raw) > 12<<20 {
-		return nil
-	}
-	mime := strings.TrimSpace(ref.Mime)
-	if mime == "" {
-		mime = "image/png"
-	}
-	return &schema.UserInputImage{
-		Base64Data: base64.StdEncoding.EncodeToString(raw),
-		MIMEType:   mime,
-	}
-}
-
-// renderUserText 构造 Planner 可见的用户消息文本
-// 对齐 Python src/maisaka/context/planner_messages.py:17-84：
-// 前缀携带 msg_id/quote/time/user/group_card，正文不再内联回复标记（引用走 quote 属性）
+	// renderUserText 构造 Planner 可见的用户消息文本
+	// 对齐 Python src/maisaka/context/planner_messages.py:17-84：
+	// 前缀携带 msg_id/quote/time/user/group_card，正文不再内联回复标记（引用走 quote 属性）
 func (s *Session) renderUserText(msg *onebot.ConversationMessage, ref string, _ []media.Ref) string {
 	var b strings.Builder
 	if notes := s.takeNotesLocked(); len(notes) > 0 {

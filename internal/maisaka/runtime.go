@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,15 @@ const (
 	// ContextRestoreDaySeconds 一天阈值
 	ContextRestoreDaySeconds = 24 * 60 * 60
 )
+
+// ContextRestoreLimit 启动恢复与主动回填共用的可见条数上限
+// 对齐 Python src/maisaka/runtime.py:375-378 的 _get_context_restore_limit
+func ContextRestoreLimit(maxContextSize int) int {
+	if maxContextSize < 0 {
+		maxContextSize = 0
+	}
+	return max(1, int(math.Ceil(float64(maxContextSize)*ContextRestoreFillRatio)))
+}
 
 // ToolSpec 统一工具声明
 type ToolSpec struct {

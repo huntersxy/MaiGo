@@ -1,14 +1,11 @@
 package retrieval
 
 // 中文稀疏索引分词器，对齐 MaiBot A_memorix 的 jieba cut_for_search 策略
-// 词典随包内嵌，避免依赖宿主环境是否安装 jieba；加载失败时退化为字符 n-gram，
+// 词典取 jiebacut.DefaultDictionary（对应 Python jieba.dt）；加载失败时退化为字符 n-gram，
 // 并让索引与查询共用同一分词器，避免“索引单字、查询 bigram”的零命中
 
 import (
 	"bufio"
-	"bytes"
-	"compress/gzip"
-	_ "embed"
 	"fmt"
 	"os"
 	"strconv"
@@ -18,9 +15,6 @@ import (
 	"MaiGo/internal/A_memorix/core/storage"
 	"MaiGo/internal/chat/replyer/jiebacut"
 )
-
-//go:embed data/jieba_dict.txt.gz
-var jiebaDictionaryGz []byte
 
 // JiebaSegmenter 基于 replyer/jiebacut 的 jieba 搜索模式分词器
 type JiebaSegmenter struct {
@@ -118,18 +112,12 @@ var (
 	defaultJiebaSegmenterErr  error
 )
 
-// DefaultJiebaSegmenter 返回进程级共享的 jieba 分词器，首次调用时加载内嵌词典
+// DefaultJiebaSegmenter 返回进程级共享的 jieba 分词器，词典取 jiebacut.DefaultDictionary
 func DefaultJiebaSegmenter() (*JiebaSegmenter, error) {
 	defaultJiebaSegmenterOnce.Do(func() {
-		reader, err := gzip.NewReader(bytes.NewReader(jiebaDictionaryGz))
+		dict, err := jiebacut.DefaultDictionary()
 		if err != nil {
-			defaultJiebaSegmenterErr = fmt.Errorf("解压 jieba 词典失败: %w", err)
-			return
-		}
-		defer reader.Close()
-		dict, err := jiebacut.NewDictionary(reader)
-		if err != nil {
-			defaultJiebaSegmenterErr = fmt.Errorf("加载 jieba 词典失败: %w", err)
+			defaultJiebaSegmenterErr = err
 			return
 		}
 		defaultJiebaSegmenter = &JiebaSegmenter{dict: dict}

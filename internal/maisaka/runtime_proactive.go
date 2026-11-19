@@ -3,7 +3,6 @@ package maisaka
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -17,16 +16,12 @@ import (
 const pluginProactiveTaskSourcePrefix = "plugin_proactive:"
 
 // ProactiveContextRestoreLimit 主动回合最多回填的真实消息数量
-// 对齐 Python src/maisaka/runtime.py:370-373 的 _get_context_restore_limit
+// 对齐 Python src/maisaka/runtime.py:375-378 的 _get_context_restore_limit
 func (r *Runtime) ProactiveContextRestoreLimit() int {
 	if r == nil {
-		return 1
+		return ContextRestoreLimit(0)
 	}
-	size := r.MaxContextSize()
-	if size < 0 {
-		size = 0
-	}
-	return max(1, int(math.Ceil(float64(size)*ContextRestoreFillRatio)))
+	return ContextRestoreLimit(r.MaxContextSize())
 }
 
 // RestoreProactiveUserContext 主动回合前回填真实用户消息，返回回填条数
