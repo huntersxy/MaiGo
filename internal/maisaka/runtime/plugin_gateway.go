@@ -103,57 +103,70 @@ func (a *Agent) ReceiveExternalPluginMessage(ctx context.Context, message map[st
 		}
 	}
 	now := time.Now()
-	isMentioned := pluginGatewayBool(message["is_mentioned"]) || pluginGatewayBool(message["is_at"])
-	if !isMentioned && accountID != "" {
-		for _, external := range externalAtList {
-			if external == accountID {
-				isMentioned = true
-				break
+isMentioned := pluginGatewayBool(message["is_mentioned"]) || pluginGatewayBool(message["is_at"])
+		if !isMentioned && accountID != "" {
+			for _, external := range externalAtList {
+				if external == accountID {
+					isMentioned = true
+					break
+				}
 			}
 		}
-	}
-	msg := &onebot.ConversationMessage{
-		Platform:          platform,
-		AccountID:         accountID,
-		Scope:             scope,
-		MessageID:         messageID,
-		ConversationKind:  kind,
-		TargetID:          targetID,
-		UserID:            userID,
-		ExternalMessageID: messageIDText,
-		ExternalTargetID:  externalTarget,
-		ExternalUserID:    externalUser,
-		Nickname:          nickname,
-		Content:           content,
-		FinalContent:      content,
-		MessageParts:      parts,
-		Images:            images,
-		Faces:             faces,
-		Voices:            voices,
-		FileNames:         fileNames,
-		AtList:            atList,
-		ExternalAtList:    externalAtList,
-		AtNames:           atNames,
-		Reply:             reply,
-		IsMentioned:       isMentioned,
-		Time:              now,
-		ReceivedAt:        now,
-	}
+		additional := map[string]any{}
+		if info, ok := message["message_info"].(map[string]any); ok {
+			if cfg, ok := info["additional_config"].(map[string]any); ok {
+				for key, value := range cfg {
+					additional[key] = value
+				}
+			}
+		}
+		if pluginGatewayBool(message["is_command"]) || strings.HasPrefix(content, "/") {
+			additional["is_command"] = true
+		}
+		msg := &onebot.ConversationMessage{
+			Platform:          platform,
+			AccountID:         accountID,
+			Scope:             scope,
+			MessageID:         messageID,
+			ConversationKind:  kind,
+			TargetID:          targetID,
+			UserID:            userID,
+			ExternalMessageID: messageIDText,
+			ExternalTargetID:  externalTarget,
+			ExternalUserID:    externalUser,
+			Nickname:          nickname,
+			Content:           content,
+			FinalContent:      content,
+			MessageParts:      parts,
+			Images:            images,
+			Faces:             faces,
+			Voices:            voices,
+			FileNames:         fileNames,
+			AtList:            atList,
+			ExternalAtList:    externalAtList,
+			AtNames:           atNames,
+			Reply:             reply,
+			IsMentioned:       isMentioned,
+			IsNotify:          pluginGatewayBool(message["is_notify"]),
+			AdditionalConfig:  additional,
+			Time:              now,
+			ReceivedAt:        now,
+		}
 	a.onMessage(msg)
 	_ = ctx
 	return nil
 }
 
 func pluginGatewayContent(message map[string]any) string {
+	if text := strings.TrimSpace(stringValueOf(message["processed_plain_text"])); text != "" {
+		return text
+	}
 	raw, ok := message["message"]
 	if !ok || raw == nil {
 		raw = message["content"]
 	}
 	if text, ok := raw.(string); ok {
 		return strings.TrimSpace(text)
-	}
-	if text := strings.TrimSpace(stringValueOf(message["processed_plain_text"])); text != "" {
-		return text
 	}
 	items, ok := raw.([]any)
 	if !ok {
@@ -167,13 +180,13 @@ func pluginGatewayContent(message map[string]any) string {
 		}
 		switch strings.ToLower(strings.TrimSpace(stringValueOf(node["type"]))) {
 		case "text":
-			if text := strings.TrimSpace(firstNonEmptyMapString(node, "data", "content")); text != "" {
+			if text := strings.TrimSpace(pluginGatewayTextData(node["data"])); text != "" {
 				parts = append(parts, text)
 			}
 		case "image", "emoji":
 			parts = append(parts, "[图片]")
 		case "at":
-			parts = append(parts, "@"+strings.TrimSpace(firstNonEmptyMapString(node, "data", "user_id")))
+			parts = append(parts, "@"+pluginGatewayAtTarget(node["data"]))
 		case "face":
 			parts = append(parts, "[表情]")
 		}
@@ -212,9 +225,9 @@ func pluginGatewayParts(message map[string]any) (
 		data := node["data"]
 		part := onebot.MessagePart{Index: index}
 		switch kind {
-		case "text":
-			part.Kind = "text"
-			part.Text = stringValueOf(data)
+case "text":
+				part.Kind = "text"
+				part.Text = pluginGatewayTextData(data)
 		case "at":
 			part.Kind = "at"
 			external := pluginGatewayAtTarget(data)
@@ -328,6 +341,24 @@ func pluginGatewayText(parts []onebot.MessagePart) string {
 		}
 	}
 	return strings.TrimSpace(builder.String())
+}
+
+// pluginGatewayTextData 解析 text 段 data：Host 规范为字符串，OneBot 原始为 {"text": "..."}
+func pluginGatewayTextData(data any) string {
+	switch typed := data.(type) {
+	case string:
+		return typed
+	case map[string]any:
+		if text := strings.TrimSpace(stringValueOf(typed["text"])); text != "" {
+			return text
+		}
+		if text := strings.TrimSpace(stringValueOf(typed["content"])); text != "" {
+			return text
+		}
+		return ""
+	default:
+		return ""
+	}
 }
 
 // pluginGatewayAtTarget 解析 @ 段目标，兼容字符串与对象两种 data
