@@ -50,10 +50,12 @@ type (
 	PluginComponentAdminPort = capabilities.PluginComponentAdminPort
 	// PluginGatewayDriverPort 插件网关注册端口
 	PluginGatewayDriverPort = capabilities.PluginGatewayDriverPort
-	// PluginGatewayDriverSpec 插件网关驱动注册参数
-	PluginGatewayDriverSpec = capabilities.PluginGatewayDriverSpec
-	// PluginGatewayInboundRequest 插件网关入站归属
-	PluginGatewayInboundRequest = capabilities.PluginGatewayInboundRequest
+// PluginGatewayDriverSpec 插件网关驱动注册参数
+		PluginGatewayDriverSpec = capabilities.PluginGatewayDriverSpec
+		// NativeGatewayDriverSpec 进程内原生网关驱动注册参数
+		NativeGatewayDriverSpec = capabilities.NativeGatewayDriverSpec
+		// PluginGatewayInboundRequest 插件网关入站归属
+		PluginGatewayInboundRequest = capabilities.PluginGatewayInboundRequest
 	// PluginGatewayInboundPort 插件网关入站注入端口
 	PluginGatewayInboundPort = capabilities.PluginGatewayInboundPort
 	// PluginRenderRequest render.html2png 参数

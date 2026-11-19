@@ -3,7 +3,10 @@ package host
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
+
+	toml "github.com/pelletier/go-toml/v2"
 
 	"MaiGo/internal/plugin_runtime/protocol"
 )
@@ -61,8 +64,39 @@ func (h *Host) InvokePlugin(ctx context.Context, method, pluginID, componentName
 	}, timeoutMS)
 }
 
-// InvokeAPI 调用插件声明的 API 方法
+// InvokeAPI 调用插件声明的 API 方法；优先走 APIEntry.localHandler 本地短路
 func (h *Host) InvokeAPI(ctx context.Context, pluginID, componentName string, args map[string]any, timeoutMS int64) (protocol.Envelope, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	componentName = strings.TrimSpace(componentName)
+	if h != nil && h.apis != nil {
+		if entry := h.apis.GetAPI(pluginID, componentName, "", false); entry != nil {
+			if handler := entry.LocalHandler(); handler != nil {
+				if args == nil {
+					args = map[string]any{}
+				}
+				payload, err := handler(ctx, pluginID, componentName, args)
+				if err != nil {
+					return protocol.Envelope{
+						MessageType: protocol.MessageTypeResponse,
+						PluginID:    pluginID,
+						Method:      methodPluginInvokeAPI,
+						Error: map[string]any{
+							"message": err.Error(),
+						},
+					}, nil
+				}
+				if payload == nil {
+					payload = map[string]any{}
+				}
+				return protocol.Envelope{
+					MessageType: protocol.MessageTypeResponse,
+					PluginID:    pluginID,
+					Method:      methodPluginInvokeAPI,
+					Payload:     payload,
+				}, nil
+			}
+		}
+	}
 	return h.InvokePlugin(ctx, methodPluginInvokeAPI, pluginID, componentName, args, timeoutMS)
 }
 
@@ -207,8 +241,12 @@ func (h *Host) ConfigWidgets(ctx context.Context, pluginID, actionID string) (ma
 	return resp.Payload, nil
 }
 
-// InspectPluginConfig 请求 Runner 解析插件配置元数据
+// InspectPluginConfig 请求 Runner 解析插件配置元数据；原生适配器走本地读盘
 func (h *Host) InspectPluginConfig(ctx context.Context, pluginID string, configData map[string]any, useProvidedConfig bool) (InspectPluginConfigResult, error) {
+	pluginID = strings.TrimSpace(pluginID)
+	if IsNativeAdapter(pluginID) {
+		return h.inspectNativePluginConfig(pluginID, configData, useProvidedConfig)
+	}
 	rpc := h.activeRPCServer()
 	if rpc == nil {
 		return InspectPluginConfigResult{}, fmt.Errorf("Runner 未连接")
@@ -216,7 +254,7 @@ func (h *Host) InspectPluginConfig(ctx context.Context, pluginID string, configD
 	if configData == nil {
 		configData = map[string]any{}
 	}
-	resp, err := rpc.SendRequest(ctx, protocol.MethodPluginInspectConfig, strings.TrimSpace(pluginID), map[string]any{
+	resp, err := rpc.SendRequest(ctx, protocol.MethodPluginInspectConfig, pluginID, map[string]any{
 		"config_data":         configData,
 		"use_provided_config": useProvidedConfig,
 	}, 10000)
@@ -239,6 +277,83 @@ func (h *Host) InspectPluginConfig(ctx context.Context, pluginID string, configD
 		return result, fmt.Errorf("插件配置解析失败")
 	}
 	return result, nil
+}
+
+func (h *Host) inspectNativePluginConfig(pluginID string, configData map[string]any, useProvidedConfig bool) (InspectPluginConfigResult, error) {
+	defaultConfig := map[string]any{
+		"plugin": map[string]any{
+			"enabled":         false,
+			"config_version": "1.0.0",
+		},
+	}
+	configSchema := map[string]any{}
+	if reg, ok := platformioNativeGet(pluginID); ok {
+		if reg.DefaultConfig != nil {
+			defaultConfig = cloneConfigMap(reg.DefaultConfig)
+		}
+		if reg.ConfigSchema != nil {
+			configSchema = cloneConfigMap(reg.ConfigSchema)
+		}
+	}
+	var current map[string]any
+	if useProvidedConfig {
+		current = cloneConfigMap(configData)
+	} else {
+		path, err := h.resolveNativePluginConfigPath(pluginID)
+		if err != nil {
+			return InspectPluginConfigResult{}, err
+		}
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			if !os.IsNotExist(readErr) {
+				return InspectPluginConfigResult{}, readErr
+			}
+			current = cloneConfigMap(defaultConfig)
+		} else {
+			if err := toml.Unmarshal(raw, &current); err != nil {
+				return InspectPluginConfigResult{
+					Success:       false,
+					ConfigError:   err.Error(),
+					DefaultConfig: defaultConfig,
+					ConfigSchema:  configSchema,
+				}, nil
+			}
+		}
+	}
+	if current == nil {
+		current = map[string]any{}
+	}
+	normalized := mergeNativeConfig(defaultConfig, current)
+	enabled := false
+	if section, ok := normalized["plugin"].(map[string]any); ok {
+		if value, exists := section["enabled"].(bool); exists {
+			enabled = value
+		}
+	}
+	return InspectPluginConfigResult{
+		Success:          true,
+		DefaultConfig:    defaultConfig,
+		ConfigSchema:     configSchema,
+		NormalizedConfig: normalized,
+		Enabled:          enabled,
+	}, nil
+}
+
+func mergeNativeConfig(defaults, current map[string]any) map[string]any {
+	out := cloneConfigMap(defaults)
+	if out == nil {
+		out = map[string]any{}
+	}
+	for key, value := range current {
+		if existing, ok := out[key].(map[string]any); ok {
+			if nested, ok := value.(map[string]any); ok {
+				out[key] = mergeNativeConfig(existing, nested)
+				continue
+			}
+		}
+		out[key] = value
+	}
+	return out
 }
 
 // RequestRunnerHealth 请求 Runner 健康状态，对齐 supervisor._request_runner_health

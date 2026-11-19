@@ -1496,94 +1496,165 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 				}
 			}
 		}
-		// 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局。
-		// 单个适配器迁移失败只隔离对应插件，其余插件继续启动。
-		adapterMigrationErrors := map[string]string{}
-		backup, migrateErr := pluginruntime.MigrateQQOfficialAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
-		if migrateErr != nil {
-			reason := "适配器迁移失败，请修复后重启 Bot：" + migrateErr.Error()
-			zap.L().Error("QQ 官方适配器迁移失败，已隔离该适配器", zap.Error(migrateErr))
-			adapterMigrationErrors["Mai-with-u.qq-adapter"] = reason
-		}
-		if backup != "" {
-			zap.L().Info("QQ 官方适配器旧安装已备份", zap.String("backup", backup))
-		}
-		telegramBackup, telegramErr := pluginruntime.MigrateTelegramAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
-		if telegramErr != nil {
-			reason := "适配器迁移失败，请修复后重启 Bot：" + telegramErr.Error()
-			zap.L().Error("Telegram 适配器迁移失败，已隔离该适配器", zap.Error(telegramErr))
-			adapterMigrationErrors["maibot-team.telegram-adapter"] = reason
-			adapterMigrationErrors["Sengoku.telegram-adapter"] = reason
-		}
-		pluginHost.SetAdapterMigrationErrors(adapterMigrationErrors)
-		if telegramBackup != "" {
-			zap.L().Info("Telegram 适配器旧安装已备份", zap.String("backup", telegramBackup))
-		}
-		// 对齐 Python integration.py:904-908 的 plugin_runtime.sync_dependencies 阶段：
-		// 启动 Runner 前先分析并补装插件依赖，环境变化时 Runner 直接加载最新环境
-		syncPipeline := pluginruntime.NewPluginDependencyPipeline(pluginSpawnCfg.ProjectRoot)
-		syncResult, syncChanged := pluginHost.SyncPluginDependencies(context.Background(), syncPipeline, pluginHost.PluginDirs(), nil)
-		if syncResult.EnvironmentChanged {
-			zap.L().Info("插件依赖流水线已更新当前 Python 环境，启动时将直接加载最新环境")
-		}
-		if syncResult.InstallError != "" {
-			zap.L().Warn("插件依赖自动安装失败，插件仍将尝试加载", zap.String("error", syncResult.InstallError))
-		}
-		if len(syncChanged) > 0 {
-			zap.L().Info("插件依赖同步更新了阻止加载列表", zap.Strings("plugin_ids", syncChanged))
-		}
-		runnerState, err := pluginHost.StartRunner(context.Background(), pluginRunnerOpts)
-		if err != nil {
-			pluginruntime.LogSpawnSkipped(pluginSpawnCfg, err)
-		} else {
-			// 缺 config_version 的插件配置会让 Runner 拒绝加载，启动后按默认配置重建并重载
-			if repaired := pluginHost.RepairVersionlessPluginConfigs(context.Background()); len(repaired) > 0 {
-				if _, err := pluginHost.ReloadPlugins(context.Background(), repaired, "config_repaired", nil); err != nil {
-					zap.L().Warn("重建插件配置后重载失败", zap.Strings("plugin_ids", repaired), zap.Error(err))
-				} else {
-					zap.L().Info("插件配置已按默认配置重建并重载", zap.Strings("plugin_ids", repaired))
+// 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局。
+			// 单个适配器迁移失败只隔离对应插件，其余插件继续启动。
+			adapterMigrationErrors := map[string]string{}
+			backup, migrateErr := pluginruntime.MigrateQQOfficialAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
+			if migrateErr != nil {
+				reason := "适配器迁移失败，请修复后重启 Bot：" + migrateErr.Error()
+				zap.L().Error("QQ 官方适配器迁移失败，已隔离该适配器", zap.Error(migrateErr))
+				adapterMigrationErrors["Mai-with-u.qq-adapter"] = reason
+			}
+			if backup != "" {
+				zap.L().Info("QQ 官方适配器旧安装已备份", zap.String("backup", backup))
+			}
+			telegramBackup, telegramErr := pluginruntime.MigrateTelegramAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
+			if telegramErr != nil {
+				reason := "适配器迁移失败，请修复后重启 Bot：" + telegramErr.Error()
+				zap.L().Error("Telegram 适配器迁移失败，已隔离该适配器", zap.Error(telegramErr))
+				adapterMigrationErrors["maibot-team.telegram-adapter"] = reason
+				adapterMigrationErrors["Sengoku.telegram-adapter"] = reason
+			}
+			if telegramBackup != "" {
+				zap.L().Info("Telegram 适配器旧安装已备份", zap.String("backup", telegramBackup))
+			}
+			weixinBackup, weixinErr := pluginruntime.MigrateWeixinClawbotAdapter(pluginSpawnCfg.ProjectRoot, pluginruntime.ResolveInstanceRoot())
+			if weixinErr != nil {
+				reason := "适配器迁移失败，请修复后重启 Bot：" + weixinErr.Error()
+				zap.L().Error("微信 ClawBot 适配器迁移失败，已隔离该适配器", zap.Error(weixinErr))
+				adapterMigrationErrors["maibot-team.weixin-clawbot-adapter"] = reason
+				adapterMigrationErrors["local.weixin-clawbot-adapter"] = reason
+			}
+			if weixinBackup != "" {
+				zap.L().Info("微信 ClawBot 适配器旧安装已备份", zap.String("backup", weixinBackup))
+			}
+			pluginHost.SetAdapterMigrationErrors(adapterMigrationErrors)
+
+			// 登记进程内原生适配器骨架（不 Construct）；可承接后写入 nativeInProcessReasons
+			if err := pluginruntime.RegisterOfficialNativeAdapterPlaceholders(pluginruntime.ResolveInstanceRoot(), pluginSpawnCfg.ProjectRoot); err != nil {
+				zap.L().Error("登记原生适配器失败", zap.Error(err))
+			} else {
+				for _, pluginID := range []string{
+					"maibot-team.snowluma-adapter",
+					"maibot-team.telegram-adapter",
+					"maibot-team.weixin-clawbot-adapter",
+					"Mai-with-u.qq-adapter",
+				} {
+					pluginHost.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+				}
+				pluginHost.EnsureSnowlumaLocalAPIs()
+				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.snowluma-adapter"); err != nil {
+					zap.L().Warn("snowluma 原生适配器冷启失败", zap.Error(err))
+				}
+				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.telegram-adapter"); err != nil {
+					zap.L().Warn("telegram 原生适配器冷启失败", zap.Error(err))
 				}
 			}
-			zap.L().Info("插件运行时 Runner 已启动",
-				zap.Int("hook_specs", len(pluginHost.HookSpecs().ListHookSpecs())),
-				zap.Strings("host_capabilities", registeredCaps),
-				zap.String("ipc", runnerState.IPCAddress),
-				zap.String("group", string(runnerState.Group)),
-				zap.Bool("python_spawned", runnerState.PythonSpawned()))
-			// 对齐 Python integration.py:1857-1877 与 :2138-2152：源码变更后重新同步依赖并重启 Runner
-			watchCtx, cancelWatch := context.WithCancel(context.Background())
-			startup.AddCleanup("停止插件源码监听", func(context.Context) error {
-				cancelWatch()
+
+			// 对齐 Python integration.py:904-908 的 plugin_runtime.sync_dependencies 阶段：
+			// 启动 Runner 前先分析并补装插件依赖，环境变化时 Runner 直接加载最新环境
+			syncPipeline := pluginruntime.NewPluginDependencyPipeline(pluginSpawnCfg.ProjectRoot)
+			syncResult, syncChanged := pluginHost.SyncPluginDependencies(context.Background(), syncPipeline, pluginHost.PluginDirs(), nil)
+			if syncResult.EnvironmentChanged {
+				zap.L().Info("插件依赖流水线已更新当前 Python 环境，启动时将直接加载最新环境")
+			}
+			if syncResult.InstallError != "" {
+				zap.L().Warn("插件依赖自动安装失败，插件仍将尝试加载", zap.String("error", syncResult.InstallError))
+			}
+			if len(syncChanged) > 0 {
+				zap.L().Info("插件依赖同步更新了阻止加载列表", zap.Strings("plugin_ids", syncChanged))
+			}
+
+			// 公共：原生 Repair + 配置 watcher（不依赖 StartRunner 成功）
+			if repairedNative := pluginHost.RepairNativeVersionlessPluginConfigs(context.Background()); len(repairedNative) > 0 {
+				zap.L().Info("原生适配器配置已按默认配置重建", zap.Strings("plugin_ids", repairedNative))
+			}
+			nativeWatchCtx, cancelNativeWatch := context.WithCancel(context.Background())
+			startup.AddCleanup("停止原生适配器配置监听", func(context.Context) error {
+				cancelNativeWatch()
 				return nil
 			})
-			// 对齐 Python integration.py:1998-2043：每个插件的 config.toml 单独监听，变更只定向通知该插件
-			pluginruntime.StartPluginConfigWatcher(watchCtx, pluginruntime.PluginConfigWatcherOptions{
-				PluginDirs: pluginHost.PluginDirs,
+			pluginruntime.StartNativePluginConfigWatcher(nativeWatchCtx, pluginruntime.NativePluginConfigWatcherOptions{
+				ConfigPaths: func() map[string]string {
+					out := map[string]string{}
+					for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
+						if path, err := pluginHost.ResolveNativePluginConfigPath(pluginID); err == nil {
+							out[pluginID] = path
+						}
+					}
+					return out
+				},
 				OnConfigChanged: func(ctx context.Context, pluginID string) {
 					if _, err := pluginHost.ApplyPluginConfig(ctx, pluginID); err != nil {
-						zap.L().Warn("插件配置变更同步失败",
+						zap.L().Warn("原生适配器配置变更同步失败",
 							zap.String("plugin_id", pluginID), zap.Error(err))
 					}
 				},
 			})
-			pluginruntime.StartPluginSourceWatcher(watchCtx, pluginruntime.PluginSourceWatcherOptions{
-				PluginDirs: pluginHost.PluginDirs,
-				OnSourceChanged: func(ctx context.Context) {
-					syncPipeline := pluginruntime.NewPluginDependencyPipeline(pluginSpawnCfg.ProjectRoot)
-					syncResult, syncChanged := pluginHost.SyncPluginDependencies(ctx, syncPipeline, pluginHost.PluginDirs(), nil)
-					reason := "file_watcher"
-					if syncResult.EnvironmentChanged {
-						reason = "file_watcher_dependency_install"
-					} else if len(syncChanged) > 0 {
-						reason = "file_watcher_blocklist_changed"
+
+			startRunner := pluginHost.HasEnabledNonNativePythonPlugins()
+			if !startRunner {
+				zap.L().Info("无启用中的社区 Python 插件，跳过 StartRunner；原生适配器由进程内承接")
+			}
+			var runnerState *pluginruntime.RunnerState
+			var err error
+			if startRunner {
+				runnerState, err = pluginHost.StartRunner(context.Background(), pluginRunnerOpts)
+				if err != nil {
+					pluginruntime.LogSpawnSkipped(pluginSpawnCfg, err)
+				} else {
+					// 缺 config_version 的插件配置会让 Runner 拒绝加载，启动后按默认配置重建并重载
+					if repaired := pluginHost.RepairVersionlessPluginConfigs(context.Background()); len(repaired) > 0 {
+						if _, err := pluginHost.ReloadPlugins(context.Background(), repaired, "config_repaired", nil); err != nil {
+							zap.L().Warn("重建插件配置后重载失败", zap.Strings("plugin_ids", repaired), zap.Error(err))
+						} else {
+							zap.L().Info("插件配置已按默认配置重建并重载", zap.Strings("plugin_ids", repaired))
+						}
 					}
-					if err := pluginHost.RestartRunner(ctx, pluginRunnerOpts); err != nil {
-						zap.L().Warn("插件源码变更后重启 Runner 失败",
-							zap.String("reason", reason), zap.Error(err))
-					}
-				},
-			})
-		}
+					zap.L().Info("插件运行时 Runner 已启动",
+						zap.Int("hook_specs", len(pluginHost.HookSpecs().ListHookSpecs())),
+						zap.Strings("host_capabilities", registeredCaps),
+						zap.String("ipc", runnerState.IPCAddress),
+						zap.String("group", string(runnerState.Group)),
+						zap.Bool("python_spawned", runnerState.PythonSpawned()))
+					// 对齐 Python integration.py:1857-1877 与 :2138-2152：源码变更后重新同步依赖并重启 Runner
+					watchCtx, cancelWatch := context.WithCancel(context.Background())
+					startup.AddCleanup("停止插件源码监听", func(context.Context) error {
+						cancelWatch()
+						return nil
+					})
+					// 对齐 Python integration.py:1998-2043：每个插件的 config.toml 单独监听，变更只定向通知该插件
+					pluginruntime.StartPluginConfigWatcher(watchCtx, pluginruntime.PluginConfigWatcherOptions{
+						PluginDirs: func() []string {
+							dirs := pluginHost.PluginDirs()
+							return append(dirs, pluginHost.NativePluginConfigRoots()...)
+						},
+						OnConfigChanged: func(ctx context.Context, pluginID string) {
+							if _, err := pluginHost.ApplyPluginConfig(ctx, pluginID); err != nil {
+								zap.L().Warn("插件配置变更同步失败",
+									zap.String("plugin_id", pluginID), zap.Error(err))
+							}
+						},
+					})
+					pluginruntime.StartPluginSourceWatcher(watchCtx, pluginruntime.PluginSourceWatcherOptions{
+						PluginDirs: pluginHost.PluginDirs,
+						OnSourceChanged: func(ctx context.Context) {
+							syncPipeline := pluginruntime.NewPluginDependencyPipeline(pluginSpawnCfg.ProjectRoot)
+							syncResult, syncChanged := pluginHost.SyncPluginDependencies(ctx, syncPipeline, pluginHost.PluginDirs(), nil)
+							reason := "file_watcher"
+							if syncResult.EnvironmentChanged {
+								reason = "file_watcher_dependency_install"
+							} else if len(syncChanged) > 0 {
+								reason = "file_watcher_blocklist_changed"
+							}
+							if err := pluginHost.RestartRunner(ctx, pluginRunnerOpts); err != nil {
+								zap.L().Warn("插件源码变更后重启 Runner 失败",
+									zap.String("reason", reason), zap.Error(err))
+							}
+						},
+					})
+				}
+			}
 	} else {
 		zap.L().Info("插件运行时 Host 已就绪（MAIBOT_PLUGIN_SPAWN=0，仅宿主内置组件）",
 			zap.Int("hook_specs", len(pluginHost.HookSpecs().ListHookSpecs())),

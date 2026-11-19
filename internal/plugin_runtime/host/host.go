@@ -89,9 +89,11 @@ type Host struct {
 
 	webuiExtensions map[string]map[string]any
 	runnerReady     protocol.RunnerReadyPayload
-	blockedReasons  map[string]string
-	// adapterMigrationErrors 适配器迁移失败原因，随每次依赖同步并入阻止列表
-	adapterMigrationErrors map[string]string
+blockedReasons  map[string]string
+		// adapterMigrationErrors 适配器迁移失败原因，随每次依赖同步并入阻止列表
+		adapterMigrationErrors map[string]string
+		// nativeInProcessReasons 进程内 Go 适配器已可承接原因，随每次 Sync 并入阻止列表
+		nativeInProcessReasons map[string]string
 
 	externalAvailablePlugins map[string]string
 	forcePluginCompatibility bool

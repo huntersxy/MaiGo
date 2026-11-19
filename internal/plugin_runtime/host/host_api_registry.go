@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -27,6 +28,8 @@ type APIEntry struct {
 	TimeoutMS       int64
 	FullName        string
 	RegistryKey     string
+	// localHandler 进程内本地 API 执行器；非空时 InvokeAPI 短路，不走 Runner
+	localHandler func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error)
 }
 
 // Clone 返回条目的浅拷贝，外部修改元数据不会绕过注册表锁
@@ -124,6 +127,34 @@ func (r *APIRegistry) RegisterAPI(name, pluginID string, metadata map[string]any
 	r.apis[entry.RegistryKey] = entry
 	r.mu.Unlock()
 	return true
+}
+
+// SetAPILocalHandler 为已注册 API 设置本地短路执行器；条目不存在时先 RegisterAPI
+func (r *APIRegistry) SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error)) bool {
+	if r == nil || handler == nil {
+		return false
+	}
+	entry := newAPIEntry(name, pluginID, metadata)
+	if entry.Name == "" || entry.PluginID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing := r.apis[entry.RegistryKey]; existing != nil {
+		existing.localHandler = handler
+		return true
+	}
+	entry.localHandler = handler
+	r.apis[entry.RegistryKey] = entry
+	return true
+}
+
+// LocalHandler 返回条目本地执行器（可能为 nil）
+func (e *APIEntry) LocalHandler() func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	if e == nil {
+		return nil
+	}
+	return e.localHandler
 }
 
 // RegisterPluginAPIs 批量注册插件声明的全部 API，返回注册数量

@@ -108,12 +108,17 @@ func (d Deps) aiSearchInstalledPlugins(ctx context.Context) (map[string]any, err
 		if err != nil || manifest == nil {
 			continue
 		}
-		id := strings.TrimSpace(stringFromAny(manifest["id"]))
-		if id == "" {
-			continue
-		}
-		enabled, _ := readPluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
-		status := statuses[id]
+id := strings.TrimSpace(stringFromAny(manifest["id"]))
+			if id == "" {
+				continue
+			}
+			var enabled bool
+			if pluginruntime.IsNativeAdapter(id) {
+				enabled, _ = readNativePluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
+			} else {
+				enabled, _ = readPluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
+			}
+			status := statuses[id]
 		if status == "" && d.PluginHost == nil {
 			status = "success"
 		}

@@ -17,6 +17,8 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 	"go.uber.org/zap"
+
+	"MaiGo/internal/platform_io"
 )
 
 // PluginConfigHasVersion 判断 config.toml 内容是否声明了 plugin.config_version
@@ -48,7 +50,13 @@ func (h *Host) RepairVersionlessPluginConfig(ctx context.Context, pluginID strin
 	if pluginID == "" {
 		return false, nil
 	}
-	path, err := h.pluginConfigPath(pluginID)
+	var path string
+	var err error
+	if IsNativeAdapter(pluginID) {
+		path, err = h.resolveNativePluginConfigPath(pluginID)
+	} else {
+		path, err = h.pluginConfigPath(pluginID)
+	}
 	if err != nil {
 		return false, err
 	}
@@ -79,18 +87,18 @@ func (h *Host) RepairVersionlessPluginConfig(ctx context.Context, pluginID strin
 		rebuilt = result.DefaultConfig
 	}
 	if pluginConfigVersion(rebuilt) == "" {
-		return false, fmt.Errorf("Runner 未返回带 config_version 的插件配置")
+		return false, fmt.Errorf("未返回带 config_version 的插件配置")
 	}
 	section, ok := rebuilt["plugin"].(map[string]any)
 	if !ok {
 		section = map[string]any{}
 		rebuilt["plugin"] = section
 	}
-	// 保留用户在旧文件里写的启停状态；默认配置里没有时按启用处理
 	if hasEnabled {
 		section["enabled"] = enabled
 	} else if _, exists := section["enabled"]; !exists {
-		section["enabled"] = true
+		// 原生缺省 false；社区 Python 缺省 true
+		section["enabled"] = !IsNativeAdapter(pluginID)
 	}
 
 	encoded, err := toml.Marshal(rebuilt)
@@ -126,6 +134,31 @@ func (h *Host) RepairVersionlessPluginConfigs(ctx context.Context) []string {
 		}
 		if ok {
 			repaired = append(repaired, record.PluginID)
+		}
+	}
+	return repaired
+}
+
+// RepairNativeVersionlessPluginConfigs 枚举 NativeRuntime.ListRegistered 做本地 Repair
+func (h *Host) RepairNativeVersionlessPluginConfigs(ctx context.Context) []string {
+	if h == nil {
+		return nil
+	}
+	repaired := make([]string, 0)
+	for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
+		if _, err := h.resolveNativePluginConfigPath(pluginID); err != nil {
+			zap.L().Warn("原生插件配置路径不可解析，跳过 Repair",
+				zap.String("plugin_id", pluginID), zap.Error(err))
+			continue
+		}
+		ok, err := h.RepairVersionlessPluginConfig(ctx, pluginID)
+		if err != nil {
+			zap.L().Warn("原生插件配置自动修复失败",
+				zap.String("plugin_id", pluginID), zap.Error(err))
+			continue
+		}
+		if ok {
+			repaired = append(repaired, pluginID)
 		}
 	}
 	return repaired

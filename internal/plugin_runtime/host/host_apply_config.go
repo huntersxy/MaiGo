@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+
+	"MaiGo/internal/platform_io"
 )
 
 // ApplyPluginConfig 串行应用插件配置到运行时，WebUI 与手工文件变更共用同一入口
@@ -19,6 +21,9 @@ func (h *Host) ApplyPluginConfig(ctx context.Context, pluginID string) (string, 
 	}
 	if h == nil {
 		return "stopped", nil
+	}
+	if IsNativeAdapter(pluginID) {
+		return h.applyNativePluginConfig(ctx, pluginID)
 	}
 	if h.activeRPCServer() == nil {
 		return "stopped", nil
@@ -112,6 +117,55 @@ func (h *Host) ApplyPluginConfig(ctx context.Context, pluginID string) (string, 
 	if _, loadErr := h.ReloadPlugins(ctx, []string{pluginID}, "config_enabled", nil); loadErr != nil {
 		return "", fmt.Errorf("插件未能激活，请检查依赖插件及运行日志: %w", loadErr)
 	}
+	h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
+	return "success", nil
+}
+
+func (h *Host) applyNativePluginConfig(ctx context.Context, pluginID string) (string, error) {
+	h.pluginFileUpdateMu.Lock()
+	defer h.pluginFileUpdateMu.Unlock()
+	if repaired, repairErr := h.RepairVersionlessPluginConfig(ctx, pluginID); repairErr != nil {
+		zap.L().Warn("原生插件配置自动修复失败", zap.String("plugin_id", pluginID), zap.Error(repairErr))
+	} else if repaired {
+		zap.L().Info("原生插件配置已重建", zap.String("plugin_id", pluginID))
+	}
+	snapshot, err := h.InspectPluginConfig(ctx, pluginID, nil, false)
+	if err != nil {
+		return "", err
+	}
+	if snapshot.ConfigError != "" {
+		h.forgetAppliedConfig(pluginID)
+		return "config_error", nil
+	}
+	started := platformio.DefaultNativeRuntime().IsStarted(pluginID)
+	if h.appliedConfigMatches(pluginID, snapshot.NormalizedConfig) && started == snapshot.Enabled {
+		if started {
+			return "success", nil
+		}
+		return "inactive", nil
+	}
+	h.setPluginTransition(pluginID, snapshot.Enabled)
+	defer h.clearPluginTransition(pluginID)
+	if !snapshot.Enabled {
+		if started {
+			if err := h.NativeTeardown(ctx, pluginID); err != nil {
+				return "", fmt.Errorf("原生适配器卸载失败: %w", err)
+			}
+			h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
+		}
+		h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
+		return "inactive", nil
+	}
+	if started {
+		if err := h.NativeTeardown(ctx, pluginID); err != nil {
+			return "", fmt.Errorf("原生适配器重启前卸载失败: %w", err)
+		}
+	}
+	if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
+		return "", fmt.Errorf("原生适配器启动失败: %w", err)
+	}
+	h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+	h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
 	h.rememberAppliedConfig(pluginID, snapshot.NormalizedConfig)
 	return "success", nil
 }

@@ -292,6 +292,35 @@ func (g *Gateway) RegisterPluginGatewayDriver(ctx context.Context, spec pluginru
 	return nil
 }
 
+// RegisterNativeGatewayDriver 注册进程内原生 Adapter 并绑定发送/接收路由
+func (g *Gateway) RegisterNativeGatewayDriver(ctx context.Context, spec pluginruntime.NativeGatewayDriverSpec) error {
+	if g == nil || g.manager == nil {
+		return fmt.Errorf("Platform IO 未初始化，无法注册原生消息网关驱动")
+	}
+	adapter, ok := spec.Adapter.(platformio.Adapter)
+	if !ok || adapter == nil {
+		return fmt.Errorf("原生消息网关 Adapter 无效")
+	}
+	if err := g.manager.RegisterNativeGatewayDriver(ctx, platformio.NativeGatewaySpec{
+		PluginID:        spec.PluginID,
+		GatewayName:     spec.GatewayName,
+		ComponentName:   spec.ComponentName,
+		Platform:        spec.Platform,
+		AccountID:       spec.AccountID,
+		Scope:           spec.Scope,
+		RouteType:       spec.RouteType,
+		Protocol:        spec.Protocol,
+		SupportsSend:    spec.SupportsSend,
+		SupportsReceive: spec.SupportsReceive,
+		Priority:        spec.Priority,
+		Metadata:        spec.Metadata,
+		Adapter:         adapter,
+	}); err != nil {
+		return fmt.Errorf("注册原生消息网关驱动失败: %w", err)
+	}
+	return nil
+}
+
 // UnregisterPluginGatewayDriver 注销插件消息网关驱动并清理 Platform IO 路由绑定
 func (g *Gateway) UnregisterPluginGatewayDriver(ctx context.Context, pluginID, gatewayName string) error {
 	if g == nil || g.manager == nil {

@@ -181,6 +181,51 @@ func (h *Host) adapterMigrationReasons() map[string]string {
 	return out
 }
 
+// SetNativeInProcessReason 记录进程内 Go 适配器已可承接原因；仅 Register 可承接后调用
+func (h *Host) SetNativeInProcessReason(pluginID, reason string) {
+	if h == nil {
+		return
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == "" {
+		return
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "已由进程内 Go 适配器承接"
+	}
+	h.mu.Lock()
+	if h.nativeInProcessReasons == nil {
+		h.nativeInProcessReasons = map[string]string{}
+	}
+	h.nativeInProcessReasons[pluginID] = reason
+	h.mu.Unlock()
+}
+
+// ClearNativeInProcessReason 清除进程内承接原因；teardown 后调用并立刻再 Sync
+func (h *Host) ClearNativeInProcessReason(pluginID string) {
+	if h == nil {
+		return
+	}
+	pluginID = strings.TrimSpace(pluginID)
+	h.mu.Lock()
+	delete(h.nativeInProcessReasons, pluginID)
+	h.mu.Unlock()
+}
+
+// nativeInProcessReasons 返回进程内承接原因副本
+func (h *Host) nativeInProcessReasonsSnapshot() map[string]string {
+	if h == nil {
+		return nil
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make(map[string]string, len(h.nativeInProcessReasons))
+	for pluginID, reason := range h.nativeInProcessReasons {
+		out[pluginID] = reason
+	}
+	return out
+}
+
 // SetBlockedPluginReasons 记录依赖阻塞原因，对齐 set_blocked_plugin_reasons
 func (h *Host) SetBlockedPluginReasons(reasons map[string]string) {
 	if h == nil {

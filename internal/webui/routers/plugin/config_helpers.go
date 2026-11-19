@@ -192,6 +192,25 @@ func readPluginEnabledValue(raw string) (bool, error) {
 	return coerceEnabledValue(value), nil
 }
 
+func readNativePluginEnabledValue(raw string) (bool, error) {
+	if strings.TrimSpace(raw) == "" {
+		return false, nil
+	}
+	var document map[string]any
+	if err := toml.Unmarshal([]byte(raw), &document); err != nil {
+		return false, err
+	}
+	pluginSection, ok := document["plugin"].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	value, ok := pluginSection["enabled"]
+	if !ok {
+		return false, nil
+	}
+	return coerceEnabledValue(value), nil
+}
+
 func coerceEnabledValue(value any) bool {
 	if text, ok := value.(string); ok {
 		switch strings.ToLower(strings.TrimSpace(text)) {

@@ -8,6 +8,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
 	"github.com/pelletier/go-toml/v2"
+
+	pluginruntime "MaiGo/internal/plugin_runtime"
 )
 
 // pluginConfigSnapshot 汇总运行时 inspect 结果，字段对齐 InspectPluginConfigResultPayload
@@ -288,16 +290,21 @@ func (d Deps) handlePluginConfigToggle(w http.ResponseWriter, r *http.Request) {
 		writePluginRouteFailure(w, err)
 		return
 	}
-	rawConfig, err := readPluginConfigText(paths.configPath)
-	if err != nil {
-		writePluginRouteFailure(w, err)
-		return
-	}
-	currentEnabled, err := readPluginEnabledValue(rawConfig)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
-		return
-	}
+rawConfig, err := readPluginConfigText(paths.configPath)
+		if err != nil {
+			writePluginRouteFailure(w, err)
+			return
+		}
+		var currentEnabled bool
+		if pluginruntime.IsNativeAdapter(pluginID) {
+			currentEnabled, err = readNativePluginEnabledValue(rawConfig)
+		} else {
+			currentEnabled, err = readPluginEnabledValue(rawConfig)
+		}
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
+			return
+		}
 	newEnabled := !currentEnabled
 	if err := writePluginConfigText(paths.configPath, setPluginEnabledText(rawConfig, newEnabled)); err != nil {
 		writePluginRouteFailure(w, err)

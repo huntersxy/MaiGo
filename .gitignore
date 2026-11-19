@@ -76,3 +76,4 @@ jieba.cache
 /.zcode
 /.workbuddy
 /.cache
+/temp

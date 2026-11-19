@@ -265,9 +265,28 @@ type PluginGatewayDriverSpec struct {
 	Metadata        map[string]any
 }
 
+// NativeGatewayDriverSpec 进程内原生消息网关注册声明；Adapter 由调用方构造
+type NativeGatewayDriverSpec struct {
+	PluginID        string
+	GatewayName     string
+	ComponentName   string
+	Platform        string
+	AccountID       string
+	Scope           string
+	RouteType       string
+	Protocol        string
+	SupportsSend    bool
+	SupportsReceive bool
+	Priority        int
+	Metadata        map[string]any
+	// Adapter 必须已实现独立 Send；类型由 Platform IO 断言
+	Adapter any
+}
+
 // PluginGatewayDriverPort 由 Platform IO 实现插件消息网关驱动注册与解绑
 type PluginGatewayDriverPort interface {
 	RegisterPluginGatewayDriver(ctx context.Context, spec PluginGatewayDriverSpec) error
+	RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatewayDriverSpec) error
 	UnregisterPluginGatewayDriver(ctx context.Context, pluginID, gatewayName string) error
 }
 

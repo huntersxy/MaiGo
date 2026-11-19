@@ -18,10 +18,12 @@ import (
 )
 
 const (
-	qqOfficialAdapterPluginID = "Mai-with-u.qq-adapter"
-	telegramAdapterPluginID   = "maibot-team.telegram-adapter"
-	telegramAdapterLegacyID   = "Sengoku.telegram-adapter"
-	builtinAdapterBackupRoot  = ".builtin-backups"
+	qqOfficialAdapterPluginID   = "Mai-with-u.qq-adapter"
+	telegramAdapterPluginID     = "maibot-team.telegram-adapter"
+	telegramAdapterLegacyID     = "Sengoku.telegram-adapter"
+	weixinClawbotAdapterPluginID = "maibot-team.weixin-clawbot-adapter"
+	weixinClawbotAdapterLegacyID = "local.weixin-clawbot-adapter"
+	builtinAdapterBackupRoot    = ".builtin-backups"
 )
 
 // MigrateQQOfficialAdapter 迁移 QQ 官方适配器的外部安装
@@ -32,6 +34,11 @@ func MigrateQQOfficialAdapter(projectRoot, instanceRoot string) (string, error) 
 // MigrateTelegramAdapter 迁移 Telegram 适配器及曾使用个人作者 ID 的版本
 func MigrateTelegramAdapter(projectRoot, instanceRoot string) (string, error) {
 	return migrateBuiltinAdapter(projectRoot, instanceRoot, telegramAdapterPluginID, "telegram_adapter", "Telegram 适配器", telegramAdapterLegacyID)
+}
+
+// MigrateWeixinClawbotAdapter 迁移微信 ClawBot 适配器及 legacy ID
+func MigrateWeixinClawbotAdapter(projectRoot, instanceRoot string) (string, error) {
+	return migrateBuiltinAdapter(projectRoot, instanceRoot, weixinClawbotAdapterPluginID, "weixin_clawbot_adapter", "微信 ClawBot 适配器", weixinClawbotAdapterLegacyID)
 }
 
 func migrateBuiltinAdapter(projectRoot, instanceRoot, pluginID, directoryName, displayName string, legacyIDs ...string) (string, error) {

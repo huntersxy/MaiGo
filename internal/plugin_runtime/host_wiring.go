@@ -25,6 +25,9 @@ import (
 // pluginruntime.Host 引用与全部方法保持不变。
 type Host = host.Host
 
+// RunnerState Runner 组运行状态
+type RunnerState = host.RunnerState
+
 // NewHost 构造插件运行时宿主
 //
 // 构造后立即注入集成层能力：依赖流水线与 manifest 冲突扫描器。
@@ -34,6 +37,11 @@ func NewHost() *host.Host {
 	instance.SetDependencyRunner(NewPluginDependencyPipeline(""))
 	instance.SetManifestConflictScanner(manifestConflictScanner{})
 	return instance
+}
+
+// IsNativeAdapter 判断是否进程内 Go 适配器
+func IsNativeAdapter(pluginID string) bool {
+	return host.IsNativeAdapter(pluginID)
 }
 
 // manifestConflictScanner 实现 host.ManifestConflictScanner
@@ -150,6 +158,8 @@ type (
 	PluginMessageGatewayPort = host.PluginMessageGatewayPort
 	// PluginGatewayDriverSpec 插件网关驱动注册参数
 	PluginGatewayDriverSpec = host.PluginGatewayDriverSpec
+	// NativeGatewayDriverSpec 进程内原生网关驱动注册参数
+	NativeGatewayDriverSpec = host.NativeGatewayDriverSpec
 	// PluginGatewayInboundRequest 插件网关入站归属
 	PluginGatewayInboundRequest = host.PluginGatewayInboundRequest
 	// PluginSendRequest 消息发送请求

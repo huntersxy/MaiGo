@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
+
+	"MaiGo/internal/platform_io"
 )
 
 // adapterTransitionMu 串行化适配器上下线，对齐 Python _adapter_transition_lock
@@ -59,20 +61,45 @@ func (h *Host) TakeAdaptersOffline(ctx context.Context) (AdapterTransitionResult
 	if h == nil {
 		return AdapterTransitionResult{}, nil
 	}
-	if h.activeRPCServer() == nil {
-		return AdapterTransitionResult{
-			Success:          false,
-			ChangedPluginIDs: []string{},
-			PendingPluginIDs: pendingOfflineAdapterIDs(),
-			FailedPlugins:    map[string]string{"plugin_runtime": "插件运行时尚未启动"},
-		}, nil
-	}
 	adapterTransitionMu.Lock()
 	defer adapterTransitionMu.Unlock()
 
 	changed := make([]string, 0)
 	failed := map[string]string{}
+
+	// 独立枚举原生：不靠 LoadedPluginIDsByType；完整 NativeTeardown
+	for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
+		if !platformio.DefaultNativeRuntime().IsStarted(pluginID) && len(h.gatewayStatesFor(pluginID)) == 0 {
+			continue
+		}
+		if err := h.NativeTeardown(ctx, pluginID); err != nil {
+			failed[pluginID] = err.Error()
+			continue
+		}
+		changed = append(changed, pluginID)
+		recordOfflineAdapterID(pluginID)
+	}
+	h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
+
+	if h.activeRPCServer() == nil {
+		sort.Strings(changed)
+		closePolicyBlockedChats(ctx)
+		h.notifyStatusChanges()
+		if len(failed) == 0 && len(changed) == 0 {
+			failed["plugin_runtime"] = "插件运行时尚未启动"
+		}
+		return AdapterTransitionResult{
+			Success:          len(failed) == 0,
+			ChangedPluginIDs: changed,
+			PendingPluginIDs: pendingOfflineAdapterIDs(),
+			FailedPlugins:    failed,
+		}, nil
+	}
+
 	for _, pluginID := range h.LoadedPluginIDsByType("adapter") {
+		if IsNativeAdapter(pluginID) {
+			continue
+		}
 		result, err := h.UnloadPlugins(ctx, []string{pluginID}, "local_operator_offline")
 		if err != nil {
 			failed[pluginID] = err.Error()
@@ -87,10 +114,8 @@ func (h *Host) TakeAdaptersOffline(ctx context.Context) (AdapterTransitionResult
 		}
 	}
 	sort.Strings(changed)
-	// 对齐 Python integration.py:1349-1352：卸载完成后按实际剩余链路清理聊天流
 	closePolicyBlockedChats(ctx)
 	h.notifyStatusChanges()
-	sort.Strings(changed)
 	return AdapterTransitionResult{
 		Success:          len(failed) == 0,
 		ChangedPluginIDs: changed,
@@ -105,14 +130,6 @@ func (h *Host) BringAdaptersOnline(ctx context.Context) (AdapterTransitionResult
 	if h == nil {
 		return AdapterTransitionResult{}, nil
 	}
-	if h.activeRPCServer() == nil {
-		return AdapterTransitionResult{
-			Success:          false,
-			ChangedPluginIDs: []string{},
-			PendingPluginIDs: pendingOfflineAdapterIDs(),
-			FailedPlugins:    map[string]string{"plugin_runtime": "插件运行时尚未启动"},
-		}, nil
-	}
 	adapterTransitionMu.Lock()
 	defer adapterTransitionMu.Unlock()
 
@@ -125,28 +142,83 @@ func (h *Host) BringAdaptersOnline(ctx context.Context) (AdapterTransitionResult
 			FailedPlugins:    map[string]string{},
 		}, nil
 	}
-	result, err := h.ReloadPlugins(ctx, pending, "local_operator_online", nil)
-	if err != nil {
-		zap.L().Error("适配器插件重新加载失败", zap.Strings("plugins", pending), zap.Error(err))
-		return AdapterTransitionResult{
-			Success:          false,
-			ChangedPluginIDs: []string{},
-			PendingPluginIDs: pending,
-			FailedPlugins:    map[string]string{"plugin_runtime": err.Error()},
-		}, nil
+
+	changed := make([]string, 0)
+	failed := map[string]string{}
+	pythonPending := make([]string, 0)
+
+	for _, pluginID := range pending {
+		if IsNativeAdapter(pluginID) || platformio.DefaultNativeRuntime().IsRegistered(pluginID) {
+			path, err := h.resolveNativePluginConfigPath(pluginID)
+			if err != nil {
+				failed[pluginID] = err.Error()
+				continue
+			}
+			enabled, err := readNativePluginEnabled(path)
+			if err != nil {
+				failed[pluginID] = err.Error()
+				continue
+			}
+			if !enabled {
+				clearOfflineAdapterID(pluginID)
+				continue
+			}
+			if err := h.StartNativeRuntimeIfEnabled(ctx, pluginID); err != nil {
+				failed[pluginID] = err.Error()
+				continue
+			}
+			h.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
+			changed = append(changed, pluginID)
+			clearOfflineAdapterID(pluginID)
+			continue
+		}
+		pythonPending = append(pythonPending, pluginID)
 	}
-	changed := make([]string, 0, len(result.ReloadedPlugins))
-	for _, pluginID := range result.ReloadedPlugins {
-		changed = append(changed, pluginID)
-		clearOfflineAdapterID(pluginID)
+	h.SyncPluginDependencies(ctx, h.dependencyRunner, h.PluginDirs(), nil)
+
+	if len(pythonPending) > 0 {
+		if h.activeRPCServer() == nil {
+			failed["plugin_runtime"] = "插件运行时尚未启动"
+		} else {
+			result, err := h.ReloadPlugins(ctx, pythonPending, "local_operator_online", nil)
+			if err != nil {
+				zap.L().Error("适配器插件重新加载失败", zap.Strings("plugins", pythonPending), zap.Error(err))
+				failed["plugin_runtime"] = err.Error()
+			} else {
+				for _, pluginID := range result.ReloadedPlugins {
+					changed = append(changed, pluginID)
+					clearOfflineAdapterID(pluginID)
+				}
+				for failedID, reason := range result.FailedPlugins {
+					failed[failedID] = reason
+				}
+			}
+		}
 	}
 	sort.Strings(changed)
 	return AdapterTransitionResult{
-		Success:          len(result.FailedPlugins) == 0,
+		Success:          len(failed) == 0,
 		ChangedPluginIDs: changed,
 		PendingPluginIDs: pendingOfflineAdapterIDs(),
-		FailedPlugins:    result.FailedPlugins,
+		FailedPlugins:    failed,
 	}, nil
+}
+
+func (h *Host) gatewayStatesFor(pluginID string) map[string]MessageGatewayRuntimeState {
+	if h == nil {
+		return nil
+	}
+	h.gatewayStateMu.RLock()
+	defer h.gatewayStateMu.RUnlock()
+	states := h.gatewayStates[pluginID]
+	if len(states) == 0 {
+		return nil
+	}
+	out := make(map[string]MessageGatewayRuntimeState, len(states))
+	for name, state := range states {
+		out[name] = state
+	}
+	return out
 }
 
 // recordOfflineAdapterID 记录已卸载的适配器插件

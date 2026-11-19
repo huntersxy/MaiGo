@@ -70,15 +70,21 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[pluginID] = struct{}{}
 
-		enabled := true
-		configError := ""
-		configPath := pluginruntime.ResolvePluginConfigPath(pluginPath)
-		enabledValue, enabledErr := readPluginEnabled(configPath)
-		if enabledErr != nil {
-			configError = "读取插件 " + pluginID + " 启用配置失败：" + enabledErr.Error()
-		} else {
-			enabled = enabledValue
-		}
+enabled := true
+			configError := ""
+			configPath := pluginruntime.ResolvePluginConfigPath(pluginPath)
+			var enabledValue bool
+			var enabledErr error
+			if pluginruntime.IsNativeAdapter(pluginID) {
+				enabledValue, enabledErr = readNativePluginEnabled(configPath)
+			} else {
+				enabledValue, enabledErr = readPluginEnabled(configPath)
+			}
+			if enabledErr != nil {
+				configError = "读取插件 " + pluginID + " 启用配置失败：" + enabledErr.Error()
+			} else {
+				enabled = enabledValue
+			}
 		record, registered := records[pluginID]
 		loadStatus := "not_loaded"
 		loadError := ""
@@ -254,6 +260,30 @@ func readPluginEnabled(configPath string) (bool, error) {
 	value, ok := pluginSection["enabled"]
 	if !ok {
 		return true, nil
+	}
+	return coerceEnabledValue(value), nil
+}
+
+// readNativePluginEnabled 原生适配器门闩：缺文件/缺键=false
+func readNativePluginEnabled(configPath string) (bool, error) {
+	raw, err := os.ReadFile(filepath.Clean(configPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	var document map[string]any
+	if err := toml.Unmarshal(raw, &document); err != nil {
+		return false, err
+	}
+	pluginSection, ok := document["plugin"].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	value, ok := pluginSection["enabled"]
+	if !ok {
+		return false, nil
 	}
 	return coerceEnabledValue(value), nil
 }
