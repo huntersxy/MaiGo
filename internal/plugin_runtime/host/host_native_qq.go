@@ -100,14 +100,14 @@ func (h *Host) reportQQOfficialGatewayState(ctx context.Context, state *qq_offic
 	}
 	ready, accountID, _, connected := state.SnapshotForReport()
 	if !connected {
-		_, _, err := h.UpdateMessageGatewayStateContext(ctx, qq_official.PluginID, protocol.MessageGatewayStateUpdatePayload{
+		_, _, err := h.applyNativeMessageGatewayState(ctx, qq_official.PluginID, protocol.MessageGatewayStateUpdatePayload{
 			GatewayName: qq_official.GatewayName,
 			Ready:       false,
 			Platform:    qq_official.PlatformQQ,
 		})
 		return err
 	}
-	_, _, err := h.UpdateMessageGatewayStateContext(ctx, qq_official.PluginID, protocol.MessageGatewayStateUpdatePayload{
+	_, _, err := h.applyNativeMessageGatewayState(ctx, qq_official.PluginID, protocol.MessageGatewayStateUpdatePayload{
 		GatewayName: qq_official.GatewayName,
 		Ready:       ready,
 		Platform:    qq_official.PlatformQQ,

@@ -65,14 +65,14 @@ func (h *Host) reportTelegramGatewayState(ctx context.Context, state *telegram.R
 	}
 	ready, accountID, _, connected := state.SnapshotForReport()
 	if !connected {
-		_, _, err := h.UpdateMessageGatewayStateContext(ctx, telegram.PluginID, protocol.MessageGatewayStateUpdatePayload{
+		_, _, err := h.applyNativeMessageGatewayState(ctx, telegram.PluginID, protocol.MessageGatewayStateUpdatePayload{
 			GatewayName: telegram.GatewayName,
 			Ready:       false,
 			Platform:    telegram.PlatformTelegram,
 		})
 		return err
 	}
-	_, _, err := h.UpdateMessageGatewayStateContext(ctx, telegram.PluginID, protocol.MessageGatewayStateUpdatePayload{
+	_, _, err := h.applyNativeMessageGatewayState(ctx, telegram.PluginID, protocol.MessageGatewayStateUpdatePayload{
 		GatewayName: telegram.GatewayName,
 		Ready:       ready,
 		Platform:    telegram.PlatformTelegram,

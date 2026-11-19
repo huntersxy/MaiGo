@@ -54,7 +54,7 @@ func (h *Host) reportSnowlumaGatewayState(ctx context.Context, state *snowluma.R
 	}
 	ready, accountID, scope, detectedProtocol, connected := state.SnapshotForReport()
 	if !connected {
-		_, _, err := h.UpdateMessageGatewayStateContext(ctx, snowluma.PluginID, protocol.MessageGatewayStateUpdatePayload{
+		_, _, err := h.applyNativeMessageGatewayState(ctx, snowluma.PluginID, protocol.MessageGatewayStateUpdatePayload{
 			GatewayName: snowluma.GatewayName,
 			Ready:       false,
 			Platform:    snowluma.PlatformQQ,
@@ -65,7 +65,7 @@ func (h *Host) reportSnowlumaGatewayState(ctx context.Context, state *snowluma.R
 	if detectedProtocol != "" {
 		metadata["protocol"] = detectedProtocol
 	}
-	_, _, err := h.UpdateMessageGatewayStateContext(ctx, snowluma.PluginID, protocol.MessageGatewayStateUpdatePayload{
+	_, _, err := h.applyNativeMessageGatewayState(ctx, snowluma.PluginID, protocol.MessageGatewayStateUpdatePayload{
 		GatewayName: snowluma.GatewayName,
 		Ready:       ready,
 		Platform:    snowluma.PlatformQQ,

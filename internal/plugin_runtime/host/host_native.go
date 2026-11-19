@@ -75,10 +75,11 @@ func (h *Host) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatew
 	if spec.PluginID == "" || spec.GatewayName == "" {
 		return fmt.Errorf("原生网关 plugin_id/gateway_name 不能为空")
 	}
-	if spec.Metadata == nil {
+if spec.Metadata == nil {
 		spec.Metadata = map[string]any{}
 	}
 	spec.Metadata["plugin_type"] = "adapter"
+	h.EnsureNativeMessageGateways()
 	h.gatewayOpsMu.Lock()
 	defer h.gatewayOpsMu.Unlock()
 	driverPort, err := h.gatewayDriverPort()

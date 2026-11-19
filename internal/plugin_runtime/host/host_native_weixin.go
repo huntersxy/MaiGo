@@ -71,7 +71,7 @@ func (h *Host) reportWeixinGatewayState(ctx context.Context, gatewayName string,
 	if remark != "" {
 		metadata["account_name"] = remark
 	}
-	_, _, err := h.UpdateMessageGatewayStateContext(ctx, weixin_clawbot.PluginID, protocol.MessageGatewayStateUpdatePayload{
+	_, _, err := h.applyNativeMessageGatewayState(ctx, weixin_clawbot.PluginID, protocol.MessageGatewayStateUpdatePayload{
 		GatewayName: gatewayName,
 		Ready:       ready,
 		Platform:    weixin_clawbot.PlatformWeixin,

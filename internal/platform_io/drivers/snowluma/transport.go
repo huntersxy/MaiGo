@@ -183,11 +183,6 @@ func (t *Transport) dialOnce(parent context.Context, cfg ClientConfig) error {
 	stopCh := t.stopCh
 	t.mu.Unlock()
 	zap.L().Info("SnowLuma 适配器已连接", zap.String("url", displayURL(cfg)))
-	if t.onOpen != nil {
-		if err := t.onOpen(parent); err != nil {
-			zap.L().Warn("SnowLuma 连接就绪回调失败", zap.Error(err))
-		}
-	}
 	defer func() {
 		t.mu.Lock()
 		if t.conn == conn {
@@ -200,6 +195,34 @@ func (t *Transport) dialOnce(parent context.Context, cfg ClientConfig) error {
 			_ = t.onClose(parent)
 		}
 	}()
+
+	// 先起读循环再跑 onOpen：get_login_info 等 CallAction 依赖 echo 回包
+	readDone := make(chan error, 1)
+	go func() {
+		readDone <- t.readLoop(parent, conn, stopCh, cfg)
+	}()
+	if t.onOpen != nil {
+		if err := t.onOpen(parent); err != nil {
+			zap.L().Warn("SnowLuma 连接就绪回调失败", zap.Error(err))
+			_ = conn.Close(websocket.StatusNormalClosure, "onOpen failed")
+			select {
+			case <-readDone:
+			case <-time.After(3 * time.Second):
+			}
+			return err
+		}
+	}
+	select {
+	case err := <-readDone:
+		return err
+	case <-stopCh:
+		return nil
+	case <-parent.Done():
+		return nil
+	}
+}
+
+func (t *Transport) readLoop(parent context.Context, conn *websocket.Conn, stopCh <-chan struct{}, cfg ClientConfig) error {
 	for {
 		select {
 		case <-stopCh:

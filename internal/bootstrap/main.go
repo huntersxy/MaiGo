@@ -1542,6 +1542,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 				} {
 					pluginHost.SetNativeInProcessReason(pluginID, "已由进程内 Go 适配器承接")
 				}
+				pluginHost.EnsureNativeMessageGateways()
 				pluginHost.EnsureSnowlumaLocalAPIs()
 				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.snowluma-adapter"); err != nil {
 					zap.L().Warn("snowluma 原生适配器冷启失败", zap.Error(err))
