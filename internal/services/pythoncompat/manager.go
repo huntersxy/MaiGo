@@ -331,18 +331,6 @@ func stopManagedSidecar() {
 	})
 }
 
-// ManagedSidecarPID 返回本进程拉起的侧车 pid；未拉起或生命周期锁被占用时为 0，不触发探活。
-func ManagedSidecarPID() int {
-	if !managedSidecar.mu.TryLock() {
-		return 0
-	}
-	defer managedSidecar.mu.Unlock()
-	if managedSidecar.cmd == nil || managedSidecar.cmd.Process == nil {
-		return 0
-	}
-	return managedSidecar.cmd.Process.Pid
-}
-
 // waitExit 在超时后强杀子进程，避免持生命周期锁无限等待 waitDone。
 func (p *sidecarProc) waitExit(waitDone <-chan struct{}, timeout time.Duration) bool {
 	select {
