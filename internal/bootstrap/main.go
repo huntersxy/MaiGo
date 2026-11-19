@@ -3,7 +3,6 @@ package bootstrap
 import (
 	webuichat "MaiGo/internal/webui/routers/chat"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -56,9 +55,7 @@ import (
 	memorywriteback "MaiGo/internal/services/memory_writeback"
 	"MaiGo/internal/services/model_stats"
 	"MaiGo/internal/services/news"
-	"MaiGo/internal/services/pythoncompat"
 	"MaiGo/internal/services/schedules"
-	systemprobe "MaiGo/internal/services/system_probe"
 	goruntime "runtime"
 
 	"MaiGo/internal/common/secrets"
@@ -1934,93 +1931,6 @@ pluginHost.EnsureNativeMessageGateways()
 	desktopPetChat := func(ctx context.Context, text string) (string, error) {
 		return chatRelay.RelayPluginChatMessage(ctx, "builtin.desktop_pet", text, nil)
 	}
-	databasePath, pathErr := memory.SQLitePath(boot.DatabaseDSN)
-	if pathErr != nil {
-		zap.L().Warn("系统资源探针无法解析数据库路径", zap.Error(pathErr))
-	}
-	resourceProbe := systemprobe.New(systemprobe.Options{
-		InstanceDir:  config.InstanceRoot(),
-		DatabasePath: databasePath,
-		Database: func() *sql.DB {
-			if db == nil {
-				return nil
-			}
-			sqlDB, err := db.DB()
-			if err != nil {
-				return nil
-			}
-			return sqlDB
-		},
-		DSNOverride: strings.TrimSpace(os.Getenv("MAIBOT_DATABASE_DSN")) != "",
-		Version:     version.String(),
-		StartedAt:   stats.ProcessStart(),
-		Counts: func() systemprobe.Counts {
-			inbound, outbound := msgCounters.Totals()
-			return systemprobe.Counts{
-				Inbound:      inbound,
-				Outbound:     outbound,
-				PendingChats: int64(len(msgCounters.PendingChatTotals())),
-			}
-		},
-		Scheduler: func() systemprobe.SchedulerStats {
-			raw := chatPipeline.SessionSchedulerStats()
-			var schedulerStats chatscheduler.Stats
-			switch value := raw.(type) {
-			case chatscheduler.Stats:
-				schedulerStats = value
-			case *chatscheduler.Stats:
-				if value == nil {
-					return systemprobe.SchedulerStats{}
-				}
-				schedulerStats = *value
-			default:
-				return systemprobe.SchedulerStats{}
-			}
-			return systemprobe.SchedulerStats{
-				Available:      true,
-				Workers:        schedulerStats.Workers,
-				ActiveSessions: schedulerStats.ActiveSessions,
-				QueuedTasks:    schedulerStats.QueuedTasks,
-				RunningTasks:   schedulerStats.RunningTasks,
-				Submitted:      schedulerStats.Submitted,
-				Completed:      schedulerStats.Completed,
-				Failed:         schedulerStats.Failed,
-				Rejected:       schedulerStats.Rejected,
-			}
-		},
-		Subprocesses: func() []systemprobe.Subprocess {
-			runnerPIDs := pluginHost.RunnerProcessIDs()
-			out := make([]systemprobe.Subprocess, 0, len(runnerPIDs)+1)
-			for group, pid := range runnerPIDs {
-				status := pluginHost.RunnerStatus(group)
-				item := systemprobe.Subprocess{
-					Kind:          "plugin_runtime",
-					Group:         string(group),
-					PID:           pid,
-					Alive:         status.Started && pid > 0,
-					Phase:         string(status.Phase),
-					RestartCount:  status.RestartCount,
-					LoadedPlugins: append([]string(nil), status.LoadedPlugins...),
-					PythonSpawn:   status.PythonSpawn,
-				}
-				if !status.StartedAt.IsZero() {
-					started := float64(status.StartedAt.UnixNano()) / 1e9
-					item.StartedAtUnix = &started
-				}
-				out = append(out, item)
-			}
-			if pid := pythoncompat.ManagedSidecarPID(); pid > 0 {
-				out = append(out, systemprobe.Subprocess{
-					Kind:  "pycompat_sidecar",
-					Group: "pythoncompat",
-					PID:   pid,
-					Alive: true,
-					Phase: "running",
-				})
-			}
-			return out
-		},
-	})
 	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, desktopPetSvc, desktopPetChat, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
 	if maimMsgServer != nil {
 		var apiHandler http.HandlerFunc
@@ -2038,7 +1948,6 @@ pluginHost.EnsureNativeMessageGateways()
 	}
 	app.SetSessionSchedulerStats(chatPipeline.SessionSchedulerStats)
 	app.SetSessionTaskSubmitter(chatPipeline.SessionTaskSubmitter())
-	app.SetResourceProbe(resourceProbe)
 	app.SetEnforcePublicOutboundProvider(func() bool {
 		if instHolder == nil || instHolder.Config() == nil {
 			return true

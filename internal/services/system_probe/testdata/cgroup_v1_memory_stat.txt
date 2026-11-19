@@ -1,4 +1,0 @@
-cache 10
-rss 20
-file 123
-anon 456

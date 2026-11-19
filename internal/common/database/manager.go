@@ -126,14 +126,6 @@ func sqliteDSNPath(dsn string) (string, error) {
 	return value, nil
 }
 
-// SQLitePath 把 SQLite DSN 归一为文件路径；PostgreSQL DSN 返回错误。
-func SQLitePath(dsn string) (string, error) {
-	if ResolveDialect(dsn) == DialectPostgres {
-		return "", fmt.Errorf("不是 SQLite DSN")
-	}
-	return sqliteDSNPath(dsn)
-}
-
 // sqlitePragmas 对齐 Python database.py:36-47 的连接级 PRAGMA
 //
 // journal_mode=WAL 让读写并行（SQLite 仍是单写者，但不会读写互斥）；

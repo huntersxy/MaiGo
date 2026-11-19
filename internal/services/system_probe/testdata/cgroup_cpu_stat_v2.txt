@@ -1,6 +1,0 @@
-usage_usec 1234567
-user_usec 800000
-system_usec 434567
-nr_periods 100
-nr_throttled 5
-throttled_usec 2500

@@ -1,9 +1,0 @@
-anon 100
-file 200
-kernel 300
-slab 50
-sock 10
-shmem 20
-pgfault 1000
-pgmajfault 10
-workingset_refault 5

@@ -18,7 +18,6 @@ import (
 	botservices "MaiGo/internal/services"
 	"MaiGo/internal/services/html_render"
 	"MaiGo/internal/services/news"
-	systemprobe "MaiGo/internal/services/system_probe"
 	"MaiGo/internal/webui/middleware"
 	"MaiGo/internal/webui/services/ai_search"
 )
@@ -66,8 +65,6 @@ type Deps struct {
 	Avatar       *platformio.AvatarService
 	InstanceDir  string
 	BuildVersion string
-	// ResourceProbe 返回系统资源探针；nil 表示未接线。
-	ResourceProbe func() *systemprobe.Probe
 	// SessionSchedulerStats 返回原生会话调度器快照；nil 表示未启用。
 	SessionSchedulerStats func() any
 	// SessionTaskSubmitter 返回提交函数；返回 nil 表示原生会话调度器未启用。
@@ -113,14 +110,6 @@ func (d Deps) now() time.Time {
 		return d.clock()
 	}
 	return time.Now()
-}
-
-// systemProbe 返回已接线的资源探针；未接线时 nil。
-func (d Deps) systemProbe() *systemprobe.Probe {
-	if d.ResourceProbe == nil {
-		return nil
-	}
-	return d.ResourceProbe()
 }
 
 // enforcePublicOutbound 返回当前出站公网校验开关，未接线时保持 Python 默认开启

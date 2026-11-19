@@ -5,7 +5,6 @@ import "github.com/go-chi/chi/v5"
 // mountSystemRoutes 注册 /api/webui/system 下与 MaiBot system.py 对等的全部路由
 func mountSystemRoutes(sr chi.Router, d Deps) {
 	sr.Get("/status", d.handleSystemStatus)
-	sr.Get("/resource-probe", d.handleSystemResourceProbe)
 	sr.Post("/request-restart", d.handleSystemRequestRestart)
 	sr.Post("/restart", d.handleSystemRestart)
 
