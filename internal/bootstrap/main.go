@@ -1549,6 +1549,12 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.telegram-adapter"); err != nil {
 					zap.L().Warn("telegram 原生适配器冷启失败", zap.Error(err))
 				}
+				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "maibot-team.weixin-clawbot-adapter"); err != nil {
+					zap.L().Warn("weixin 原生适配器冷启失败", zap.Error(err))
+				}
+				if err := pluginHost.StartNativeRuntimeIfEnabled(context.Background(), "Mai-with-u.qq-adapter"); err != nil {
+					zap.L().Warn("qq official 原生适配器冷启失败", zap.Error(err))
+				}
 			}
 
 			// 对齐 Python integration.py:904-908 的 plugin_runtime.sync_dependencies 阶段：

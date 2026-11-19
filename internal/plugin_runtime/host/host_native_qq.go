@@ -64,24 +64,34 @@ type qqOfficialAPIInvoker struct {
 }
 
 func (i qqOfficialAPIInvoker) InvokeAPI(ctx context.Context, pluginID, componentName string, args map[string]any, timeoutMS int64) (map[string]any, error) {
+	_ = timeoutMS
 	if i.host == nil {
 		return nil, fmt.Errorf("Host 未初始化")
 	}
-	envelope, err := i.host.InvokeAPI(ctx, pluginID, componentName, args, timeoutMS)
+	// identity 只走 snowluma LocalAPI 短路；未就绪则跳过，绝不落到 Python Runner
+	apis := i.host.APIRegistry()
+	if apis == nil {
+		return nil, fmt.Errorf("snowluma LocalAPI 未就绪")
+	}
+	entry := apis.GetAPI(pluginID, componentName, "", false)
+	if entry == nil {
+		return nil, fmt.Errorf("snowluma LocalAPI 未就绪")
+	}
+	handler := entry.LocalHandler()
+	if handler == nil {
+		return nil, fmt.Errorf("snowluma LocalAPI 未就绪")
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	payload, err := handler(ctx, pluginID, componentName, args)
 	if err != nil {
 		return nil, err
 	}
-	if envelope.Error != nil {
-		msg := asMetadataString(envelope.Error, "message")
-		if msg == "" {
-			msg = fmt.Sprintf("%v", envelope.Error)
-		}
-		return nil, fmt.Errorf("%s", msg)
-	}
-	if envelope.Payload == nil {
+	if payload == nil {
 		return map[string]any{}, nil
 	}
-	return envelope.Payload, nil
+	return payload, nil
 }
 
 func (h *Host) reportQQOfficialGatewayState(ctx context.Context, state *qq_official.RuntimeState) error {
