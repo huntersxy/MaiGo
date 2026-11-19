@@ -6,6 +6,7 @@ import (
 
 	"MaiGo/internal/chat/replyer"
 	"MaiGo/internal/common/database"
+	"MaiGo/internal/maisaka"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -131,6 +132,78 @@ func isReferenceEntry(message *schema.AgenticMessage) bool {
 		return false
 	}
 	return message.Extra["kind"] == "reference"
+}
+
+// trimProtection 记录重建工作集时必须保留的会话骨架行
+type trimProtection struct {
+	// noteTranscriptID 本代最后一条群说明行的行号，syncGroupNote 依赖其 hash
+	noteTranscriptID uint
+}
+
+// ApplyTrimmedHistory 按提交前后 TranscriptID 差集重建工作集，返回删除条数
+// 同一行只要仍有派生消息留在提交结果里就整行保留；pending 与 transcript 行不动
+func (s *Session) ApplyTrimmedHistory(original, final []maisaka.ContextMessage) int {
+	if s == nil || len(original) == 0 {
+		return 0
+	}
+	keptIDs := make(map[uint]struct{}, len(final))
+	for _, message := range final {
+		if message.TranscriptID != 0 {
+			keptIDs[message.TranscriptID] = struct{}{}
+		}
+	}
+	droppedIDs := make(map[uint]struct{})
+	for _, message := range original {
+		if message.TranscriptID == 0 {
+			continue
+		}
+		if _, kept := keptIDs[message.TranscriptID]; !kept {
+			droppedIDs[message.TranscriptID] = struct{}{}
+		}
+	}
+	if len(droppedIDs) == 0 {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	protection := s.trimProtectionLocked()
+	// 新建切片，避免其他持有者看到被覆盖的底层数组
+	kept := make([]sessionEntry, 0, len(s.seen))
+	removed := 0
+	for _, entry := range s.seen {
+		if _, drop := droppedIDs[entry.transcriptID]; drop && !trimEntryProtected(entry, protection) {
+			removed++
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	if removed == 0 {
+		return 0
+	}
+	s.seen = kept
+	return removed
+}
+
+// trimProtectionLocked 汇总当前工作集里不可删除的会话骨架行
+func (s *Session) trimProtectionLocked() trimProtection {
+	protection := trimProtection{}
+	for _, entry := range s.seen {
+		if entry.msg != nil && entry.msg.Extra != nil {
+			switch entry.msg.Extra["kind"] {
+			case kindGroupNote, kindSystemNote:
+				protection.noteTranscriptID = entry.transcriptID
+			}
+		}
+	}
+	return protection
+}
+
+// trimEntryProtected 判断待删行是否承载回执或代头
+func trimEntryProtected(entry sessionEntry, protection trimProtection) bool {
+	if entry.msg == nil || entry.visibleSeq == 0 || isHeadEntry(entry.msg) {
+		return true
+	}
+	return entry.transcriptID != 0 && entry.transcriptID == protection.noteTranscriptID
 }
 
 // CompactionCoolingDown 判断会话是否仍在压缩失败退避期

@@ -22,6 +22,9 @@ type HistoryPostProcessResult struct {
 // HistoryPostProcessor 历史后处理端口，避免 maisaka 主包反向依赖 context 子包
 type HistoryPostProcessor func(history []ContextMessage, options HistoryPostProcessOptions) HistoryPostProcessResult
 
+// HistoryTrimSink 接收每轮提交后的历史变化，供宿主同步持久工作集
+type HistoryTrimSink func(original, final []ContextMessage)
+
 // IsContextSummaryMessage 判断是否是常驻上下文摘要消息
 func IsContextSummaryMessage(message ContextMessage) bool {
 	if message.Source == ContextSummarySource {

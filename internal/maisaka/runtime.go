@@ -191,6 +191,8 @@ type RuntimeOptions struct {
 	Compactor HistoryCompactor
 	// HistoryPostProcessor 每轮结束后的历史后处理端口，由 Agent 注入 context 实现
 	HistoryPostProcessor HistoryPostProcessor
+	// HistoryTrimSink 历史提交端口，nil 表示不同步宿主工作集
+	HistoryTrimSink HistoryTrimSink
 	// Reply Planner 正文直接触发回复的端口
 	Reply ReplyExecutor
 	// PassiveReplyer 启用后 Planner 正文直接进入回复执行端口，对应被动回复实验模式

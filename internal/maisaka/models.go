@@ -208,6 +208,8 @@ type ContextMessage struct {
 	UserID string
 	// Metadata 附加标记，如 is_at / is_mentioned / success
 	Metadata map[string]any
+	// TranscriptID 关联 conversation_transcript 行号；0 表示运行时生成，不落库、不进模型请求
+	TranscriptID uint `json:"-"`
 }
 
 // MetadataBool 读取布尔型附加标记

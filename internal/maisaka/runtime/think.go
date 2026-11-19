@@ -192,12 +192,12 @@ func (a *Agent) thinkGroup(groupID int64) {
 		defer a.turnSchedule.recordGroupCycleResult(groupID, replied)
 	}
 
-	messages, err := a.assembleMessages(ctx, session)
+	messages, transcriptIDs, err := a.assembleMessages(ctx, session)
 	if err != nil {
 		zap.L().Warn("装配群聊上下文失败", zap.Int64("group_id", groupID), zap.Error(err))
 		return
 	}
-	if a.runMaisakaTurn(ctx, memory.ConversationKindGroup, groupID, session, messages) {
+	if a.runMaisakaTurn(ctx, memory.ConversationKindGroup, groupID, session, messages, transcriptIDs) {
 		return
 	}
 	if runErr := a.runAgent(ctx, generation.groupAgent, messages); runErr != nil {

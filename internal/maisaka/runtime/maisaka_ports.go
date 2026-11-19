@@ -997,6 +997,9 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 		HistoryPostProcessor: func(history []maisaka.ContextMessage, options maisaka.HistoryPostProcessOptions) maisaka.HistoryPostProcessResult {
 			return maisakactx.ProcessChatHistoryAfterCycle(history, options)
 		},
+		HistoryTrimSink: func(original, final []maisaka.ContextMessage) {
+			session.ApplyTrimmedHistory(original, final)
+		},
 		PassiveReplyer: passiveReplyerEnabled(bot),
 		VisualRefresh:  a.agentVisual(),
 		// 每次展示时热读配置，WebUI 切换 show_maisaka_thinking 后下一轮立即生效

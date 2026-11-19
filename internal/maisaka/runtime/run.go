@@ -183,7 +183,7 @@ func (h *sessionInjector) compactNow(ctx context.Context, session *Session, stat
 		tc.CompactionAttempts++
 		lastErr = h.agent.runCompaction(compactionCtx, session, candidate, state, tc.CompactionAttempts, &remainingSteps, feedback)
 		if lastErr == nil {
-			rebuilt, buildErr := h.agent.assembleMessages(compactionCtx, session)
+			rebuilt, _, buildErr := h.agent.assembleMessages(compactionCtx, session)
 			if buildErr != nil {
 				lastErr = buildErr
 				break
@@ -222,7 +222,7 @@ func (a *Agent) compactAfterOverflow(ctx context.Context, kind string, targetID 
 	tc = tools.GetToolContext(retryCtx)
 	pending := session.PendingMessages()
 	tc.ThinkStartArrivalSeq = maxPendingSeq(pending)
-	assembled, err := a.assembleMessages(retryCtx, session)
+	assembled, _, err := a.assembleMessages(retryCtx, session)
 	if err != nil {
 		return false
 	}
@@ -438,7 +438,7 @@ func (a *Agent) retryAfterOverflow(ctx context.Context, kind string, targetID in
 	tc := tools.GetToolContext(retryCtx)
 	pending := session.PendingMessages()
 	tc.ThinkStartArrivalSeq = maxPendingSeq(pending)
-	messages, err := a.assembleMessages(retryCtx, session)
+	messages, _, err := a.assembleMessages(retryCtx, session)
 	if err != nil {
 		return err
 	}

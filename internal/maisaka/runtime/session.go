@@ -86,6 +86,8 @@ type Session struct {
 	nextOrder               uint64
 	tokenScale              float64
 	tokenSamples            int
+	// latestLogID 入站消息水位，供工具读取快照；不随工作集裁切回退
+	latestLogID             uint
 	compactionRetryAfter    time.Time
 	focusRuntime            *focus.SessionRuntime
 	maisakaRuntime          *maisaka.Runtime
@@ -431,6 +433,9 @@ func (s *Session) nextOrderLocked() uint64 {
 }
 
 func (s *Session) newUserLocked(msg *onebot.ConversationMessage, logID uint, mediaRefs []media.Ref) *sessionUser {
+	if logID > s.latestLogID {
+		s.latestLogID = logID
+	}
 	ref := ""
 	if msg.MessageID != 0 {
 		ref = strconv.FormatInt(msg.MessageID, 10)
@@ -563,12 +568,12 @@ func resolveDeferredMediaBlocks(messages []*schema.AgenticMessage) []*schema.Age
 				blocks = append(blocks, block)
 				continue
 			}
-				marker := block.UserInputImage.Base64Data
-				if !strings.HasPrefix(marker, maisaka.DeferredMediaMarkerPrefix) {
-					blocks = append(blocks, block)
-					continue
-				}
-				path := strings.TrimPrefix(marker, maisaka.DeferredMediaMarkerPrefix)
+			marker := block.UserInputImage.Base64Data
+			if !strings.HasPrefix(marker, maisaka.DeferredMediaMarkerPrefix) {
+				blocks = append(blocks, block)
+				continue
+			}
+			path := strings.TrimPrefix(marker, maisaka.DeferredMediaMarkerPrefix)
 			raw, err := os.ReadFile(path)
 			if err != nil || len(raw) == 0 || len(raw) > 12<<20 {
 				changed = true
@@ -592,12 +597,12 @@ func resolveDeferredMediaBlocks(messages []*schema.AgenticMessage) []*schema.Age
 			resolved[messageIndex] = &copied
 		}
 	}
-		return resolved
-	}
+	return resolved
+}
 
-	// renderUserText 构造 Planner 可见的用户消息文本
-	// 对齐 Python src/maisaka/context/planner_messages.py:17-84：
-	// 前缀携带 msg_id/quote/time/user/group_card，正文不再内联回复标记（引用走 quote 属性）
+// renderUserText 构造 Planner 可见的用户消息文本
+// 对齐 Python src/maisaka/context/planner_messages.py:17-84：
+// 前缀携带 msg_id/quote/time/user/group_card，正文不再内联回复标记（引用走 quote 属性）
 func (s *Session) renderUserText(msg *onebot.ConversationMessage, ref string, _ []media.Ref) string {
 	var b strings.Builder
 	if notes := s.takeNotesLocked(); len(notes) > 0 {
@@ -737,21 +742,11 @@ func (s *Session) ResolveMediaByHash(hash string) (media.Ref, bool) {
 }
 
 // LatestLogID 返回当前会话已经进入工作集的最新消息日志编号，用作工具读取快照
+// 水位只随入站消息推进，不随历史裁切回退
 func (s *Session) LatestLogID() uint {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var latest uint
-	for _, entry := range s.seen {
-		if entry.user != nil && entry.user.LogID > latest {
-			latest = entry.user.LogID
-		}
-	}
-	for _, user := range s.pending {
-		if user.LogID > latest {
-			latest = user.LogID
-		}
-	}
-	return latest
+	return s.latestLogID
 }
 
 func (s *Session) RecentWindow(now time.Time, window time.Duration) (total int, self int, lastSelf time.Time) {
@@ -781,9 +776,10 @@ func (s *Session) RecentWindow(now time.Time, window time.Duration) (total int, 
 }
 
 // Assemble 装配本轮上下文：本代头部（人格、群说明、摘要）已在 transcript 中，这里只按顺序展开
-func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction, groupExtra string) ([]*schema.AgenticMessage, error) {
+// 返回的 transcriptIDs 与 messages 等长同序，0 表示该条不来自 transcript
+func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction, groupExtra string) ([]*schema.AgenticMessage, []uint, error) {
 	if err := s.ensureGenerationHead(ctx, mem, instruction, groupExtra); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	s.mu.Lock()
 	entries := append([]sessionEntry(nil), s.seen...)
@@ -791,9 +787,11 @@ func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction
 	s.mu.Unlock()
 
 	messages := make([]*schema.AgenticMessage, 0, len(entries)+len(pending)+2)
+	transcriptIDs := make([]uint, 0, len(entries)+len(pending)+2)
 	for _, entry := range orderEntries(entries) {
 		if entry.msg != nil {
 			messages = append(messages, entry.msg)
+			transcriptIDs = append(transcriptIDs, entry.transcriptID)
 		}
 	}
 	visibleIDs := make([]uint, 0)
@@ -822,15 +820,15 @@ func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction
 		} else {
 			snapshot, refErr := mem.BuildAutoReference(ctx, s.kind, s.targetID, s.autoReferenceUserIDs(), pendingTexts)
 			if refErr != nil {
-				return nil, refErr
+				return nil, nil, refErr
 			}
 			seen, seenErr := mem.ReferenceSeenForSession(ctx, s.kind, s.targetID)
 			if seenErr != nil {
-				return nil, seenErr
+				return nil, nil, seenErr
 			}
 			delta, deltaErr := mem.BuildReferenceDelta(ctx, snapshot, seen)
 			if deltaErr != nil {
-				return nil, deltaErr
+				return nil, nil, deltaErr
 			}
 			if delta.Text != "" {
 				refMsg := schema.UserAgenticMessage(systemNote("内部参考", delta.Text))
@@ -838,10 +836,11 @@ func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction
 				payload, _ := sonic.Marshal(refMsg)
 				entry := &memory.TranscriptEntry{ConversationKind: s.kind, TargetID: s.targetID, EntryKind: "internal_reference", Payload: payload}
 				if err := mem.AppendTranscript(ctx, entry); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				referenceID = entry.ID
 				messages = append(messages, refMsg)
+				transcriptIDs = append(transcriptIDs, entry.ID)
 				s.mu.Lock()
 				s.seen = append(s.seen, sessionEntry{msg: refMsg, transcriptID: entry.ID})
 				s.pendingReferenceReceipt = &delta.Receipt
@@ -856,6 +855,7 @@ func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction
 	for _, user := range pending {
 		if user.Msg != nil {
 			messages = append(messages, user.Msg)
+			transcriptIDs = append(transcriptIDs, user.TranscriptID)
 		}
 		if user.TranscriptID != 0 {
 			visibleIDs = append(visibleIDs, user.TranscriptID)
@@ -868,7 +868,7 @@ func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction
 			tc.InjectedArrivalSeq = seq
 		}
 	}
-	return messages, nil
+	return messages, transcriptIDs, nil
 }
 
 func (s *Session) autoReferenceUserIDs() []int64 {

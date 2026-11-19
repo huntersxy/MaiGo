@@ -97,12 +97,12 @@ func (a *Agent) thinkPrivate(targetID int64) {
 	tc := tools.GetToolContext(ctx)
 	tc.ThinkStartArrivalSeq = maxPendingSeq(pending)
 
-	messages, err := a.assembleMessages(ctx, session)
+	messages, transcriptIDs, err := a.assembleMessages(ctx, session)
 	if err != nil {
 		zap.L().Warn("装配私聊上下文失败", zap.Int64("target_id", targetID), zap.Error(err))
 		return
 	}
-	if a.runMaisakaTurn(ctx, memory.ConversationKindPrivate, targetID, session, messages) {
+	if a.runMaisakaTurn(ctx, memory.ConversationKindPrivate, targetID, session, messages, transcriptIDs) {
 		return
 	}
 	if runErr := a.runAgent(ctx, generation.privateAgent, messages); runErr != nil {

@@ -61,7 +61,7 @@ func (a *Agent) restoreProactiveContextMessages(ctx context.Context, kind string
 		// 回填消息保留图片，避免模型在主动回合看不到历史图片
 		appendMediaImageBlocks(payload, log.MediaRefs)
 		resolved := resolveDeferredMediaBlocks([]*schema.AgenticMessage{payload})
-		converted, ok := agenticMessageToMaisaka(resolved[0])
+		converted, ok := agenticMessageToMaisaka(resolved[0], 0)
 		if !ok {
 			continue
 		}

@@ -102,7 +102,7 @@ func (a *Agent) newMaisakaPromptSource() *maisakaPromptSource {
 }
 
 // runMaisakaTurn 使用 Maisaka 运行时执行一轮完整思考，返回是否已接管
-func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64, session *Session, messages []*schema.AgenticMessage) bool {
+func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64, session *Session, messages []*schema.AgenticMessage, transcriptIDs []uint) bool {
 	runtime := session.MaisakaRuntime()
 	generation := generationFrom(ctx)
 	if runtime == nil || runtime.Engine() == nil || generation == nil || generation.model == nil {
@@ -135,7 +135,7 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 				if jobGeneration != nil {
 					jobCtx = withGeneration(jobCtx, jobGeneration)
 				}
-				handled := a.executeMaisakaTurn(jobCtx, kind, targetID, session, messages)
+				handled := a.executeMaisakaTurn(jobCtx, kind, targetID, session, messages, transcriptIDs)
 				if kind == memory.ConversationKindGroup {
 					replied := false
 					if tc := tools.GetToolContext(jobCtx); tc != nil && tc.RepliedThisTurn != nil {
@@ -153,7 +153,7 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 			}
 		}
 	}
-	return a.executeMaisakaTurn(ctx, kind, targetID, session, messages)
+	return a.executeMaisakaTurn(ctx, kind, targetID, session, messages, transcriptIDs)
 }
 
 // stopMaisakaTurnLoops 停机时等待所有会话后台 RunLoop 结束
@@ -191,13 +191,13 @@ func (a *Agent) ensureMaisakaTurnLoop(session *Session) *maisaka.TurnLoop {
 }
 
 // executeMaisakaTurn 同步执行一轮 Maisaka 思考并写回可见水位
-func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID int64, session *Session, messages []*schema.AgenticMessage) bool {
+func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID int64, session *Session, messages []*schema.AgenticMessage, transcriptIDs []uint) bool {
 	runtime := session.MaisakaRuntime()
 	generation := generationFrom(ctx)
 	if runtime == nil || runtime.Engine() == nil || generation == nil || generation.model == nil {
 		return false
 	}
-	history := agenticMessagesToMaisakaHistory(messages)
+	history := agenticMessagesToMaisakaHistory(messages, transcriptIDs)
 	history = a.injectMaisakaSummary(session, history)
 	if len(history) == 0 {
 		return false
@@ -231,6 +231,9 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 	runtime.BeginTurnTranscript()
 	if err := runtime.Engine().RunTurnOnce(ctx, &trigger, nil, ""); err != nil {
 		runtime.DrainTurnTranscript()
+		// 失败前可能已提交裁切，摘要仍要落库
+		a.captureMaisakaSummary(session, runtime.History())
+		a.persistMaisakaSummary(ctx, session)
 		zap.L().Error("Maisaka 主循环思考失败",
 			zap.String("conversation_kind", kind),
 			zap.Int64("target_id", targetID),
@@ -435,13 +438,18 @@ func maisakaAssistantSchemaMessage(message maisaka.ContextMessage) *schema.Agent
 }
 
 // agenticMessagesToMaisakaHistory 把会话装配结果转换为 Maisaka 内部历史
-func agenticMessagesToMaisakaHistory(messages []*schema.AgenticMessage) []maisaka.ContextMessage {
+// transcriptIDs 与 messages 等长同序，缺位按 0 处理
+func agenticMessagesToMaisakaHistory(messages []*schema.AgenticMessage, transcriptIDs []uint) []maisaka.ContextMessage {
 	history := make([]maisaka.ContextMessage, 0, len(messages))
-	for _, message := range messages {
+	for index, message := range messages {
 		if message == nil {
 			continue
 		}
-		converted, ok := agenticMessageToMaisaka(message)
+		var transcriptID uint
+		if index < len(transcriptIDs) {
+			transcriptID = transcriptIDs[index]
+		}
+		converted, ok := agenticMessageToMaisaka(message, transcriptID)
 		if ok {
 			history = append(history, converted...)
 		}
@@ -449,7 +457,7 @@ func agenticMessagesToMaisakaHistory(messages []*schema.AgenticMessage) []maisak
 	return history
 }
 
-func agenticMessageToMaisaka(message *schema.AgenticMessage) ([]maisaka.ContextMessage, bool) {
+func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) ([]maisaka.ContextMessage, bool) {
 	if message == nil {
 		return nil, false
 	}
@@ -463,7 +471,7 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage) ([]maisaka.ContextM
 		return nil, false
 	case schema.AgenticRoleTypeAssistant:
 		// 模型输出不计入真实聊天条数，对齐 Python ModelOutputContextMessage
-		out := maisaka.ContextMessage{Role: maisaka.RoleAssistant}
+		out := maisaka.ContextMessage{Role: maisaka.RoleAssistant, TranscriptID: transcriptID}
 		for _, block := range message.ContentBlocks {
 			if block == nil {
 				continue
@@ -504,11 +512,12 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage) ([]maisaka.ContextM
 				result := block.FunctionToolResult
 				// 工具结果不计入真实聊天条数，对齐 Python ToolResultMessage
 				converted = append(converted, maisaka.ContextMessage{
-					Role:       maisaka.RoleTool,
-					Content:    toolResultContentText(result),
-					ToolCallID: result.CallID,
-					ToolName:   result.Name,
-					Source:     maisaka.SourceToolResult,
+					Role:         maisaka.RoleTool,
+					Content:      toolResultContentText(result),
+					ToolCallID:   result.CallID,
+					ToolName:     result.Name,
+					Source:       maisaka.SourceToolResult,
+					TranscriptID: transcriptID,
 				})
 				continue
 			}
@@ -537,6 +546,7 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage) ([]maisaka.ContextM
 				CountInContext: true,
 				Metadata:       sessionExtraMetadata(message.Extra),
 				Images:         images,
+				TranscriptID:   transcriptID,
 			}
 			if raw, ok := convertedMessage.Metadata["message_id"].(string); ok {
 				convertedMessage.MessageID = raw

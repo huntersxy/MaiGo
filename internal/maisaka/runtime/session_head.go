@@ -26,7 +26,7 @@ const (
 )
 
 // assembleMessages 按会话类型取当前预设，并补齐本代头部
-func (a *Agent) assembleMessages(ctx context.Context, session *Session) ([]*schema.AgenticMessage, error) {
+func (a *Agent) assembleMessages(ctx context.Context, session *Session) ([]*schema.AgenticMessage, []uint, error) {
 	mode := persona.ModeGroup
 	extra := ""
 	if session.kind == memory.ConversationKindPrivate {
@@ -40,17 +40,28 @@ func (a *Agent) assembleMessages(ctx context.Context, session *Session) ([]*sche
 			extra = note
 		}
 	}
-	messages, err := session.Assemble(ctx, a.memory, a.personaFor(ctx).Instruction(mode), extra)
+	messages, transcriptIDs, err := session.Assemble(ctx, a.memory, a.personaFor(ctx).Instruction(mode), extra)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	// 按消息指针回查来源行号，refresh 注入的新消息不在表内，行号记 0
+	transcriptIDByMessage := make(map[*schema.AgenticMessage]uint, len(messages))
+	for i, message := range messages {
+		if message != nil {
+			transcriptIDByMessage[message] = transcriptIDs[i]
+		}
 	}
 	if !a.isLightweightPrivateSession(session.kind, session.targetID) {
 		messages = a.refreshJargonReference(ctx, session, messages)
 	}
 	messages = a.refreshExpressionHabits(ctx, session, messages)
 	messages = a.refreshFocusContext(ctx, session, messages)
+	transcriptIDs = make([]uint, 0, len(messages))
+	for _, message := range messages {
+		transcriptIDs = append(transcriptIDs, transcriptIDByMessage[message])
+	}
 	// 只编码最终保留的图片；被裁掉的惰性块不会读盘
-	return resolveDeferredMediaBlocks(messages), nil
+	return resolveDeferredMediaBlocks(messages), transcriptIDs, nil
 }
 
 // headPriority 决定代头行在上下文里的固定位置，非代头返回 -1
