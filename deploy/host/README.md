@@ -1,8 +1,9 @@
 # MaiGo 宿主部署（systemd + 静态二进制）
 
-不依赖 Docker 的生产部署：GitHub Actions 构建静态二进制并打包，服务器上由
-`/opt/maigo/deploy/deploy.sh` 解包到 `releases/<ver>/`、切换 `current` 软链、
-重启 `maigo.service`，健康检查失败自动回滚。
+不依赖 Docker 的生产部署：GitHub Actions 在打 tag 时构建静态二进制并发布 Release，
+服务器上的 `maigo-update.timer` 周期拉取 `releases/latest`，由 `deploy.sh` 解包到
+`releases/<ver>/`、切换 `current` 软链、重启 `maigo.service`，健康检查失败自动回滚。
+GitHub 侧没有任何服务器地址或登录凭据。
 
 ## 目录布局
 
@@ -12,9 +13,9 @@
 ├── releases/    每次发布的产物，保留最近 3 个
 ├── current -> releases/<ver>/
 ├── runtime/     宿主 venv：plugin-runtime、pycompat（不入发布包）
-├── deploy/      install.sh / deploy.sh / migrate-from-docker.sh
-├── incoming/    CI 上传的发布包
-└── maigo.env    环境变量（600，含密钥）
+├── deploy/      install.sh / deploy.sh / update.sh / migrate-from-docker.sh
+├── incoming/    下载或手工投放的发布包
+└── maigo.env    环境变量（640 root:maibot，含密钥）
 ```
 
 `current` 只放发布产物（`maigo`、`dashboard/dist`、`pycompat-src`、`pycompat_sidecar.py`、
@@ -36,13 +37,23 @@ sudo bash deploy/host/migrate-from-docker.sh /opt/maigo
 
 ## 发布
 
-CI 在 tag 推送后把 `maigo-<ver>-linux-amd64.tar.gz` 传到 `incoming/` 并调用：
+打 tag 推送后 CI 自动构建并发布 Release（含 `.sha256`）。服务器不接收推送，
+`maigo-update.timer` 每 15 分钟检查一次 `releases/latest`，有新版本就下载并部署。
+
+手动触发一次检查：
+
+```bash
+sudo /opt/maigo/deploy/update.sh          # 有新版就部署
+sudo /opt/maigo/deploy/update.sh --dry-run
+```
+
+也支持离线包：把 `maigo-<ver>-linux-amd64.tar.gz` 放进 `incoming/` 后
 
 ```bash
 /opt/maigo/deploy/deploy.sh /opt/maigo/incoming/maigo-1.4.5-linux-amd64.tar.gz
 ```
 
-手动发布同一命令。回滚：`deploy.sh --rollback` 切回上一个 release。
+回滚：`deploy.sh --rollback` 切回上一个 release。
 
 ## 回退到 Docker
 

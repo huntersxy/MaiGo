@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic MaiGo release check
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+# 只在主机本时区业务低峰之外也照常检查，部署靠健康检查兜底
+Unit=maigo-update.service
+
+[Install]
+WantedBy=timers.target

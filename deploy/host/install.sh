@@ -29,6 +29,7 @@ fi
 log "创建目录 $ROOT"
 mkdir -p "$ROOT"/{app,releases,runtime,deploy,incoming}
 install -m 755 "$SCRIPT_DIR/deploy.sh" "$ROOT/deploy/deploy.sh"
+install -m 755 "$SCRIPT_DIR/update.sh" "$ROOT/deploy/update.sh"
 install -m 755 "$SCRIPT_DIR/migrate-from-docker.sh" "$ROOT/deploy/migrate-from-docker.sh"
 install -m 644 "$SCRIPT_DIR/requirements-plugin-runtime.txt" "$ROOT/deploy/"
 install -m 644 "$SCRIPT_DIR/requirements-pycompat.txt" "$ROOT/deploy/"
@@ -69,7 +70,10 @@ if grep -q '^MAIBOT_PLUGIN_PROJECT_ROOT=' "$ROOT/maigo.env"; then
 fi
 
 install -m 644 "$SCRIPT_DIR/maigo.service" /etc/systemd/system/maigo.service
+install -m 644 "$SCRIPT_DIR/maigo-update.service" /etc/systemd/system/maigo-update.service
+install -m 644 "$SCRIPT_DIR/maigo-update.timer" /etc/systemd/system/maigo-update.timer
 systemctl daemon-reload
+systemctl enable --now maigo-update.timer
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$ROOT/app" "$ROOT/runtime" "$ROOT/releases" "$ROOT/incoming"
 chown root:"$SERVICE_USER" "$ROOT/maigo.env"
@@ -78,3 +82,4 @@ chmod 640 "$ROOT/maigo.env"
 log "安装完成"
 log "下一步：在 $ROOT/maigo.env 填 MAIBOT_SECRET_KEY，然后 systemctl enable --now maigo"
 log "已有 Docker 数据时先跑 $ROOT/deploy/migrate-from-docker.sh $ROOT"
+log "自动更新：maigo-update.timer 每 15 分钟检查 releases/latest；手动跑 $ROOT/deploy/update.sh"

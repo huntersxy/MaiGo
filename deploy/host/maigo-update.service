@@ -1,0 +1,10 @@
+[Unit]
+Description=Check MaiGo latest release and deploy it
+After=network-online.target maigo.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/maigo/deploy/update.sh
+# 拉取与切换不应与人工发布并发
+Nice=10

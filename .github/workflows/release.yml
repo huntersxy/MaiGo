@@ -6,8 +6,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      deploy:
-        description: 构建后部署到生产服务器
+      version:
+        description: 发布版本（如 1.4.5）；留空为 dev
+        type: string
+      publish_release:
+        description: 发布为 Release 供服务器拉取
         type: boolean
         default: false
 
@@ -21,14 +24,10 @@ permissions:
 env:
   GO_VERSION: '1.26.5'
   DASHBOARD_VERSION: '1.10.5'
-  MAIBOT_VERSION: '1.4.5'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      package: ${{ steps.package.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +36,8 @@ jobs:
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            version="${{ inputs.version }}"
           else
             version="dev"
           fi
@@ -68,7 +69,6 @@ jobs:
           python-version: '3.13'
 
       - name: 组装发布包
-        id: package
         run: |
           version="${{ steps.version.outputs.version }}"
           stage="stage"
@@ -95,7 +95,6 @@ jobs:
           tar -C "$stage" -czf "$name.tar.gz" .
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           cat "$name.tar.gz.sha256"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -105,61 +104,23 @@ jobs:
             maigo-*.tar.gz.sha256
           retention-days: 14
 
+      # 服务器按 releases/latest 拉取，说明里带上校验和便于人工核对
       - name: 发布 GitHub Release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME}"
+          case "$VERSION" in
+            dev|'') echo "dev 构建不发布 Release" >&2; exit 1 ;;
+          esac
+          tag="v${VERSION}"
+          notes="$(cat maigo-*.tar.gz.sha256)"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" maigo-*.tar.gz maigo-*.tar.gz.sha256 --clobber
           else
             gh release create "$tag" \
               --title "$tag" \
-              --generate-notes \
+              --notes "sha256: ${notes}" \
               maigo-*.tar.gz maigo-*.tar.gz.sha256
           fi
-
-  deploy:
-    needs: build
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: maigo-release
-
-      - name: 配置 SSH
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -p "${{ secrets.DEPLOY_PORT || 22 }}" "${{ secrets.DEPLOY_HOST }}" > ~/.ssh/known_hosts
-          fi
-
-      - name: 上传发布包
-        env:
-          HOST: ${{ secrets.DEPLOY_HOST }}
-          PORT: ${{ secrets.DEPLOY_PORT || 22 }}
-          USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          scp -i ~/.ssh/deploy_key -P "$PORT" \
-            maigo-*.tar.gz maigo-*.tar.gz.sha256 \
-            "$USER@$HOST:/opt/maigo/incoming/"
-
-      - name: 切换版本并健康检查
-        env:
-          HOST: ${{ secrets.DEPLOY_HOST }}
-          PORT: ${{ secrets.DEPLOY_PORT || 22 }}
-          USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          pkg="$(ls maigo-*.tar.gz)"
-          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
-            "/opt/maigo/deploy/deploy.sh /opt/maigo/incoming/$pkg"
