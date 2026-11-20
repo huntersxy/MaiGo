@@ -152,7 +152,8 @@ func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, imag
 		}
 		return image, true, nil
 	}
-	description, descErr := p.manager.GetImageDescription(ctx, "", data, false)
+	image.RecognitionHash = retained[0].Image.Hash
+	description, descErr := p.manager.GetImageDescription(ctx, image.RecognitionHash, data, false)
 	if descErr != nil {
 		zap.L().Warn("图片缓存或描述调度失败，保留空描述", zap.String("url", ref), zap.Error(descErr))
 	} else if strings.TrimSpace(description) != "" {

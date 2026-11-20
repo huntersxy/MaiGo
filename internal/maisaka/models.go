@@ -55,6 +55,8 @@ func NormalizeDuplicateReplyText(text string) string {
 type ImageComponent struct {
 	// MediaRef 内容寻址引用或原始 base64
 	MediaRef string
+	// RecognitionHash 是转码前图片在视觉描述缓存中的 SHA-256。
+	RecognitionHash string
 	// Format 图片格式
 	Format string
 	// Description 识别描述，空表示尚未识别
@@ -63,6 +65,14 @@ type ImageComponent struct {
 	Placeholder string
 	// HasBinary 组件是否携带本地图片字节，对齐 Python binary_data 真值
 	HasBinary bool
+}
+
+// RecognitionRef 返回查询识图缓存时使用的引用。
+func (c ImageComponent) RecognitionRef() string {
+	if c.RecognitionHash != "" {
+		return c.RecognitionHash
+	}
+	return c.MediaRef
 }
 
 // VisualRefreshPort 视觉占位刷新与工具图片识别端口

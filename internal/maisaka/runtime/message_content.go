@@ -48,6 +48,7 @@ func (a *Agent) cacheMedia(ctx context.Context, pending []messagereceive.Pending
 			zap.L().Debug("缓存媒体失败", zap.String("url", item.URL), zap.Error(err))
 			continue
 		}
+		ref.RecognitionHash = item.RecognitionHash
 		refs[index] = ref
 	}
 	return refs

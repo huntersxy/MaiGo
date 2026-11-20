@@ -74,10 +74,11 @@ type FileInfo struct {
 
 // ImageInfo 图片信息
 type ImageInfo struct {
-	URL     string `json:"url"`
-	File    string `json:"file"`
-	SubType int    `json:"sub_type"` // 0普通图片 1表情包
-	Desc    string `json:"desc,omitempty"`
+	URL             string `json:"url"`
+	File            string `json:"file"`
+	SubType         int    `json:"sub_type"` // 0普通图片 1表情包
+	Desc            string `json:"desc,omitempty"`
+	RecognitionHash string `json:"-"`
 }
 
 // VoiceInfo 语音信息；File 保留平台原始文件标识，URL 为可直接下载的媒体地址

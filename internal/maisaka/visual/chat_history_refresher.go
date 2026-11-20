@@ -86,7 +86,7 @@ func (r Refresher) refreshPendingVisualComponents(images []maisaka.ImageComponen
 		if !shouldRefreshImageComponent(*image) {
 			continue
 		}
-		description := strings.TrimSpace(r.Lookup.LookupCachedImageDescription(image.MediaRef))
+		description := strings.TrimSpace(r.Lookup.LookupCachedImageDescription(image.RecognitionRef()))
 		if description == "" {
 			continue
 		}
@@ -120,8 +120,8 @@ func (r Refresher) LogPendingImageRecognitionBeforeTextPlanner(chatHistory []mai
 	pending := map[string]struct{}{}
 	for _, historyMessage := range chatHistory {
 		for _, image := range historyMessage.Images {
-			if shouldRefreshImageComponent(image) && r.isImageComponentPending(image) && image.MediaRef != "" {
-				pending[image.MediaRef] = struct{}{}
+			if shouldRefreshImageComponent(image) && r.isImageComponentPending(image) {
+				pending[image.RecognitionRef()] = struct{}{}
 			}
 		}
 	}
@@ -171,14 +171,15 @@ func RegisterMonitorImagePlaceholderRefresh(imageHash string, refresher func(str
 }
 
 func (r Refresher) isImageComponentPending(image maisaka.ImageComponent) bool {
-	if image.MediaRef == "" {
+	ref := image.RecognitionRef()
+	if ref == "" {
 		return false
 	}
-	if r.Lookup.IsImageDescriptionPending(image.MediaRef) {
+	if r.Lookup.IsImageDescriptionPending(ref) {
 		return true
 	}
 	// 对齐 Python：只有本地持有字节且无缓存描述时才算可等待
-	return image.HasBinary && r.Lookup.LookupCachedImageDescription(image.MediaRef) == ""
+	return image.HasBinary && r.Lookup.LookupCachedImageDescription(ref) == ""
 }
 
 func shouldRefreshImageComponent(image maisaka.ImageComponent) bool {

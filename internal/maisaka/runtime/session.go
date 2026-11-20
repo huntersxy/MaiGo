@@ -502,7 +502,7 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 		if image == nil {
 			continue
 		}
-		blocks = append(blocks, schema.NewContentBlock(image))
+		blocks = append(blocks, image)
 	}
 	if len(blocks) == 0 {
 		return schema.UserAgenticMessage(text)
@@ -510,16 +510,22 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeUser, ContentBlocks: blocks}
 }
 
-// deferredMediaImageBlock 生成惰性图片块：只带本地路径占位，请求构建时才读盘编码
-func deferredMediaImageBlock(ref media.Ref) *schema.UserInputImage {
+const imageRecognitionHashKey = "image_recognition_hash"
+
+// deferredMediaImageBlock 生成惰性图片块，请求构建时才读盘编码。
+func deferredMediaImageBlock(ref media.Ref) *schema.ContentBlock {
 	path := strings.TrimSpace(ref.Path)
 	if path == "" {
 		return nil
 	}
-	return &schema.UserInputImage{
+	block := schema.NewContentBlock(&schema.UserInputImage{
 		Base64Data: maisaka.DeferredMediaMarkerPrefix + path,
 		MIMEType:   strings.TrimSpace(ref.Mime),
+	})
+	if ref.RecognitionHash != "" {
+		block.Extra = map[string]any{imageRecognitionHashKey: ref.RecognitionHash}
 	}
+	return block
 }
 
 // attachDeferredMediaBlocks 为恢复出的消息补惰性图片块，不读盘
@@ -538,7 +544,7 @@ func attachDeferredMediaBlocks(message *schema.AgenticMessage, mediaRefs []media
 		if image == nil {
 			continue
 		}
-		blocks = append(blocks, schema.NewContentBlock(image))
+		blocks = append(blocks, image)
 		added = true
 	}
 	if !added {

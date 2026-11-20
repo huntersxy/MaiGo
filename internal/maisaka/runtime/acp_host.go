@@ -122,7 +122,7 @@ func internalTaskMessage(text, sourceKind, reason string, images []media.Ref, no
 		if image == nil {
 			return nil, fmt.Errorf("图片附件缺少本地路径：index=%d hash=%s", index, ref.Hash)
 		}
-		blocks = append(blocks, schema.NewContentBlock(image))
+		blocks = append(blocks, image)
 	}
 	message := &schema.AgenticMessage{Role: schema.AgenticRoleTypeUser, ContentBlocks: blocks}
 	message.Extra = map[string]any{

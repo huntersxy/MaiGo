@@ -12,9 +12,10 @@ import (
 
 // PendingMedia 待下载缓存的媒体
 type PendingMedia struct {
-	URL     string
-	File    string
-	Sticker bool
+	URL             string
+	File            string
+	Sticker         bool
+	RecognitionHash string
 }
 
 // ContentPiece 展示正文的一段：普通文本或媒体占位
@@ -104,7 +105,7 @@ func ParseMessageContent(ctx context.Context, msg *onebot.ConversationMessage, r
 			if sticker {
 				fallback = " [表情包]"
 			}
-			pending = append(pending, PendingMedia{URL: image.URL, File: image.File, Sticker: sticker})
+			pending = append(pending, PendingMedia{URL: image.URL, File: image.File, Sticker: sticker, RecognitionHash: image.RecognitionHash})
 			pieces = append(pieces, ContentPiece{MediaIdx: len(pending) - 1, Fallback: fallback})
 		case "video":
 			pieces = append(pieces, ContentPiece{Text: " [视频，无法查看]", MediaIdx: -1})

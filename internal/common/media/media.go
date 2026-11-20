@@ -25,13 +25,14 @@ import (
 
 // Ref 指向一份已缓存的媒体
 type Ref struct {
-	Hash      string `json:"hash"`
-	Path      string `json:"path"`
-	Mime      string `json:"mime"`
-	Bytes     int64  `json:"bytes"`
-	Sticker   bool   `json:"sticker"`
-	Collected bool   `json:"collected"`       // 表情包是否已在收藏库
-	Short     string `json:"short,omitempty"` // 会话内短哈希，落库后重启仍能对上
+	Hash            string `json:"hash"`
+	Path            string `json:"path"`
+	Mime            string `json:"mime"`
+	Bytes           int64  `json:"bytes"`
+	Sticker         bool   `json:"sticker"`
+	Collected       bool   `json:"collected"`                  // 表情包是否已在收藏库
+	Short           string `json:"short,omitempty"`            // 会话内短哈希，落库后重启仍能对上
+	RecognitionHash string `json:"recognition_hash,omitempty"` // 转码前用于识图的 SHA-256
 }
 
 // Refs 有序媒体引用列表，落库为 jsonb

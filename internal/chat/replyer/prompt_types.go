@@ -43,8 +43,9 @@ type MessagePart struct {
 	Description string
 
 	// 图片/表情包的原始二进制（base64），视觉编码用；格式为空时按内容识别
-	ImageFormat string
-	ImageBase64 string
+	ImageFormat          string
+	ImageBase64          string
+	ImageRecognitionHash string
 }
 
 // QuoteReference 引用消息在上下文中的渲染信息

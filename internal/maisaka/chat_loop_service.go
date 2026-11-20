@@ -889,11 +889,19 @@ func BuildContextItemsFromHistoryEntry(message ContextMessage, enableVisual bool
 			text = strings.ReplaceAll(text, "[表情包]", emojiText)
 		}
 	}
-	// 视觉关闭时只保留图片占位描述，避免请求体积不可控
-	if enableVisual && len(message.Images) > 0 {
-		item.Images = message.Images
-		if text == "" {
-			text = imagePlaceholderText(message.Images)
+	if len(message.Images) > 0 {
+		if enableVisual {
+			item.Images = message.Images
+			if text == "" {
+				text = imagePlaceholderText(message.Images)
+			}
+		} else {
+			pictures := imagePlaceholderText(message.Images)
+			if strings.TrimSpace(text) == "" {
+				text = pictures
+			} else {
+				text += "\n" + pictures
+			}
 		}
 	}
 	item.Text = text

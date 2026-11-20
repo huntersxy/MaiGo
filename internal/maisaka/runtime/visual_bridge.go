@@ -319,7 +319,7 @@ func (b *agentVisualBridge) refreshReplyerVisualPlaceholdersOnce(history []reply
 			if part.Kind != replyer.PartImage && part.Kind != replyer.PartEmoji {
 				continue
 			}
-			description := strings.TrimSpace(b.LookupCachedImageDescription(part.ImageBase64))
+			description := strings.TrimSpace(b.LookupCachedImageDescription(firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)))
 			if part.Kind == replyer.PartEmoji {
 				description = strings.TrimSpace(b.LookupCachedEmojiDescription(part.ImageBase64))
 			}
@@ -359,7 +359,7 @@ func (b *agentVisualBridge) hasPendingReplyerVisual(history []replyer.ChatMessag
 				if b.LookupCachedEmojiDescription(part.ImageBase64) != "" {
 					continue
 				}
-			} else if b.LookupCachedImageDescription(part.ImageBase64) != "" {
+			} else if b.LookupCachedImageDescription(firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)) != "" {
 				continue
 			}
 			return true

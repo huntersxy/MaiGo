@@ -94,6 +94,10 @@ func TestSnowLumaImageOnlyDispatchDoesNotWaitForVLM(t *testing.T) {
 		if len(msg.Images) != 1 || msg.Images[0].URL != "data:image/gif;base64,"+gif {
 			t.Fatalf("expected one inlined image, got %+v", msg.Images)
 		}
+		const originalHash = "90252ef0aa9e3d36c861bbeaa1bd57b7f855333edf2957ab9473838a52e2dd7f"
+		if got := msg.Images[0].RecognitionHash; got != originalHash {
+			t.Fatalf("recognition hash = %q, want %q", got, originalHash)
+		}
 		if bare, emoji := debounce.ShapeFromMessage(msg); !bare || emoji {
 			t.Fatalf("expected bare image despite adapter placeholder, got bare=%t emoji=%t", bare, emoji)
 		}

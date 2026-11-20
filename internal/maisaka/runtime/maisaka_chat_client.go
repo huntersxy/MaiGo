@@ -485,10 +485,11 @@ func replyerMessageParts(message maisaka.ContextMessage) []replyer.MessagePart {
 // replyerMediaPart 统一归一化图片/表情的内联内容与格式；无法内联时保留描述供文本回退
 func replyerMediaPart(kind replyer.MessagePartKind, component maisaka.ImageComponent) replyer.MessagePart {
 	part := replyer.MessagePart{
-		Kind:        kind,
-		ImageFormat: strings.TrimSpace(component.Format),
-		ImageBase64: strings.TrimSpace(component.MediaRef),
-		Description: strings.TrimSpace(component.Description),
+		Kind:                 kind,
+		ImageFormat:          strings.TrimSpace(component.Format),
+		ImageBase64:          strings.TrimSpace(component.MediaRef),
+		ImageRecognitionHash: component.RecognitionHash,
+		Description:          strings.TrimSpace(component.Description),
 	}
 	if encoded, mime, ok := maisaka.ImageComponentPayload(component); ok {
 		part.ImageBase64 = encoded

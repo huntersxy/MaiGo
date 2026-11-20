@@ -106,7 +106,7 @@ func appendMediaImageBlocks(payload *schema.AgenticMessage, refs []media.Ref) {
 		if image == nil {
 			continue
 		}
-		payload.ContentBlocks = append(payload.ContentBlocks, schema.NewContentBlock(image))
+		payload.ContentBlocks = append(payload.ContentBlocks, image)
 	}
 }
 

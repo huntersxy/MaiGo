@@ -531,8 +531,9 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 					hash = strings.TrimSpace(image.URL)
 				}
 				if hash != "" {
+					recognitionHash, _ := block.Extra[imageRecognitionHashKey].(string)
 					images = append(images, maisaka.ImageComponent{
-						MediaRef: hash, Format: strings.TrimSpace(image.MIMEType),
+						MediaRef: hash, Format: strings.TrimSpace(image.MIMEType), RecognitionHash: recognitionHash,
 					})
 				}
 			}
