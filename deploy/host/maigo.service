@@ -1,0 +1,24 @@
+[Unit]
+Description=MaiGo host (MaiBot Go port)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=maibot
+Group=maibot
+WorkingDirectory=/opt/maigo/app
+EnvironmentFile=/opt/maigo/maigo.env
+ExecStart=/opt/maigo/current/maigo run -d /opt/maigo/app
+# Worker 停机关停预算 60s + Runner 75s，Docker 部署用 70s 会截断落盘
+TimeoutStopSec=120
+Restart=always
+RestartSec=3
+# 让 Go 拿到足够的文件描述符（插件、媒体双开）
+LimitNOFILE=65536
+# 宿主进程独立 cgroup，maigo_metrics.py 按该切片采集 RSS/CPU
+MemoryAccounting=yes
+CPUAccounting=yes
+
+[Install]
+WantedBy=multi-user.target

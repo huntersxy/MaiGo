@@ -1,0 +1,19 @@
+# Python Runner venv 依赖，与 Dockerfile 的 plugin-runtime 阶段保持一致。
+# maibot wheel 由 install.sh 单独以 --no-deps 安装（避免拉入 faiss/playwright）。
+pydantic
+tomlkit
+structlog
+packaging
+msgpack
+maibot-plugin-sdk
+aiohttp>=3.14.3,<4
+httpx>=0.28,<1
+socksio>=1,<2
+pillow>=12.3
+qrcode>=8.2
+cryptography>=50.0.0
+imageio-ffmpeg>=0.6,<1
+rlottie-python>=1.3.7,<2
+pycryptodome>=3.20,<4
+jieba>=0.42.1
+pypinyin>=0.54.0

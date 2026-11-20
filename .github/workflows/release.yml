@@ -1,0 +1,165 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 构建后部署到生产服务器
+        type: boolean
+        default: false
+
+concurrency:
+  group: maigo-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.26.5'
+  DASHBOARD_VERSION: '1.10.5'
+  MAIBOT_VERSION: '1.4.5'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      package: ${{ steps.package.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析版本
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="dev"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "构建版本: $version"
+
+      # 与 Dockerfile 的 build 阶段同源：alpine + libwebp-static，产物是纯静态二进制
+      - name: 编译静态二进制
+        run: |
+          docker run --rm \
+            -v "$PWD":/src -w /src \
+            -e VERSION="${{ steps.version.outputs.version }}" \
+            golang:${GO_VERSION}-alpine sh -ec '
+              apk add --no-cache build-base libwebp-dev libwebp-static
+              go mod download
+              CGO_ENABLED=1 CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm" \
+                go build -trimpath \
+                -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" \
+                -o dist/maigo .
+            '
+
+      - name: 验证二进制
+        run: |
+          file dist/maigo
+          dist/maigo --version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 组装发布包
+        id: package
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          stage="stage"
+          mkdir -p "$stage"
+
+          cp dist/maigo "$stage/maigo"
+          echo "$version" > "$stage/VERSION"
+
+          python -m pip install --no-cache-dir --no-deps --target "$stage/.dashboard" \
+            "maibot-dashboard==${DASHBOARD_VERSION}"
+          mkdir -p "$stage/dashboard"
+          cp -a "$stage/.dashboard/maibot_dashboard/dist" "$stage/dashboard/dist"
+          rm -rf "$stage/.dashboard"
+          test -f "$stage/dashboard/dist/index.html"
+
+          mkdir -p "$stage/pycompat-src"
+          cp -a data/pycompat/src "$stage/pycompat-src/src"
+          cp scripts/python_compat_sidecar.py "$stage/pycompat_sidecar.py"
+          mkdir -p "$stage/desktop_pet"
+          cp -a internal/desktop_pet/presets "$stage/desktop_pet/presets"
+          cp deploy/host/requirements-plugin-runtime.txt deploy/host/requirements-pycompat.txt "$stage/"
+
+          name="maigo-${version}-linux-amd64"
+          tar -C "$stage" -czf "$name.tar.gz" .
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          cat "$name.tar.gz.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maigo-release
+          path: |
+            maigo-*.tar.gz
+            maigo-*.tar.gz.sha256
+          retention-days: 14
+
+      - name: 发布 GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" maigo-*.tar.gz maigo-*.tar.gz.sha256 --clobber
+          else
+            gh release create "$tag" \
+              --title "$tag" \
+              --generate-notes \
+              maigo-*.tar.gz maigo-*.tar.gz.sha256
+          fi
+
+  deploy:
+    needs: build
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: maigo-release
+
+      - name: 配置 SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${{ secrets.DEPLOY_PORT || 22 }}" "${{ secrets.DEPLOY_HOST }}" > ~/.ssh/known_hosts
+          fi
+
+      - name: 上传发布包
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key -P "$PORT" \
+            maigo-*.tar.gz maigo-*.tar.gz.sha256 \
+            "$USER@$HOST:/opt/maigo/incoming/"
+
+      - name: 切换版本并健康检查
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          pkg="$(ls maigo-*.tar.gz)"
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
+            "/opt/maigo/deploy/deploy.sh /opt/maigo/incoming/$pkg"

@@ -1,0 +1,4 @@
+# pycompat 侧车 venv 依赖，与 Dockerfile 的 pycompat 阶段一致。
+numpy>=2.2
+jieba>=0.42.1
+pypinyin>=0.54.0
