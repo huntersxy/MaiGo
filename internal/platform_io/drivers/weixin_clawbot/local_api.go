@@ -16,7 +16,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		"version":     "1",
 		"public":      true,
 		"enabled":     true,
-	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
@@ -28,7 +28,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		"version":     "1",
 		"public":      true,
 		"enabled":     true,
-	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
@@ -39,7 +39,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		"version":     "1",
 		"public":      true,
 		"enabled":     true,
-	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
@@ -51,7 +51,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		"version":     "1",
 		"public":      true,
 		"enabled":     true,
-	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
@@ -63,7 +63,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		"version":     "1",
 		"public":      true,
 		"enabled":     true,
-	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+	}, func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
@@ -72,7 +72,7 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 	})
 }
 
-func (o *Orchestrator) handleAccounts() (map[string]any, error) {
+func (o *Orchestrator) handleAccounts() (any, error) {
 	if o == nil {
 		return map[string]any{"enabled": false, "limit": MaxAccounts, "accounts": []any{}}, nil
 	}
@@ -113,7 +113,7 @@ func validateRemark(remark string) (string, error) {
 	return remark, nil
 }
 
-func (o *Orchestrator) handleAddAccount(remark string) (map[string]any, error) {
+func (o *Orchestrator) handleAddAccount(remark string) (any, error) {
 	remark, err := validateRemark(remark)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (o *Orchestrator) handleAddAccount(remark string) (map[string]any, error) {
 	return nil, fmt.Errorf("最多同时绑定 %d 个账号", MaxAccounts)
 }
 
-func (o *Orchestrator) handleRenameAccount(slot int, remark string) (map[string]any, error) {
+func (o *Orchestrator) handleRenameAccount(slot int, remark string) (any, error) {
 	remark, err := validateRemark(remark)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (o *Orchestrator) handleRenameAccount(slot int, remark string) (map[string]
 	return map[string]any{"success": true}, nil
 }
 
-func (o *Orchestrator) handleLoginAccount(slot int) (map[string]any, error) {
+func (o *Orchestrator) handleLoginAccount(slot int) (any, error) {
 	if o == nil || !o.settings.Plugin.Enabled {
 		return nil, fmt.Errorf("请先启用微信适配器")
 	}
@@ -166,7 +166,7 @@ func (o *Orchestrator) handleLoginAccount(slot int) (map[string]any, error) {
 	return map[string]any{"success": true}, nil
 }
 
-func (o *Orchestrator) handleRemoveAccount(slot int) (map[string]any, error) {
+func (o *Orchestrator) handleRemoveAccount(slot int) (any, error) {
 	conn, _, ok := o.Slot(slot)
 	if !ok || conn == nil {
 		return nil, fmt.Errorf("账号不存在，请刷新页面")

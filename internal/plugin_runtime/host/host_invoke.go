@@ -78,26 +78,26 @@ func (h *Host) InvokeAPI(ctx context.Context, pluginID, componentName string, ar
 				if args == nil {
 					args = map[string]any{}
 				}
-				payload, err := handler(ctx, pluginID, componentName, args)
-				if err != nil {
+result, err := handler(ctx, pluginID, componentName, args)
+					if err != nil {
+						return protocol.Envelope{
+							MessageType: protocol.MessageTypeResponse,
+							PluginID:    pluginID,
+							Method:      methodPluginInvokeAPI,
+							Error: map[string]any{
+								"message": err.Error(),
+							},
+						}, nil
+					}
 					return protocol.Envelope{
 						MessageType: protocol.MessageTypeResponse,
 						PluginID:    pluginID,
 						Method:      methodPluginInvokeAPI,
-						Error: map[string]any{
-							"message": err.Error(),
+						Payload: map[string]any{
+							"success": true,
+							"result":  result,
 						},
 					}, nil
-				}
-				if payload == nil {
-					payload = map[string]any{}
-				}
-				return protocol.Envelope{
-					MessageType: protocol.MessageTypeResponse,
-					PluginID:    pluginID,
-					Method:      methodPluginInvokeAPI,
-					Payload:     payload,
-				}, nil
 			}
 		}
 	}

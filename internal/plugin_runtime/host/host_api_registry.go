@@ -28,8 +28,9 @@ type APIEntry struct {
 	TimeoutMS       int64
 	FullName        string
 	RegistryKey     string
-	// localHandler 进程内本地 API 执行器；非空时 InvokeAPI 短路，不走 Runner
-	localHandler func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error)
+	// localHandler 进程内本地 API 执行器；非空时 InvokeAPI 短路，不走 Runner。
+	// 返回值为业务结果 V（可为 map/list/nil），由 InvokeAPI 包装为 {success,result}。
+	localHandler func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error)
 }
 
 // Clone 返回条目的浅拷贝，外部修改元数据不会绕过注册表锁
@@ -130,7 +131,7 @@ func (r *APIRegistry) RegisterAPI(name, pluginID string, metadata map[string]any
 }
 
 // SetAPILocalHandler 为已注册 API 设置本地短路执行器；条目不存在时先 RegisterAPI
-func (r *APIRegistry) SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error)) bool {
+func (r *APIRegistry) SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error)) bool {
 	if r == nil || handler == nil {
 		return false
 	}
@@ -150,7 +151,7 @@ func (r *APIRegistry) SetAPILocalHandler(name, pluginID string, metadata map[str
 }
 
 // LocalHandler 返回条目本地执行器（可能为 nil）
-func (e *APIEntry) LocalHandler() func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error) {
+func (e *APIEntry) LocalHandler() func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error) {
 	if e == nil {
 		return nil
 	}

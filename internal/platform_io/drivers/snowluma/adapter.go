@@ -29,6 +29,8 @@ type Adapter struct {
 	runtime    *RuntimeState
 	profile    *ProfileState
 	transport  *Transport
+	actions    *ActionService
+	query      *QueryService
 	router     *Router
 	hostHooks  *HostHooks
 	started    bool
@@ -66,6 +68,8 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 	adapter.router = NewRouter(settings, runtime, profile, sink)
 	adapter.transport = NewTransport(adapter.onConnectionOpened, adapter.onConnectionClosed, adapter.onPayload)
 	adapter.transport.Configure(settings.Client, profile)
+	adapter.actions = NewActionService(adapter.transport, profile)
+	adapter.query = NewQueryService(adapter.actions)
 	return adapter
 }
 

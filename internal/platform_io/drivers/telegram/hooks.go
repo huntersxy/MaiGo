@@ -17,7 +17,7 @@ type InboundSink interface {
 
 // LocalAPIBinder Host API 本地短路注册面（与 snowluma 同形；Telegram P0 可不注册）
 type LocalAPIBinder interface {
-	SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (map[string]any, error)) bool
+	SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error)) bool
 	RemoveAPIsByPlugin(pluginID string) int
 }
 

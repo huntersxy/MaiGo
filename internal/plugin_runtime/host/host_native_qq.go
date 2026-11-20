@@ -81,18 +81,21 @@ func (i qqOfficialAPIInvoker) InvokeAPI(ctx context.Context, pluginID, component
 	if handler == nil {
 		return nil, fmt.Errorf("snowluma LocalAPI 未就绪")
 	}
-	if args == nil {
-		args = map[string]any{}
+if args == nil {
+			args = map[string]any{}
+		}
+		result, err := handler(ctx, pluginID, componentName, args)
+		if err != nil {
+			return nil, err
+		}
+		if result == nil {
+			return map[string]any{}, nil
+		}
+		if payload, ok := result.(map[string]any); ok {
+			return payload, nil
+		}
+		return map[string]any{"result": result}, nil
 	}
-	payload, err := handler(ctx, pluginID, componentName, args)
-	if err != nil {
-		return nil, err
-	}
-	if payload == nil {
-		return map[string]any{}, nil
-	}
-	return payload, nil
-}
 
 func (h *Host) reportQQOfficialGatewayState(ctx context.Context, state *qq_official.RuntimeState) error {
 	if h == nil || state == nil {
