@@ -51,13 +51,13 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD":/src -w /src \
-            -e VERSION="${{ steps.version.outputs.version }}" \
+            -e VERSION="${{ steps.version.outputs.version }}" -e GITHUB_SHA \
             golang:${GO_VERSION}-alpine sh -ec '
               apk add --no-cache build-base libwebp-dev libwebp-static
               go mod download
               CGO_ENABLED=1 CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm" \
                 go build -trimpath \
-                -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" \
+                -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION} -X MaiGo/internal/common/version.revision=${GITHUB_SHA}" \
                 -o dist/maigo .
             '
 

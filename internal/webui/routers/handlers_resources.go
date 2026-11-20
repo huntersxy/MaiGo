@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"MaiGo/internal/common/version"
 	"MaiGo/internal/services/statistics"
 )
 
@@ -17,10 +18,11 @@ func (d Deps) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		startTime = formatSystemStartTime(snap.StartTime.Local())
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"running":    snap.Running,
-		"uptime":     snap.UptimeSec,
-		"version":    snap.Version,
-		"start_time": startTime,
+		"running":        snap.Running,
+		"uptime":         snap.UptimeSec,
+		"version":        snap.Version,
+		"build_revision": version.Revision(),
+		"start_time":     startTime,
 	})
 }
 

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"MaiGo/internal/common/version"
 )
 
 const (
@@ -197,6 +199,9 @@ func RunHost(ctx context.Context, workspace Workspace, confirmed map[string]stru
 	}()
 
 	fmt.Printf("MaiBot 宿主已启动：%s\n", workspace.Root)
+	if revision := version.Revision(); revision != "" {
+		fmt.Printf("MaiGo 构建版本 %s，Git 提交 %s\n", version.String(), revision)
+	}
 	if webui.Management() {
 		if url, urlErr := webui.OpenURL(); urlErr == nil {
 			fmt.Printf("WebUI：%s（登录链接一分钟内有效）\n", url)

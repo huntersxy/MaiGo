@@ -150,7 +150,7 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 
 | 方法 | 路径 | Go 状态 |
 | --- | --- | --- |
-| GET | `/status` | **done**（仅 running/uptime/version/start_time） |
+| GET | `/status` | **done**（running/uptime/version/start_time，Go 构建来源通过 build_revision 返回 Git 提交号） |
 | POST | `/request-restart` | **done**（写 `pending_binary.json` 或沿用 `MAIBOT_UPDATE_PENDING_PATH`；Worker 子进程优雅退出 **42**；单进程模式 **409**） |
 | POST | `/restart` | **done**（Dashboard 兼容：仅触发 **42**，不写 pending） |
 | GET | `/update-notice` | **done**（读 `data/update_notice_state.json`；首次初始化不公告；`force=true` 返回调试公告） |

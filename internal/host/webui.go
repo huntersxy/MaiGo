@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/pelletier/go-toml/v2"
 
+	"MaiGo/internal/common/version"
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/webui/dashboardstatic"
 	"MaiGo/internal/webui/gopage"
@@ -319,8 +320,11 @@ func (w *WebUI) hostModePayload(r *http.Request, authenticated bool, requested s
 	}
 	if authenticated {
 		return map[string]any{
-			"host": true, "authenticated": true,
-			"selected_bot_id": selectedID, "selected_bot_running": selectedRunning,
+			"host":                 true,
+			"authenticated":        true,
+			"build_revision":       version.Revision(),
+			"selected_bot_id":      selectedID,
+			"selected_bot_running": selectedRunning,
 		}
 	}
 	return map[string]any{
