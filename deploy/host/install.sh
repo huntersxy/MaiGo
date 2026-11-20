@@ -28,7 +28,7 @@ fi
 
 log "创建目录 $ROOT"
 mkdir -p "$ROOT"/{app,releases,runtime,deploy,incoming}
-for script in deploy.sh update.sh ci-deploy.sh migrate-from-docker.sh; do
+for script in deploy.sh update.sh ci-trigger.sh migrate-from-docker.sh; do
     install -m 755 "$SCRIPT_DIR/$script" "$ROOT/deploy/$script"
 done
 install -m 644 "$SCRIPT_DIR/requirements-plugin-runtime.txt" "$ROOT/deploy/"
@@ -79,4 +79,4 @@ chmod 640 "$ROOT/maigo.env"
 log "安装完成"
 log "下一步：在 $ROOT/maigo.env 填 MAIBOT_SECRET_KEY，然后 systemctl enable --now maigo"
 log "已有 Docker 数据时先跑 $ROOT/deploy/migrate-from-docker.sh $ROOT"
-log "发布：CI 用受限密钥把包管道进 $ROOT/deploy/ci-deploy.sh"
+log "发布：CI 用受限密钥调 $ROOT/deploy/ci-trigger.sh 传提交号，服务器自行从镜像拉包部署"

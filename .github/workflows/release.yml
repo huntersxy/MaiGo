@@ -108,26 +108,40 @@ jobs:
             maigo-*.tar.gz.sha256
           retention-days: 14
 
-      # 版本 tag 出正式 Release 供归档；日常部署由下面的 deploy job 直接推送
+      # main 推送整包替换 rolling 预发布，服务器据它从镜像加速下载；
+      # 版本 tag 出正式 Release 供归档
       - name: 发布 GitHub Release
-        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+        if: github.ref_type == 'tag' || github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          case "$VERSION" in
-            dev|'') echo "dev 构建不发布 Release" >&2; exit 1 ;;
-          esac
-          tag="v${VERSION}"
+          rolling=0
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
+            tag="rolling"
+            rolling=1
+          else
+            case "$VERSION" in
+              dev|'') echo "dev 构建不发布 Release" >&2; exit 1 ;;
+            esac
+            tag="v${VERSION}"
+          fi
           notes="sha256: $(cat maigo-*.tar.gz.sha256)"$'\n'"commit: ${GITHUB_SHA}"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          if [ "$rolling" -eq 1 ]; then
+            gh release delete "$tag" --cleanup-tag --yes >/dev/null 2>&1 || true
+            gh release create "$tag" --prerelease --title "滚动构建（main）" \
+              --notes "$notes" maigo-*.tar.gz maigo-*.tar.gz.sha256
+          elif gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" maigo-*.tar.gz maigo-*.tar.gz.sha256 --clobber
           else
             gh release create "$tag" --title "$tag" --notes "$notes" \
               maigo-*.tar.gz maigo-*.tar.gz.sha256
           fi
 
-  deploy:
+  # 只发一条触发消息（提交号），发布包由服务器自己从镜像加速源拉取
+  trigger:
     needs: build
     if: github.ref_name == 'main' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -136,10 +150,6 @@ jobs:
       group: maigo-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: maigo-release
-
       - name: 配置 SSH
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -156,15 +166,13 @@ jobs:
             ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" > ~/.ssh/known_hosts
           fi
 
-      # 密钥在服务器侧绑定 command=ci-deploy.sh，只接收发布包，拿不到 shell
-      - name: 推送发布包并部署
+      # 密钥在服务器侧绑定 command=ci-trigger.sh，只接受一个提交号，拿不到 shell
+      - name: 通知服务器
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          pkg="$(ls maigo-*.tar.gz)"
-          echo "推送 $pkg"
           ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
               -o IdentitiesOnly=yes -o BatchMode=yes \
-              "${DEPLOY_USER}@${DEPLOY_HOST}" < "$pkg"
+              "${DEPLOY_USER}@${DEPLOY_HOST}" "${GITHUB_SHA}"

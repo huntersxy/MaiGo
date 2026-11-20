@@ -52,8 +52,8 @@ Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.5` 后把 `MAIBOT_D
 装好 `maibot==1.4.5` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 非 Docker 首次启动需设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 
-systemd 宿主部署（静态二进制 + 自动升级）见 [deploy/host/README.md](deploy/host/README.md)：
-CI 在打 tag 时构建并发布 Release，服务器用 `maigo-update.timer` 拉取切换，失败自动回滚。
+systemd 宿主部署（静态二进制 + 自动部署）见 [deploy/host/README.md](deploy/host/README.md)：
+CI 在 push `main` 时构建并通知服务器，服务器从镜像加速源拉包、校验、切换，失败自动回滚。
 
 ## 榫卯（Sunmao）· Go 平台特调系统
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 服务器侧主动拉取：取仓库 Release 的最新发布包，交给 deploy.sh 切换版本。
-# 由 maigo-update.timer 周期触发，也可手动执行。
-# 用法：update.sh [--dry-run] [--force]
+# 服务器侧拉取：取 Release 里的发布包（走镜像加速），交给 deploy.sh 切换版本。
+# 由 CI 触发（ci-trigger.sh）或手动执行。
+# 用法：update.sh [--dry-run] [--force] [--expect-commit <sha>]
 set -euo pipefail
 
 ROOT="${MAIGO_ROOT:-/opt/maigo}"
@@ -12,10 +12,12 @@ CHANNEL="${MAIGO_RELEASE:-rolling}"
 MIRRORS="${MAIGO_GH_MIRRORS:-https://gh-proxy.com/ https://ghfast.top/ }"
 DRY_RUN=0
 FORCE=0
+EXPECT_COMMIT=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --force) FORCE=1; shift ;;
+        --expect-commit) EXPECT_COMMIT="${2:-}"; shift 2 ;;
         *) echo "未知参数: $1" >&2; exit 2 ;;
     esac
 done
@@ -40,7 +42,7 @@ case "$code" in
     *) die "获取 Release 失败（HTTP ${code}）：${api}" ;;
 esac
 
-# 输出：tag / 资产名 / 资产地址 / 大小 / sha256，缺少发布包时直接退出
+# 输出：tag / 资产名 / 资产地址 / 大小 / sha256 / Release 记录的提交
 parsed="$(python3 - "$body" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:
@@ -56,11 +58,17 @@ if not tag:
 if asset is None:
     sys.exit(f"{tag} 中没有 linux-amd64 发布包")
 digest = (asset.get("digest") or "").removeprefix("sha256:")
+commit = ""
+for line in (release.get("body") or "").splitlines():
+    if line.startswith("commit: "):
+        commit = line.split(":", 1)[1].strip()
+        break
 print(tag)
 print(asset["name"])
 print(asset["browser_download_url"])
 print(asset.get("size") or 0)
 print(digest)
+print(commit)
 PY
 )" || die "解析 Release 失败"
 
@@ -69,6 +77,18 @@ asset_name="$(printf '%s\n' "$parsed" | sed -n 2p)"
 asset_url="$(printf '%s\n' "$parsed" | sed -n 3p)"
 expected_size="$(printf '%s\n' "$parsed" | sed -n 4p)"
 expected_sha="$(printf '%s\n' "$parsed" | sed -n 5p)"
+release_commit="$(printf '%s\n' "$parsed" | sed -n 6p)"
+
+# CI 触发的这次构建必须已经在 Release 里，否则等下一轮，避免部署到旧包
+if [ -n "$EXPECT_COMMIT" ]; then
+    case "$release_commit" in
+        "$EXPECT_COMMIT"*) ;;
+        *)
+            log "Release 里是 ${release_commit:-未知提交}，还没轮到 ${EXPECT_COMMIT:0:7}，不部署"
+            exit 0
+            ;;
+    esac
+fi
 
 active="$(basename "$(readlink -f "$ROOT/current" 2>/dev/null || echo "")")"
 active_sha="$(cat "$ROOT/current/.package.sha256" 2>/dev/null || true)"
