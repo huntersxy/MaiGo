@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"go.uber.org/zap"
 )
 
 // modelAttempt 单个候选模型的重试与硬超时设置
@@ -63,12 +63,14 @@ func (m *failoverModel) Generate(ctx context.Context, input []*schema.AgenticMes
 	ctx, _ = ensureSnapshotAttemptRecorder(ctx)
 	excluded := make(map[string]struct{})
 	var lastErr error
+	lastModel := ""
 	attempts := MaxModelAttempts(m.strategy, len(m.models))
 	for attempt := 0; attempt < attempts; attempt++ {
 		name, client, ok := m.nextModel(excluded)
 		if !ok {
 			break
 		}
+		lastModel = name
 		m.reserve(name)
 		var message *schema.AgenticMessage
 		err := m.runner(name, input, opts...).run(ctx, func(runCtx context.Context) error {
@@ -94,13 +96,14 @@ func (m *failoverModel) Generate(ctx context.Context, input []*schema.AgenticMes
 		m.fail(name)
 		lastErr = err
 		excluded[name] = struct{}{}
+		m.logModelAttemptFailure(ctx, name, err, attempt+1 < attempts && m.hasCandidate(excluded))
 	}
 	if lastErr != nil {
-		m.emitFinalError(lastErr)
+		m.emitFinalError(ctx, lastErr, lastModel)
 		return nil, lastErr
 	}
 	err := fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
-	m.emitFinalError(err)
+	m.emitFinalError(ctx, err, lastModel)
 	return nil, err
 }
 
@@ -112,12 +115,14 @@ func (m *failoverModel) Stream(ctx context.Context, input []*schema.AgenticMessa
 	ctx, _ = ensureSnapshotAttemptRecorder(ctx)
 	excluded := make(map[string]struct{})
 	var lastErr error
+	lastModel := ""
 	attempts := MaxModelAttempts(m.strategy, len(m.models))
 	for attempt := 0; attempt < attempts; attempt++ {
 		name, client, ok := m.nextModel(excluded)
 		if !ok {
 			break
 		}
+		lastModel = name
 		m.reserve(name)
 		buffered, err := m.bufferedStreamAttempt(ctx, name, client, input, opts...)
 		if compressed, ok := m.compressedInputForImageError(err, input, client); ok {
@@ -134,13 +139,14 @@ func (m *failoverModel) Stream(ctx context.Context, input []*schema.AgenticMessa
 		m.fail(name)
 		lastErr = err
 		excluded[name] = struct{}{}
+		m.logModelAttemptFailure(ctx, name, err, attempt+1 < attempts && m.hasCandidate(excluded))
 	}
 	if lastErr != nil {
-		m.emitFinalError(lastErr)
+		m.emitFinalError(ctx, lastErr, lastModel)
 		return nil, lastErr
 	}
 	err := fmt.Errorf("没有可用的模型可供选择。所有模型均已尝试失败。")
-	m.emitFinalError(err)
+	m.emitFinalError(ctx, err, lastModel)
 	return nil, err
 }
 
@@ -193,33 +199,84 @@ func (m *failoverModel) runner(name string, input []*schema.AgenticMessage, opts
 	return runner
 }
 
-func (m *failoverModel) emitFinalError(err error) {
+func (m *failoverModel) emitFinalError(ctx context.Context, err error, modelName string) {
 	if err == nil {
 		return
 	}
-	sessionID, requestType := "", string(m.task)
-	for _, cfg := range m.configs {
-		if id := strings.TrimSpace(cfg.SessionID); id != "" {
-			sessionID = id
+	sessionID, requestType := m.monitorIdentity(ctx)
+	diag := DiagnoseError(err)
+	fields := []zap.Field{
+		zap.String("task", string(m.task)),
+		zap.String("request_type", requestType),
+		zap.String("model", modelName),
+		zap.String("session_id", sessionID),
+		zap.Int("model_count", len(m.models)),
+		zap.Error(err),
+	}
+	fields = append(fields, ErrorLogFields(err)...)
+	zap.L().Error("所有模型均尝试失败", fields...)
+	emitLLMErrorEvent(LLMErrorEvent{
+		SessionID:         sessionID,
+		TaskName:          string(m.task),
+		RequestType:       requestType,
+		ModelName:         modelName,
+		Message:           err.Error(),
+		StatusCode:        diag.StatusCode,
+		ProviderRequestID: diag.ProviderRequestID,
+		RequestID:         diag.RequestID,
+	})
+}
+
+// logModelAttemptFailure 记录切换候选模型的过程；备用模型是否存在一眼可见
+func (m *failoverModel) logModelAttemptFailure(ctx context.Context, name string, err error, hasNext bool) {
+	sessionID, requestType := m.monitorIdentity(ctx)
+	fields := []zap.Field{
+		zap.String("task", string(m.task)),
+		zap.String("request_type", requestType),
+		zap.String("model", name),
+		zap.String("session_id", sessionID),
+		zap.Bool("has_next_model", hasNext),
+		zap.Error(err),
+	}
+	fields = append(fields, ErrorLogFields(err)...)
+	if hasNext {
+		zap.L().Warn("模型尝试失败，切换到下一个模型", fields...)
+		return
+	}
+	zap.L().Warn("模型尝试失败，不再切换候选模型", fields...)
+}
+
+func (m *failoverModel) hasCandidate(excluded map[string]struct{}) bool {
+	for _, name := range m.models {
+		if _, skip := excluded[name]; skip {
+			continue
 		}
-		if rt := strings.TrimSpace(cfg.RequestType); rt != "" {
+		if m.clients[name] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *failoverModel) monitorIdentity(ctx context.Context) (sessionID, requestType string) {
+	requestType = string(m.task)
+	for _, name := range m.models {
+		cfg, ok := m.configs[name]
+		if !ok {
+			continue
+		}
+		_, rt, sid := resolveUsageMetadata(ctx, cfg)
+		if sid != "" {
+			sessionID = sid
+		}
+		if rt != "" {
 			requestType = rt
 		}
 		if sessionID != "" {
 			break
 		}
 	}
-	modelName := ""
-	if len(m.models) > 0 {
-		modelName = m.models[len(m.models)-1]
-	}
-	emitLLMErrorEvent(LLMErrorEvent{
-		SessionID:   sessionID,
-		TaskName:    string(m.task),
-		RequestType: requestType,
-		ModelName:   modelName,
-		Message:     err.Error(),
-	})
+	return sessionID, requestType
 }
 
 func (m *failoverModel) nextModel(excluded map[string]struct{}) (string, model.AgenticModel, bool) {

@@ -67,7 +67,7 @@ type chatCompletionAPIError struct {
 //   - error.code/status 为数字且 >=400 时按 HTTPStatusError 分类，429/5xx 重试、4xx 硬错误
 //   - 无状态码时按可重试的 ParseError 处理（Python SDK 抛 APIError，MaiBot orchestrator 归为
 //     未知硬错误；Go 侧沿用 MaiBot 的解析失败重试类别，重试耗尽后仍真实上抛）
-func chatCompletionInBandError(apiErr chatCompletionAPIError) error {
+func chatCompletionInBandError(apiErr chatCompletionAPIError, requestID string) error {
 	message := strings.TrimSpace(apiErr.Message)
 	if message == "" {
 		message = "Chat Completions 流式响应返回错误"
@@ -75,10 +75,10 @@ func chatCompletionInBandError(apiErr chatCompletionAPIError) error {
 		message = "Chat Completions 流式响应返回错误: " + message
 	}
 	if status, ok := chatErrorStatusCode(apiErr.Code); ok && status >= 400 {
-		return &HTTPStatusError{StatusCode: status, Message: message, Op: "chat_completions"}
+		return &HTTPStatusError{StatusCode: status, Message: message, Op: "chat_completions", RequestID: requestID}
 	}
 	if status, ok := chatErrorStatusCode(apiErr.Status); ok && status >= 400 {
-		return &HTTPStatusError{StatusCode: status, Message: message, Op: "chat_completions"}
+		return &HTTPStatusError{StatusCode: status, Message: message, Op: "chat_completions", RequestID: requestID}
 	}
 	return &ParseError{Message: message}
 }

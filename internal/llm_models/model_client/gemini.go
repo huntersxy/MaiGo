@@ -229,7 +229,7 @@ func (c *geminiClient) post(parentCtx, reqCtx context.Context, modelName string,
 		return nil, c.transportError(parentCtx, reqCtx, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, geminiHTTPError(resp.StatusCode, raw)
+		return nil, geminiHTTPError(resp.StatusCode, raw, resp.Header)
 	}
 	return raw, nil
 }
@@ -257,7 +257,7 @@ func (c *geminiClient) openStream(parentCtx, reqCtx context.Context, modelName s
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		defer resp.Body.Close()
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return nil, geminiHTTPError(resp.StatusCode, raw)
+		return nil, geminiHTTPError(resp.StatusCode, raw, resp.Header)
 	}
 	return resp, nil
 }
@@ -362,8 +362,8 @@ func decodeGeminiSSELine(line string) (geminiStreamChunk, bool) {
 }
 
 // geminiHTTPError 把非 2xx 响应转换成 HTTPStatusError
-func geminiHTTPError(status int, raw []byte) error {
-	return &HTTPStatusError{StatusCode: status, Message: truncateErrBody(raw), Op: "gemini"}
+func geminiHTTPError(status int, raw []byte, header http.Header) error {
+	return &HTTPStatusError{StatusCode: status, Message: truncateErrBody(raw), Op: "gemini", RequestID: providerRequestID(header)}
 }
 
 func truncateErrBody(raw []byte) string {

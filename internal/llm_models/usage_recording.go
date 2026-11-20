@@ -147,43 +147,52 @@ func (m *usageRecordingModel) recordSuccess(ctx context.Context, started time.Ti
 	if message != nil && message.ResponseMeta != nil {
 		usage = message.ResponseMeta.TokenUsage
 	}
-	// 对齐 Python record_usage_to_database：仅在响应带 usage 时写 llm_usage
-	if usage != nil {
-		m.recordModelUsage(ctx, started, usage)
-	}
+	// 对齐 Python record_usage_to_database：仅在响应带 usage 时写 llm_usage；
+	// 调用次数与失败次数独立于 usage 上报，均写 model_call_hourly
+	m.recordModelCall(ctx, started, usage, false)
 	m.recordTaskUsage(ctx, started, true)
 }
 
 func (m *usageRecordingModel) recordFailure(ctx context.Context, started time.Time) {
-	// model_task_usage 记录失败尝试；llm_usage 不写失败
+	// llm_usage 不写失败；model_call_hourly 与 model_task_usage 记录失败尝试
+	m.recordModelCall(ctx, started, nil, true)
 	m.recordTaskUsage(ctx, started, false)
 }
 
-func (m *usageRecordingModel) recordModelUsage(ctx context.Context, started time.Time, usage *schema.TokenUsage) {
+// recordModelCall 累加一次实际 Provider 调用；usage 为空时只计次数
+func (m *usageRecordingModel) recordModelCall(ctx context.Context, started time.Time, usage *schema.TokenUsage, failed bool) {
 	task, requestType, sessionID := resolveUsageMetadata(ctx, m.cfg)
-	if task == "" || m.cfg.Model == "" || usage == nil {
+	recordModelCallUsage(activeUsageSink(), m.cfg, task, requestType, sessionID, started, usage, failed)
+}
+
+// recordModelCallUsage 写 model_call_hourly；失败与无 usage 的成功调用也计次
+func recordModelCallUsage(sink usageSink, cfg ModelConfig, task, requestType, sessionID string, started time.Time, usage *schema.TokenUsage, failed bool) {
+	if task == "" || cfg.Model == "" {
 		return
 	}
-	hit, miss, cacheEnabled := cachedTokenFields(usage)
 	record := modelstats.ModelUsageRecord{
-		Timestamp:        time.Now(),
-		Task:             task,
-		Model:            m.cfg.ModelDisplayName,
-		ModelIdentifier:  m.cfg.Model,
-		Provider:         m.cfg.ProviderName,
-		SessionID:        sessionID,
-		RequestType:      requestType,
-		Duration:         time.Since(started),
-		CacheEnabled:     cacheEnabled,
-		CacheHitTokens:   hit,
-		CacheMissTokens:  miss,
-		UsageReported:    true,
-		PromptTokens:     int64(usage.PromptTokens),
-		CompletionTokens: int64(usage.CompletionTokens),
-		TotalTokens:      int64(usage.TotalTokens),
-		Cost:             calculateModelUsageCost(m.cfg, usage, started),
+		Timestamp:       time.Now(),
+		Task:            task,
+		Model:           cfg.ModelDisplayName,
+		ModelIdentifier: cfg.Model,
+		Provider:        cfg.ProviderName,
+		SessionID:       sessionID,
+		RequestType:     requestType,
+		Duration:        time.Since(started),
+		Failed:          failed,
+		UsageReported:   usage != nil,
 	}
-	activeUsageSink().RecordModelUsage(record)
+	if usage != nil {
+		hit, miss, cacheEnabled := cachedTokenFields(usage)
+		record.CacheEnabled = cacheEnabled
+		record.CacheHitTokens = hit
+		record.CacheMissTokens = miss
+		record.PromptTokens = int64(usage.PromptTokens)
+		record.CompletionTokens = int64(usage.CompletionTokens)
+		record.TotalTokens = int64(usage.TotalTokens)
+		record.Cost = calculateModelUsageCost(cfg, usage, started)
+	}
+	sink.RecordModelUsage(record)
 }
 
 func (m *usageRecordingModel) recordTaskUsage(ctx context.Context, started time.Time, succeeded bool) {
@@ -264,28 +273,11 @@ func (c *usageRecordingEmbeddingClient) record(ctx context.Context, task, reques
 		return result, err
 	}
 	sink := activeUsageSink()
-	if err == nil && result.Usage != nil {
-		hit, miss, cacheEnabled := cachedTokenFields(result.Usage)
-		record := modelstats.ModelUsageRecord{
-			Timestamp:        time.Now(),
-			Task:             task,
-			Model:            c.cfg.ModelDisplayName,
-			ModelIdentifier:  c.cfg.Model,
-			Provider:         c.cfg.ProviderName,
-			SessionID:        sessionID,
-			RequestType:      requestType,
-			Duration:         time.Since(started),
-			CacheEnabled:     cacheEnabled,
-			CacheHitTokens:   hit,
-			CacheMissTokens:  miss,
-			UsageReported:    true,
-			PromptTokens:     int64(result.Usage.PromptTokens),
-			CompletionTokens: int64(result.Usage.CompletionTokens),
-			TotalTokens:      int64(result.Usage.TotalTokens),
-			Cost:             calculateModelUsageCost(c.cfg, result.Usage, started),
-		}
-		sink.RecordModelUsage(record)
+	var usage *schema.TokenUsage
+	if err == nil {
+		usage = result.Usage
 	}
+	recordModelCallUsage(sink, c.cfg, task, requestType, sessionID, started, usage, err != nil)
 	sink.RecordModelTaskUsage(modelstats.ModelTaskUsageRecord{
 		Timestamp:       time.Now(),
 		Task:            task,
@@ -319,28 +311,11 @@ func (t *usageRecordingAudioTranscriber) Transcribe(ctx context.Context, req Aud
 		return result, err
 	}
 	sink := activeUsageSink()
-	if err == nil && result.Usage != nil {
-		hit, miss, cacheEnabled := cachedTokenFields(result.Usage)
-		record := modelstats.ModelUsageRecord{
-			Timestamp:        time.Now(),
-			Task:             task,
-			Model:            t.cfg.ModelDisplayName,
-			ModelIdentifier:  t.cfg.Model,
-			Provider:         t.cfg.ProviderName,
-			SessionID:        sessionID,
-			RequestType:      requestType,
-			Duration:         time.Since(started),
-			CacheEnabled:     cacheEnabled,
-			CacheHitTokens:   hit,
-			CacheMissTokens:  miss,
-			UsageReported:    true,
-			PromptTokens:     int64(result.Usage.PromptTokens),
-			CompletionTokens: int64(result.Usage.CompletionTokens),
-			TotalTokens:      int64(result.Usage.TotalTokens),
-			Cost:             calculateModelUsageCost(t.cfg, result.Usage, started),
-		}
-		sink.RecordModelUsage(record)
+	var usage *schema.TokenUsage
+	if err == nil {
+		usage = result.Usage
 	}
+	recordModelCallUsage(sink, t.cfg, task, requestType, sessionID, started, usage, err != nil)
 	sink.RecordModelTaskUsage(modelstats.ModelTaskUsageRecord{
 		Timestamp:       time.Now(),
 		Task:            task,

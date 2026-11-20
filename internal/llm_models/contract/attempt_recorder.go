@@ -22,6 +22,7 @@ type AttemptRecorder struct {
 	mu            sync.Mutex
 	RequestID     string
 	LogicalTurnID string
+	sessionID     string
 	snapshotPath  string
 	attempts      []map[string]any
 }
@@ -30,7 +31,8 @@ type attemptContextKey struct{}
 
 // NewAttemptRecorder 创建尝试记录器，生成请求级 UUID
 func NewAttemptRecorder() *AttemptRecorder {
-	return &AttemptRecorder{RequestID: uuid.NewString()}
+	// 对齐 Python RequestTraceContext.request_id：uuid4().hex，无连字符
+	return &AttemptRecorder{RequestID: strings.ReplaceAll(uuid.NewString(), "-", "")}
 }
 
 // AttemptRecorderFromContext 从上下文取尝试记录器，无则返回 nil
@@ -116,6 +118,32 @@ func (r *AttemptRecorder) SnapshotPath() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.snapshotPath
+}
+
+// SetSessionID 记录本次请求归属的聊天流；已有值时不覆盖
+func (r *AttemptRecorder) SetSessionID(id string) {
+	if r == nil {
+		return
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sessionID == "" {
+		r.sessionID = id
+	}
+}
+
+// SessionIDValue 返回本次请求归属的聊天流
+func (r *AttemptRecorder) SessionIDValue() string {
+	if r == nil {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sessionID
 }
 
 // SetSnapshotPath 记录快照文件路径；已有值时不覆盖

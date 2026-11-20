@@ -248,8 +248,13 @@ func snapshotAttemptPayload(spec requestSnapshotSpec, started time.Time, ordinal
 	if ordinal < 1 {
 		ordinal = 1
 	}
+	attemptID := strings.ReplaceAll(uuid.NewString(), "-", "")
+	if spec.Recorder != nil && spec.Recorder.RequestID != "" {
+		// 对齐 Python attempt_id=f"{request_id}:{attempt_number}"，日志与快照可互相定位
+		attemptID = fmt.Sprintf("%s:%d", spec.Recorder.RequestID, ordinal)
+	}
 	return map[string]any{
-		"attempt_id":       strings.ReplaceAll(uuid.NewString(), "-", ""),
+		"attempt_id":       attemptID,
 		"workflow_purpose": strings.TrimSpace(spec.TaskName),
 		"workflow_attempt": ordinal,
 		"provider_attempt": ordinal,
@@ -274,6 +279,9 @@ func recordSnapshotAttempt(recorder *snapshotAttemptRecorder, spec *requestSnaps
 	}
 	if recorder == nil {
 		recorder = newSnapshotAttemptRecorder()
+	}
+	if spec.SessionID == "" && recorder.SessionIDValue() != "" {
+		spec.SessionID = recorder.SessionIDValue()
 	}
 	attempts := recorder.AttemptsSnapshot()
 	recorder.Append(snapshotAttemptPayload(*spec, started, len(attempts)+1))
@@ -504,10 +512,26 @@ func snapshotErrorPayload(err error) map[string]any {
 	var statusErr *HTTPStatusError
 	if errors.As(err, &statusErr) && statusErr != nil {
 		payload["status_code"] = statusErr.StatusCode
+		if statusErr.RequestID != "" {
+			payload["provider_request_id"] = statusErr.RequestID
+		}
+		if strings.TrimSpace(statusErr.Message) != "" {
+			payload["provider_message"] = statusErr.Message
+		}
+		if strings.TrimSpace(statusErr.Op) != "" {
+			payload["operation"] = statusErr.Op
+		}
 	}
 	var apiErr *openai.Error
-	if _, exists := payload["status_code"]; !exists && errors.As(err, &apiErr) && apiErr != nil {
-		payload["status_code"] = apiErr.StatusCode
+	if errors.As(err, &apiErr) && apiErr != nil {
+		if _, exists := payload["status_code"]; !exists {
+			payload["status_code"] = apiErr.StatusCode
+		}
+		if _, exists := payload["provider_request_id"]; !exists && apiErr.Response != nil {
+			if requestID := contract.ProviderRequestID(apiErr.Response.Header); requestID != "" {
+				payload["provider_request_id"] = requestID
+			}
+		}
 	}
 	if sanitized, ok := sanitizeGenerationDiagnostic(payload).(map[string]any); ok {
 		return sanitized

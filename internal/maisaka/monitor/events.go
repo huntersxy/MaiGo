@@ -381,8 +381,9 @@ func EmitFlowStep(sessionID, runID, step, title, detail string, cycleID *int, tr
 }
 
 // EmitLLMRetry 广播模型请求失败后的重试进度
-func EmitLLMRetry(sessionID, taskName, requestType, modelName string, attempt, maxAttempts int, reason string, retryInterval float64) {
-	Publish(EventLLMRetry, map[string]any{
+// statusCode/providerRequestID/requestID 为补充诊断字段，缺省时不写入载荷
+func EmitLLMRetry(sessionID, taskName, requestType, modelName string, attempt, maxAttempts int, reason, errorMessage string, retryInterval float64, statusCode int, providerRequestID, requestID string) {
+	payload := map[string]any{
 		"session_id":     sessionID,
 		"task_name":      taskName,
 		"request_type":   requestType,
@@ -392,19 +393,42 @@ func EmitLLMRetry(sessionID, taskName, requestType, modelName string, attempt, m
 		"reason":         reason,
 		"retry_interval": retryInterval,
 		"timestamp":      NowSeconds(),
-	})
+	}
+	if errorMessage != "" {
+		payload["error_message"] = errorMessage
+	}
+	if statusCode > 0 {
+		payload["status_code"] = statusCode
+	}
+	if providerRequestID != "" {
+		payload["provider_request_id"] = providerRequestID
+	}
+	if requestID != "" {
+		payload["request_id"] = requestID
+	}
+	Publish(EventLLMRetry, payload)
 }
 
 // EmitLLMError 广播模型请求最终失败
-func EmitLLMError(sessionID, taskName, requestType, modelName, message string) {
-	Publish(EventLLMError, map[string]any{
+func EmitLLMError(sessionID, taskName, requestType, modelName, message string, statusCode int, providerRequestID, requestID string) {
+	payload := map[string]any{
 		"session_id":   sessionID,
 		"task_name":    taskName,
 		"request_type": requestType,
 		"model_name":   modelName,
 		"message":      message,
 		"timestamp":    NowSeconds(),
-	})
+	}
+	if statusCode > 0 {
+		payload["status_code"] = statusCode
+	}
+	if providerRequestID != "" {
+		payload["provider_request_id"] = providerRequestID
+	}
+	if requestID != "" {
+		payload["request_id"] = requestID
+	}
+	Publish(EventLLMError, payload)
 }
 
 // EmitMessage 广播消息注入、发送或更新事件

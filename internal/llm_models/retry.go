@@ -16,24 +16,33 @@ import (
 )
 
 // LLMRetryEvent 对齐 Python _schedule_llm_retry_event 的广播载荷
+// StatusCode/ProviderRequestID/RequestID 为 Go 侧补充的诊断字段
 type LLMRetryEvent struct {
-	SessionID     string
-	TaskName      string
-	RequestType   string
-	ModelName     string
-	Attempt       int
-	MaxAttempts   int
-	Reason        string
-	RetryInterval float64
+	SessionID         string
+	TaskName          string
+	RequestType       string
+	ModelName         string
+	Attempt           int
+	MaxAttempts       int
+	Reason            string
+	ErrorMessage      string
+	RetryInterval     float64
+	StatusCode        int
+	ProviderRequestID string
+	RequestID         string
 }
 
 // LLMErrorEvent 对齐 Python _schedule_llm_error_event 的广播载荷
+// StatusCode/ProviderRequestID/RequestID 为 Go 侧补充的诊断字段
 type LLMErrorEvent struct {
-	SessionID   string
-	TaskName    string
-	RequestType string
-	ModelName   string
-	Message     string
+	SessionID         string
+	TaskName          string
+	RequestType       string
+	ModelName         string
+	Message           string
+	StatusCode        int
+	ProviderRequestID string
+	RequestID         string
 }
 
 var (
@@ -143,10 +152,13 @@ func (r attemptRunner) run(ctx context.Context, call func(context.Context) error
 		defer cancel()
 	}
 	runCtx, recorder := ensureSnapshotAttemptRecorder(runCtx)
+	// 逻辑请求编号与聊天流在重试与切换模型间复用，日志才能串起整条失败链
+	recorder.SetSessionID(r.resolveSessionID(runCtx))
 	// 每个逻辑轮次只生成一次 logical_turn_id，同一轮重试复用同一值
 	logicalTurnID := newContextUUID()
 	recorder.SetLogicalTurnID(logicalTurnID)
-	return r.runWithRetry(runCtx, ctx, recorder, logicalTurnID, call)
+	err := r.runWithRetry(runCtx, ctx, recorder, logicalTurnID, call)
+	return attachRequestTraceID(err, recorder.RequestID)
 }
 
 func (r attemptRunner) runWithRetry(runCtx, parentCtx context.Context, recorder *snapshotAttemptRecorder, logicalTurnID string, call func(context.Context) error) error {
@@ -173,17 +185,26 @@ func (r attemptRunner) runWithRetry(runCtx, parentCtx context.Context, recorder 
 		if action == RetryActionAbort {
 			return lastErr
 		}
-		if action != RetryActionRetry || attempt == r.Policy.MaxAttempts-1 {
+		if action != RetryActionRetry {
+			zap.L().Error("模型请求失败，不再重试",
+				append(r.logFields(runCtx, recorder, logicalTurnID, lastErr),
+					zap.Int("attempt", attempt+1),
+					zap.Int("max_attempts", r.Policy.MaxAttempts))...)
+			return lastErr
+		}
+		if attempt == r.Policy.MaxAttempts-1 {
+			zap.L().Error("模型请求失败，重试次数已用尽",
+				append(r.logFields(runCtx, recorder, logicalTurnID, lastErr),
+					zap.Int("attempt", attempt+1),
+					zap.Int("max_attempts", r.Policy.MaxAttempts))...)
 			return lastErr
 		}
 		zap.L().Warn("模型请求失败，准备重试",
-			zap.String("task", string(r.Task)),
-			zap.String("model", r.Model),
-			zap.Int("attempt", attempt+1),
-			zap.Int("max_attempts", r.Policy.MaxAttempts),
-			zap.Duration("retry_interval", r.Policy.Interval),
-			zap.Error(lastErr))
-		r.scheduleRetryEvent(attempt+1, lastErr)
+			append(r.logFields(runCtx, recorder, logicalTurnID, lastErr),
+				zap.Int("attempt", attempt+1),
+				zap.Int("max_attempts", r.Policy.MaxAttempts),
+				zap.Duration("retry_interval", r.Policy.Interval))...)
+		r.scheduleRetryEvent(runCtx, recorder, attempt+1, lastErr)
 		// 重试间隔同样受 hard_timeout 约束，对齐 Python wait_for 包住整个单模型重试循环
 		if waitErr := sleepWithContext(runCtx, r.Policy.Interval); waitErr != nil {
 			if timeoutErr := r.hardTimeoutError(parentCtx, runCtx); timeoutErr != nil {
@@ -196,6 +217,30 @@ func (r attemptRunner) runWithRetry(runCtx, parentCtx context.Context, recorder 
 		}
 	}
 	return lastErr
+}
+
+// logFields 拼装失败日志的公共诊断字段
+func (r attemptRunner) logFields(ctx context.Context, recorder *snapshotAttemptRecorder, logicalTurnID string, err error) []zap.Field {
+	sessionID, requestType := r.monitorIdentity(ctx)
+	fields := []zap.Field{
+		zap.String("task", string(r.Task)),
+		zap.String("request_type", requestType),
+		zap.String("model", r.Model),
+		zap.String("session_id", sessionID),
+	}
+	if recorder != nil && recorder.RequestID != "" {
+		fields = append(fields, zap.String("request_id", recorder.RequestID))
+	}
+	if logicalTurnID != "" {
+		fields = append(fields, zap.String("logical_turn_id", logicalTurnID))
+	}
+	if r.Snapshot != nil {
+		fields = append(fields,
+			zap.String("provider", r.Snapshot.Config.ProviderName),
+			zap.String("endpoint", sanitizeDiagnosticURL(r.Snapshot.Config.BaseURL)))
+	}
+	fields = append(fields, zap.Error(err))
+	return append(fields, ErrorLogFields(err)...)
 }
 
 // withHardTimeoutSnapshot 为 hard_timeout 失败保存快照
@@ -256,29 +301,45 @@ func hardTimeoutSnapshotSpec(r attemptRunner, logicalTurnID string, timeoutErr e
 	return spec
 }
 
-func (r attemptRunner) scheduleRetryEvent(attempt int, err error) {
-	sessionID, requestType := r.monitorIdentity()
-	reason := "模型请求失败"
-	if err != nil {
-		reason = err.Error()
+func (r attemptRunner) scheduleRetryEvent(ctx context.Context, recorder *snapshotAttemptRecorder, attempt int, err error) {
+	sessionID, requestType := r.monitorIdentity(ctx)
+	diag := DiagnoseError(err)
+	requestID := diag.RequestID
+	if recorder != nil && recorder.RequestID != "" {
+		requestID = recorder.RequestID
 	}
 	emitLLMRetryEvent(LLMRetryEvent{
-		SessionID:     sessionID,
-		TaskName:      string(r.Task),
-		RequestType:   requestType,
-		ModelName:     r.Model,
-		Attempt:       attempt,
-		MaxAttempts:   r.Policy.MaxAttempts,
-		Reason:        reason,
-		RetryInterval: r.Policy.Interval.Seconds(),
+		SessionID:         sessionID,
+		TaskName:          string(r.Task),
+		RequestType:       requestType,
+		ModelName:         r.Model,
+		Attempt:           attempt,
+		MaxAttempts:       r.Policy.MaxAttempts,
+		Reason:            retryReason(err),
+		ErrorMessage:      err.Error(),
+		RetryInterval:     r.Policy.Interval.Seconds(),
+		StatusCode:        diag.StatusCode,
+		ProviderRequestID: diag.ProviderRequestID,
+		RequestID:         requestID,
 	})
 }
 
-func (r attemptRunner) monitorIdentity() (sessionID, requestType string) {
+// resolveSessionID 合并调用方注入的会话标识与任务配置默认值
+func (r attemptRunner) resolveSessionID(ctx context.Context) string {
+	cfg := ModelConfig{}
 	if r.Snapshot != nil {
-		sessionID = strings.TrimSpace(r.Snapshot.Config.SessionID)
-		requestType = strings.TrimSpace(r.Snapshot.Config.RequestType)
+		cfg = r.Snapshot.Config
 	}
+	_, _, sessionID := resolveUsageMetadata(ctx, cfg)
+	return sessionID
+}
+
+func (r attemptRunner) monitorIdentity(ctx context.Context) (sessionID, requestType string) {
+	cfg := ModelConfig{}
+	if r.Snapshot != nil {
+		cfg = r.Snapshot.Config
+	}
+	_, requestType, sessionID = resolveUsageMetadata(ctx, cfg)
 	if requestType == "" {
 		requestType = string(r.Task)
 	}

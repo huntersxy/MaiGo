@@ -96,9 +96,11 @@ type chatCompletionsStreamBuilder struct {
 	toolChoice string
 	// occupiedCallIDs 请求上下文中已占用的调用 ID
 	occupiedCallIDs []string
+	// requestID 本次流式响应的上游请求编号，供流内错误事件对账
+	requestID string
 }
 
-func newChatCompletionsStreamBuilder(client *chatCompletionsClient, maxTokens *int, toolInfos []*schema.ToolInfo, toolChoice string, occupiedCallIDs []string) *chatCompletionsStreamBuilder {
+func newChatCompletionsStreamBuilder(client *chatCompletionsClient, maxTokens *int, toolInfos []*schema.ToolInfo, toolChoice string, occupiedCallIDs []string, requestID string) *chatCompletionsStreamBuilder {
 	return &chatCompletionsStreamBuilder{
 		client:          client,
 		mode:            client.reasoningParseMode,
@@ -108,6 +110,7 @@ func newChatCompletionsStreamBuilder(client *chatCompletionsClient, maxTokens *i
 		toolInfos:       toolInfos,
 		toolChoice:      toolChoice,
 		occupiedCallIDs: occupiedCallIDs,
+		requestID:       requestID,
 	}
 }
 
@@ -116,7 +119,7 @@ func (b *chatCompletionsStreamBuilder) consume(chunk chatCompletionChunk) (*sche
 		return nil, false, &ParseError{Message: "解析 OpenAI 兼容流式响应失败", Err: chunk.decodeErr}
 	}
 	if chunk.Error != nil {
-		return nil, false, chatCompletionInBandError(*chunk.Error)
+		return nil, false, chatCompletionInBandError(*chunk.Error, b.requestID)
 	}
 	if b.model == "" && chunk.Model != "" {
 		b.model = chunk.Model

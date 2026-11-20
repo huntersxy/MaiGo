@@ -115,7 +115,7 @@ func (t *openAIAudioTranscriber) do(req *http.Request) ([]byte, error) {
 		return nil, &NetworkError{Message: readErr.Error(), Err: readErr}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Message: truncateErrBody(raw), Op: "audio.transcriptions.create"}
+		return nil, &HTTPStatusError{StatusCode: resp.StatusCode, Message: truncateErrBody(raw), Op: "audio.transcriptions.create", RequestID: providerRequestID(resp.Header)}
 	}
 	return raw, nil
 }

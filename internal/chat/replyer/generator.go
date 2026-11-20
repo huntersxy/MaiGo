@@ -229,7 +229,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		}
 
 		llmStarted := g.now()
-		generationResult, generateErr := activeClient.GenerateResponseWithContext(ctx, factory, g.buildGenerationOptions(activeModelName))
+		generationResult, generateErr := activeClient.GenerateResponseWithContext(g.modelContext(ctx, activeTaskName, sessionID), factory, g.buildGenerationOptions(activeModelName))
 		promptMS = durationMS(promptStarted, g.now())
 		llmMS = durationMS(llmStarted, g.now())
 		if generateErr != nil {
@@ -237,7 +237,7 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			if errors.As(generateErr, &aborted) {
 				return finalizeAbort(aborted)
 			}
-			zap.L().Error("Maisaka 回复器调用失败", zap.Error(generateErr))
+			g.logReplyFailure(sessionID, activeTaskName, activeModelName, retryCount, generateErr)
 			result.ErrorMessage = generateErr.Error()
 			result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
 			return finalize(false)
@@ -268,10 +268,11 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 			continuationRequestItems := append([]llm.ContextItem(nil), requestItems...)
 			continuationRequestItems = append(continuationRequestItems, generationResult.OutputItems...)
 			continuationOptions := g.buildGenerationOptions(continuationModelName)
-			continued, continuationErr := activeClient.GenerateResponseWithContext(ctx, func(context.Context, *ModelInfo) ([]llm.ContextItem, error) {
+			continued, continuationErr := activeClient.GenerateResponseWithContext(g.modelContext(ctx, activeTaskName, sessionID), func(context.Context, *ModelInfo) ([]llm.ContextItem, error) {
 				return continuationRequestItems, nil
 			}, continuationOptions)
 			if continuationErr != nil {
+				g.logReplyFailure(sessionID, activeTaskName, continuationModelName, retryCount, continuationErr)
 				result.ErrorMessage = continuationErr.Error()
 				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
 				return finalize(false)
@@ -313,8 +314,9 @@ func (g *ReplyGenerator) GenerateReplyWithContext(ctx context.Context, req Reply
 		if superActive && strings.TrimSpace(generationResult.ResponseText()) != "" {
 			result.ErrorCode = "replyer_translation_failed"
 			translationStarted := g.now()
-			translated, translationItems, translationErr := g.translateSuperCreativeReply(ctx, activeClient, generationResult, creativeLanguage)
+			translated, translationItems, translationErr := g.translateSuperCreativeReply(g.modelContext(ctx, activeTaskName, sessionID), activeClient, generationResult, creativeLanguage)
 			if translationErr != nil {
+				g.logReplyFailure(sessionID, activeTaskName, activeModelName, retryCount, translationErr)
 				result.ErrorMessage = translationErr.Error()
 				result.Metrics = GenerationMetrics{PromptMS: promptMS, LLMMS: llmMS, OverallMS: durationMS(startedAt, g.now())}
 				return finalize(false)
@@ -709,6 +711,25 @@ func (g *ReplyGenerator) resolveSessionID(req ReplyRequest) string {
 	// 对齐 Python _resolve_session_id：仅 stream_id / chat_stream.session_id，
 	// 不得用目标消息 ID 冒充会话 ID（否则 attention/chat prompt 会错位）。
 	return strings.TrimSpace(req.SessionID)
+}
+
+// modelContext 给模型调用附加任务与会话元数据；日志、监控与用量统计共用
+func (g *ReplyGenerator) modelContext(ctx context.Context, taskName, sessionID string) context.Context {
+	ctx = llm.WithModelUsageMetadata(ctx, taskName, g.requestType(), sessionID)
+	return llm.WithCacheStatsMetadata(ctx, taskName, g.requestType(), sessionID)
+}
+
+// logReplyFailure 记录回复器失败；会话标识与错误诊断字段一并落日志
+func (g *ReplyGenerator) logReplyFailure(sessionID, taskName, modelName string, retryCount int, err error) {
+	fields := []zap.Field{
+		zap.String("session_id", sessionID),
+		zap.String("task", taskName),
+		zap.String("model", modelName),
+		zap.Int("retry_count", retryCount),
+		zap.Error(err),
+	}
+	fields = append(fields, llm.ErrorLogFields(err)...)
+	zap.L().Error("Maisaka 回复器调用失败", fields...)
 }
 
 func (g *ReplyGenerator) defaultTaskName() string {

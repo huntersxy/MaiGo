@@ -28,6 +28,8 @@ type HTTPStatusError struct {
 	StatusCode int
 	Message    string // Provider 原始错误体，仅用于日志与快照
 	Op         string
+	// RequestID 上游响应头里的请求编号，便于向供应商对账
+	RequestID string
 }
 
 func (e *HTTPStatusError) Error() string {

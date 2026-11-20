@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"MaiGo/internal/common/database"
+	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/maisaka/focus"
@@ -239,10 +240,14 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 		// 失败前可能已提交裁切，摘要仍要落库
 		a.captureMaisakaSummary(session, runtime.History())
 		a.persistMaisakaSummary(ctx, session)
-		zap.L().Error("Maisaka 主循环思考失败",
+		fields := []zap.Field{
 			zap.String("conversation_kind", kind),
 			zap.Int64("target_id", targetID),
-			zap.Error(err))
+			zap.String("session_id", runtime.SessionID()),
+			zap.Error(err),
+		}
+		fields = append(fields, llm.ErrorLogFields(err)...)
+		zap.L().Error("Maisaka 主循环思考失败", fields...)
 		return true
 	}
 	persistedIDs := a.persistMaisakaHistory(ctx, session, runtime.DrainTurnTranscript())

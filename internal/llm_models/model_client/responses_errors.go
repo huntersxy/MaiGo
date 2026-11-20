@@ -50,7 +50,11 @@ func normalizeResponsesCallError(ctx context.Context, err error) error {
 		if message == "" {
 			message = truncateErrBody([]byte(apiErr.Error()))
 		}
-		return &HTTPStatusError{StatusCode: apiErr.StatusCode, Message: message, Op: "responses"}
+		requestID := ""
+		if apiErr.Response != nil {
+			requestID = providerRequestID(apiErr.Response.Header)
+		}
+		return &HTTPStatusError{StatusCode: apiErr.StatusCode, Message: message, Op: "responses", RequestID: requestID}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return &NetworkError{Message: "Responses 请求超时", Err: err}

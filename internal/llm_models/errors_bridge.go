@@ -8,9 +8,15 @@ package llm
 
 import (
 	"context"
+	"net/http"
 
 	"MaiGo/internal/llm_models/contract"
 )
+
+// ProviderRequestID 从上游响应头提取请求编号，缺失时为空
+func ProviderRequestID(header http.Header) string {
+	return contract.ProviderRequestID(header)
+}
 
 type (
 	// HTTPStatusError Provider 返回非 2xx 状态

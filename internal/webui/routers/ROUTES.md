@@ -210,7 +210,7 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 | GET | `/chats` | **done**（Go 扩展；`stats.QueryTopChats` / `message_traffic_chat_hourly`） |
 | GET | `/dashboard` | **done**（`DashboardData` 字段与 Python 对齐） |
 | GET | `/summary` | **done**（`StatisticsSummary` 字段与 Python 对齐） |
-| GET | `/task-usage` | **done**（`task_name`/`hours` 校验，`model_call_hourly` 聚合） |
+| GET | `/task-usage` | **done**（`task_name`/`hours` 校验，`model_task_usage` 聚合） |
 | GET | `/detailed` | **done**（无快照返回 503「详细统计正在生成，请稍后重试」；快照由 `internal/services/statistics/detailed_report.go` 15 分钟后台任务（首跑立即）生成，请求内不再同步构建） |
 
 ## `/api/webui/person`（`routers/person.py`）

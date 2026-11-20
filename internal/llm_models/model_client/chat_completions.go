@@ -226,7 +226,7 @@ func (c *chatCompletionsClient) Stream(ctx context.Context, input []*schema.Agen
 	go func() {
 		defer cancel()
 		defer resp.Body.Close()
-		pumpChatCompletionsStream(ctx, streamCtx, resp.Body, writer, newChatCompletionsStreamBuilder(c, options.MaxTokens, options.Tools, ChatToolChoiceValue(options), textToolCallOccupiedIDs(items)))
+		pumpChatCompletionsStream(ctx, streamCtx, resp.Body, writer, newChatCompletionsStreamBuilder(c, options.MaxTokens, options.Tools, ChatToolChoiceValue(options), textToolCallOccupiedIDs(items), providerRequestID(resp.Header)))
 	}()
 	stream := wrapAgenticStreamSnapshot(reader, func(streamErr error) error {
 		return c.snapshotFailure(recorder, started, input, options, finalPayload, true, streamErr)
@@ -320,7 +320,7 @@ func (c *chatCompletionsClient) post(ctx context.Context, payload map[string]any
 		return nil, c.transportError(ctx, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, chatCompletionsHTTPError(resp.StatusCode, raw)
+		return nil, chatCompletionsHTTPError(resp.StatusCode, raw, resp.Header)
 	}
 	return raw, nil
 }
@@ -342,7 +342,7 @@ func (c *chatCompletionsClient) openStream(ctx context.Context, payload map[stri
 		defer cancel()
 		defer resp.Body.Close()
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		return nil, chatCompletionsHTTPError(resp.StatusCode, raw)
+		return nil, chatCompletionsHTTPError(resp.StatusCode, raw, resp.Header)
 	}
 	// 连接超时由流式读取阶段的 streamCtx 继续控制，此处不能 cancel
 	return resp, nil
@@ -360,8 +360,8 @@ func (c *chatCompletionsClient) transportError(ctx context.Context, err error) e
 	return &NetworkError{Err: err}
 }
 
-func chatCompletionsHTTPError(status int, raw []byte) error {
-	return &HTTPStatusError{StatusCode: status, Message: truncateErrBody(raw), Op: "chat_completions"}
+func chatCompletionsHTTPError(status int, raw []byte, header http.Header) error {
+	return &HTTPStatusError{StatusCode: status, Message: truncateErrBody(raw), Op: "chat_completions", RequestID: providerRequestID(header)}
 }
 
 // pumpChatCompletionsStream 读取 SSE 事件并逐块下发增量消息

@@ -106,6 +106,7 @@ func (t *HTTPEmbeddingTransport) execute(
 				StatusCode: response.StatusCode,
 				Message:    strings.TrimSpace(string(payload)),
 				Op:         "embeddings",
+				RequestID:  llm.ProviderRequestID(response.Header),
 			}
 			if retriableEmbeddingStatusCodes[response.StatusCode] && attempt < httpEmbeddingMaxAttempts-1 {
 				lastError = statusError

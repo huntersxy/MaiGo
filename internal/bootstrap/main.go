@@ -750,10 +750,10 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	monitor.SetEventStore(monitor.NewEventStore(db))
 	llm.SetLLMMonitorEmitters(
 		func(ev llm.LLMRetryEvent) {
-			monitor.EmitLLMRetry(ev.SessionID, ev.TaskName, ev.RequestType, ev.ModelName, ev.Attempt, ev.MaxAttempts, ev.Reason, ev.RetryInterval)
+			monitor.EmitLLMRetry(ev.SessionID, ev.TaskName, ev.RequestType, ev.ModelName, ev.Attempt, ev.MaxAttempts, ev.Reason, ev.ErrorMessage, ev.RetryInterval, ev.StatusCode, ev.ProviderRequestID, ev.RequestID)
 		},
 		func(ev llm.LLMErrorEvent) {
-			monitor.EmitLLMError(ev.SessionID, ev.TaskName, ev.RequestType, ev.ModelName, ev.Message)
+			monitor.EmitLLMError(ev.SessionID, ev.TaskName, ev.RequestType, ev.ModelName, ev.Message, ev.StatusCode, ev.ProviderRequestID, ev.RequestID)
 		},
 	)
 	// Bot 账号服务先于原生内核创建：插件 Host、人物画像与 memorix 共用同一实时来源

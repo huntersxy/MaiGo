@@ -176,6 +176,7 @@ var (
 	newLLMHTTPClient                = contract.NewLLMHTTPClient
 	applyReplayHeaders              = contract.ApplyReplayHeaders
 	buildAuthHeaderValue            = contract.BuildAuthHeaderValue
+	providerRequestID               = contract.ProviderRequestID
 
 	// 客户端类型判定
 	normalizeClientType         = contract.NormalizeClientType
