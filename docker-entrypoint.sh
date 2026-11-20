@@ -41,18 +41,7 @@ if [ -z "${MAIBOT_PLUGIN_PROJECT_ROOT:-}" ]; then
     done
 fi
 
-# 错别字注入与表达向量聚类走 vendored 原版 Python；入口只准备环境，
-# 侧车由 Go 在首次 /typo 或 /kmeans 时按需拉起，空闲后退出。
-compat_python=/app/pycompat/bin/python
-if [ -x "$compat_python" ] && [ -f /app/pycompat_sidecar.py ]; then
-    export MAIBOT_INSTANCE_DIR="${MAIBOT_INSTANCE_DIR:-/app}"
-    export MAIBOT_SOURCE_ROOT="${MAIBOT_SOURCE_ROOT:-/app/pycompat-src}"
-    export MAIBOT_COMPAT_SIDECAR_PORT="${MAIBOT_COMPAT_SIDECAR_PORT:-8767}"
-    export MAIBOT_COMPAT_SIDECAR_TOKEN="${MAIBOT_COMPAT_SIDECAR_TOKEN:-${MAIBOT_COMPAT_TOKEN:-}}"
-    export PYTHONDONTWRITEBYTECODE=1
-    mkdir -p /app/depends-data 2>/dev/null || true
-    chown maibot:maibot /app/depends-data 2>/dev/null || true
-    export MAIBOT_COMPAT_URL="${MAIBOT_COMPAT_URL:-http://127.0.0.1:$MAIBOT_COMPAT_SIDECAR_PORT}"
-fi
+export MAIBOT_INSTANCE_DIR="${MAIBOT_INSTANCE_DIR:-/app}"
+export PYTHONDONTWRITEBYTECODE=1
 
 exec su-exec maibot:maibot "$@"
