@@ -5,7 +5,8 @@ Description=Periodic MaiGo release check
 OnBootSec=5min
 OnUnitActiveSec=15min
 RandomizedDelaySec=60
-# 只在主机本时区业务低峰之外也照常检查，部署靠健康检查兜底
+# 固定开机锚点，避免 timer 随手动触发的 service 漂移
+Persistent=false
 Unit=maigo-update.service
 
 [Install]
