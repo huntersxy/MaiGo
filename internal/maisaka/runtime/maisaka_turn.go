@@ -210,10 +210,15 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 		plannerModel = generation.model
 		plannerName = generation.modelName
 	}
-	loop := maisaka.NewChatLoopService(runtime.SessionID(), runtime.IsGroupSession(), promptSource, &maisakaChatClient{
+	planner := &maisakaChatClient{
 		model:     plannerModel,
 		modelName: plannerName,
-	})
+	}
+	if bot := a.instanceBotConfig(); bot != nil {
+		planner.saveReasoning = bot.Debug.SaveMaisakaReasoning
+		planner.keepPreviewBase64 = bot.Debug.KeepPromptPreviewJsonBase64
+	}
+	loop := maisaka.NewChatLoopService(runtime.SessionID(), runtime.IsGroupSession(), promptSource, planner)
 	if generation.fastModel != nil {
 		loop.JudgeClient = &maisakaChatClient{model: generation.fastModel, modelName: generation.fastModelName}
 	}

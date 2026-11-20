@@ -162,10 +162,7 @@ func pluginGatewayContent(message map[string]any) string {
 	if text, ok := raw.(string); ok {
 		return strings.TrimSpace(text)
 	}
-	items, ok := raw.([]any)
-	if !ok {
-		return ""
-	}
+	items := gatewaySegmentItems(raw)
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		node, ok := item.(map[string]any)
@@ -205,7 +202,7 @@ func pluginGatewayParts(message map[string]any) (
 	if !ok || raw == nil {
 		raw = message["segments"]
 	}
-	items, _ := raw.([]any)
+	items := gatewaySegmentItems(raw)
 	if len(items) == 0 {
 		return nil, nil, nil, nil, nil, nil, nil, nil, nil
 	}
@@ -219,9 +216,9 @@ func pluginGatewayParts(message map[string]any) (
 		data := node["data"]
 		part := onebot.MessagePart{Index: index}
 		switch kind {
-case "text":
-				part.Kind = "text"
-				part.Text = pluginGatewayTextData(data)
+		case "text":
+			part.Kind = "text"
+			part.Text = pluginGatewayTextData(data)
 		case "at":
 			part.Kind = "at"
 			external := pluginGatewayAtTarget(data)
@@ -324,6 +321,22 @@ case "text":
 		parts = append(parts, part)
 	}
 	return parts, images, faces, voices, fileNames, atList, externalAtList, atNames, reply
+}
+
+// gatewaySegmentItems 归一化 JSON 消息段与进程内适配器构造的字典切片。
+func gatewaySegmentItems(raw any) []any {
+	switch items := raw.(type) {
+	case []any:
+		return items
+	case []map[string]any:
+		segments := make([]any, len(items))
+		for index, item := range items {
+			segments[index] = item
+		}
+		return segments
+	default:
+		return nil
+	}
 }
 
 // pluginGatewayText 从消息段提取纯文本

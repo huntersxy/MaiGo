@@ -9,9 +9,12 @@ import (
 	"time"
 
 	"MaiGo/internal/chat/replyer"
+	"MaiGo/internal/common/reasoningtrace"
 	"MaiGo/internal/llm_models"
+	modelclient "MaiGo/internal/llm_models/model_client"
 	"MaiGo/internal/maisaka"
 	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/maisaka/display"
 	"MaiGo/internal/maisaka/focus"
 	"MaiGo/internal/plugin_runtime/hostports"
 	"MaiGo/internal/prompt"
@@ -20,12 +23,15 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
+	"go.uber.org/zap"
 )
 
 // maisakaChatClient 把 Maisaka 对话循环的请求落到真实模型客户端
 type maisakaChatClient struct {
-	model     model.AgenticModel
-	modelName string
+	model             model.AgenticModel
+	modelName         string
+	saveReasoning     bool
+	keepPreviewBase64 bool
 }
 
 // Chat 执行一次 Planner 模型请求并把原生响应投影回 Maisaka 结构
@@ -71,6 +77,7 @@ func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatReques
 		}
 	}
 	ctx = llm.WithModelUsageMetadata(ctx, request.ModelTaskName, request.RequestKind, request.SessionID)
+	started := time.Now()
 	var reply *schema.AgenticMessage
 	var err error
 	if request.Stream {
@@ -89,7 +96,48 @@ func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatReques
 	}
 	response := maisakaResponseFromAgentic(reply)
 	response.ModelName = c.modelName
+	if c.saveReasoning && request.RequestKind == "planner" {
+		c.savePlannerPreview(ctx, request.SessionID, messages, reply, time.Since(started))
+	}
 	return response, nil
+}
+
+// savePlannerPreview 落盘 Planner 发给模型的内容，沿用推理记录的图片保留设置。
+func (c *maisakaChatClient) savePlannerPreview(ctx context.Context, sessionID string, messages []*schema.AgenticMessage, reply *schema.AgenticMessage, elapsed time.Duration) {
+	requestItems, err := modelclient.ContextItemsFromMessages(messages)
+	if err != nil {
+		zap.L().Warn("生成 Planner 请求预览失败", zap.Error(err))
+		return
+	}
+	outputItems, err := modelclient.ContextItemsFromMessages([]*schema.AgenticMessage{reply})
+	if err != nil {
+		zap.L().Warn("生成 Planner 响应预览失败", zap.Error(err))
+		return
+	}
+	if !c.keepPreviewBase64 {
+		for _, items := range [][]llm.ContextItem{requestItems, outputItems} {
+			for _, item := range items {
+				for index := range item.Parts {
+					item.Parts[index].ImageBase64 = ""
+					item.Parts[index].Media = nil
+				}
+			}
+		}
+	}
+	payload, err := sonic.Marshal(map[string]any{
+		"schema_version": 6,
+		"request":        map[string]any{"kind": "planner"},
+		"metadata":       map[string]any{"model_name": c.modelName, "duration_ms": elapsed.Milliseconds()},
+		"request_items":  llm.SerializeContextItemsSnapshot(requestItems),
+		"output_items":   llm.SerializeContextItemsSnapshot(outputItems),
+	})
+	if err != nil {
+		zap.L().Warn("序列化 Planner 预览失败", zap.Error(err))
+		return
+	}
+	if _, err := display.DefaultPromptPreviewLogger().SavePreviewFileWithTrace(sessionID, "planner", string(payload), nil, nil, reasoningtrace.TraceID(ctx)); err != nil {
+		zap.L().Warn("保存 Planner 预览失败", zap.Error(err))
+	}
 }
 
 // streamResponse 走 eino 流并累积整条响应；打断时保留已收到的原始片段
