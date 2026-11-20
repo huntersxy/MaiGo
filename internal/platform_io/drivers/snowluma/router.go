@@ -21,10 +21,11 @@ type Router struct {
 	lease        *IdentityOnlyLease
 	runtime      *RuntimeState
 	profile      *ProfileState
+	query        *QueryService
 	sink         InboundSink
 }
 
-func NewRouter(settings Settings, runtime *RuntimeState, profile *ProfileState, sink InboundSink) *Router {
+func NewRouter(settings Settings, runtime *RuntimeState, profile *ProfileState, query *QueryService, sink InboundSink) *Router {
 	return &Router{
 		settings:     settings,
 		filters:      NewMessageFilters(settings),
@@ -32,6 +33,7 @@ func NewRouter(settings Settings, runtime *RuntimeState, profile *ProfileState, 
 		lease:        NewIdentityOnlyLease(),
 		runtime:      runtime,
 		profile:      profile,
+		query:        query,
 		sink:         sink,
 	}
 }
@@ -95,6 +97,7 @@ func (r *Router) handleMessage(ctx context.Context, payload map[string]any) erro
 	if identityOnly || !r.runtime.RoutingEnabled() {
 		return nil
 	}
+	r.resolveInboundImages(ctx, message)
 	return r.deliver(ctx, message)
 }
 

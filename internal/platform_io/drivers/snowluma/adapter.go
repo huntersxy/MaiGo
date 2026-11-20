@@ -65,11 +65,11 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 	if hooks != nil {
 		sink = hooks.Inbound
 	}
-	adapter.router = NewRouter(settings, runtime, profile, sink)
 	adapter.transport = NewTransport(adapter.onConnectionOpened, adapter.onConnectionClosed, adapter.onPayload)
 	adapter.transport.Configure(settings.Client, profile)
 	adapter.actions = NewActionService(adapter.transport, profile)
 	adapter.query = NewQueryService(adapter.actions)
+	adapter.router = NewRouter(settings, runtime, profile, adapter.query, sink)
 	return adapter
 }
 

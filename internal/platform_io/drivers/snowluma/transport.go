@@ -178,6 +178,8 @@ func (t *Transport) dialOnce(parent context.Context, cfg ClientConfig) error {
 	if err != nil {
 		return err
 	}
+	// 与原版 aiohttp 的默认 WebSocket 消息上限一致，允许媒体动作返回内联数据。
+	conn.SetReadLimit(4 << 20)
 	t.mu.Lock()
 	t.conn = conn
 	stopCh := t.stopCh

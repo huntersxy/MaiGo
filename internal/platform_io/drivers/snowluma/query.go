@@ -49,6 +49,11 @@ func (s *QueryService) GetLoginInfo(ctx context.Context) (map[string]any, error)
 	return asMap(data), nil
 }
 
+func (s *QueryService) GetImage(ctx context.Context, file string) (map[string]any, error) {
+	data, err := s.CallData(ctx, "get_image", map[string]any{"file": file})
+	return asMap(data), err
+}
+
 func (s *QueryService) GetStrangerInfo(ctx context.Context, userID string, noCache bool) (map[string]any, error) {
 	actions, err := s.require()
 	if err != nil {
