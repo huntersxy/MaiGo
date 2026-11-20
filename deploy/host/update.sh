@@ -6,6 +6,8 @@ set -euo pipefail
 
 ROOT="${MAIGO_ROOT:-/opt/maigo}"
 REPO="${MAIGO_REPO:-huntersxy/MaiGo}"
+# 国内直连 GitHub 资产常被中断，按顺序回退；内容用 API 给出的 sha256 校验
+MIRRORS="${MAIGO_GH_MIRRORS:-https://gh-proxy.com/ https://ghfast.top/ }"
 DRY_RUN=0
 FORCE=0
 while [ $# -gt 0 ]; do
@@ -37,6 +39,11 @@ asset_url="$(printf '%s' "$release" \
     | tr ',' '\n' \
     | sed -n 's/.*"browser_download_url": *"\([^"]*maigo-[^"/]*-linux-amd64\.tar\.gz\)".*/\1/p' | head -1)"
 [ -n "$asset_url" ] || die "Release ${tag} 中没有 linux-amd64 发布包"
+asset_name="$(basename "$asset_url")"
+# GitHub 从 2025 起在资产对象里给出 sha256:<hex>，用它校验下载内容
+expected_sha="$(printf '%s' "$release" | tr '{' '\n' \
+    | sed -n "/\"name\": *\"${asset_name}\"/,/}/p" \
+    | sed -n 's/.*"digest": *"sha256:\([0-9a-f]*\)".*/\1/p' | head -1)"
 
 active="$(basename "$(readlink -f "$ROOT/current" 2>/dev/null || echo "")")"
 if [ "$active" = "$version" ] && [ "$FORCE" -eq 0 ]; then
@@ -45,26 +52,38 @@ if [ "$active" = "$version" ] && [ "$FORCE" -eq 0 ]; then
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
-    log "可更新：${active:-无} -> ${version}（${asset_url}）"
+    log "可更新：${active:-无} -> ${version}（${asset_name}）"
     exit 0
 fi
 
 mkdir -p "$ROOT/incoming"
-package="$ROOT/incoming/$(basename "$asset_url")"
-log "下载 ${tag}"
-# GitHub 资产在国内常被中途断开，断点续传重试到成功或超出预算
-attempt=0
-until curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors -C - \
-        --max-time 600 -o "$package" "$asset_url"; do
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 5 ]; then
-        rm -f "$package"
-        die "下载失败（已重试 ${attempt} 次）"
+package="$ROOT/incoming/$asset_name"
+
+download() {
+    local url="$1"
+    log "下载 ${tag}：${url}"
+    curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors -C - \
+        --max-time 900 -o "$package" "$url"
+}
+
+ok=0
+for prefix in $MIRRORS; do
+    if download "${prefix}${asset_url}"; then
+        ok=1
+        break
     fi
-    log "下载中断，续传重试 ${attempt}/5"
-    sleep 5
+    log "下载失败，换下一个源"
 done
-curl -fsSL --max-time 60 -o "$package.sha256" "${asset_url}.sha256" \
-    || log "未取到校验文件，deploy.sh 会跳过校验"
+[ "$ok" -eq 1 ] || die "所有下载源均失败"
+rm -f "$package.sha256"
+
+if [ -n "$expected_sha" ]; then
+    actual_sha="$(sha256sum "$package" | cut -d' ' -f1)"
+    [ "$actual_sha" = "$expected_sha" ] \
+        || die "校验和不匹配：期望 ${expected_sha}，实际 ${actual_sha}"
+    log "sha256 校验通过"
+else
+    log "Release API 未提供 digest，跳过校验"
+fi
 
 "$ROOT/deploy/deploy.sh" "$package"
