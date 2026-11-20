@@ -1,8 +1,10 @@
 package webuiapi
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +25,8 @@ import (
 const (
 	maxAvatarBytes      = 5 * 1024 * 1024
 	avatarBrowserMaxAge = 3 * 60 * 60 // 对齐 avatar.py AVATAR_BROWSER_MAX_AGE
+	// Dashboard 会并行加载多个头像，限制每个远程头像占用浏览器 HTTP 连接的时间。
+	avatarRequestTimeout = 2 * time.Second
 )
 
 var (
@@ -273,7 +277,13 @@ func (d Deps) handleAvatarGet(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	result, err := d.Avatar.GetAvatar(r.Context(), normalizedPlatform, normalizedTarget, targetType, accountID, scope, forceRefresh)
+	ctx, cancel := context.WithTimeout(r.Context(), avatarRequestTimeout)
+	defer cancel()
+	result, err := d.Avatar.GetAvatar(ctx, normalizedPlatform, normalizedTarget, targetType, accountID, scope, forceRefresh)
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeNoAvatar(w, string(platformio.AvatarStatusMissing), "private, no-cache")
+		return
+	}
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{
 			"detail": fmt.Sprintf("头像获取失败：%T: %v", err, err),

@@ -154,7 +154,9 @@ func (s *AvatarService) GetAvatar(ctx context.Context, platform, targetID, targe
 		call = &avatarCall{done: make(chan struct{})}
 		s.pending[key] = call
 		go func() {
-			result, resolveErr := s.resolve(key, normalizedPlatform, normalizedTarget, targetType, accountID, scope)
+			resolveCtx, cancel := context.WithTimeout(context.Background(), avatarHTTPTimeout)
+			defer cancel()
+			result, resolveErr := s.resolve(resolveCtx, key, normalizedPlatform, normalizedTarget, targetType, accountID, scope)
 			call.result, call.err = result, resolveErr
 			s.mu.Lock()
 			delete(s.pending, key)
@@ -279,11 +281,11 @@ func (s *AvatarService) writeCache(key string, result AvatarResult, imageBytes [
 	return nil
 }
 
-func (s *AvatarService) resolve(key, platform, targetID, targetType, accountID, scope string) (AvatarResult, error) {
+func (s *AvatarService) resolve(ctx context.Context, key, platform, targetID, targetType, accountID, scope string) (AvatarResult, error) {
 	if s.Provider == nil {
 		return s.finishNegative(key, AvatarStatusUnsupported, "")
 	}
-	source, err := s.Provider.QueryAvatar(context.Background(), platform, targetID, targetType, accountID, scope)
+	source, err := s.Provider.QueryAvatar(ctx, platform, targetID, targetType, accountID, scope)
 	if err != nil {
 		return AvatarResult{}, fmt.Errorf("适配器头像查询失败: %w", err)
 	}
@@ -308,7 +310,7 @@ func (s *AvatarService) resolve(key, platform, targetID, targetType, accountID, 
 			ttl = value
 		}
 	}
-	imageBytes, err := s.download(urlText)
+	imageBytes, err := s.download(ctx, urlText)
 	if err != nil {
 		return AvatarResult{}, err
 	}
@@ -362,12 +364,12 @@ func avatarExpiresIn(raw any) (time.Duration, bool) {
 	return time.Duration(value * float64(time.Second)), true
 }
 
-func (s *AvatarService) download(rawURL string) ([]byte, error) {
+func (s *AvatarService) download(ctx context.Context, rawURL string) ([]byte, error) {
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
 		return nil, errors.New("适配器头像 URL 必须为不含凭据的 HTTP(S) 地址")
 	}
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, parsed.String(), nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("请求头像失败: %w", err)
 	}
