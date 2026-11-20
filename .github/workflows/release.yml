@@ -28,6 +28,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.package.outputs.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +73,7 @@ jobs:
           python-version: '3.13'
 
       - name: 组装发布包
+        id: package
         run: |
           version="${{ steps.version.outputs.version }}"
           stage="stage"
@@ -95,6 +98,7 @@ jobs:
           tar -C "$stage" -czf "$name.tar.gz" .
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           cat "$name.tar.gz.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -104,35 +108,63 @@ jobs:
             maigo-*.tar.gz.sha256
           retention-days: 14
 
-      # 两条发布通道：main 推送更新滚动预发布（tag=main），打版本 tag 出正式 Release。
-      # 服务器默认跟随滚动通道，版本 Release 供归档与指定版本部署。
+      # 版本 tag 出正式 Release 供归档；日常部署由下面的 deploy job 直接推送
       - name: 发布 GitHub Release
-        if: github.ref_type == 'tag' || github.ref_name == 'main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          rolling=0
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            tag="${GITHUB_REF_NAME}"
-          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
-            tag="rolling"
-            rolling=1
-          else
-            case "$VERSION" in
-              dev|'') echo "dev 构建不发布 Release" >&2; exit 1 ;;
-            esac
-            tag="v${VERSION}"
-          fi
+          case "$VERSION" in
+            dev|'') echo "dev 构建不发布 Release" >&2; exit 1 ;;
+          esac
+          tag="v${VERSION}"
           notes="sha256: $(cat maigo-*.tar.gz.sha256)"$'\n'"commit: ${GITHUB_SHA}"
-          if [ "$rolling" -eq 1 ]; then
-            # 滚动通道每次整包替换，避免累积旧提交的资产
-            gh release delete "$tag" --cleanup-tag --yes >/dev/null 2>&1 || true
-            gh release create "$tag" --prerelease --title "滚动构建（main）" \
-              --notes "$notes" maigo-*.tar.gz maigo-*.tar.gz.sha256
-          elif gh release view "$tag" >/dev/null 2>&1; then
+          if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" maigo-*.tar.gz maigo-*.tar.gz.sha256 --clobber
           else
             gh release create "$tag" --title "$tag" --notes "$notes" \
               maigo-*.tar.gz maigo-*.tar.gz.sha256
           fi
+
+  deploy:
+    needs: build
+    if: github.ref_name == 'main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: maigo-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: maigo-release
+
+      - name: 配置 SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          fi
+
+      # 密钥在服务器侧绑定 command=ci-deploy.sh，只接收发布包，拿不到 shell
+      - name: 推送发布包并部署
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          pkg="$(ls maigo-*.tar.gz)"
+          echo "推送 $pkg"
+          ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
+              -o IdentitiesOnly=yes -o BatchMode=yes \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" < "$pkg"
