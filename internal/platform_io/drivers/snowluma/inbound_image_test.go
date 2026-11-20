@@ -33,6 +33,33 @@ func (s imageInboundSink) ReceiveGatewayMessage(ctx context.Context, _ capabilit
 	}
 }
 
+func TestNapCatPrivateCQImageReachesHostAsPicture(t *testing.T) {
+	const gif = "R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs="
+	settings := DefaultSettings()
+	settings.Client.ClientType = "napcat"
+	sink := make(imageInboundSink, 1)
+	adapter := NewAdapter(settings, &HostHooks{Inbound: sink})
+	if err := adapter.onPayload(t.Context(), map[string]any{
+		"post_type": "message", "message_type": "private", "message_id": "1", "user_id": "100", "self_id": "200",
+		"message": "[CQ:image,file=base64://" + gif + ",sub_type=0]",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case message := <-sink:
+		segments := segmentItems(message["raw_message"])
+		if message["chat_type"] != "private" || message["is_picture"] != true || len(segments) != 1 {
+			t.Fatal("expected an image-only private message")
+		}
+		segment := asMap(segments[0])
+		if segment["type"] != "image" || segment["binary_data_base64"] != gif {
+			t.Fatal("expected the image bytes in the host message")
+		}
+	default:
+		t.Fatal("private image did not reach the host")
+	}
+}
+
 func TestPrivateImageRecoversBytesThroughGetImage(t *testing.T) {
 	// PNG 不压缩时，回包会超过 coder/websocket 默认的 32 KiB 上限。
 	picture := image.NewNRGBA(image.Rect(0, 0, 128, 128))

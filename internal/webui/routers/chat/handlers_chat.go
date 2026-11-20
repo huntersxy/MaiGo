@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"MaiGo/internal/webui/httputil"
 	"net/http"
 	"strconv"
 
@@ -10,6 +9,7 @@ import (
 
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/platform_io"
+	"MaiGo/internal/webui/httputil"
 )
 
 type chatSessionItem struct {
@@ -58,11 +58,18 @@ type chatSessionMessageItem struct {
 }
 
 func (d Deps) handleChatSessionMessages(w http.ResponseWriter, r *http.Request) {
+	if d.RequireAuth == nil {
+		writeChatFailure(w, http.StatusUnauthorized, "请登录后查看会话消息")
+		return
+	}
+	if !d.RequireAuth(w, r) {
+		return
+	}
 	if d.Memory == nil {
 		writeChatFailure(w, http.StatusServiceUnavailable, "记忆管理器未初始化")
 		return
 	}
-	sessionID := chi.URLParam(r, "sessionID")
+	sessionID := chi.URLParam(r, "session_id")
 	if sessionID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"success": false, "implemented": true, "error": "session_id 不能为空",

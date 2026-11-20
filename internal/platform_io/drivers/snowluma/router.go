@@ -83,7 +83,8 @@ func (r *Router) handleMessage(ctx context.Context, payload map[string]any) erro
 		accountID = asString(payload["self_id"])
 	}
 	scope := r.runtime.Scope()
-	message := NormalizeInboundMessage(payload, accountID, scope)
+	clientType := firstNonEmpty(r.runtime.DetectedProtocol(), r.settings.Client.ClientType)
+	message := normalizeInboundMessage(payload, accountID, scope, clientType != SnowLumaProfile.ClientType)
 	if message == nil {
 		return nil
 	}

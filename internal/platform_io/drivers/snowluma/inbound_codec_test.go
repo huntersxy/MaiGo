@@ -2,6 +2,20 @@ package snowluma
 
 import "testing"
 
+func TestParseCQMessageEscapesOnlyOnce(t *testing.T) {
+	segments, err := parseCQMessage(" &amp;#91;CQ:image&#93;[CQ:image,file=a&#44;b&amp;c] ")
+	if err != nil || len(segments) != 3 {
+		t.Fatalf("parseCQMessage returned %d segments, error %v", len(segments), err)
+	}
+	if asMap(segments[0])["data"] != " &#91;CQ:image]" || asMap(segments[2])["data"] != " " {
+		t.Fatal("text escaped incorrectly")
+	}
+	image := asMap(segments[1])
+	if image["type"] != "image" || asMap(image["data"])["file"] != "a,b&c" {
+		t.Fatalf("image segment escaped incorrectly: %#v", image)
+	}
+}
+
 func TestNormalizeInboundMessageTextDataIsString(t *testing.T) {
 	payload := map[string]any{
 		"post_type":    "message",

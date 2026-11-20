@@ -12,6 +12,10 @@ import (
 
 // NormalizeInboundMessage 将 OneBot 事件转为 Host 可接受的消息字典
 func NormalizeInboundMessage(payload map[string]any, accountID, scope string) map[string]any {
+	return normalizeInboundMessage(payload, accountID, scope, true)
+}
+
+func normalizeInboundMessage(payload map[string]any, accountID, scope string, decodeCQ bool) map[string]any {
 	if payload == nil {
 		return nil
 	}
@@ -41,7 +45,15 @@ func NormalizeInboundMessage(payload map[string]any, accountID, scope string) ma
 	if nickname == "" {
 		nickname = firstNonEmpty(card, userID)
 	}
-	rawMessage, isAt, hasPicture, hasEmoji := convertInboundSegments(payload["message"], payload["raw_message"], accountID)
+	message := payload["message"]
+	if text, ok := message.(string); ok && decodeCQ {
+		segments, err := parseCQMessage(text)
+		if err != nil {
+			return nil
+		}
+		message = segments
+	}
+	rawMessage, isAt, hasPicture, hasEmoji := convertInboundSegments(message, payload["raw_message"], accountID)
 	if len(rawMessage) == 0 {
 		rawMessage = []any{buildTextSegment("[unsupported]")}
 	}
