@@ -27,7 +27,6 @@ go.work.sum
 
 # 运行时数据（进程按相对路径落盘）
 /data/*
-!/data/pycompat/
 /logs/
 
 # pluginruntime 测试产物（UsageTracker 相对工作目录落盘）

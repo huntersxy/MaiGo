@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 首次安装：建用户与目录、建两个 Python venv、装 systemd 单元。
+# 首次安装：建用户与目录、建 Python Runner venv、装 systemd 单元。
 # 只在服务器上跑一次；后续发布用 deploy.sh。
 set -euo pipefail
 
@@ -32,32 +32,28 @@ install -m 755 "$SCRIPT_DIR/deploy.sh" "$ROOT/deploy/deploy.sh"
 install -m 755 "$SCRIPT_DIR/update.sh" "$ROOT/deploy/update.sh"
 install -m 755 "$SCRIPT_DIR/migrate-from-docker.sh" "$ROOT/deploy/migrate-from-docker.sh"
 install -m 644 "$SCRIPT_DIR/requirements-plugin-runtime.txt" "$ROOT/deploy/"
-install -m 644 "$SCRIPT_DIR/requirements-pycompat.txt" "$ROOT/deploy/"
 
 if [ ! -f "$ROOT/maigo.env" ]; then
     log "生成 maigo.env"
     install -m 600 "$SCRIPT_DIR/maigo.env.example" "$ROOT/maigo.env"
 fi
 
-build_venv() {
-    local name="$1" requirements="$2"
-    local venv="$ROOT/runtime/$name"
+build_runner_venv() {
+    local venv="$ROOT/runtime/plugin-runtime"
     if [ -x "$venv/bin/python" ]; then
-        log "$name venv 已存在，跳过"
+        log "plugin-runtime venv 已存在，跳过"
         return
     fi
-    log "创建 $name venv"
+    log "创建 plugin-runtime venv"
     "$PYTHON_BIN" -m venv "$venv"
     "$venv/bin/pip" install --no-cache-dir --no-input --upgrade pip >/dev/null
-    if [ "$name" = "plugin-runtime" ]; then
-        "$venv/bin/pip" install --no-cache-dir --no-input --no-deps \
-            --index-url "$PIP_INDEX" "maibot==1.4.5"
-    fi
-    "$venv/bin/pip" install --no-cache-dir --no-input --index-url "$PIP_INDEX" -r "$requirements"
+    "$venv/bin/pip" install --no-cache-dir --no-input --no-deps \
+        --index-url "$PIP_INDEX" "maibot==1.4.5"
+    "$venv/bin/pip" install --no-cache-dir --no-input --index-url "$PIP_INDEX" \
+        -r "$ROOT/deploy/requirements-plugin-runtime.txt"
 }
 
-build_venv plugin-runtime "$ROOT/deploy/requirements-plugin-runtime.txt"
-build_venv pycompat "$ROOT/deploy/requirements-pycompat.txt"
+build_runner_venv
 
 # Runner 从 site-packages 加载 src.plugin_runtime，路径随 Python 版本变化
 site_packages="$(ls -d "$ROOT"/runtime/plugin-runtime/lib/python*/site-packages 2>/dev/null | head -1)"

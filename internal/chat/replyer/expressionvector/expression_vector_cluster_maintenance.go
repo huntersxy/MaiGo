@@ -2,6 +2,7 @@ package expressionvector
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -186,69 +187,58 @@ func expressionVectorClusterVectors(entries []expressionVectorClusterSample) [][
 	return vectors
 }
 
-// rebuildExpressionVectorClusters 全量重聚类，reuse 时沿用旧簇数量与中心作为初始值
-//
-// 优先交给 Python 兼容侧车的原版 _run_kmeans；侧车未配置或失败时回落到
-// 本地逐位复刻实现。两条路径的输入约定相同（都已按行 L2 归一化），
-// 输出标签与中心因此可以直接互换。
+// rebuildExpressionVectorClusters 在 Go 进程内执行 cosine k-means，按需沿用旧簇数量与中心。
 func rebuildExpressionVectorClusters(entries []expressionVectorClusterSample, previousCenters [][]float32, reuse bool) (map[uint]int, [][]float32, error) {
 	labels := make(map[uint]int, len(entries))
 	if len(entries) == 0 {
 		return labels, nil, nil
 	}
 	vectors := expressionVectorClusterVectors(entries)
-	// Python _choose_cluster_count 无论是否复用中心都用上一次簇数作为上限参考
-	clusterCount := chooseExpressionVectorClusterCount(len(entries), len(previousCenters))
-
-	if sidecarLabels, sidecarCenters, ok := sidecarRebuildExpressionVectorClusters(entries, vectors, previousCenters, clusterCount, reuse); ok {
-		return sidecarLabels, sidecarCenters, nil
-	}
-	centers := make([][]float32, 0, clusterCount)
-	if reuse && len(previousCenters) == clusterCount {
-		dimensionMatches := true
-		for _, center := range previousCenters {
-			if len(center) != len(vectors[0]) {
-				dimensionMatches = false
-				break
-			}
+	for index, vector := range vectors {
+		if pythonRowL2Norm(vector) == 0 {
+			return nil, nil, fmt.Errorf("表达向量索引包含零向量: id=%d", entries[index].id)
 		}
-		if dimensionMatches {
+	}
+
+	// _choose_cluster_count 始终参考上一次簇数。
+	clusterCount := chooseExpressionVectorClusterCount(len(entries), len(previousCenters))
+	assigned := make([]int, len(vectors))
+	var centers [][]float32
+	if clusterCount == 1 {
+		var err error
+		centers, err = buildExpressionVectorClusterCenters(vectors, assigned, clusterCount)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		if reuse && len(previousCenters) == clusterCount {
+			centers = make([][]float32, 0, clusterCount)
 			for _, center := range previousCenters {
+				if len(center) != len(vectors[0]) {
+					centers = nil
+					break
+				}
 				centers = append(centers, normalizeVectorForClustering(center))
 			}
 		}
-	}
-	if len(centers) == 0 {
-		centers = initializeClusterCenters(vectors, clusterCount)
-	}
-	assigned := make([]int, len(vectors))
-	for iteration := 0; iteration < 100; iteration++ {
-		nextLabels := assignClusterLabels(vectors, centers)
-		repairEmptyClusterLabels(nextLabels, vectors, centers)
-		nextCenters := buildClusterCenters(vectors, nextLabels, centers)
-		converged := true
-		for index := range assigned {
-			if assigned[index] != nextLabels[index] {
-				converged = false
+		if len(centers) == 0 {
+			centers = initializeClusterCenters(vectors, clusterCount)
+		}
+
+		var previousLabels []int
+		for iteration := 0; iteration < 100; iteration++ {
+			assigned = assignClusterLabels(vectors, centers)
+			repairEmptyClusterLabels(assigned, vectors, centers)
+			var err error
+			centers, err = buildExpressionVectorClusterCenters(vectors, assigned, clusterCount)
+			if err != nil {
+				return nil, nil, err
+			}
+			if slices.Equal(previousLabels, assigned) {
 				break
 			}
+			previousLabels = assigned
 		}
-		assigned = nextLabels
-		centers = nextCenters
-		if converged {
-			break
-		}
-	}
-	assigned = compactExpressionVectorClusterLabels(assigned)
-	clusterCount = 0
-	for _, label := range assigned {
-		if label+1 > clusterCount {
-			clusterCount = label + 1
-		}
-	}
-	centers, err := buildExpressionVectorClusterCenters(vectors, assigned, clusterCount)
-	if err != nil {
-		return nil, nil, err
 	}
 	for index, entry := range entries {
 		labels[entry.id] = assigned[index]

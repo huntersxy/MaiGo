@@ -8,17 +8,20 @@ GitHub 侧没有任何服务器地址或登录凭据——凭据不出服务器�
 
 ```
 /opt/maigo/
-├── app/         实例目录（config data host bots logs plugins media stickers depends-data）
+├── app/         实例目录（config data host bots logs plugins media stickers）
 ├── releases/    每次发布的产物，保留最近 3 个；滚动构建记为 dev-<短提交>
 ├── current -> releases/<id>/
-├── runtime/     宿主 venv：plugin-runtime、pycompat（不入发布包）
+├── runtime/     宿主 venv：plugin-runtime（不入发布包）
 ├── deploy/      install.sh / deploy.sh / update.sh / migrate-from-docker.sh
 ├── incoming/    下载或手工投放的发布包
 └── maigo.env    环境变量（640 root:maibot，含密钥）
 ```
 
-`current` 只放发布产物（`maigo`、`dashboard/dist`、`pycompat-src`、`pycompat_sidecar.py`、
-`desktop_pet/presets`）；用户数据与 venv 独立于版本，切换版本不动它们。
+`current` 只放发布产物（`maigo`、`dashboard/dist`、`desktop_pet/presets`）；用户数据与 venv 独立于版本，切换版本不动它们。
+
+表达向量聚类在 Go 进程内执行。从使用 Python 兼容侧车的版本升级时，可以从
+`maigo.env` 移除旧的 `MAIBOT_COMPAT_*` 设置，以及指向 `current/pycompat-src` 的
+`MAIBOT_SOURCE_ROOT`。已有表达向量索引可继续使用。
 
 ## 首次安装
 
