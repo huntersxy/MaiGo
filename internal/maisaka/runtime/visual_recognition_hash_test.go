@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -19,7 +20,9 @@ import (
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/visual"
+	"MaiGo/internal/plugin_runtime/hooks"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -28,6 +31,92 @@ type recognitionHashLookup struct {
 	description      string
 	emojiDescription string
 	emojiPending     bool
+}
+
+type plannerMediaCapture struct {
+	model.AgenticModel
+	messages []*schema.AgenticMessage
+}
+
+func (m *plannerMediaCapture) Generate(_ context.Context, messages []*schema.AgenticMessage, _ ...model.Option) (*schema.AgenticMessage, error) {
+	m.messages = messages
+	return &schema.AgenticMessage{
+		Role: schema.AgenticRoleTypeAssistant, ContentBlocks: []*schema.ContentBlock{schema.NewContentBlock(&schema.AssistantGenText{Text: "收到"})},
+	}, nil
+}
+
+type plannerEditHook struct {
+	t         *testing.T
+	mediaData string
+}
+
+func (h plannerEditHook) EmitHook(_ context.Context, name string, kwargs map[string]any) hooks.DispatchResult {
+	if name != "maisaka.planner.before_request" {
+		return hooks.DispatchResult{Kwargs: kwargs}
+	}
+	wire, err := json.Marshal(kwargs["items"])
+	if err != nil || bytes.Contains(wire, []byte(h.mediaData)) {
+		h.t.Fatalf("invalid Hook payload or leaked image bytes")
+	}
+	var items []any
+	if err := json.Unmarshal(wire, &items); err != nil {
+		h.t.Fatal(err)
+	}
+	items[1], items[2] = items[2], items[1]
+	items[1].(map[string]any)["text"] = "Hook 修改过的表情文字"
+	kwargs["items"] = items
+	return hooks.DispatchResult{Kwargs: kwargs}
+}
+
+func TestPlannerHookKeepsMediaInTheModelRequest(t *testing.T) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	picture := base64.StdEncoding.EncodeToString(pngData.Bytes())
+	const gif = "R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs="
+	history := []maisaka.ContextMessage{
+		{Role: maisaka.RoleUser, Content: "普通图片", Images: []maisaka.ImageComponent{{MediaRef: picture}}, CountInContext: true},
+		{Role: maisaka.RoleUser, Content: "表情消息", Emojis: []maisaka.ImageComponent{{MediaRef: gif}}, CountInContext: true},
+	}
+	previous := hooks.GlobalEmitter()
+	t.Cleanup(func() { hooks.SetGlobalEmitter(previous) })
+	for _, tc := range []struct {
+		name    string
+		edit    bool
+		sticker string
+	}{
+		{name: "no subscriber", sticker: "表情消息"},
+		{name: "Hook edits and reorders items", edit: true, sticker: "Hook 修改过的表情文字"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var emitter hooks.Emitter
+			if tc.edit {
+				emitter = plannerEditHook{t: t, mediaData: gif}
+			}
+			hooks.SetGlobalEmitter(emitter)
+			capture := &plannerMediaCapture{}
+			loop := maisaka.NewChatLoopService("private-session", false, nil, &maisakaChatClient{model: capture})
+			if _, err := loop.ChatLoopStep(t.Context(), history, "planner", 20, nil, "测试人格", "", nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			mediaByText := map[string]string{}
+			for _, message := range capture.messages {
+				var text string
+				for _, block := range message.ContentBlocks {
+					if block.UserInputText != nil {
+						text = block.UserInputText.Text
+					}
+					if block.UserInputImage != nil {
+						mediaByText[strings.SplitN(text, "\n", 2)[0]] = block.UserInputImage.Base64Data
+					}
+				}
+			}
+			if mediaByText["普通图片"] != picture || mediaByText[tc.sticker] == "" || mediaByText[tc.sticker] == picture {
+				t.Fatal("the model request lost or misplaced its image or sticker")
+			}
+		})
+	}
 }
 
 func (l recognitionHashLookup) IsVLMTaskConfigured() bool { return true }

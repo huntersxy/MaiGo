@@ -3,6 +3,7 @@ package maisaka
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"MaiGo/internal/plugin_runtime/hooks"
@@ -32,7 +33,7 @@ func emitPlannerBeforeRequest(ctx context.Context, sessionID string, items []Con
 		zap.L().Warn("maisaka.planner.before_request Hook 请求中止，按 DenyAbort 忽略")
 	}
 	if raw, ok := result.Kwargs["items"]; ok {
-		if overridden, ok := deserializeContextItems(raw); ok {
+		if overridden, ok := deserializeContextItems(raw, items); ok {
 			items = overridden
 		}
 	}
@@ -82,8 +83,8 @@ func emitPlannerAfterResponse(ctx context.Context, sessionID string, response *C
 
 func serializeContextItems(items []ContextItem) []any {
 	out := make([]any, 0, len(items))
-	for _, item := range items {
-		entry := map[string]any{"role": string(item.Role), "text": item.Text}
+	for index, item := range items {
+		entry := map[string]any{"item_id": strconv.Itoa(index), "role": string(item.Role), "text": item.Text}
 		if item.ToolCallID != "" {
 			entry["tool_call_id"] = item.ToolCallID
 		}
@@ -102,18 +103,54 @@ func serializeContextItems(items []ContextItem) []any {
 			entry["tool_calls"] = calls
 		}
 		if len(item.Images) > 0 {
-			images := make([]any, 0, len(item.Images))
-			for _, image := range item.Images {
-				images = append(images, map[string]any{"format": image.Format, "description": image.Description, "placeholder": image.Placeholder})
-			}
-			entry["images"] = images
+			entry["images"] = serializePlannerHookMedia(item.Images)
+		}
+		if len(item.Emojis) > 0 {
+			entry["emojis"] = serializePlannerHookMedia(item.Emojis)
 		}
 		out = append(out, entry)
 	}
 	return out
 }
 
-func deserializeContextItems(raw any) ([]ContextItem, bool) {
+// serializePlannerHookMedia 暴露图片元数据，原始内容由宿主按本次请求的编号持有。
+func serializePlannerHookMedia(components []ImageComponent) []any {
+	items := make([]any, 0, len(components))
+	for index, image := range components {
+		items = append(items, map[string]any{
+			"media_id": strconv.Itoa(index), "format": image.Format,
+			"description": image.Description, "placeholder": image.Placeholder,
+		})
+	}
+	return items
+}
+
+func restorePlannerHookMedia(raw any, originals []ImageComponent) []ImageComponent {
+	entries, _ := raw.([]any)
+	var restored []ImageComponent
+	for _, entry := range entries {
+		mapped, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := mapped["media_id"].(string)
+		index, err := strconv.Atoi(id)
+		if err != nil || index < 0 || index >= len(originals) {
+			continue
+		}
+		image := originals[index]
+		if description, ok := mapped["description"].(string); ok {
+			image.Description = description
+		}
+		if placeholder, ok := mapped["placeholder"].(string); ok {
+			image.Placeholder = placeholder
+		}
+		restored = append(restored, image)
+	}
+	return restored
+}
+
+func deserializeContextItems(raw any, originals []ContextItem) ([]ContextItem, bool) {
 	entries, ok := raw.([]any)
 	if !ok {
 		return nil, false
@@ -125,6 +162,13 @@ func deserializeContextItems(raw any) ([]ContextItem, bool) {
 			return nil, false
 		}
 		item := ContextItem{}
+		id, _ := mapped["item_id"].(string)
+		if index, err := strconv.Atoi(id); err == nil && index >= 0 && index < len(originals) {
+			original := originals[index]
+			item.Visual = original.Visual
+			item.Images = restorePlannerHookMedia(mapped["images"], original.Images)
+			item.Emojis = restorePlannerHookMedia(mapped["emojis"], original.Emojis)
+		}
 		if role, ok := mapped["role"].(string); ok {
 			item.Role = ContextRole(role)
 		}
