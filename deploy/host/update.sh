@@ -52,7 +52,18 @@ fi
 mkdir -p "$ROOT/incoming"
 package="$ROOT/incoming/$(basename "$asset_url")"
 log "下载 ${tag}"
-curl -fsSL --max-time 300 -o "$package" "$asset_url" || die "下载失败"
+# GitHub 资产在国内常被中途断开，断点续传重试到成功或超出预算
+attempt=0
+until curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors -C - \
+        --max-time 600 -o "$package" "$asset_url"; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 5 ]; then
+        rm -f "$package"
+        die "下载失败（已重试 ${attempt} 次）"
+    fi
+    log "下载中断，续传重试 ${attempt}/5"
+    sleep 5
+done
 curl -fsSL --max-time 60 -o "$package.sha256" "${asset_url}.sha256" \
     || log "未取到校验文件，deploy.sh 会跳过校验"
 
