@@ -55,22 +55,34 @@ func ShapeFromMessage(msg *onebot.ConversationMessage) (isBareImage, isPureEmoji
 	if msg == nil {
 		return false, false
 	}
-	text := strings.TrimSpace(msg.Content)
-	textLen := len(text)
-	hasImage := len(msg.Images) > 0
+	hasText := false
+	if len(msg.MessageParts) == 0 {
+		hasText = strings.TrimSpace(msg.Content) != ""
+	}
+	hasImage := false
 	hasEmoji := len(msg.Faces) > 0
+	for _, image := range msg.Images {
+		if image.SubType == 1 {
+			hasEmoji = true
+		} else {
+			hasImage = true
+		}
+	}
 	for _, part := range msg.MessageParts {
 		switch part.Kind {
-		case "image":
-			hasImage = true
+		case "text":
+			hasText = hasText || strings.TrimSpace(part.Text) != ""
 		case "face":
 			hasEmoji = true
 		}
 	}
-	if hasImage && textLen == 0 {
+	if hasText {
+		return false, false
+	}
+	if hasImage {
 		return true, false
 	}
-	if hasEmoji && !hasImage && textLen == 0 {
+	if hasEmoji {
 		return false, true
 	}
 	return false, false

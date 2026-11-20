@@ -18,8 +18,7 @@ import (
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
-// chatImagePreprocessor 在 Agent 消费消息前完成图片缓存、描述与过大图片处理
-// Agent 仍会按原始消息再次下载图片，但这里提前写入 images 表并补全 Desc
+// chatImagePreprocessor 在 Agent 消费消息前缓存图片并处理过大图片，描述在后台生成。
 type chatImagePreprocessor struct {
 	manager  *imagesystem.Manager
 	settings func() imagesystem.ImageSettings
@@ -137,8 +136,11 @@ func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, imag
 	}
 	if report.CompressedCount > 0 && retained[0].Image != nil {
 		data = retained[0].Image.Data
-		image.URL = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
 		image.File = ""
+	}
+	// 复用已取得的图片内容，避免 Agent 再向适配器下载同一张图。
+	if report.CompressedCount > 0 || image.URL == "" || !strings.HasPrefix(strings.ToLower(ref), "data:image/") {
+		image.URL = "data:" + onebot.SniffImageMime(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
 	}
 	// 表情包走表情系统缓存与描述，才能入库并参与收藏与维护；描述异步构建不阻塞入站
 	if image.SubType == 1 {
@@ -150,9 +152,9 @@ func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, imag
 		}
 		return image, true, nil
 	}
-	description, descErr := p.manager.GetImageDescription(ctx, "", data, true)
+	description, descErr := p.manager.GetImageDescription(ctx, "", data, false)
 	if descErr != nil {
-		zap.L().Warn("图片描述生成失败，保留空描述", zap.String("url", ref), zap.Error(descErr))
+		zap.L().Warn("图片缓存或描述调度失败，保留空描述", zap.String("url", ref), zap.Error(descErr))
 	} else if strings.TrimSpace(description) != "" {
 		image.Desc = description
 	}

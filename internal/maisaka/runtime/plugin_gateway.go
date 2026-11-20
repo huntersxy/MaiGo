@@ -394,6 +394,17 @@ func pluginGatewayMediaRef(node map[string]any, data any) (string, string) {
 			}
 		}
 	}
+	if url == "" {
+		switch {
+		case strings.HasPrefix(file, "base64://"):
+			if encoded == "" {
+				encoded = strings.TrimPrefix(file, "base64://")
+			}
+			file = ""
+		case strings.HasPrefix(file, "data:image/"), strings.HasPrefix(file, "http://"), strings.HasPrefix(file, "https://"):
+			url, file = file, ""
+		}
+	}
 	if encoded != "" {
 		encoded = strings.TrimPrefix(encoded, "base64://")
 		url = onebot.ImageDataURL(encoded)
