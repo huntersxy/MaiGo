@@ -305,13 +305,7 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 	accountID := a.runtime.AccountID()
 	botName := a.runtime.BotName()
 	unified := a.settings.QQOfficial.UnifiedAccountID
-	// P0：附件下载未接，仅文本；有附件时以标签降级
-	attachmentSegments := make([]map[string]any, 0)
-	attachmentLabels := make([]string, 0)
-	if attachments, ok := data["attachments"].([]any); ok && len(attachments) > 0 {
-		attachmentSegments = append(attachmentSegments, map[string]any{"type": "text", "data": "[attachment]"})
-		attachmentLabels = append(attachmentLabels, "[attachment]")
-	}
+	attachmentSegments, attachmentLabels := imageAttachmentSegments(data)
 	message, _, _, err := DecodeMessage(event, data, accountID, botName, unified, "", attachmentSegments, attachmentLabels)
 	if err != nil {
 		zap.L().Info("忽略 QQ 官方消息", zap.Error(err))

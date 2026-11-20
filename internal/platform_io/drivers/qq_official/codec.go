@@ -85,8 +85,20 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 	}
 
 	content := normalizeContent(extractContent(payload))
-	segments := make([]map[string]any, 0)
-	segments = append(segments, attachmentSegments...)
+	segments := append([]map[string]any(nil), attachmentSegments...)
+	var hasEmoji, hasPicture bool
+	for _, segment := range segments {
+		switch segment["type"] {
+		case "emoji":
+			hasEmoji = true
+			hasPicture = true
+		case "image":
+			hasPicture = true
+		}
+	}
+	if hasEmoji && (content == "[表情]" || content == "[动画表情]") {
+		content = ""
+	}
 	labels := make([]string, 0, len(attachmentLabels))
 	for _, label := range attachmentLabels {
 		if strings.TrimSpace(label) != "" {
@@ -157,12 +169,54 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 		"processed_plain_text": strings.Join(plainParts, " "),
 		"is_at":                isAt,
 		"is_mentioned":         isAt,
-		"is_emoji":             false,
-		"is_picture":           false,
+		"is_emoji":             hasEmoji,
+		"is_picture":           hasPicture,
 		"is_command":           strings.HasPrefix(content, "/"),
 		"session_id":           "",
 	}
 	return message, scene, targetID, nil
+}
+
+// imageAttachmentSegments 保留 QQ 官方图片与表情附件，由宿主统一下载和缓存。
+func imageAttachmentSegments(payload map[string]any) ([]map[string]any, []string) {
+	const maxAttachments = 10
+	attachments, _ := payload["attachments"].([]any)
+	content := strings.TrimSpace(asString(payload["content"]))
+	inlineEmoji := len(attachments) == 1 && qqFaceTagPattern.MatchString(content)
+	var segments []map[string]any
+	var labels []string
+	for _, entry := range attachments[:min(len(attachments), maxAttachments)] {
+		attachment, ok := asMap(entry)
+		if !ok {
+			continue
+		}
+		kind := strings.ToLower(strings.TrimSpace(asString(attachment["type"])))
+		mime := strings.ToLower(strings.TrimSpace(asString(attachment["content_type"])))
+		emojiType := kind == "emoji" || kind == "face" || kind == "sticker"
+		label := "[attachment]"
+		var segment map[string]any
+		if strings.HasPrefix(mime, "image/") || kind == "image" || emojiType {
+			mediaKind := "image"
+			label = "[图片]"
+			if emojiType || asBool(attachment["is_emoji"]) || inlineEmoji || content == "[表情]" || content == "[动画表情]" {
+				mediaKind = "emoji"
+				label = "[表情]"
+			}
+			url := strings.TrimSpace(asString(attachment["url"]))
+			if strings.HasPrefix(url, "//") {
+				url = "https:" + url
+			}
+			if strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://") {
+				segment = map[string]any{"type": mediaKind, "data": url}
+			}
+		}
+		if segment == nil {
+			segment = map[string]any{"type": "text", "data": label}
+		}
+		segments = append(segments, segment)
+		labels = append(labels, label)
+	}
+	return segments, labels
 }
 
 func IsBotAuthor(payload map[string]any) bool {
@@ -309,8 +363,8 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 		}
 	}
 	type piece struct {
-		text string
-		seg  map[string]any
+		text  string
+		seg   map[string]any
 		label string
 	}
 	pieces := make([]piece, 0)

@@ -360,7 +360,7 @@ func (g *Gateway) segments(message map[string]any) ([]platformio.Segment, error)
 	if len(nodes) == 0 {
 		return nil, fmt.Errorf("消息缺少 segments")
 	}
-	return g.sender.segmentsFromMaps(nodes)
+	return g.sender.segmentsFromMaps(nodes, true)
 }
 
 var _ pluginruntime.PluginMessageGatewayPort = (*Gateway)(nil)

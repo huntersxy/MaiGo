@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 // EmojiDescription 表情包描述与情绪标签
@@ -40,7 +39,7 @@ func (r *Registry) GetEmojiDescriptionForSession(ctx context.Context, content []
 	}
 	item, err := mgr.GetByHash(ctx, hash)
 	found := err == nil
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, errEmojiNotFound) {
 		return EmojiDescription{}, false, err
 	}
 	if found {

@@ -41,7 +41,7 @@ func NormalizeInboundMessage(payload map[string]any, accountID, scope string) ma
 	if nickname == "" {
 		nickname = firstNonEmpty(card, userID)
 	}
-	rawMessage, isAt, hasPicture := convertInboundSegments(payload["message"], payload["raw_message"], accountID)
+	rawMessage, isAt, hasPicture, hasEmoji := convertInboundSegments(payload["message"], payload["raw_message"], accountID)
 	if len(rawMessage) == 0 {
 		rawMessage = []any{buildTextSegment("[unsupported]")}
 	}
@@ -93,7 +93,7 @@ func NormalizeInboundMessage(payload map[string]any, accountID, scope string) ma
 		"display_message":      plainText,
 		"is_mentioned":         isAt,
 		"is_at":                isAt,
-		"is_emoji":             false,
+		"is_emoji":             hasEmoji,
 		"is_picture":           hasPicture,
 		"is_command":           strings.HasPrefix(plainText, "/"),
 		"is_notify":            false,
@@ -107,7 +107,7 @@ func NormalizeInboundMessage(payload map[string]any, accountID, scope string) ma
 	return out
 }
 
-func convertInboundSegments(message, fallback any, selfID string) (segments []any, isAt bool, hasPicture bool) {
+func convertInboundSegments(message, fallback any, selfID string) (segments []any, isAt, hasPicture, hasEmoji bool) {
 	items := segmentItems(message)
 	if len(items) == 0 {
 		items = segmentItems(fallback)
@@ -115,7 +115,7 @@ func convertInboundSegments(message, fallback any, selfID string) (segments []an
 	if text, ok := message.(string); ok {
 		text = strings.TrimSpace(text)
 		if text != "" {
-			return []any{buildTextSegment(text)}, false, false
+			return []any{buildTextSegment(text)}, false, false, false
 		}
 	}
 	out := make([]any, 0, len(items))
@@ -182,17 +182,22 @@ func convertInboundSegments(message, fallback any, selfID string) (segments []an
 				"type": "reply",
 				"data": id,
 			})
-		case "image", "picture":
-			hasPicture = true
-			out = append(out, map[string]any{
-				"type": "image",
-				"data": cloneSegmentData(data),
-			})
-		case "emoji":
-			out = append(out, map[string]any{
-				"type": "emoji",
-				"data": cloneSegmentData(data),
-			})
+		case "image", "picture", "emoji":
+			kind := "image"
+			if segType == "emoji" || asInt(data["sub_type"], asInt(data["subType"], 0)) == 1 {
+				kind = "emoji"
+				hasEmoji = true
+			} else {
+				hasPicture = true
+			}
+			segment := map[string]any{"type": kind, "data": cloneSegmentData(data)}
+			if ref, ok := seg["data"].(string); ok {
+				segment["data"] = ref
+			}
+			if binary := asString(seg["binary_data_base64"]); binary != "" {
+				segment["binary_data_base64"] = binary
+			}
+			out = append(out, segment)
 		case "face":
 			out = append(out, map[string]any{
 				"type": "face",
@@ -215,7 +220,7 @@ func convertInboundSegments(message, fallback any, selfID string) (segments []an
 			})
 		}
 	}
-	return out, isAt, hasPicture
+	return out, isAt, hasPicture, hasEmoji
 }
 
 func buildPlainText(rawMessage []any) string {

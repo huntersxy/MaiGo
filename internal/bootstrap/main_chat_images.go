@@ -38,7 +38,7 @@ func newChatImagePreprocessor(manager *imagesystem.Manager) *chatImagePreprocess
 }
 
 // Process 预处理消息中的图片，失败时保留原图交给 Agent 的既有媒体链路
-func (p *chatImagePreprocessor) Process(ctx context.Context, msg *onebot.ConversationMessage) {
+func (p *chatImagePreprocessor) Process(ctx context.Context, msg *onebot.ConversationMessage, sessionID string) {
 	if p == nil || p.manager == nil || msg == nil || len(msg.Images) == 0 {
 		return
 	}
@@ -58,7 +58,7 @@ func (p *chatImagePreprocessor) Process(ctx context.Context, msg *onebot.Convers
 			remap[index] = len(kept) - 1
 			continue
 		}
-		updated, keep, err := p.processOne(ctx, ref, image, settings)
+		updated, keep, err := p.processOne(ctx, ref, image, settings, sessionID)
 		if err != nil {
 			zap.L().Warn("图片预处理失败，保留原图交给 Agent",
 				zap.Int("image_index", index), zap.String("url", ref), zap.Error(err))
@@ -89,7 +89,7 @@ func (p *chatImagePreprocessor) Process(ctx context.Context, msg *onebot.Convers
 	msg.MessageParts = parts
 }
 
-func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, image onebot.ImageInfo, settings imagesystem.ImageSettings) (onebot.ImageInfo, bool, error) {
+func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, image onebot.ImageInfo, settings imagesystem.ImageSettings, sessionID string) (onebot.ImageInfo, bool, error) {
 	dir, err := os.MkdirTemp(p.manager.Dir(), "inbound-image-")
 	if err != nil {
 		return image, true, err
@@ -142,12 +142,10 @@ func (p *chatImagePreprocessor) processOne(ctx context.Context, ref string, imag
 	}
 	// 表情包走表情系统缓存与描述，才能入库并参与收藏与维护；描述异步构建不阻塞入站
 	if image.SubType == 1 {
-		digest := sha256.Sum256(data)
-		hash := hex.EncodeToString(digest[:])
-		description, _, emojiErr := emojisystem.EnsureEmojiDescription(ctx, data, hash, false)
+		description, _, emojiErr := emojisystem.DefaultRegistry().GetEmojiDescriptionForSession(ctx, data, "", false, sessionID)
 		if emojiErr != nil {
 			zap.L().Warn("表情包缓存失败", zap.String("url", ref), zap.Error(emojiErr))
-		} else if text := strings.TrimSpace(description); text != "" {
+		} else if text := strings.TrimSpace(description.Description); text != "" {
 			image.Desc = text
 		}
 		return image, true, nil

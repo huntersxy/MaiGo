@@ -247,7 +247,7 @@ func (p *chatRuntimePipeline) sessionScheduler() (policy.SessionScheduler, bool)
 func (p *chatRuntimePipeline) handleMessage(ctx context.Context, msg *onebot.ConversationMessage) {
 	if p.chat == nil || p.chat.ChatBot == nil {
 		if p.images != nil {
-			p.images.Process(ctx, msg)
+			p.images.Process(ctx, msg, "")
 		}
 		p.dispatch(msg)
 		return
@@ -255,7 +255,7 @@ func (p *chatRuntimePipeline) handleMessage(ctx context.Context, msg *onebot.Con
 	session, ok := p.resolveSession(msg)
 	if !ok {
 		if p.images != nil {
-			p.images.Process(ctx, msg)
+			p.images.Process(ctx, msg, "")
 		}
 		p.dispatch(msg)
 		return
@@ -274,7 +274,7 @@ func (p *chatRuntimePipeline) resolveSession(msg *onebot.ConversationMessage) (h
 // handleSessionMessage 执行单个会话的图片预处理与统一接收链。
 func (p *chatRuntimePipeline) handleSessionMessage(ctx context.Context, msg *onebot.ConversationMessage, session heartflow.ChatSession) {
 	if p.images != nil {
-		p.images.Process(ctx, msg)
+		p.images.Process(ctx, msg, session.SessionID)
 	}
 	p.sessions.Remember(session)
 	inbound := chatInboundSessionMessage(msg, session)
