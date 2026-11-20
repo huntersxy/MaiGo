@@ -119,6 +119,8 @@ tar -xzf "$package" -C "$staging"
 
 version="$(tr -d '[:space:]' < "$staging/VERSION")"
 [ -n "$version" ] || die "VERSION 为空"
+# 记录包指纹：update.sh 用它判断同名版本是否需要重新部署
+sha256sum "$package" | cut -d' ' -f1 > "$staging/.package.sha256"
 
 target="$ROOT/releases/$version"
 if [ -d "$target" ]; then

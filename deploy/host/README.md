@@ -37,14 +37,23 @@ sudo bash deploy/host/migrate-from-docker.sh /opt/maigo
 
 ## 发布
 
-打 tag 推送后 CI 自动构建并发布 Release（含 `.sha256`）。服务器不接收推送，
-`maigo-update.timer` 每 15 分钟检查一次 `releases/latest`，有新版本就下载并部署。
+两条通道，都由 CI 自动产出：
+
+| 通道 | 触发 | Release tag | 用途 |
+| --- | --- | --- | --- |
+| 滚动 | push `main` | `rolling`（prerelease，每次整包替换） | 日常迭代，服务器默认跟随 |
+| 版本 | push `v*` tag | `v1.4.5` | 归档、指定版本部署 |
+
+服务器不接收推送。`maigo-update.timer` 每 15 分钟检查一次滚动通道，
+有新内容就下载、按 GitHub API 的 sha256 校验、部署。GitHub 直连慢时走
+`MAIGO_GH_MIRRORS`（默认 `gh-proxy.com`、`ghfast.top`），校验和不匹配即中止。
 
 手动触发一次检查：
 
 ```bash
-sudo /opt/maigo/deploy/update.sh          # 有新版就部署
-sudo /opt/maigo/deploy/update.sh --dry-run
+sudo /opt/maigo/deploy/update.sh --dry-run   # 只看是否可更新
+sudo /opt/maigo/deploy/update.sh             # 有新版就部署
+sudo MAIGO_RELEASE=latest /opt/maigo/deploy/update.sh   # 改跟正式版本 Release
 ```
 
 也支持离线包：把 `maigo-<ver>-linux-amd64.tar.gz` 放进 `incoming/` 后
@@ -53,7 +62,8 @@ sudo /opt/maigo/deploy/update.sh --dry-run
 /opt/maigo/deploy/deploy.sh /opt/maigo/incoming/maigo-1.4.5-linux-amd64.tar.gz
 ```
 
-回滚：`deploy.sh --rollback` 切回上一个 release。
+回滚：`deploy.sh --rollback` 切回上一个 release。同版本重复发布按包指纹
+（`.package.sha256`）判定，内容变了才会重新部署。
 
 ## 回退到 Docker
 

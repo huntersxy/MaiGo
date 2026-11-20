@@ -23,7 +23,12 @@ die() { printf '[update] 错误: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "需要 root 运行"
 
-api="https://api.github.com/repos/${REPO}/releases/latest"
+# 默认跟随滚动预发布通道（tag=rolling）；MAIGO_RELEASE=latest 跟正式版本 Release
+ROLLING="${MAIGO_RELEASE:-rolling}"
+case "$ROLLING" in
+    latest) api="https://api.github.com/repos/${REPO}/releases/latest" ;;
+    *)      api="https://api.github.com/repos/${REPO}/releases/tags/${ROLLING}" ;;
+esac
 body="$(mktemp)"
 trap 'rm -f "$body"' EXIT
 code="$(curl -sS --max-time 30 -o "$body" -w '%{http_code}' "$api" || echo 000)"
@@ -46,8 +51,9 @@ expected_sha="$(printf '%s' "$release" | tr '{' '\n' \
     | sed -n 's/.*"digest": *"sha256:\([0-9a-f]*\)".*/\1/p' | head -1)"
 
 active="$(basename "$(readlink -f "$ROOT/current" 2>/dev/null || echo "")")"
-if [ "$active" = "$version" ] && [ "$FORCE" -eq 0 ]; then
-    log "当前已是 ${version}，跳过"
+active_sha="$(cat "$ROOT/current/.package.sha256" 2>/dev/null || true)"
+if [ "$active" = "$version" ] && [ -n "$expected_sha" ] && [ "$active_sha" = "$expected_sha" ] && [ "$FORCE" -eq 0 ]; then
+    log "当前已是 ${version} 且内容一致，跳过"
     exit 0
 fi
 
@@ -85,5 +91,9 @@ if [ -n "$expected_sha" ]; then
 else
     log "Release API 未提供 digest，跳过校验"
 fi
+
+# 写成 sha256sum -c 可校验的格式，deploy.sh 会再校验一次
+printf '%s  %s\n' "${expected_sha:-$(sha256sum "$package" | cut -d' ' -f1)}" "$asset_name" \
+    > "$package.sha256"
 
 "$ROOT/deploy/deploy.sh" "$package"
