@@ -50,6 +50,9 @@ func (r *Registry) GetEmojiDescriptionForSession(ctx context.Context, content []
 			}
 		}
 		desc := item.Description
+		if !wait && len(content) > 0 && stringsTrim(desc) == "" {
+			r.scheduleDescriptionBuild(hash)
+		}
 		return EmojiDescription{Description: desc, Emotions: NormalizeEmotionTags(desc)}, true, nil
 	}
 	if len(content) == 0 {
@@ -69,7 +72,7 @@ func (r *Registry) GetEmojiDescriptionForSession(ctx context.Context, content []
 		if _, _, ensureErr := r.EnsureEmojiSaved(ctx, content, hash); ensureErr != nil {
 			return EmojiDescription{}, false, ensureErr
 		}
-		r.scheduleDescriptionBuild(hash, content)
+		r.scheduleDescriptionBuild(hash)
 		return EmojiDescription{}, false, nil
 	}
 	if _, _, ensureErr := r.EnsureEmojiSaved(ctx, content, hash); ensureErr != nil {
@@ -82,8 +85,14 @@ func (r *Registry) GetEmojiDescriptionForSession(ctx context.Context, content []
 	return EmojiDescription{Description: result.Description, Emotions: result.Emotions}, true, nil
 }
 
+// IsDescriptionPending 判断表情包是否正在生成描述。
+func (r *Registry) IsDescriptionPending(hash string) bool {
+	_, pending := r.descTasks.Load(hash)
+	return pending
+}
+
 // scheduleDescriptionBuild 后台构建描述，同一哈希只保留一个任务
-func (r *Registry) scheduleDescriptionBuild(hash string, content []byte) {
+func (r *Registry) scheduleDescriptionBuild(hash string) {
 	if r == nil || !r.canDescribe() {
 		return
 	}

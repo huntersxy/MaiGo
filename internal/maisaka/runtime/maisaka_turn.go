@@ -504,6 +504,7 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 		converted := make([]maisaka.ContextMessage, 0, 1)
 		textParts := make([]string, 0, 1)
 		images := make([]maisaka.ImageComponent, 0, 1)
+		var emojis []maisaka.ImageComponent
 		for _, block := range message.ContentBlocks {
 			if block == nil {
 				continue
@@ -532,14 +533,19 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 				}
 				if hash != "" {
 					recognitionHash, _ := block.Extra[imageRecognitionHashKey].(string)
-					images = append(images, maisaka.ImageComponent{
+					component := maisaka.ImageComponent{
 						MediaRef: hash, Format: strings.TrimSpace(image.MIMEType), RecognitionHash: recognitionHash,
-					})
+					}
+					if sticker, _ := block.Extra[mediaStickerKey].(bool); sticker {
+						emojis = append(emojis, component)
+					} else {
+						images = append(images, component)
+					}
 				}
 			}
 		}
 		text := strings.TrimSpace(strings.Join(textParts, "\n"))
-		if text != "" || len(images) > 0 {
+		if text != "" || len(images) > 0 || len(emojis) > 0 {
 			convertedMessage := maisaka.ContextMessage{
 				Role:           maisaka.RoleUser,
 				Content:        text,
@@ -547,6 +553,7 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 				CountInContext: true,
 				Metadata:       sessionExtraMetadata(message.Extra),
 				Images:         images,
+				Emojis:         emojis,
 				TranscriptID:   transcriptID,
 			}
 			if raw, ok := convertedMessage.Metadata["message_id"].(string); ok {

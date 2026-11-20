@@ -149,7 +149,7 @@ func TryDescribeIfEmpty(ctx context.Context, hash string) {
 func (r *Registry) canDescribe() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.stickerDir != "" && r.prompts != nil && r.router != nil
+	return r.stickerDir != "" && r.prompts != nil && r.router != nil && r.router.HasTaskModels(llm.TaskVLM)
 }
 
 func (r *Registry) describeDeps() (*Manager, string, *prompt.Manager, *llm.Router, error) {

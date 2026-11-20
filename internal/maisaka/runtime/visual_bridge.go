@@ -119,6 +119,10 @@ func (b *agentVisualBridge) LookupCachedEmojiDescription(emojiHash string) strin
 	return b.manager.GetCachedEmojiDescription(context.Background(), hash)
 }
 
+func (b *agentVisualBridge) IsEmojiDescriptionPending(ref string) bool {
+	return b != nil && emojisystem.DefaultRegistry().IsDescriptionPending(b.imageHash(ref))
+}
+
 // IsImageDescriptionPending 图片是否仍在等待识别
 func (b *agentVisualBridge) IsImageDescriptionPending(imageHash string) bool {
 	if b == nil || b.manager == nil {
@@ -319,9 +323,12 @@ func (b *agentVisualBridge) refreshReplyerVisualPlaceholdersOnce(history []reply
 			if part.Kind != replyer.PartImage && part.Kind != replyer.PartEmoji {
 				continue
 			}
-			description := strings.TrimSpace(b.LookupCachedImageDescription(firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)))
+			ref := firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)
+			var description string
 			if part.Kind == replyer.PartEmoji {
-				description = strings.TrimSpace(b.LookupCachedEmojiDescription(part.ImageBase64))
+				description = strings.TrimSpace(b.LookupCachedEmojiDescription(ref))
+			} else {
+				description = strings.TrimSpace(b.LookupCachedImageDescription(ref))
 			}
 			if description == "" {
 				continue
@@ -356,9 +363,10 @@ func (b *agentVisualBridge) hasPendingReplyerVisual(history []replyer.ChatMessag
 				continue
 			}
 			if part.Kind == replyer.PartEmoji {
-				if b.LookupCachedEmojiDescription(part.ImageBase64) != "" {
-					continue
+				if b.IsEmojiDescriptionPending(firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)) {
+					return true
 				}
+				continue
 			} else if b.LookupCachedImageDescription(firstNonEmptyString(part.ImageRecognitionHash, part.ImageBase64)) != "" {
 				continue
 			}

@@ -21,6 +21,7 @@ type ImageLookup interface {
 	LookupCachedImageDescription(imageHash string) string
 	LookupCachedEmojiDescription(emojiHash string) string
 	IsImageDescriptionPending(imageHash string) bool
+	IsEmojiDescriptionPending(emojiHash string) bool
 }
 
 // Refresher 视觉占位刷新器；每次刷新读取最新识别结果回填历史组件
@@ -68,7 +69,7 @@ func (r Refresher) refreshPendingEmojiComponents(emojis []maisaka.ImageComponent
 		if !ShouldRefreshEmojiComponent(emoji.Description, emoji.Placeholder) {
 			continue
 		}
-		description := strings.TrimSpace(r.Lookup.LookupCachedEmojiDescription(emoji.MediaRef))
+		description := strings.TrimSpace(r.Lookup.LookupCachedEmojiDescription(emoji.RecognitionRef()))
 		if description == "" {
 			continue
 		}
@@ -97,7 +98,7 @@ func (r Refresher) refreshPendingVisualComponents(images []maisaka.ImageComponen
 	return refreshed
 }
 
-// HasPendingImageRecognition 判断历史中是否仍有可等待的图片识别任务
+// HasPendingImageRecognition 判断历史中是否仍有可等待的图片或表情包识别任务
 func (r Refresher) HasPendingImageRecognition(chatHistory []maisaka.ContextMessage) bool {
 	if r.Lookup == nil {
 		return false
@@ -105,6 +106,11 @@ func (r Refresher) HasPendingImageRecognition(chatHistory []maisaka.ContextMessa
 	for _, historyMessage := range chatHistory {
 		for _, image := range historyMessage.Images {
 			if shouldRefreshImageComponent(image) && r.isImageComponentPending(image) {
+				return true
+			}
+		}
+		for _, emoji := range historyMessage.Emojis {
+			if ShouldRefreshEmojiComponent(emoji.Description, emoji.Placeholder) && r.Lookup.IsEmojiDescriptionPending(emoji.RecognitionRef()) {
 				return true
 			}
 		}

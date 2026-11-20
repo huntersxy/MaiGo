@@ -885,8 +885,10 @@ func BuildContextItemsFromHistoryEntry(message ContextMessage, enableVisual bool
 		emojiText := emojiPlaceholderText(message.Emojis, enableVisual)
 		if text == "" {
 			text = emojiText
-		} else if emojiText != "" {
+		} else if strings.Contains(text, "[表情包]") {
 			text = strings.ReplaceAll(text, "[表情包]", emojiText)
+		} else if emojiText != "" {
+			text += "\n" + emojiText
 		}
 	}
 	if len(message.Images) > 0 {

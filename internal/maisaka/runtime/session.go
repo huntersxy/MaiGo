@@ -511,6 +511,7 @@ func userSchemaMessage(text string, mediaRefs []media.Ref) *schema.AgenticMessag
 }
 
 const imageRecognitionHashKey = "image_recognition_hash"
+const mediaStickerKey = "sticker"
 
 // deferredMediaImageBlock 生成惰性图片块，请求构建时才读盘编码。
 func deferredMediaImageBlock(ref media.Ref) *schema.ContentBlock {
@@ -522,8 +523,8 @@ func deferredMediaImageBlock(ref media.Ref) *schema.ContentBlock {
 		Base64Data: maisaka.DeferredMediaMarkerPrefix + path,
 		MIMEType:   strings.TrimSpace(ref.Mime),
 	})
-	if ref.RecognitionHash != "" {
-		block.Extra = map[string]any{imageRecognitionHashKey: ref.RecognitionHash}
+	if ref.RecognitionHash != "" || ref.Sticker {
+		block.Extra = map[string]any{imageRecognitionHashKey: ref.RecognitionHash, mediaStickerKey: ref.Sticker}
 	}
 	return block
 }
