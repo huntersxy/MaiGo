@@ -16,7 +16,6 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/eino-contrib/jsonschema"
-	"github.com/pelletier/go-toml/v2"
 )
 
 const reasoningReplayTimeout = 180 * time.Second
@@ -61,23 +60,6 @@ func replayTaskEntries(config *maibotcfg.ModelConfigFile) []replayTaskEntry {
 		{llm.TaskEmbedding, tasks.Embedding.ModelList},
 		{llm.TaskImageEmbedding, tasks.ImageEmbedding.ModelList},
 	}
-}
-
-func (r *llmReasoningReplay) loadModelConfig() (*maibotcfg.ModelConfigFile, error) {
-	root := strings.TrimSpace(r.instanceDir)
-	if root == "" {
-		return nil, &ReasoningReplayHTTPError{Status: http.StatusServiceUnavailable, Message: "推理重放缺少实例目录，无法读取 model_config.toml"}
-	}
-	path := filepath.Join(root, "config", "model_config.toml")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, &ReasoningReplayHTTPError{Status: http.StatusInternalServerError, Message: "读取模型配置失败: " + err.Error()}
-	}
-	var config maibotcfg.ModelConfigFile
-	if err := toml.Unmarshal(data, &config); err != nil {
-		return nil, &ReasoningReplayHTTPError{Status: http.StatusInternalServerError, Message: "解析模型配置失败: " + err.Error()}
-	}
-	return &config, nil
 }
 
 func replayModelExists(config *maibotcfg.ModelConfigFile, modelName string) bool {
@@ -190,9 +172,9 @@ func (r *llmReasoningReplay) ReplayReasoning(ctx context.Context, request Reason
 	if router == nil {
 		return result, &ReasoningReplayHTTPError{Status: http.StatusServiceUnavailable, Message: "推理重放需要已接线的 LLM 路由器"}
 	}
-	config, err := r.loadModelConfig()
-	if err != nil {
-		return result, err
+	config := router.ModelConfigFile()
+	if config == nil {
+		return result, &ReasoningReplayHTTPError{Status: http.StatusServiceUnavailable, Message: "推理重放需要已加载的模型配置"}
 	}
 	if !replayModelExists(config, request.ModelName) {
 		return result, &ReasoningReplayHTTPError{Status: http.StatusNotFound, Message: "未找到模型: " + request.ModelName}
