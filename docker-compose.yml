@@ -27,9 +27,6 @@ services:
       MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED: "1"
       # 未设置时由入口脚本生成并保存到 data 卷的 .secret_key
       MAIBOT_SECRET_KEY: ${MAIBOT_SECRET_KEY:-}
-      # 启用 loopback 兼容侧车；进程由 Go 首次调用时按需拉起（pypinyin / numpy）
-      MAIBOT_COMPAT_URL: http://127.0.0.1:8767
-      MAIBOT_COMPAT_TIMEOUT: "60"
       # 插件 Python 依赖安装走国内镜像，避免首次启用插件时长时间阻塞
       MAIBOT_PLUGIN_DEP_INDEX_URLS: ${MAIBOT_PLUGIN_DEP_INDEX_URLS:-https://pypi.tuna.tsinghua.edu.cn/simple}
       # 容器内必须监听全部网卡，否则端口映射访问不到（对齐 MaiBot compose 的 HTTP_HOST）
@@ -52,8 +49,6 @@ services:
       - media:/app/media
       # Runner venv 必须可写才能安装插件依赖
       - plugin-runtime:/app/plugin-runtime
-      # typo 生成器会在 depends-data 下缓存字频表
-      - maibot-compat-data:/app/depends-data
     tmpfs:
       - /tmp
       # Runner 的非持久运行时目录（Python build_plugin_paths 会写 temp/plugins）
@@ -65,9 +60,6 @@ services:
       retries: 5
       start_period: 20s
 
-  # Python 原版能力侧车不是独立服务：Go 在主容器内按需拉起
-  # /app/pycompat_sidecar.py，只加载 data/pycompat 里 vendored 的两个模块。
-
 volumes:
   maibot-config:
   maibot-data:
@@ -75,7 +67,6 @@ volumes:
   maibot-bots:
   maibot-logs:
   maibot-plugins:
-  maibot-compat-data:
   stickers:
   media:
   plugin-runtime:

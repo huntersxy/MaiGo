@@ -70,7 +70,6 @@ migrate_dir logs maibot-logs
 migrate_dir plugins maibot-plugins
 migrate_dir media media maibot-media
 migrate_dir stickers stickers maibot-stickers
-migrate_dir depends-data maibot-compat-data
 
 log "清理陈旧锁文件"
 rm -f "$ROOT/app/temp/instance.lock" \

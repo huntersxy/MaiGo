@@ -87,12 +87,9 @@ jobs:
           rm -rf "$stage/.dashboard"
           test -f "$stage/dashboard/dist/index.html"
 
-          mkdir -p "$stage/pycompat-src"
-          cp -a data/pycompat/src "$stage/pycompat-src/src"
-          cp scripts/python_compat_sidecar.py "$stage/pycompat_sidecar.py"
           mkdir -p "$stage/desktop_pet"
           cp -a internal/desktop_pet/presets "$stage/desktop_pet/presets"
-          cp deploy/host/requirements-plugin-runtime.txt deploy/host/requirements-pycompat.txt "$stage/"
+          cp deploy/host/requirements-plugin-runtime.txt "$stage/"
 
           name="maigo-${version}-linux-amd64"
           tar -C "$stage" -czf "$name.tar.gz" .
