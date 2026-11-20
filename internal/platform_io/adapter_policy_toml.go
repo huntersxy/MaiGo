@@ -129,21 +129,24 @@ func hasPolicyKey(policy map[string]any, key string) bool {
 	return ok
 }
 
-// normalizeIDList 规范化策略文件中的 ID 名单
+// normalizeIDList 规范化策略文件中的 ID 名单，对齐 Python _normalize_id_list（非 list → []）
 func normalizeIDList(value any) []string {
-	items, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	normalizedIDs := make([]string, 0, len(items))
-	for _, item := range items {
-		normalizedItem := policyStringValue(item)
-		if normalizedItem == "" || slices.Contains(normalizedIDs, normalizedItem) {
-			continue
+	switch items := value.(type) {
+	case []any:
+		normalizedIDs := make([]string, 0, len(items))
+		for _, item := range items {
+			normalizedItem := policyStringValue(item)
+			if normalizedItem == "" || slices.Contains(normalizedIDs, normalizedItem) {
+				continue
+			}
+			normalizedIDs = append(normalizedIDs, normalizedItem)
 		}
-		normalizedIDs = append(normalizedIDs, normalizedItem)
+		return normalizedIDs
+	case []string:
+		return normalizeStringIDList(items)
+	default:
+		return []string{}
 	}
-	return normalizedIDs
 }
 
 // normalizeStringIDList 规范化调用方直接传入的字符串名单
