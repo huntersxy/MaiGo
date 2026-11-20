@@ -9,12 +9,29 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
 )
 
 // 本文件对齐 ../MaiBot/src/webui/routers/system.py 中本地缓存相关的文件系统逻辑
+
+// localCacheStatsCacheTTL 对齐 Python _LOCAL_CACHE_STATS_CACHE_TTL_SECONDS
+const localCacheStatsCacheTTL = 120 * time.Second
+
+var (
+	localCacheStatsMu      sync.Mutex
+	localCacheStatsCache   *localCacheStatsResponse
+	localCacheStatsExpiry  time.Time
+	databaseStatsCache     *databaseStorageStats
+	databaseStatsExpiry    time.Time
+)
+
+type localCacheStatsResponse struct {
+	Directories []cacheDirectoryStats `json:"directories"`
+	Database    databaseStorageStats  `json:"database"`
+}
 
 var cacheImageExtensions = map[string]bool{
 	".avif": true, ".bmp": true, ".gif": true, ".jpeg": true,
@@ -237,7 +254,11 @@ var (
 )
 
 func buildDatabaseStorage(paths systemCachePaths) databaseStorageStats {
-	// 对齐 Python DatabaseStorageStats：文件体积 + PRAGMA 分页空闲 + 表统计；backend 为 sqlite
+	return buildDatabaseStorageOpts(paths, true)
+}
+
+// buildDatabaseStorageOpts 对齐 Python _build_database_stats(include_tables=...)
+func buildDatabaseStorageOpts(paths systemCachePaths, includeTables bool) databaseStorageStats {
 	stats := databaseStorageStats{Tables: []databaseTableStats{}, Backend: "sqlite"}
 	for _, candidate := range []string{paths.Database, paths.Database + "-wal", paths.Database + "-shm"} {
 		fileStat := databaseFileStats{Path: candidate}
@@ -254,10 +275,68 @@ func buildDatabaseStorage(paths systemCachePaths) databaseStorageStats {
 		stats.FreelistCount = freelistCount
 		stats.FreeSize = pageSize * freelistCount
 	}
-	if tables, err := listDatabaseTableStats(paths.Database); err == nil {
-		stats.Tables = tables
+	if includeTables {
+		if tables, err := listDatabaseTableStats(paths.Database); err == nil {
+			stats.Tables = tables
+		}
 	}
 	return stats
+}
+
+func buildLocalCacheStatsResponse(paths systemCachePaths) localCacheStatsResponse {
+	return localCacheStatsResponse{
+		Directories: []cacheDirectoryStats{
+			buildDirectoryStats("images", "图片缓存", paths.Images),
+			buildDirectoryStats("emoji", "表情包缓存", paths.Emoji, paths.Thumbnails),
+			buildDirectoryStats("logs", "日志文件", paths.Logs),
+		},
+		Database: buildDatabaseStorageOpts(paths, false),
+	}
+}
+
+func getCachedLocalCacheStats() (localCacheStatsResponse, bool) {
+	localCacheStatsMu.Lock()
+	defer localCacheStatsMu.Unlock()
+	if localCacheStatsCache == nil || time.Now().After(localCacheStatsExpiry) {
+		return localCacheStatsResponse{}, false
+	}
+	return *localCacheStatsCache, true
+}
+
+func storeLocalCacheStats(response localCacheStatsResponse) localCacheStatsResponse {
+	localCacheStatsMu.Lock()
+	defer localCacheStatsMu.Unlock()
+	copied := response
+	localCacheStatsCache = &copied
+	localCacheStatsExpiry = time.Now().Add(localCacheStatsCacheTTL)
+	return response
+}
+
+func getCachedDatabaseStats() (databaseStorageStats, bool) {
+	localCacheStatsMu.Lock()
+	defer localCacheStatsMu.Unlock()
+	if databaseStatsCache == nil || time.Now().After(databaseStatsExpiry) {
+		return databaseStorageStats{}, false
+	}
+	return *databaseStatsCache, true
+}
+
+func storeDatabaseStats(response databaseStorageStats) databaseStorageStats {
+	localCacheStatsMu.Lock()
+	defer localCacheStatsMu.Unlock()
+	copied := response
+	databaseStatsCache = &copied
+	databaseStatsExpiry = time.Now().Add(localCacheStatsCacheTTL)
+	return response
+}
+
+func invalidateLocalCacheStatsCache() {
+	localCacheStatsMu.Lock()
+	defer localCacheStatsMu.Unlock()
+	localCacheStatsCache = nil
+	databaseStatsCache = nil
+	localCacheStatsExpiry = time.Time{}
+	databaseStatsExpiry = time.Time{}
 }
 
 func quoteSQLiteIdentifier(identifier string) string {

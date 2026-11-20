@@ -39,12 +39,12 @@ func (w *WebUI) handleMaimGateway(rw http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" {
 		requestURL += "?" + r.URL.RawQuery
 	}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialEndpoint(endpoint)
-		},
-		DisableCompression: true,
-	}
+		transport := &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return dialEndpoint(ctx, endpoint)
+			},
+			DisableCompression: true,
+		}
 	defer transport.CloseIdleConnections()
 	dialCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

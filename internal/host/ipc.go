@@ -3,6 +3,7 @@ package host
 // 本机进程间通道地址分配，对齐 src/common/ipc.py。
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // endpointListener 分配出的监听地址；Unix 下需要在使用后删除 socket 文件
@@ -55,10 +57,19 @@ func randomEndpointSuffix() string {
 	return hex.EncodeToString(buffer)
 }
 
-// dialEndpoint 连接进程间通道，供代理转发使用
-func dialEndpoint(address string) (net.Conn, error) {
-	if runtime.GOOS == "windows" && strings.HasPrefix(address, `\\.\pipe\`) {
-		return openNamedPipe(address)
+// dialEndpointTimeout 对齐 Python ClientTimeout(sock_connect=5)
+const dialEndpointTimeout = 5 * time.Second
+
+// dialEndpoint 连接进程间通道，供代理转发使用；尊重 ctx，默认最多等 5 秒。
+func dialEndpoint(ctx context.Context, address string) (net.Conn, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return net.Dial("unix", address)
+	dialCtx, cancel := context.WithTimeout(ctx, dialEndpointTimeout)
+	defer cancel()
+	if runtime.GOOS == "windows" && strings.HasPrefix(address, `\\.\pipe\`) {
+		return openNamedPipe(dialCtx, address)
+	}
+	var dialer net.Dialer
+	return dialer.DialContext(dialCtx, "unix", address)
 }

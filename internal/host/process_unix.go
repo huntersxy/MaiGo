@@ -3,6 +3,7 @@
 package host
 
 import (
+	"context"
 	"net"
 	"os/exec"
 	"syscall"
@@ -29,8 +30,10 @@ func setChildProcessAttrs(command *exec.Cmd) {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-// dialNamedPipe Unix 平台没有命名管道
-func openNamedPipe(address string) (net.Conn, error) {
+// openNamedPipe Unix 平台没有命名管道
+func openNamedPipe(ctx context.Context, address string) (net.Conn, error) {
+	_ = ctx
+	_ = address
 	return nil, errNamedPipeUnsupported
 }
 

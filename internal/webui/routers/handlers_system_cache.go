@@ -75,14 +75,11 @@ func (d Deps) handleSystemLocalCache(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"directories": []cacheDirectoryStats{
-			buildDirectoryStats("images", "图片缓存", paths.Images),
-			buildDirectoryStats("emoji", "表情包缓存", paths.Emoji, paths.Thumbnails),
-			buildDirectoryStats("logs", "日志文件", paths.Logs),
-		},
-		"database": buildDatabaseStorage(paths),
-	})
+	if cached, hit := getCachedLocalCacheStats(); hit {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+	writeJSON(w, http.StatusOK, storeLocalCacheStats(buildLocalCacheStatsResponse(paths)))
 }
 
 func (d Deps) handleSystemDatabaseStats(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +90,11 @@ func (d Deps) handleSystemDatabaseStats(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, buildDatabaseStorage(paths))
+	if cached, hit := getCachedDatabaseStats(); hit {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+	writeJSON(w, http.StatusOK, storeDatabaseStats(buildDatabaseStorageOpts(paths, true)))
 }
 
 func (d Deps) handleSystemDatabaseVacuum(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +116,7 @@ func (d Deps) handleSystemDatabaseVacuum(w http.ResponseWriter, r *http.Request)
 		})
 		return
 	}
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, payload)
 }
 
@@ -213,6 +215,7 @@ func (d Deps) handleSystemDataEntryDelete(w http.ResponseWriter, r *http.Request
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "删除 data 文件失败"})
 				return
 			}
+			invalidateLocalCacheStatsCache()
 			writeJSON(w, http.StatusOK, cacheCleanupResult("data", "data 文件已删除", 1, info.Size()))
 			return
 		}
@@ -226,6 +229,7 @@ func (d Deps) handleSystemDataEntryDelete(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "删除 data 文件夹失败，可能仍有文件被占用"})
 		return
 	}
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, cacheCleanupResult("data", "data 文件夹已删除", removedFiles, removedBytes))
 }
 
@@ -440,6 +444,7 @@ func (d Deps) handleSystemCacheImageDelete(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "删除本地缓存图片失败: " + err.Error()})
 		return
 	}
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, cacheCleanupResult(request.Target, label+"缓存文件已删除", 1, info.Size()))
 }
 
@@ -518,6 +523,7 @@ func (d Deps) handleSystemCacheImagesBulkDelete(w http.ResponseWriter, r *http.R
 		return
 	}
 	removedFiles, removedBytes := deleteCacheImageItems(root, items)
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, cacheCleanupResult(request.Target, message, removedFiles, removedBytes))
 }
 
@@ -560,10 +566,12 @@ func (d Deps) handleSystemLogDirectoryDelete(w http.ResponseWriter, r *http.Requ
 	}
 	if filepath.Clean(logPath) == filepath.Clean(paths.Logs) {
 		removedFiles, removedBytes := removeDirectFiles(paths.Logs)
+		invalidateLocalCacheStatsCache()
 		writeJSON(w, http.StatusOK, cacheCleanupResult("log_files", "日志根目录文件已清理", removedFiles, removedBytes))
 		return
 	}
 	removedFiles, removedBytes := removeDirectoryContents(logPath)
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, cacheCleanupResult("log_files", "日志目录 "+request.RelativePath+" 已清理", removedFiles, removedBytes))
 }
 
@@ -589,13 +597,16 @@ func (d Deps) handleSystemCacheCleanup(w http.ResponseWriter, r *http.Request) {
 	switch request.Target {
 	case "images":
 		removedFiles, removedBytes := removeDirectoryContents(paths.Images)
+		invalidateLocalCacheStatsCache()
 		writeJSON(w, http.StatusOK, cacheCleanupResult("images", "图片缓存已清理", removedFiles, removedBytes))
 	case "emoji":
 		emojiFiles, emojiBytes := removeDirectoryContents(paths.Emoji)
 		thumbnailFiles, thumbnailBytes := removeDirectoryContents(paths.Thumbnails)
+		invalidateLocalCacheStatsCache()
 		writeJSON(w, http.StatusOK, cacheCleanupResult("emoji", "表情包缓存已清理", emojiFiles+thumbnailFiles, emojiBytes+thumbnailBytes))
 	case "log_files":
 		removedFiles, removedBytes := removeDirectoryContents(paths.Logs)
+		invalidateLocalCacheStatsCache()
 		writeJSON(w, http.StatusOK, cacheCleanupResult("log_files", "日志文件已清理", removedFiles, removedBytes))
 	case "database_logs":
 		d.handleSystemDatabaseLogsCleanup(w, paths, request.Tables, request.DatabaseMode, request.OlderThanDays, request.VacuumAfterCleanup)
@@ -655,6 +666,7 @@ func (d Deps) handleSystemDatabaseLogsCleanup(
 		}
 	}
 
+	invalidateLocalCacheStatsCache()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":              true,
 		"message":              "数据库记录已清理",

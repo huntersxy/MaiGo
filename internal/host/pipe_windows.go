@@ -3,15 +3,13 @@
 package host
 
 import (
+	"context"
 	"net"
-	"time"
 
 	"github.com/Microsoft/go-winio"
 )
 
-// winioDialPipe 用 go-winio 连接命名管道
-func winioDialPipe(address string) (net.Conn, error) {
-	return winio.DialPipe(address, pointerToDuration(5*time.Second))
+// winioDialPipe 用 go-winio 连接命名管道，超时由调用方 ctx 控制
+func winioDialPipe(ctx context.Context, address string) (net.Conn, error) {
+	return winio.DialPipeContext(ctx, address)
 }
-
-func pointerToDuration(value time.Duration) *time.Duration { return &value }

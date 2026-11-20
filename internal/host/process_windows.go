@@ -3,6 +3,7 @@
 package host
 
 import (
+	"context"
 	"net"
 	"os/exec"
 	"syscall"
@@ -45,8 +46,8 @@ func setChildProcessAttrs(command *exec.Cmd) {
 }
 
 // openNamedPipe 连接命名管道
-func openNamedPipe(address string) (net.Conn, error) {
-	handle, err := winioDialPipe(address)
+func openNamedPipe(ctx context.Context, address string) (net.Conn, error) {
+	handle, err := winioDialPipe(ctx, address)
 	if err != nil {
 		return nil, err
 	}

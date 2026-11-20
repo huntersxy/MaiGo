@@ -211,11 +211,11 @@ func (c *HostConsole) request(method, path, text string) error {
 	if err != nil {
 		return err
 	}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialEndpoint(endpoint)
-		},
-	}
+		transport := &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return dialEndpoint(ctx, endpoint)
+			},
+		}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 	var body io.Reader
