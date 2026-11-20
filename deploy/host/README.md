@@ -1,17 +1,16 @@
 # MaiGo 宿主部署（systemd + 静态二进制）
 
-不依赖 Docker 的生产部署：GitHub Actions 在打 tag 时构建静态二进制并发布 Release，
-服务器上的 `maigo-update.timer` 周期拉取 `releases/latest`，由 `deploy.sh` 解包到
-`releases/<ver>/`、切换 `current` 软链、重启 `maigo.service`，健康检查失败自动回滚。
-GitHub 侧没有任何服务器地址或登录凭据。
+不依赖 Docker 的生产部署：GitHub Actions 在 push `main` 和打 tag 时构建静态二进制并发布，
+服务器上的 `maigo-update.timer` 周期拉取、校验、切换，健康检查失败自动回滚。
+GitHub 侧没有任何服务器地址或登录凭据——凭据不出服务器。
 
 ## 目录布局
 
 ```
 /opt/maigo/
 ├── app/         实例目录（config data host bots logs plugins media stickers depends-data）
-├── releases/    每次发布的产物，保留最近 3 个
-├── current -> releases/<ver>/
+├── releases/    每次发布的产物，保留最近 3 个；滚动构建记为 dev-<短提交>
+├── current -> releases/<id>/
 ├── runtime/     宿主 venv：plugin-runtime、pycompat（不入发布包）
 ├── deploy/      install.sh / deploy.sh / update.sh / migrate-from-docker.sh
 ├── incoming/    下载或手工投放的发布包
@@ -29,7 +28,7 @@ sudo vi /opt/maigo/maigo.env          # 填 MAIBOT_SECRET_KEY
 sudo systemctl enable --now maigo
 ```
 
-已有 Docker 部署时用 `migrate-from-docker.sh` 把命名卷数据搬进 `app/`：
+已有 Docker 部署时用 `migrate-from-docker.sh` 把命名卷数据搬进 `app/`（卷与镜像保留）：
 
 ```bash
 sudo bash deploy/host/migrate-from-docker.sh /opt/maigo
