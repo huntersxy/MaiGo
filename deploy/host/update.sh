@@ -52,8 +52,8 @@ expected_sha="$(printf '%s' "$release" | tr '{' '\n' \
 
 active="$(basename "$(readlink -f "$ROOT/current" 2>/dev/null || echo "")")"
 active_sha="$(cat "$ROOT/current/.package.sha256" 2>/dev/null || true)"
-if [ "$active" = "$version" ] && [ -n "$expected_sha" ] && [ "$active_sha" = "$expected_sha" ] && [ "$FORCE" -eq 0 ]; then
-    log "当前已是 ${version} 且内容一致，跳过"
+if [ -n "$expected_sha" ] && [ "$active_sha" = "$expected_sha" ] && [ "$FORCE" -eq 0 ]; then
+    log "当前内容已是最新（${active}），跳过"
     exit 0
 fi
 

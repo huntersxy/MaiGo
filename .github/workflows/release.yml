@@ -39,6 +39,8 @@ jobs:
           elif [ -n "${{ inputs.version }}" ]; then
             version="${{ inputs.version }}"
           else
+            # 注入版本必须是严格 semver：插件兼容校验会解析它。
+            # 滚动构建的实际提交号单独写进包内 COMMIT 文件。
             version="dev"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -76,6 +78,7 @@ jobs:
 
           cp dist/maigo "$stage/maigo"
           echo "$version" > "$stage/VERSION"
+          echo "${GITHUB_SHA}" > "$stage/COMMIT"
 
           python -m pip install --no-cache-dir --no-deps --target "$stage/.dashboard" \
             "maibot-dashboard==${DASHBOARD_VERSION}"

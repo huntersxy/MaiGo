@@ -119,12 +119,18 @@ tar -xzf "$package" -C "$staging"
 
 version="$(tr -d '[:space:]' < "$staging/VERSION")"
 [ -n "$version" ] || die "VERSION 为空"
+commit="$(tr -d '[:space:]' < "$staging/COMMIT" 2>/dev/null || true)"
+# 目录名带上提交短号：滚动构建的 VERSION 固定为 dev，靠提交号区分
+release_id="$version"
+if [ "$version" = "dev" ] && [ -n "$commit" ]; then
+    release_id="dev-$(printf '%s' "$commit" | cut -c1-7)"
+fi
 # 记录包指纹：update.sh 用它判断同名版本是否需要重新部署
 sha256sum "$package" | cut -d' ' -f1 > "$staging/.package.sha256"
 
-target="$ROOT/releases/$version"
+target="$ROOT/releases/$release_id"
 if [ -d "$target" ]; then
-    log "版本 $version 已存在，原地替换"
+    log "版本 $release_id 已存在，原地替换"
     rm -rf "$target.old"
     mv "$target" "$target.old"
     trap 'rm -rf "$staging" "$target.old"' EXIT
@@ -134,7 +140,7 @@ chown -R maibot:maibot "$target"
 trap 'rm -rf "$target.old"' EXIT
 
 active_before="$(current_version)"
-log "切换 current -> releases/$version"
+log "切换 current -> releases/$release_id"
 switch_to "$target"
 
 if [ "$restart" = "--no-restart" ]; then
@@ -145,7 +151,7 @@ fi
 if restart_and_check; then
     rm -rf "$target.old"
     prune_old_releases
-    log "发布完成：$version（原版本 ${active_before:-无}）"
+    log "发布完成：$release_id（原版本 ${active_before:-无}）"
     exit 0
 fi
 
