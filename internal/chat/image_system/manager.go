@@ -141,6 +141,14 @@ func (m *Manager) IsImageDescriptionPending(ctx context.Context, imageHash strin
 	return !record.VLMProcessed
 }
 
+// IsDescriptionBuildPending 判断本进程是否仍在生成指定图片的描述。
+func (m *Manager) IsDescriptionBuildPending(imageHash string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, pending := m.pending[imageHash]
+	return pending
+}
+
 // VLMAvailable 是否配置了可用的视觉模型
 func (m *Manager) VLMAvailable() bool {
 	return m != nil && m.describer != nil && m.describer.Available()

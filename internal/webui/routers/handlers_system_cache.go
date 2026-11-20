@@ -1,6 +1,7 @@
 package webuiapi
 
 import (
+	"context"
 	"errors"
 	"mime"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+
+	"MaiGo/internal/chat/image_system"
 )
 
 // 本文件对齐 ../MaiBot/src/webui/routers/system.py 的本地缓存管理端点。
@@ -365,10 +368,56 @@ func (d Deps) handleSystemCacheImages(w http.ResponseWriter, r *http.Request) {
 	if end > len(items) {
 		end = len(items)
 	}
+	pageItems := items[start:end]
+	d.fillCacheImageRecords(r.Context(), paths.Root, target, pageItems)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true, "target": target, "total": len(items), "page": page, "page_size": pageSize,
-		"total_size": totalSize, "data": items[start:end], "date_groups": dateGroups,
+		"total_size": totalSize, "data": pageItems, "date_groups": dateGroups,
 	})
+}
+
+func (d Deps) fillCacheImageRecords(ctx context.Context, root, target string, items []cacheImageItem) {
+	if d.Memory == nil || len(items) == 0 {
+		return
+	}
+	imageType := imagesystem.ImageTypeImage
+	if target == "emoji" {
+		imageType = imagesystem.ImageTypeEmoji
+	}
+	paths := make([]string, 0, len(items)*2)
+	for _, item := range items {
+		paths = append(paths, item.FullPath)
+		if stored, err := imagesystem.SerializeStoredImagePath(root, item.FullPath); err == nil {
+			paths = append(paths, stored)
+		}
+	}
+	var records []imagesystem.ImageRecord
+	if err := d.Memory.GetDB().WithContext(ctx).Where("image_type = ? AND full_path IN ?", imageType, paths).Order("id").Find(&records).Error; err != nil {
+		return
+	}
+	byPath := make(map[string]imagesystem.ImageRecord, len(records))
+	for _, record := range records {
+		path, err := imagesystem.ResolveStoredImagePath(root, record.FullPath)
+		if err != nil {
+			continue
+		}
+		if _, exists := byPath[path]; !exists {
+			byPath[path] = record
+		}
+	}
+	for index := range items {
+		item := &items[index]
+		path, err := imagesystem.ResolveStoredImagePath(root, item.FullPath)
+		if err != nil {
+			continue
+		}
+		record, found := byPath[path]
+		if found {
+			id := int64(record.ID)
+			item.DBID, item.ImageHash, item.Description = &id, &record.ImageHash, record.Description
+			item.IsRegistered, item.IsBanned, item.NoFileFlag = &record.IsRegistered, &record.IsBanned, &record.NoFileFlag
+		}
+	}
 }
 
 func (d Deps) resolveCacheImageFile(w http.ResponseWriter, paths systemCachePaths, target, relative string) (string, string, bool) {

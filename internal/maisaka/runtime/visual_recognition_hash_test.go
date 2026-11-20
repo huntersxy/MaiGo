@@ -1,14 +1,21 @@
 package runtime
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"MaiGo/internal/chat/image_system"
+	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/visual"
@@ -129,5 +136,93 @@ func TestInboundStickerReachesPlannerAndReplyer(t *testing.T) {
 		if len(replies) != 1 || len(replies[0].Parts) != 2 || !strings.Contains(replies[0].Parts[1].Description, lookup.emojiDescription) {
 			t.Fatal("the replyer did not receive the sticker's description")
 		}
+	}
+}
+
+type stickerCaptionDescriber struct {
+	release <-chan struct{}
+}
+
+func (stickerCaptionDescriber) Available() bool { return true }
+
+func (d stickerCaptionDescriber) Describe(_ context.Context, data []byte, format string) (string, error) {
+	<-d.release
+	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil || format != "png" {
+		return "", fmt.Errorf("caption model did not receive the cached sticker PNG")
+	}
+	return "黄色小狗戴着蓝帽子", nil
+}
+
+func TestTextPlannerPrefersStickerCaptionToLearningTags(t *testing.T) {
+	root := t.TempDir()
+	db, err := memory.OpenDB(filepath.Join(root, "MaiBot.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	store := imagesystem.NewGORMStore(db)
+	if err := store.AutoMigrate(); err != nil {
+		t.Fatal(err)
+	}
+	var input bytes.Buffer
+	if err := png.Encode(&input, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	const cachedPath = "sticker.png"
+	path := filepath.Join(root, cachedPath)
+	if err := os.WriteFile(path, input.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256(input.Bytes()))
+	const tags = "playful,cute"
+	if err := store.Create(t.Context(), &imagesystem.ImageRecord{
+		FullPath: cachedPath, ImageHash: hash, ImageType: imagesystem.ImageTypeEmoji, Description: tags, RecordTime: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	manager, err := imagesystem.NewManager(imagesystem.ManagerOptions{
+		Root: root, Store: store, Describer: stickerCaptionDescriber{release: release},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	bridge := &agentVisualBridge{manager: manager}
+	if got := bridge.LookupCachedEmojiDescription(hash); got != tags {
+		t.Fatalf("got %q for an emoji with only tags", got)
+	}
+	if got := bridge.scheduleStickerCaption(t.Context(), path); got != hash || !bridge.IsEmojiDescriptionPending(hash) {
+		t.Fatal("sticker caption was not scheduled by the image manager")
+	}
+	if got := bridge.LookupCachedEmojiDescription(hash); got != "" {
+		t.Fatalf("returned %q before the pending caption completed", got)
+	}
+	release <- struct{}{}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := manager.Shutdown(ctx); err != nil {
+		t.Fatal(err)
+	}
+	history := []maisaka.ContextMessage{{
+		Role: maisaka.RoleUser, Content: "[表情包:03f4f00a]", Emojis: []maisaka.ImageComponent{{RecognitionHash: hash}},
+	}}
+	refresher := visual.Refresher{Lookup: bridge}
+	refresher.RefreshChatHistoryVisualPlaceholders(history)
+	request := maisaka.BuildContextItemsFromHistoryEntry(history[0], false)[0]
+	if !strings.Contains(request.Text, "黄色小狗戴着蓝帽子") || strings.Contains(request.Text, tags) {
+		t.Fatalf("unexpected text planner context %q", request.Text)
+	}
+	if got := manager.GetCachedEmojiDescription(t.Context(), hash); got != tags {
+		t.Fatalf("the emoji learning tags changed to %q", got)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	"MaiGo/internal/chat/image_system"
 	"MaiGo/internal/chat/replyer"
@@ -26,12 +27,13 @@ import (
 type agentVisualBridge struct {
 	agent *Agent
 
-	once      sync.Once
-	manager   *imagesystem.Manager
-	refresher visual.Refresher
-	err       error
-	hashCache sync.Map
-	download  func(context.Context, string) ([]byte, error)
+	once            sync.Once
+	manager         *imagesystem.Manager
+	refresher       visual.Refresher
+	err             error
+	hashCache       sync.Map
+	stickerCaptions singleflight.Group
+	download        func(context.Context, string) ([]byte, error)
 }
 
 // agentVisual 返回进程内共享的视觉桥接器；首次调用时按需初始化
@@ -107,7 +109,30 @@ func (b *agentVisualBridge) LookupCachedImageDescription(imageHash string) strin
 	return b.manager.GetCachedImageDescription(context.Background(), hash)
 }
 
-// LookupCachedEmojiDescription 读取表情描述
+// scheduleStickerCaption 给文本 Planner 准备画面描述；表情包库继续使用独立的标签。
+func (b *agentVisualBridge) scheduleStickerCaption(ctx context.Context, path string) string {
+	if !b.IsVLMTaskConfigured() || path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 || len(data) > maxAgentImageDownloadBytes {
+		return ""
+	}
+	hash := imageSHA256(data)
+	_, err, _ = b.stickerCaptions.Do(hash, func() (any, error) {
+		if b.manager.IsDescriptionBuildPending(hash) || b.manager.GetCachedImageDescription(ctx, hash) != "" {
+			return nil, nil
+		}
+		_, err := b.manager.GetImageDescription(ctx, hash, data, false)
+		return nil, err
+	})
+	if err != nil {
+		zap.L().Warn("表情包画面描述调度失败", zap.String("image_hash", hash), zap.Error(err))
+	}
+	return hash
+}
+
+// LookupCachedEmojiDescription 优先返回已完成的画面描述，在识图任务结束后可回退到标签。
 func (b *agentVisualBridge) LookupCachedEmojiDescription(emojiHash string) string {
 	if b == nil || b.manager == nil {
 		return ""
@@ -116,11 +141,21 @@ func (b *agentVisualBridge) LookupCachedEmojiDescription(emojiHash string) strin
 	if hash == "" {
 		return ""
 	}
+	if caption := b.manager.GetCachedImageDescription(context.Background(), hash); caption != "" {
+		return caption
+	}
+	if b.manager.IsDescriptionBuildPending(hash) {
+		return ""
+	}
 	return b.manager.GetCachedEmojiDescription(context.Background(), hash)
 }
 
 func (b *agentVisualBridge) IsEmojiDescriptionPending(ref string) bool {
-	return b != nil && emojisystem.DefaultRegistry().IsDescriptionPending(b.imageHash(ref))
+	if b == nil {
+		return false
+	}
+	hash := b.imageHash(ref)
+	return (b.manager != nil && b.manager.IsDescriptionBuildPending(hash)) || emojisystem.DefaultRegistry().IsDescriptionPending(hash)
 }
 
 // IsImageDescriptionPending 图片是否仍在等待识别

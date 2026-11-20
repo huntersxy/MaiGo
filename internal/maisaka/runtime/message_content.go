@@ -4,6 +4,7 @@ import (
 	"context"
 
 	messagereceive "MaiGo/internal/chat/message_receive"
+	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
@@ -22,6 +23,11 @@ func (a *Agent) prepareMessageContent(ctx context.Context, msg *onebot.Conversat
 	for index := range refs {
 		if refs[index].Hash == "" {
 			continue
+		}
+		if refs[index].Sticker && msg.ConversationKind == memory.ConversationKindPrivate && !a.plannerVisualEnabled() {
+			if hash := a.agentVisual().scheduleStickerCaption(ctx, refs[index].Path); hash != "" {
+				refs[index].RecognitionHash = hash
+			}
 		}
 		refs[index].Short = session.MediaShortHash(refs[index])
 	}
