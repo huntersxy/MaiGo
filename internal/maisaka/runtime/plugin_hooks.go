@@ -43,11 +43,6 @@ func (a *Agent) SetPluginHost(host *pluginruntime.Host) {
 		maisakaPort := hostports.NewMaisaka(func() hostports.DocumentReplyGenerator { return a })
 		maisakaPort.SetContextRuntime(func() hostports.MaisakaContextRuntime { return a })
 		host.SetMaisakaPort(maisakaPort)
-		if gateway, ok := host.MessageGatewayPort().(interface {
-			SetInboundHandler(func(context.Context, map[string]any) error)
-		}); ok {
-			gateway.SetInboundHandler(a.ReceiveExternalPluginMessage)
-		}
 	}
 }
 

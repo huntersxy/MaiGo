@@ -11,7 +11,6 @@ import (
 
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/platform_io"
-	"MaiGo/internal/platform_io/drivers/onebot"
 	"MaiGo/internal/plugin_runtime"
 	"MaiGo/internal/services"
 )
@@ -209,11 +208,9 @@ func (s *Sender) segmentsForRequest(req pluginruntime.PluginSendRequest) ([]plat
 		}
 		return []platformio.Segment{seg}, nil
 	case "hybrid":
-		return s.segmentsFromMaps(req.HybridNodes, false)
+		return s.segmentsFromMaps(req.HybridNodes)
 	case "forward":
-		nodes, err := platformio.ForwardNodesFromPluginMessages(req.ForwardNodes, func(node map[string]any) (platformio.Segment, error) {
-			return s.segmentFromMap(node, false)
-		})
+		nodes, err := platformio.ForwardNodesFromPluginMessages(req.ForwardNodes, s.segmentFromMap)
 		if err != nil {
 			return nil, err
 		}
@@ -258,10 +255,10 @@ func (s *Sender) imageSegment(encoded string, sticker bool) (platformio.Segment,
 	return seg, nil
 }
 
-func (s *Sender) segmentsFromMaps(nodes []map[string]any, inbound bool) ([]platformio.Segment, error) {
+func (s *Sender) segmentsFromMaps(nodes []map[string]any) ([]platformio.Segment, error) {
 	out := make([]platformio.Segment, 0, len(nodes))
 	for _, node := range nodes {
-		seg, err := s.segmentFromMap(node, inbound)
+		seg, err := s.segmentFromMap(node)
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +270,7 @@ func (s *Sender) segmentsFromMaps(nodes []map[string]any, inbound bool) ([]platf
 	return out, nil
 }
 
-func (s *Sender) segmentFromMap(node map[string]any, inbound bool) (platformio.Segment, error) {
+func (s *Sender) segmentFromMap(node map[string]any) (platformio.Segment, error) {
 	kind := strings.ToLower(strings.TrimSpace(asString(node["type"])))
 	switch kind {
 	case "text":
@@ -283,25 +280,15 @@ func (s *Sender) segmentFromMap(node map[string]any, inbound bool) (platformio.S
 		}
 		return platformio.Segment{Kind: platformio.SegmentText, Text: text}, nil
 	case "image", "emoji":
-		data := node["data"]
-		ref := firstNonEmpty(customDataValue(data, "url"), customDataValue(data, "file"), asString(data))
-		encoded := firstNonEmpty(asString(node["binary_data_base64"]), asString(node["content"]),
-			customDataValue(data, "binary_data_base64"), customDataValue(data, "base64"))
-		if encoded == "" && strings.HasPrefix(ref, "base64://") {
-			encoded = strings.TrimPrefix(ref, "base64://")
-		}
-		mediaKind := platformio.SegmentImage
-		if inbound && kind == "emoji" {
-			mediaKind = platformio.SegmentEmoji
+		encoded := asString(node["binary_data_base64"])
+		if encoded == "" {
+			encoded = asString(node["content"])
 		}
 		if encoded != "" {
-			if inbound {
-				return platformio.Segment{Kind: mediaKind, URL: onebot.ImageDataURL(encoded)}, nil
-			}
 			return s.imageSegment(encoded, kind == "emoji")
 		}
-		if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "data:image/") {
-			return platformio.Segment{Kind: mediaKind, URL: ref}, nil
+		if url := asString(node["data"]); strings.HasPrefix(url, "http") {
+			return platformio.Segment{Kind: platformio.SegmentImage, URL: url}, nil
 		}
 		return platformio.Segment{}, fmt.Errorf("图片段缺少 base64 或 URL")
 	case "at":

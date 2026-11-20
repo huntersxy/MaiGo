@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,18 +10,15 @@ import (
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
 
-// ReceiveExternalPluginMessage 接收消息网关入站的外部平台消息并进入 Agent 会话调度
+// DecodeExternalPluginMessage 将插件网关消息转换为统一入站消息
 // 对齐 src/plugin_runtime/host/message_gateway.py receive_external_message
-func (a *Agent) ReceiveExternalPluginMessage(ctx context.Context, message map[string]any) error {
-	if a == nil {
-		return fmt.Errorf("Agent 未初始化")
-	}
+func DecodeExternalPluginMessage(message map[string]any) (*onebot.ConversationMessage, error) {
 	if len(message) == 0 {
-		return fmt.Errorf("外部消息为空")
+		return nil, fmt.Errorf("外部消息为空")
 	}
 	platform := strings.TrimSpace(stringValueOf(message["platform"]))
 	if platform == "" {
-		return fmt.Errorf("外部消息缺少 platform")
+		return nil, fmt.Errorf("外部消息缺少 platform")
 	}
 	accountID := strings.TrimSpace(firstNonEmptyMapString(message, "account_id", "self_id"))
 	scope := strings.TrimSpace(stringValueOf(message["scope"]))
@@ -55,7 +51,7 @@ func (a *Agent) ReceiveExternalPluginMessage(ctx context.Context, message map[st
 		externalTarget = externalUser
 	}
 	if externalTarget == "" {
-		return fmt.Errorf("外部消息缺少 target_id 或 group_id")
+		return nil, fmt.Errorf("外部消息缺少 target_id 或 group_id")
 	}
 	if externalUser == "" {
 		externalUser = externalTarget
@@ -103,58 +99,56 @@ func (a *Agent) ReceiveExternalPluginMessage(ctx context.Context, message map[st
 		}
 	}
 	now := time.Now()
-isMentioned := pluginGatewayBool(message["is_mentioned"]) || pluginGatewayBool(message["is_at"])
-		if !isMentioned && accountID != "" {
-			for _, external := range externalAtList {
-				if external == accountID {
-					isMentioned = true
-					break
-				}
+	isMentioned := pluginGatewayBool(message["is_mentioned"]) || pluginGatewayBool(message["is_at"])
+	if !isMentioned && accountID != "" {
+		for _, external := range externalAtList {
+			if external == accountID {
+				isMentioned = true
+				break
 			}
 		}
-		additional := map[string]any{}
-		if info, ok := message["message_info"].(map[string]any); ok {
-			if cfg, ok := info["additional_config"].(map[string]any); ok {
-				for key, value := range cfg {
-					additional[key] = value
-				}
+	}
+	additional := map[string]any{}
+	if info, ok := message["message_info"].(map[string]any); ok {
+		if cfg, ok := info["additional_config"].(map[string]any); ok {
+			for key, value := range cfg {
+				additional[key] = value
 			}
 		}
-		if pluginGatewayBool(message["is_command"]) || strings.HasPrefix(content, "/") {
-			additional["is_command"] = true
-		}
-		msg := &onebot.ConversationMessage{
-			Platform:          platform,
-			AccountID:         accountID,
-			Scope:             scope,
-			MessageID:         messageID,
-			ConversationKind:  kind,
-			TargetID:          targetID,
-			UserID:            userID,
-			ExternalMessageID: messageIDText,
-			ExternalTargetID:  externalTarget,
-			ExternalUserID:    externalUser,
-			Nickname:          nickname,
-			Content:           content,
-			FinalContent:      content,
-			MessageParts:      parts,
-			Images:            images,
-			Faces:             faces,
-			Voices:            voices,
-			FileNames:         fileNames,
-			AtList:            atList,
-			ExternalAtList:    externalAtList,
-			AtNames:           atNames,
-			Reply:             reply,
-			IsMentioned:       isMentioned,
-			IsNotify:          pluginGatewayBool(message["is_notify"]),
-			AdditionalConfig:  additional,
-			Time:              now,
-			ReceivedAt:        now,
-		}
-	a.onMessage(msg)
-	_ = ctx
-	return nil
+	}
+	if pluginGatewayBool(message["is_command"]) || strings.HasPrefix(content, "/") {
+		additional["is_command"] = true
+	}
+	msg := &onebot.ConversationMessage{
+		Platform:          platform,
+		AccountID:         accountID,
+		Scope:             scope,
+		MessageID:         messageID,
+		ConversationKind:  kind,
+		TargetID:          targetID,
+		UserID:            userID,
+		ExternalMessageID: messageIDText,
+		ExternalTargetID:  externalTarget,
+		ExternalUserID:    externalUser,
+		Nickname:          nickname,
+		Content:           content,
+		FinalContent:      content,
+		MessageParts:      parts,
+		Images:            images,
+		Faces:             faces,
+		Voices:            voices,
+		FileNames:         fileNames,
+		AtList:            atList,
+		ExternalAtList:    externalAtList,
+		AtNames:           atNames,
+		Reply:             reply,
+		IsMentioned:       isMentioned,
+		IsNotify:          pluginGatewayBool(message["is_notify"]),
+		AdditionalConfig:  additional,
+		Time:              now,
+		ReceivedAt:        now,
+	}
+	return msg, nil
 }
 
 func pluginGatewayContent(message map[string]any) string {

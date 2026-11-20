@@ -203,6 +203,16 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 	return pipeline
 }
 
+// HandlePluginMessage 让插件网关消息与其他适配器共用入站链。
+func (p *chatRuntimePipeline) HandlePluginMessage(ctx context.Context, payload map[string]any) error {
+	msg, err := maisaruntime.DecodeExternalPluginMessage(payload)
+	if err != nil {
+		return err
+	}
+	p.Handle(ctx, msg)
+	return nil
+}
+
 // Handle 处理一条 Agent 入站消息：先补图片描述，再走统一接收链与心流校验。
 //
 // 开启原生会话调度后，同一会话的整条接收链按 FIFO 串行，跨会话由有界工作池并行；

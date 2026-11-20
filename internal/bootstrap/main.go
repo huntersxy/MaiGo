@@ -1406,6 +1406,8 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		Policies:                 executionPolicies,
 	})
 
+	gatewayPort.SetInboundHandler(chatPipeline.HandlePluginMessage)
+
 	// 对齐 Python integration.py:1349-1352：适配器下线后清理失去发送链路的聊天流
 	if chatPipeline != nil && chatPipeline.manager != nil {
 		pluginruntime.SetAdapterPolicyBlockedCloser(chatPipeline.manager.ClosePolicyBlockedChats)
