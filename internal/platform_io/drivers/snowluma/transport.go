@@ -239,8 +239,8 @@ func (t *Transport) readLoop(parent context.Context, conn *websocket.Conn, stopC
 		if err != nil {
 			return err
 		}
-		var payload map[string]any
-		if err := json.Unmarshal(data, &payload); err != nil {
+		payload, err := decodeJSONPayload(data)
+		if err != nil {
 			continue
 		}
 		if echoID := asString(payload["echo"]); echoID != "" {
