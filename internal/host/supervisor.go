@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -406,11 +407,25 @@ func (s *Supervisor) StartDesired() []string {
 }
 
 func (s *Supervisor) startDesired(prepareDependencies bool) []string {
+	if err := s.startBlocker(); err != nil {
+		return nil
+	}
 	bots, err := s.workspace.Registry.ListBots()
 	if err != nil {
 		return []string{err.Error()}
 	}
+	if !slices.ContainsFunc(bots, func(bot BotRecord) bool {
+		return bot.DesiredState == "running" && bot.Initialization == "initialized"
+	}) {
+		fmt.Println("没有待自动启动的 Bot，宿主正在等待启动操作。请在 WebUI 机器人管理页启动 Bot。")
+		for _, bot := range bots {
+			fmt.Printf("  %s: 期望状态=%s，初始化状态=%s；启动命令：maigo host start --bot-id %s\n",
+				bot.Name, bot.DesiredState, bot.Initialization, bot.BotID)
+		}
+		return nil
+	}
 	if prepareDependencies && s.prepareDependencies != nil {
+		fmt.Println("正在检查并准备插件依赖，完成后启动 Bot…")
 		if err := s.prepareDependencies(); err != nil {
 			return []string{"插件依赖准备失败: " + err.Error()}
 		}
