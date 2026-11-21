@@ -18,8 +18,6 @@ const (
 
 	quietThreshold   = 30 * time.Second
 	bareImageMinWait = 4 * time.Second
-	batchLimit       = 8 * time.Second
-	mentionLimit     = 1 * time.Second
 )
 
 type waitTimes struct {
@@ -27,12 +25,20 @@ type waitTimes struct {
 	active          time.Duration
 	sameAuthor      time.Duration
 	differentAuthor time.Duration
+	batchLimit      time.Duration
+	mentionLimit    time.Duration
 }
 
 var waitProfiles = map[Mode]waitTimes{
-	ModeFast:    {time.Second, 3 * time.Second, time.Second, 500 * time.Millisecond},
-	ModeNatural: {2 * time.Second, 5 * time.Second, 2 * time.Second, 500 * time.Millisecond},
-	ModeSteady:  {4 * time.Second, 7 * time.Second, 4 * time.Second, 2 * time.Second},
+	ModeFast:    {time.Second, 3 * time.Second, time.Second, 500 * time.Millisecond, 8 * time.Second, time.Second},
+	ModeNatural: {2 * time.Second, 5 * time.Second, 2 * time.Second, 500 * time.Millisecond, 8 * time.Second, time.Second},
+	ModeSteady:  {4 * time.Second, 7 * time.Second, 4 * time.Second, 2 * time.Second, 8 * time.Second, time.Second},
+}
+
+var groupWaitProfiles = map[Mode]waitTimes{
+	ModeFast:    waitProfiles[ModeFast],
+	ModeNatural: {2500 * time.Millisecond, 6 * time.Second, 2500 * time.Millisecond, time.Second, 10 * time.Second, 2 * time.Second},
+	ModeSteady:  {5 * time.Second, 9 * time.Second, 5 * time.Second, 3 * time.Second, 12 * time.Second, 3500 * time.Millisecond},
 }
 
 // NormalizeMode 归一化 TOML 档位名
@@ -47,15 +53,16 @@ func NormalizeMode(raw string) Mode {
 
 // Debouncer 单会话防抖状态
 type Debouncer struct {
-	first       time.Time
-	lastArrival time.Time
-	hasLast     bool
-	lastAuthor  string
-	deadline    time.Time
-	hasDeadline bool
-	urgent      time.Time
-	hasUrgent   bool
-	modeEnabled bool
+	first         time.Time
+	batchDeadline time.Time
+	lastArrival   time.Time
+	hasLast       bool
+	lastAuthor    string
+	deadline      time.Time
+	hasDeadline   bool
+	urgent        time.Time
+	hasUrgent     bool
+	modeEnabled   bool
 }
 
 // NewDebouncer 创建防抖器
@@ -93,6 +100,7 @@ func (d *Debouncer) Consume() {
 		return
 	}
 	d.first = time.Time{}
+	d.batchDeadline = time.Time{}
 	d.deadline = time.Time{}
 	d.hasDeadline = false
 	d.urgent = time.Time{}
@@ -109,6 +117,7 @@ type ObserveInput struct {
 	WallTime    time.Time
 	Now         time.Time
 	Mode        Mode
+	IsGroup     bool
 }
 
 // Observe 更新截止时间并返回规则说明（对齐 Python observe -> str）
@@ -117,9 +126,13 @@ func (d *Debouncer) Observe(in ObserveInput) string {
 		return ""
 	}
 	d.SyncMode(in.Mode)
-	waits, ok := waitProfiles[in.Mode]
+	profiles := waitProfiles
+	if in.IsGroup {
+		profiles = groupWaitProfiles
+	}
+	waits, ok := profiles[in.Mode]
 	if !ok {
-		waits = waitProfiles[ModeNatural]
+		waits = profiles[ModeNatural]
 	}
 	preprocess := in.WallTime.Sub(in.ReceivedAt)
 	if preprocess < 0 {
@@ -140,8 +153,12 @@ func (d *Debouncer) Observe(in ObserveInput) string {
 	if newBatch {
 		d.first = arrival
 	}
+	batchDeadline := d.first.Add(waits.batchLimit)
+	if d.batchDeadline.IsZero() || batchDeadline.Before(d.batchDeadline) {
+		d.batchDeadline = batchDeadline
+	}
 	if in.AtBot {
-		urgent := in.Now.Add(-preprocess).Add(mentionLimit)
+		urgent := in.Now.Add(-preprocess).Add(waits.mentionLimit)
 		if !d.hasUrgent || urgent.Before(d.urgent) {
 			d.urgent = urgent
 			d.hasUrgent = true
@@ -151,7 +168,7 @@ func (d *Debouncer) Observe(in ObserveInput) string {
 	var reason string
 	if !d.hasDeadline || d.deadline.After(in.Now) {
 		reasons := make([]string, 0, 4)
-		limit := d.first.Add(batchLimit)
+		limit := d.batchDeadline
 		if d.hasUrgent && d.urgent.Before(limit) {
 			limit = d.urgent
 		}
@@ -185,11 +202,11 @@ func (d *Debouncer) Observe(in ObserveInput) string {
 				candidate = d.deadline
 			}
 		}
-		if candidate.After(d.first.Add(batchLimit)) {
-			reasons = append(reasons, "受整批 8 秒上限限制")
+		if candidate.After(d.batchDeadline) {
+			reasons = append(reasons, fmt.Sprintf("受整批 %g 秒上限限制", d.batchDeadline.Sub(d.first).Seconds()))
 		}
 		if d.hasUrgent && candidate.After(d.urgent) {
-			reasons = append(reasons, "受@或提及 1 秒上限限制")
+			reasons = append(reasons, "受@或提及上限限制")
 		}
 		if candidate.After(limit) {
 			candidate = limit

@@ -8,6 +8,7 @@ import (
 	"MaiGo/internal/config"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/maisaka/turn_trigger"
 	"MaiGo/internal/platform_io/drivers/onebot"
 	"MaiGo/internal/services"
 
@@ -170,6 +171,18 @@ func (a *Agent) thinkGroup(groupID int64) {
 	if len(pending) == 0 || !hasActionableMessage(pending) {
 		return
 	}
+	contextLimit := 20
+	if bot := a.instanceBotConfig(); bot != nil && bot.Chat.MaxContextSize > 0 {
+		contextLimit = bot.Chat.MaxContextSize
+	}
+	receivedAt := session.ContextReceivedAtTimes(contextLimit)
+	intervals := make([]float64, len(receivedAt))
+	for index, value := range receivedAt {
+		intervals[index] = float64(value.UnixNano()) / 1e9
+	}
+	if interval, ok := turn_trigger.MeanMessageInterval(intervals); ok {
+		a.gates.recordMessageInterval(groupID, interval)
+	}
 	a.consumeMessageDebounce(memory.ConversationKindGroup, groupID)
 	ctx := withRunState(a.ctx, state)
 	ctx = withGeneration(ctx, generation)
@@ -189,7 +202,7 @@ func (a *Agent) thinkGroup(groupID int64) {
 	replied := false
 	tc.RepliedThisTurn = &replied
 	if !a.MaisakaBackgroundLoopEnabled() {
-		defer a.turnSchedule.recordGroupCycleResult(groupID, replied)
+		defer a.gates.recordPlannerRun(groupID)
 	}
 
 	messages, transcriptIDs, err := a.assembleMessages(ctx, session)

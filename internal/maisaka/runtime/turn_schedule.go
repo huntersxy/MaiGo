@@ -205,16 +205,6 @@ func (s *conversationTurnScheduleStore) idleRemaining(kind string, targetID int6
 	return idle.RemainingDelay(time.Now(), pendingCount, isGroup, focusActive)
 }
 
-func (s *conversationTurnScheduleStore) recordGroupCycleResult(groupID int64, replied bool) {
-	s.withState(memory.ConversationKindGroup, groupID, func(st *conversationTurnState) {
-		if replied {
-			st.idle.RecordActiveCycle()
-			return
-		}
-		st.idle.RecordIdleCycle(time.Now(), true)
-	})
-}
-
 // shouldHoldGroupScheduleDuringWait 群聊非快速反应模式下 wait 期间不因新消息重排定时器
 func (a *Agent) shouldHoldGroupScheduleDuringWait(groupID int64) bool {
 	return a.turnSchedule.inWait(memory.ConversationKindGroup, groupID) && !a.plannerMessageSteeringEnabled()
@@ -236,7 +226,7 @@ func (a *Agent) evaluateGroupMessageTurn(groupID int64, session *Session, pendin
 	forced := a.hasStrongInteraction(pending)
 	var dynamic maisaka.TurnGateResult
 	if quietRemaining <= 0 {
-		dynamic = a.gateDynamicTurn(groupID, session, pending, forced)
+		dynamic = a.gateDynamicTurn(groupID, pending, forced, frequency)
 	}
 	input := maisaka.ScheduleTurnInput{
 		MessageQuietRemaining:  quietRemaining,
@@ -246,10 +236,8 @@ func (a *Agent) evaluateGroupMessageTurn(groupID int64, session *Session, pendin
 		ReplyFrequencySilent:   frequency <= 0,
 		ReplyFrequency:         frequency,
 		HasForcedTurnTrigger:   forced,
-		IdleBackoffRemaining: a.turnSchedule.idleRemaining(
-			memory.ConversationKindGroup, groupID, len(pending), true, a.focusActiveForSession(session),
-		),
-		Dynamic: dynamic,
+		IdleBackoffRemaining:   0,
+		Dynamic:                dynamic,
 	}
 	return maisaka.EvaluateMessageTurn(input)
 }
@@ -278,6 +266,7 @@ func (a *Agent) applyGroupTurnDecision(groupID int64, result maisaka.TurnGateRes
 	case maisaka.TurnWait:
 		zap.L().Debug("群聊思考等待更多消息", zap.Int64("group_id", groupID), zap.String("detail", result.Detail))
 	case maisaka.TurnTrigger:
+		a.gates.activate(groupID, a.gateFrequency(groupID))
 		consumeMaisakaWaitState(a.sessions.get(memory.ConversationKindGroup, groupID))
 		a.turnSchedule.clearWait(memory.ConversationKindGroup, groupID)
 		a.cancelWaitTimeout(memory.ConversationKindGroup, groupID)

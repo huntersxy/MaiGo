@@ -184,7 +184,6 @@ func (a *Agent) afterSpeakAll(kind string, targetID int64, lastMessageID int64, 
 	if kind != memory.ConversationKindGroup {
 		return
 	}
-	a.gates.markReply(targetID)
 	markRepliedThisTurn(context.Background())
 	if showLog {
 		zap.L().Info("发言成功", zap.Int64("group_id", targetID), zap.Int("segments", segmentCount))

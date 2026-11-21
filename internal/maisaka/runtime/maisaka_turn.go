@@ -137,7 +137,7 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 					if tc := tools.GetToolContext(jobCtx); tc != nil && tc.RepliedThisTurn != nil {
 						replied = *tc.RepliedThisTurn
 					}
-					a.turnSchedule.recordGroupCycleResult(targetID, replied)
+					a.gates.recordPlannerRun(targetID)
 				}
 				if !handled {
 					return fmt.Errorf("Maisaka 后台轮次执行前置条件失效")
@@ -733,9 +733,20 @@ func (s *Session) MaisakaRuntimeSessionName() string {
 func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 	options := focus.GroupOptions{
 		MaxContextSize: func() int { return a.maisakaMaxContextSize(true) },
-		Summary:        a.buildFocusSummary,
-		StoreRoot:      focus.DefaultCheckpointRoot,
-		Prompts:        a.newMaisakaPromptSource(),
+		UseTokenLimit: func() bool {
+			bot := a.instanceBotConfig()
+			return bot != nil && bot.Chat.UseTokenLimit
+		},
+		MaxContextTokens: func() int {
+			bot := a.instanceBotConfig()
+			if bot == nil {
+				return 128000
+			}
+			return bot.Chat.MaxContextTokens
+		},
+		Summary:   a.buildFocusSummary,
+		StoreRoot: focus.DefaultCheckpointRoot,
+		Prompts:   a.newMaisakaPromptSource(),
 		Planner: func(ctx context.Context, request focus.PlannerRequest) (maisaka.ChatResponse, error) {
 			generation := a.currentGeneration()
 			if generation == nil || generation.model == nil {
@@ -749,6 +760,8 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 			}
 			loop.LogicalTurnID = request.LogicalTurnID
 			loop.MaxContextSize = request.MaxContextSize
+			loop.UseTokenLimit = request.UseTokenLimit
+			loop.MaxContextTokens = request.MaxContextTokens
 			loop.FocusMode = true
 			loop.EnableVisualMessage = a.plannerVisualEnabled()
 			loop.MeasureSections = a.measurePlannerSections

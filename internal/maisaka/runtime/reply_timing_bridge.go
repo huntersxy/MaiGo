@@ -143,6 +143,7 @@ func (a *Agent) observeInboundDebounce(msg *onebot.ConversationMessage) {
 		WallTime:    now,
 		Now:         now,
 		Mode:        mode,
+		IsGroup:     msg.ConversationKind == memory.ConversationKindGroup,
 	})
 }
 

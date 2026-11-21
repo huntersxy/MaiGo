@@ -782,6 +782,30 @@ func (s *Session) RecentWindow(now time.Time, window time.Duration) (total int, 
 	return total, self, lastSelf
 }
 
+func (s *Session) ContextReceivedAtTimes(limit int) []time.Time {
+	if limit <= 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	times := make([]time.Time, 0, len(s.seen)+len(s.pending))
+	for _, entry := range s.seen {
+		if entry.user != nil && !entry.user.IsAgentMessage && !entry.user.ReceivedAt.IsZero() {
+			times = append(times, entry.user.ReceivedAt)
+		}
+	}
+	for _, user := range s.pending {
+		if user != nil && !user.IsAgentMessage && !user.ReceivedAt.IsZero() {
+			times = append(times, user.ReceivedAt)
+		}
+	}
+	sort.SliceStable(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	if len(times) > limit {
+		times = append([]time.Time(nil), times[len(times)-limit:]...)
+	}
+	return times
+}
+
 // Assemble 装配本轮上下文：本代头部（人格、群说明、摘要）已在 transcript 中，这里只按顺序展开
 // 返回的 transcriptIDs 与 messages 等长同序，0 表示该条不来自 transcript
 func (s *Session) Assemble(ctx context.Context, mem *memory.Manager, instruction, groupExtra string) ([]*schema.AgenticMessage, []uint, error) {
