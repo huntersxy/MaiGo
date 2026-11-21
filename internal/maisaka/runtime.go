@@ -129,8 +129,6 @@ type RuntimeOptions struct {
 	SessionName string
 	// IsGroupSession 是否群聊会话
 	IsGroupSession bool
-	// ReplyTiming 读取当前生效的回复时序参数
-	ReplyTiming func() turn_trigger.IdleBackoffConfig
 	// PlannerSteering 是否启用快速反应模式（wait 期间新消息直接续接）
 	PlannerSteering bool
 	// ReplyFrequency 读取当前生效的回复频率
@@ -139,6 +137,9 @@ type RuntimeOptions struct {
 	MaxContextSize   func() int
 	UseTokenLimit    func() bool
 	MaxContextTokens func() int
+	TurnStarted      func()
+	PlannerCompleted func()
+	WaitStarted      func(seconds *float64)
 	// ToolResultCondense 读取当前生效的工具结果整理开关与字符阈值，阈值 <=0 表示关闭
 	ToolResultCondense func() (enabled bool, threshold int)
 	// OnlineBotAccountIDs 平台在线机器人账号，用于过滤自身消息
@@ -328,9 +329,6 @@ type Runtime struct {
 
 // NewRuntime 创建会话级运行时
 func NewRuntime(opts RuntimeOptions) *Runtime {
-	if opts.ReplyTiming == nil {
-		opts.ReplyTiming = func() turn_trigger.IdleBackoffConfig { return turn_trigger.IdleBackoffConfig{} }
-	}
 	if opts.ReplyFrequency == nil {
 		opts.ReplyFrequency = func() float64 { return 1 }
 	}
@@ -383,6 +381,12 @@ func (r *Runtime) SessionName() string { return r.sessionName }
 
 // LogPrefix 日志前缀
 func (r *Runtime) LogPrefix() string { return r.logPrefix }
+
+func (r *Runtime) RuntimeRunning() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.running
+}
 
 // IsGroupSession 是否群聊会话
 func (r *Runtime) IsGroupSession() bool { return r.opts.IsGroupSession }
@@ -443,9 +447,14 @@ func (r *Runtime) SubAgentTasks() *SubAgentTaskManager { return r.subagentTasks 
 // MaxContextSize 返回当前会话实时生效的上下文窗口大小
 func (r *Runtime) MaxContextSize() int {
 	if r.opts.MaxContextSize != nil {
-		return r.opts.MaxContextSize()
+		if value := r.opts.MaxContextSize(); value > 0 {
+			return value
+		}
 	}
-	return 0
+	if r.opts.IsGroupSession {
+		return 50
+	}
+	return 75
 }
 
 func (r *Runtime) MaxContextTokens() int {
@@ -747,11 +756,26 @@ func (r *Runtime) AgentState() turn_trigger.AgentState {
 	return r.agentState
 }
 
-// ReplyTiming 实现 turn_trigger.RuntimeView
-func (r *Runtime) ReplyTiming() turn_trigger.IdleBackoffConfig { return r.opts.ReplyTiming() }
-
 // PlannerMessageSteering 是否启用快速反应模式
-func (r *Runtime) PlannerMessageSteering() bool { return r.opts.PlannerSteering }
+func (r *Runtime) PlannerMessageSteering() bool { return !r.IsGroupSession() || r.opts.PlannerSteering }
+
+func (r *Runtime) LastMessageReceivedAt() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastMessageReceivedAt
+}
+
+func (r *Runtime) PendingWaitStartedAt() *time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return cloneRuntimeTimestamp(r.pendingWaitStartedAt)
+}
+
+func (r *Runtime) ConsumeMessageDebounce() {
+	if r.opts.Debouncer != nil {
+		r.opts.Debouncer.Consume()
+	}
+}
 
 // OnlineBotAccountIDs 实现 turn_trigger.RuntimeView
 func (r *Runtime) OnlineBotAccountIDs(platform string) map[string]struct{} {

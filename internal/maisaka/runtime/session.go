@@ -84,6 +84,7 @@ type Session struct {
 	notes                   []string
 	pendingReferenceReceipt *memory.ReferenceReceipt
 	nextOrder               uint64
+	lastTurnInputOrder      uint64
 	tokenScale              float64
 	tokenSamples            int
 	// latestLogID 入站消息水位，供工具读取快照；不随工作集裁切回退
@@ -654,6 +655,28 @@ func (s *Session) PendingMessages() []*sessionUser {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]*sessionUser(nil), s.pending...)
+}
+
+func (s *Session) markTurnInputs(pending []*sessionUser) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, user := range pending {
+		if user != nil {
+			s.lastTurnInputOrder = max(s.lastTurnInputOrder, user.Order)
+		}
+	}
+}
+
+func (s *Session) pendingAfterTurn() []*sessionUser {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var pending []*sessionUser
+	for _, user := range s.pending {
+		if user != nil && user.Order > s.lastTurnInputOrder {
+			pending = append(pending, user)
+		}
+	}
+	return pending
 }
 
 func (s *Session) MarkInjected(seq uint64) {

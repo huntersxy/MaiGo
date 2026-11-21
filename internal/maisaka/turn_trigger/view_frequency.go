@@ -1,6 +1,9 @@
 package turn_trigger
 
-import "math"
+import (
+	"math"
+	"slices"
+)
 
 const viewDecayStep = 1.0 / 16
 const viewRecoveryRounds = 16
@@ -36,7 +39,8 @@ func (c *ViewFrequencyController) Probability(external float64) float64 {
 
 func (c *ViewFrequencyController) Decide(external, draw float64) bool {
 	external = clampViewFrequency(external)
-	if c.Phase == ViewFrequencyIdle {
+	if c.Phase == ViewFrequencyIdle || c.Phase == "" {
+		c.Phase = ViewFrequencyIdle
 		c.Internal = external
 	}
 	accepted := draw < c.Probability(external)
@@ -80,22 +84,13 @@ func MeanMessageInterval(received []float64) (float64, bool) {
 	if len(received) < 2 {
 		return 0, false
 	}
-	minimum, maximum := received[0], received[0]
-	var total float64
-	count := 1
-	for _, value := range received[1:] {
-		minimum = math.Min(minimum, value)
-		if value <= maximum {
-			continue
-		}
-		total += value - maximum
-		maximum = value
-		count++
-	}
-	if count < 2 {
+	sorted := slices.Clone(received)
+	slices.Sort(sorted)
+	sorted = slices.Compact(sorted)
+	if len(sorted) < 2 {
 		return 0, false
 	}
-	return total / float64(count-1), true
+	return (sorted[len(sorted)-1] - sorted[0]) / float64(len(sorted)-1), true
 }
 
 func PredictMessageInterval(current, previous float64, hasCurrent, hasPrevious bool) (float64, bool) {

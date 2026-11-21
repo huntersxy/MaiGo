@@ -3,35 +3,41 @@ package runtime
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
-	"MaiGo/internal/common/database"
+	database "MaiGo/internal/common/database"
 	"MaiGo/internal/config"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/turn_trigger"
+	"MaiGo/internal/services"
+
+	"go.uber.org/zap"
 )
 
 type gateStore struct {
-	mu          sync.Mutex
-	views       map[int64]*turn_trigger.ViewFrequencyController
-	current     map[int64]float64
-	previous    map[int64]float64
-	hasCurrent  map[int64]bool
-	hasPrevious map[int64]bool
+	mu    sync.Mutex
+	views map[int64]*groupViewState
+}
+
+type groupViewState struct {
+	frequency        turn_trigger.ViewFrequencyController
+	lastBatch        []int64
+	interval         float64
+	previousInterval float64
+	silenceHandledAt time.Time
+	silenceTriggered bool
 }
 
 func newGateStore() *gateStore {
-	return &gateStore{
-		views: map[int64]*turn_trigger.ViewFrequencyController{}, current: map[int64]float64{},
-		previous: map[int64]float64{}, hasCurrent: map[int64]bool{}, hasPrevious: map[int64]bool{},
-	}
+	return &gateStore{views: map[int64]*groupViewState{}}
 }
 
-func (s *gateStore) viewLocked(groupID int64) *turn_trigger.ViewFrequencyController {
+func (s *gateStore) viewLocked(groupID int64) *groupViewState {
 	view := s.views[groupID]
 	if view == nil {
-		view = &turn_trigger.ViewFrequencyController{}
+		view = &groupViewState{}
 		s.views[groupID] = view
 	}
 	return view
@@ -39,63 +45,140 @@ func (s *gateStore) viewLocked(groupID int64) *turn_trigger.ViewFrequencyControl
 
 func (s *gateStore) activate(groupID int64, frequency float64) {
 	s.mu.Lock()
-	s.viewLocked(groupID).Activate(frequency)
+	s.viewLocked(groupID).frequency.Activate(frequency)
 	s.mu.Unlock()
 }
 
-func (s *gateStore) recordPlannerRun(groupID int64) {
-	s.mu.Lock()
-	s.viewLocked(groupID).RecordPlannerRun()
-	s.mu.Unlock()
-}
-
-func (s *gateStore) recordMessageInterval(groupID int64, interval float64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.hasCurrent[groupID] {
-		s.previous[groupID], s.hasPrevious[groupID] = s.current[groupID], true
-	}
-	s.current[groupID], s.hasCurrent[groupID] = interval, true
-}
-
-func (s *gateStore) predictedMessageInterval(groupID int64) (float64, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return turn_trigger.PredictMessageInterval(
-		s.current[groupID], s.previous[groupID], s.hasCurrent[groupID], s.hasPrevious[groupID],
-	)
-}
-
-func (s *gateStore) decide(groupID int64, frequency, draw float64) (probability float64, accepted bool, phase turn_trigger.ViewFrequencyPhase, internal float64) {
+func (s *gateStore) recordPlannerRun(groupID int64, interval float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	view := s.viewLocked(groupID)
-	probability = view.Probability(frequency)
-	accepted = view.Decide(frequency, draw)
-	return probability, accepted, view.Phase, view.Internal
+	view.previousInterval, view.interval = view.interval, interval
+	view.frequency.RecordPlannerRun()
 }
 
-func (a *Agent) gateDynamicTurn(groupID int64, pending []*sessionUser, forced bool, frequency float64) maisaka.TurnGateResult {
-	external := filterExternalPending(pending)
-	if len(external) == 0 {
-		return maisaka.NoExternalMessagesGate()
+func (s *gateStore) consumeSilenceTrigger(groupID int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	view := s.viewLocked(groupID)
+	triggered := view.silenceTriggered
+	view.silenceTriggered = false
+	return triggered
+}
+
+func (a *Agent) groupContextInterval(groupID int64) (time.Time, float64) {
+	received := a.sessions.get(database.ConversationKindGroup, groupID).ContextReceivedAtTimes(a.maisakaMaxContextSize(true))
+	if len(received) == 0 {
+		return time.Time{}, 0
 	}
-	if forced {
-		return maisaka.TurnGateResult{Decision: maisaka.TurnTrigger, Detail: "强制触发跳过概率查看"}
+	timestamps := make([]float64, 0, len(received))
+	for _, at := range received {
+		timestamps = append(timestamps, float64(at.UnixNano())/1e9)
 	}
-	probability, accepted, phase, internal := a.gates.decide(groupID, frequency, rand.Float64())
+	interval, _ := turn_trigger.MeanMessageInterval(timestamps)
+	return received[len(received)-1], interval
+}
+
+func (a *Agent) gateMessageBatch(groupID int64, pending []*sessionUser, frequency float64) maisaka.TurnGateResult {
+	batch := make([]int64, 0, len(pending))
+	for _, user := range pending {
+		if user != nil && !user.IsAgentMessage && user.MessageID != 0 && user.SenderID != a.SelfID() {
+			batch = append(batch, user.MessageID)
+		}
+	}
+	a.gates.mu.Lock()
+	view := a.gates.viewLocked(groupID)
+	if len(batch) == 0 || slices.Equal(view.lastBatch, batch) {
+		a.gates.mu.Unlock()
+		return maisaka.TurnGateResult{Decision: maisaka.TurnWait, Detail: "本批已判定，等待新批次或静默判定"}
+	}
+	view.lastBatch = batch
+	probability := view.frequency.Probability(frequency)
+	accepted := view.frequency.Decide(frequency, rand.Float64())
+	phase, internal := view.frequency.Phase, view.frequency.Internal
+	a.gates.mu.Unlock()
 	a.consumeMessageDebounce(database.ConversationKindGroup, groupID)
+	decision := maisaka.TurnWait
 	if accepted {
-		return maisaka.TurnGateResult{Decision: maisaka.TurnTrigger, Detail: fmt.Sprintf(
-			"概率查看 外部频率=%.3f 内部频率=%.3f 放行概率=%.3f 阶段=%s", frequency, internal, probability, phase,
-		)}
+		decision = maisaka.TurnTrigger
 	}
-	if interval, ok := a.gates.predictedMessageInterval(groupID); ok && interval > 0 {
-		return maisaka.TurnGateResult{Decision: maisaka.TurnDelay, Delay: time.Duration(interval * float64(time.Second)), Detail: fmt.Sprintf(
-			"静默查看概率=%.3f 下次判定间隔=%.3fs", probability, interval,
-		)}
+	return maisaka.TurnGateResult{Decision: decision, Detail: fmt.Sprintf(
+		"概率查看 外部频率=%.3f 内部频率=%.3f 放行概率=%.3f 阶段=%s", frequency, internal, probability, phase,
+	)}
+}
+
+func (a *Agent) armGroupSilenceCheck(groupID int64, after time.Time) {
+	if a.gateFrequency(groupID) <= 0 || a.groupConcurrency.IsBusy(groupID) {
+		return
 	}
-	return maisaka.TurnGateResult{Decision: maisaka.TurnWait, Detail: fmt.Sprintf("静默查看概率=%.3f，等待新消息", probability)}
+	session := a.sessions.get(database.ConversationKindGroup, groupID)
+	if runtime := session.MaisakaRuntime(); runtime != nil && (runtime.FocusModeActive() || runtime.AgentState() == turn_trigger.StateRunning) {
+		return
+	}
+	receivedAt, current := a.groupContextInterval(groupID)
+	a.gates.mu.Lock()
+	view := a.gates.viewLocked(groupID)
+	previous := view.previousInterval
+	handled := !receivedAt.After(view.silenceHandledAt)
+	a.gates.mu.Unlock()
+	interval, ok := turn_trigger.PredictMessageInterval(current, previous, current > 0, previous > 0)
+	if handled || !ok {
+		return
+	}
+	delay := time.Duration(interval * float64(time.Second))
+	deadline := receivedAt.Add(delay)
+	if !after.IsZero() {
+		deadline = after.Add(delay)
+	}
+	a.armGroupTimer(groupID, max(0, time.Until(deadline)), true, func(pending *pendingThink, generation uint64) {
+		a.checkGroupSilence(groupID, receivedAt, pending, generation)
+	})
+}
+
+func (a *Agent) checkGroupSilence(groupID int64, receivedAt time.Time, pending *pendingThink, generation uint64) {
+	if !a.takeGroupTimer(groupID, pending, generation) || a.groupConcurrency.IsBusy(groupID) {
+		return
+	}
+	latest, _ := a.groupContextInterval(groupID)
+	if !latest.Equal(receivedAt) {
+		return
+	}
+	session := a.sessions.get(database.ConversationKindGroup, groupID)
+	if runtime := session.MaisakaRuntime(); runtime != nil && (runtime.FocusModeActive() || runtime.AgentState() == turn_trigger.StateRunning) {
+		return
+	}
+	if sessionID := a.resolveMaiBotSessionID(a.ctx, database.ConversationKindGroup, groupID); sessionID != "" && services.ChatMigrationGateInstance.Blocked(sessionID) {
+		return
+	}
+	frequency := a.gateFrequency(groupID)
+	if frequency <= 0 {
+		return
+	}
+	if quiet := a.messageQuietRemaining(database.ConversationKindGroup, groupID, latest); quiet > 0 {
+		a.armGroupTimer(groupID, quiet, true, func(pending *pendingThink, generation uint64) {
+			a.checkGroupSilence(groupID, receivedAt, pending, generation)
+		})
+		return
+	}
+	a.gates.mu.Lock()
+	view := a.gates.viewLocked(groupID)
+	if !receivedAt.After(view.silenceHandledAt) {
+		a.gates.mu.Unlock()
+		return
+	}
+	probability := view.frequency.Probability(frequency)
+	accepted := view.frequency.Decide(frequency, rand.Float64())
+	if accepted {
+		view.silenceHandledAt = receivedAt
+		view.silenceTriggered = true
+	}
+	a.gates.mu.Unlock()
+	zap.L().Debug("群聊静默查看判定", zap.Int64("group_id", groupID), zap.Float64("probability", probability), zap.Bool("accepted", accepted))
+	if accepted {
+		a.groupConcurrency.Submit(groupID)
+	} else {
+		a.armGroupSilenceCheck(groupID, time.Now())
+	}
 }
 
 func (a *Agent) gateFrequencyFromRuntime(groupID int64) float64 {
@@ -121,16 +204,6 @@ func (a *Agent) gateFrequencyFromRuntime(groupID int64) float64 {
 		}
 	}
 	return base
-}
-
-func filterExternalPending(pending []*sessionUser) []*sessionUser {
-	out := make([]*sessionUser, 0, len(pending))
-	for _, user := range pending {
-		if user != nil && !user.IsAgentMessage && user.MessageID != 0 {
-			out = append(out, user)
-		}
-	}
-	return out
 }
 
 func parseTimeRange(value string) (int, int, bool) {

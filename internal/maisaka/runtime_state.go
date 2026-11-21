@@ -42,6 +42,7 @@ func (r *Runtime) registerMessage(ctx context.Context, message ContextMessage) e
 	r.mu.Unlock()
 
 	r.emitMonitorMessageIngested(message)
+	r.scheduler.ObserveMessage()
 	if r.FocusModeActive() {
 		// Focus 组由组级前台 Planner 统一消费，成员不再单独调度
 		return nil
@@ -87,7 +88,6 @@ func (r *Runtime) armForcedTurn(message *ContextMessage, isAt, isMentioned bool)
 	r.forcedTurnMessageID = message.MessageID
 	r.forcedTurnReason = triggerReason
 	r.mu.Unlock()
-	r.scheduler.IdleBackoff().Reset()
 	if wasArmed {
 		zap.L().Info(r.logPrefix+" 检测到新的"+triggerReason+"，刷新强制 continue 状态", zap.String("消息编号", message.MessageID))
 		return
@@ -166,7 +166,7 @@ func (r *Runtime) pruneProcessedMessageCacheLocked() {
 
 // ScheduleMessageTurn 为当前待处理消息安排一次内部 turn
 func (r *Runtime) ScheduleMessageTurn() {
-	if r.FocusModeActive() {
+	if r.FocusModeActive() || !r.IsRunning() {
 		return
 	}
 	r.scheduler.ScheduleMessageTurn()
@@ -381,6 +381,14 @@ func (r *Runtime) EnterRunningState() {
 	r.mu.Unlock()
 }
 
+func cloneRuntimeTimestamp(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
 func (r *Runtime) clearWaitState() {
 	r.mu.Lock()
 	r.pendingWaitToolCallID = ""
@@ -442,7 +450,9 @@ func (r *Runtime) EnterWaitState(seconds *float64, toolCallID, logicalTurnID str
 	r.mu.Unlock()
 	r.cancelDeferredMessageTurnTask()
 	r.CancelWaitTimeout()
-	if seconds != nil {
+	if r.opts.WaitStarted != nil {
+		r.opts.WaitStarted(seconds)
+	} else if seconds != nil {
 		r.scheduleWaitTimeout(*seconds, toolCallID)
 	}
 	if r.PlannerMessageSteering() && r.HasPendingMessages() {
@@ -507,9 +517,20 @@ func (r *Runtime) ConsumePendingWaitState() (toolCallID, logicalTurnID string, e
 	logicalTurnID = r.pendingWaitLogicalTurnID
 	startedAt := r.pendingWaitStartedAt
 	requestedSeconds = r.pendingWaitSeconds
-	r.mu.Unlock()
 	if toolCallID == "" || logicalTurnID == "" {
+		r.mu.Unlock()
 		return "", "", 0, nil, fmt.Errorf("不存在可补齐的 wait 工具调用")
+	}
+	cancel := r.waitTimeoutCancel
+	r.waitTimeoutCancel = nil
+	r.pendingWaitToolCallID = ""
+	r.pendingWaitLogicalTurnID = ""
+	r.pendingWaitStartedAt = nil
+	r.pendingWaitSeconds = nil
+	r.pendingWaitAfterReply = false
+	r.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 	if startedAt != nil {
 		elapsedSeconds = time.Since(*startedAt).Seconds()
@@ -517,14 +538,6 @@ func (r *Runtime) ConsumePendingWaitState() (toolCallID, logicalTurnID string, e
 			elapsedSeconds = 0
 		}
 	}
-	r.cancelWaitTimeoutTask()
-	r.mu.Lock()
-	r.pendingWaitToolCallID = ""
-	r.pendingWaitLogicalTurnID = ""
-	r.pendingWaitStartedAt = nil
-	r.pendingWaitSeconds = nil
-	r.pendingWaitAfterReply = false
-	r.mu.Unlock()
 	return toolCallID, logicalTurnID, elapsedSeconds, requestedSeconds, nil
 }
 

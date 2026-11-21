@@ -412,26 +412,6 @@ func upgradeSplitChatConfigSections(bot *BotConfigFile) []string {
 	// Python 的 reply_timing/reply_style 子节未声明这两个键，升级后会被 pydantic 当冗余键丢弃；
 	// 这里只记录迁移路径，不写入字段，避免升级产物多出 Python 没有的键
 	moveRootToTiming("max_consecutive_wait_count", func() {})
-	moveRootToTiming("no_action_backoff_base_seconds", func() {
-		if legacy.NoActionBackoffBaseSeconds != nil {
-			rt.NoActionBackoffBaseSeconds = *legacy.NoActionBackoffBaseSeconds
-		}
-	})
-	moveRootToTiming("no_action_backoff_cap_seconds", func() {
-		if legacy.NoActionBackoffCapSeconds != nil {
-			rt.NoActionBackoffCapSeconds = *legacy.NoActionBackoffCapSeconds
-		}
-	})
-	moveRootToTiming("no_action_backoff_start_count", func() {
-		if legacy.NoActionBackoffStartCount != nil {
-			rt.NoActionBackoffStartCount = *legacy.NoActionBackoffStartCount
-		}
-	})
-	moveRootToTiming("no_action_backoff_bypass_pending_count", func() {
-		if legacy.NoActionBackoffBypassPendingCount != nil {
-			rt.NoActionBackoffBypassPendingCount = *legacy.NoActionBackoffBypassPendingCount
-		}
-	})
 	moveRootToTiming("enable_talk_value_rules", func() {
 		if legacy.EnableTalkValueRules != nil {
 			rt.EnableTalkValueRules = legacy.EnableTalkValueRules

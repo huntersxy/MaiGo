@@ -4,33 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"MaiGo/internal/maisaka"
 )
-
-// IdleBackoffFromTiming 把 chat.reply_timing 映射为 Maisaka 空闲退避参数
-func IdleBackoffFromTiming(rt ChatReplyTimingConfig) maisaka.IdleBackoffConfig {
-	start := rt.NoActionBackoffStartCount
-	if start < 1 {
-		start = 2
-	}
-	return maisaka.IdleBackoffConfig{
-		BaseSeconds:        rt.NoActionBackoffBaseSeconds,
-		CapSeconds:         rt.NoActionBackoffCapSeconds,
-		StartCount:         start,
-		BypassPendingCount: rt.NoActionBackoffBypassPendingCount,
-	}
-}
-
-// DefaultIdleBackoffConfig 无 InstanceHolder 时的退避默认（对齐 MaiBot 官方默认）
-func DefaultIdleBackoffConfig() maisaka.IdleBackoffConfig {
-	return IdleBackoffFromTiming(ChatReplyTimingConfig{
-		NoActionBackoffBaseSeconds:        15,
-		NoActionBackoffCapSeconds:         300,
-		NoActionBackoffStartCount:         2,
-		NoActionBackoffBypassPendingCount: 6,
-	})
-}
 
 // GroupDebounceMode 群聊防抖档位
 func GroupDebounceMode(rt ChatReplyTimingConfig) string {

@@ -173,8 +173,6 @@ func (a *Agent) applyReplyTimingFromInstance(cfg *maibotcfg.InstanceConfig) {
 	if a == nil || cfg == nil {
 		return
 	}
-	idle := maibotcfg.IdleBackoffFromTiming(cfg.Bot.Chat.ReplyTiming)
-	a.turnSchedule.applyIdleBackoff(idle)
 	groupMode := debounce.NormalizeMode(maibotcfg.GroupDebounceMode(cfg.Bot.Chat.ReplyTiming))
 	privateMode := debounce.NormalizeMode(maibotcfg.PrivateDebounceMode(cfg.Bot.Chat.ReplyTiming))
 	a.turnSchedule.applyDebounceModes(groupMode, privateMode)

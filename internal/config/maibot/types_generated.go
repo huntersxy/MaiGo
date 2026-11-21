@@ -371,10 +371,6 @@ type ChatConfig struct {
 	MaxContextTokens        int                   `toml:"max_context_tokens,omitempty"`
 	PrivateUseTokenLimit    bool                  `toml:"private_use_token_limit,omitempty"`
 	PrivateMaxContextTokens int                   `toml:"private_max_context_tokens,omitempty"`
-	UseTokenLimit           bool                  `toml:"use_token_limit,omitempty"`
-	MaxContextTokens        int                   `toml:"max_context_tokens,omitempty"`
-	PrivateUseTokenLimit    bool                  `toml:"private_use_token_limit,omitempty"`
-	PrivateMaxContextTokens int                   `toml:"private_max_context_tokens,omitempty"`
 	ReplyTiming             ChatReplyTimingConfig `toml:"reply_timing,omitempty"`
 	ReplyStyle              ChatReplyStyleConfig  `toml:"reply_style,omitempty"`
 	// 8.14.19 前 [chat] 根级字段；升级链迁至 reply_timing / reply_style
@@ -383,20 +379,16 @@ type ChatConfig struct {
 
 // ChatLegacyFlatFields 旧版平铺在 [chat] 下的键（仅升级链消费）
 type ChatLegacyFlatFields struct {
-	TalkValue                         float64         `toml:"talk_value,omitempty"`
-	MentionedBotReply                 *bool           `toml:"mentioned_bot_reply,omitempty"`
-	InevitableAtReply                 *bool           `toml:"inevitable_at_reply,omitempty"`
-	MaxConsecutiveWaitCount           *int            `toml:"max_consecutive_wait_count,omitempty"`
-	NoActionBackoffBaseSeconds        *float64        `toml:"no_action_backoff_base_seconds,omitempty"`
-	NoActionBackoffCapSeconds         *float64        `toml:"no_action_backoff_cap_seconds,omitempty"`
-	NoActionBackoffStartCount         *int            `toml:"no_action_backoff_start_count,omitempty"`
-	NoActionBackoffBypassPendingCount *int            `toml:"no_action_backoff_bypass_pending_count,omitempty"`
-	EnableTalkValueRules              *bool           `toml:"enable_talk_value_rules,omitempty"`
-	TalkValueRules                    []TalkRulesItem `toml:"talk_value_rules,omitempty"`
-	EnableReplyQuote                  *bool           `toml:"enable_reply_quote,omitempty"`
-	GroupChatPrompt                   string          `toml:"group_chat_prompt,omitempty"`
-	PrivateChatPrompts                string          `toml:"private_chat_prompts,omitempty"`
-	ChatPrompts                       []any           `toml:"chat_prompts,omitempty"`
+	TalkValue               float64         `toml:"talk_value,omitempty"`
+	MentionedBotReply       *bool           `toml:"mentioned_bot_reply,omitempty"`
+	InevitableAtReply       *bool           `toml:"inevitable_at_reply,omitempty"`
+	MaxConsecutiveWaitCount *int            `toml:"max_consecutive_wait_count,omitempty"`
+	EnableTalkValueRules    *bool           `toml:"enable_talk_value_rules,omitempty"`
+	TalkValueRules          []TalkRulesItem `toml:"talk_value_rules,omitempty"`
+	EnableReplyQuote        *bool           `toml:"enable_reply_quote,omitempty"`
+	GroupChatPrompt         string          `toml:"group_chat_prompt,omitempty"`
+	PrivateChatPrompts      string          `toml:"private_chat_prompts,omitempty"`
+	ChatPrompts             []any           `toml:"chat_prompts,omitempty"`
 }
 
 type ChatReplyStyleConfig struct {
@@ -408,18 +400,14 @@ type ChatReplyStyleConfig struct {
 }
 
 type ChatReplyTimingConfig struct {
-	MessageDebounceMode               string                  `toml:"message_debounce_mode,omitempty"`
-	PrivateMessageDebounceMode        string                  `toml:"private_message_debounce_mode,omitempty"`
-	PlannerMessageSteering            bool                    `toml:"planner_message_steering,omitempty"`
-	TalkValue                         float64                 `toml:"talk_value,omitempty"`
-	PrivateReplyPaused                bool                    `toml:"private_reply_paused,omitempty"`
-	PrivateReplyPauseRules            []PrivateReplyPauseRule `toml:"private_reply_pause_rules,omitempty"`
-	MentionedBotReply                 bool                    `toml:"mentioned_bot_reply,omitempty"`
-	InevitableAtReply                 bool                    `toml:"inevitable_at_reply,omitempty"`
-	NoActionBackoffBaseSeconds        float64                 `toml:"no_action_backoff_base_seconds,omitempty"`
-	NoActionBackoffCapSeconds         float64                 `toml:"no_action_backoff_cap_seconds,omitempty"`
-	NoActionBackoffStartCount         int                     `toml:"no_action_backoff_start_count,omitempty"`
-	NoActionBackoffBypassPendingCount int                     `toml:"no_action_backoff_bypass_pending_count,omitempty"`
+	MessageDebounceMode        string                  `toml:"message_debounce_mode,omitempty"`
+	PrivateMessageDebounceMode string                  `toml:"private_message_debounce_mode,omitempty"`
+	PlannerMessageSteering     bool                    `toml:"planner_message_steering,omitempty"`
+	TalkValue                  float64                 `toml:"talk_value,omitempty"`
+	PrivateReplyPaused         bool                    `toml:"private_reply_paused,omitempty"`
+	PrivateReplyPauseRules     []PrivateReplyPauseRule `toml:"private_reply_pause_rules,omitempty"`
+	MentionedBotReply          bool                    `toml:"mentioned_bot_reply,omitempty"`
+	InevitableAtReply          bool                    `toml:"inevitable_at_reply,omitempty"`
 	// EnableTalkValueRules 8.16.11 前；规则开关移除后由升级链消费
 	EnableTalkValueRules *bool `toml:"enable_talk_value_rules,omitempty"`
 	// TalkValueRules 8.16.18 前；升级链迁入 TalkRuleGroups

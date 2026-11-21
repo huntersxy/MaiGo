@@ -367,6 +367,7 @@ type CycleRuntimeState struct {
 	ActionToolCount    int
 	ReplyTargetMessage *ContextMessage
 	PlannerInterrupted bool
+	HasResponse        bool
 	CycleEnd           CycleEnd
 	Response           ChatResponse
 }

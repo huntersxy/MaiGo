@@ -8,7 +8,6 @@ import (
 	"MaiGo/internal/config"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
-	"MaiGo/internal/maisaka/turn_trigger"
 	"MaiGo/internal/platform_io/drivers/onebot"
 	"MaiGo/internal/services"
 
@@ -74,7 +73,7 @@ func (a *Agent) thinkCycle() {
 func latestReceivedAt(pending []*sessionUser) time.Time {
 	var latest time.Time
 	for _, user := range pending {
-		if user.ReceivedAt.After(latest) {
+		if user != nil && user.ReceivedAt.After(latest) {
 			latest = user.ReceivedAt
 		}
 	}
@@ -82,18 +81,24 @@ func latestReceivedAt(pending []*sessionUser) time.Time {
 }
 
 func (a *Agent) scheduleGroupThink(groupID int64, receivedAt time.Time) {
-	if a.shouldHoldGroupScheduleDuringWait(groupID) {
-		return
-	}
-	if a.stopping.Load() || a.ctx.Err() != nil || a.groupConcurrency.IsRunning(groupID) {
+	if a.stopping.Load() || a.ctx.Err() != nil || a.groupConcurrency.IsBusy(groupID) {
 		return
 	}
 	if sessionID := a.resolveMaiBotSessionID(context.Background(), memory.ConversationKindGroup, groupID); sessionID != "" &&
 		services.ChatMigrationGateInstance.Blocked(sessionID) {
 		return
 	}
-	delay := a.planGroupThinkDelay(groupID, receivedAt)
+	delay := a.messageQuietRemaining(memory.ConversationKindGroup, groupID, receivedAt)
 	a.armGroupThinkTimer(groupID, delay)
+}
+
+func (a *Agent) afterGroupThink(groupID int64) {
+	pending := a.sessions.get(memory.ConversationKindGroup, groupID).pendingAfterTurn()
+	if hasActionableMessage(pending) {
+		a.scheduleGroupThink(groupID, latestReceivedAt(pending))
+		return
+	}
+	a.armGroupSilenceCheck(groupID, time.Time{})
 }
 
 // resetTimer 在会话锁内递增代次，旧回调即使已启动也不能消费新批次
@@ -117,23 +122,29 @@ func remainingDebounce(receivedAt, now time.Time, debounce time.Duration) time.D
 	return delay
 }
 
-func (a *Agent) flushPendingThink(groupID int64, expected *pendingThink, generation uint64) {
+func (a *Agent) takeGroupTimer(groupID int64, expected *pendingThink, generation uint64) bool {
 	a.pendingGroupMu.Lock()
+	defer a.pendingGroupMu.Unlock()
 	armed, ok := a.pendingGroupThinks[groupID]
 	if !ok || armed != expected || armed.generation != generation || a.stopping.Load() || a.ctx.Err() != nil {
-		a.pendingGroupMu.Unlock()
-		return
+		return false
 	}
 
 	delete(a.pendingGroupThinks, groupID)
-	a.pendingGroupMu.Unlock()
+	return true
+}
 
+func (a *Agent) flushPendingThink(groupID int64, expected *pendingThink, generation uint64) {
+	if !a.takeGroupTimer(groupID, expected, generation) || a.groupConcurrency.IsBusy(groupID) {
+		return
+	}
 	session := a.sessions.get(memory.ConversationKindGroup, groupID)
 	pendingMsgs := session.PendingMessages()
 	if len(pendingMsgs) == 0 || !hasActionableMessage(pendingMsgs) {
 		return
 	}
-	result := a.evaluateGroupMessageTurn(groupID, session, pendingMsgs, 0)
+	quiet := a.messageQuietRemaining(memory.ConversationKindGroup, groupID, latestReceivedAt(pendingMsgs))
+	result := a.evaluateGroupMessageTurn(groupID, pendingMsgs, quiet)
 	a.applyGroupTurnDecision(groupID, result)
 }
 
@@ -150,6 +161,10 @@ func (a *Agent) clearPendingThinks() {
 }
 
 func (a *Agent) thinkGroup(groupID int64) {
+	silence := a.gates.consumeSilenceTrigger(groupID)
+	session := a.sessions.get(memory.ConversationKindGroup, groupID)
+	pending := session.PendingMessages()
+	session.markTurnInputs(pending)
 	a.emitMonitorThinkStart(memory.ConversationKindGroup, groupID)
 	defer a.emitMonitorThinkEnd(memory.ConversationKindGroup, groupID)
 
@@ -166,44 +181,20 @@ func (a *Agent) thinkGroup(groupID int64) {
 	if !a.conversationAllowed(memory.ConversationKindGroup, groupID) {
 		return
 	}
-	session := a.sessions.get(memory.ConversationKindGroup, groupID)
-	pending := session.PendingMessages()
-	if len(pending) == 0 || !hasActionableMessage(pending) {
+	if !silence && !hasActionableMessage(pending) {
 		return
 	}
-	contextLimit := 20
-	if bot := a.instanceBotConfig(); bot != nil && bot.Chat.MaxContextSize > 0 {
-		contextLimit = bot.Chat.MaxContextSize
-	}
-	receivedAt := session.ContextReceivedAtTimes(contextLimit)
-	intervals := make([]float64, len(receivedAt))
-	for index, value := range receivedAt {
-		intervals[index] = float64(value.UnixNano()) / 1e9
-	}
-	if interval, ok := turn_trigger.MeanMessageInterval(intervals); ok {
-		a.gates.recordMessageInterval(groupID, interval)
-	}
+	a.completeConversationWait(memory.ConversationKindGroup, groupID, 0, !silence && sessionHasActionableUserSinceWait(session))
 	a.consumeMessageDebounce(memory.ConversationKindGroup, groupID)
 	ctx := withRunState(a.ctx, state)
 	ctx = withGeneration(ctx, generation)
 	ctx = a.buildConversationToolContext(ctx, memory.ConversationKindGroup, groupID, session)
 	a.restoreFocusCheckpoint(ctx, session)
-	if runtime := a.attachMaisakaRuntime(memory.ConversationKindGroup, groupID, session); runtime != nil {
-		if runtime.HasPendingWaitToolCall() {
-			if toolCallID, _, _, _, err := runtime.ConsumePendingWaitState(); err == nil {
-				zap.L().Debug("群聊思考消费遗留 wait 状态", zap.Int64("group_id", groupID), zap.String("tool_call_id", toolCallID))
-			}
-		}
-		runtime.EnterRunningState()
+	if a.attachMaisakaRuntime(memory.ConversationKindGroup, groupID, session) != nil {
 		defer a.saveFocusCheckpoint(ctx, session)
 	}
 	tc := tools.GetToolContext(ctx)
 	tc.ThinkStartArrivalSeq = maxPendingSeq(pending)
-	replied := false
-	tc.RepliedThisTurn = &replied
-	if !a.MaisakaBackgroundLoopEnabled() {
-		defer a.gates.recordPlannerRun(groupID)
-	}
 
 	messages, transcriptIDs, err := a.assembleMessages(ctx, session)
 	if err != nil {

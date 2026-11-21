@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -132,13 +133,6 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 					jobCtx = withGeneration(jobCtx, jobGeneration)
 				}
 				handled := a.executeMaisakaTurn(jobCtx, kind, targetID, session, messages, transcriptIDs)
-				if kind == memory.ConversationKindGroup {
-					replied := false
-					if tc := tools.GetToolContext(jobCtx); tc != nil && tc.RepliedThisTurn != nil {
-						replied = *tc.RepliedThisTurn
-					}
-					a.gates.recordPlannerRun(targetID)
-				}
 				if !handled {
 					return fmt.Errorf("Maisaka 后台轮次执行前置条件失效")
 				}
@@ -226,14 +220,57 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 	runtime.SetChatLoop(loop)
 
 	runtime.SetHistory(history)
-	pending := session.PendingMessages()
+	prepared := make(map[uint]struct{}, len(transcriptIDs))
+	for _, id := range transcriptIDs {
+		if id != 0 {
+			prepared[id] = struct{}{}
+		}
+	}
+	var pending []*sessionUser
+	for _, user := range session.PendingMessages() {
+		if _, ok := prepared[user.TranscriptID]; ok {
+			pending = append(pending, user)
+		}
+	}
+	session.markTurnInputs(pending)
+	inputs := maisaka.TurnInputs{
+		Pending: func() bool { return len(session.pendingAfterTurn()) > 0 },
+		Collect: func() []maisaka.ContextMessage {
+			newInputs := session.pendingAfterTurn()
+			var messages []maisaka.ContextMessage
+			for _, user := range newInputs {
+				if user.Msg == nil {
+					continue
+				}
+				if converted, ok := agenticMessageToMaisaka(user.Msg, user.TranscriptID); ok {
+					messages = append(messages, converted...)
+					pending = append(pending, user)
+					if tc := tools.GetToolContext(ctx); tc != nil {
+						tc.InjectedArrivalSeq = max(tc.InjectedArrivalSeq, user.ArrivalSeq)
+					}
+				}
+			}
+			session.markTurnInputs(newInputs)
+			a.consumeMessageDebounce(kind, targetID)
+			return messages
+		},
+	}
 	trigger := history[len(history)-1]
+	for index := len(history) - 1; index >= 0; index-- {
+		if history[index].Source == maisaka.SourceUser && history[index].MessageID != "" {
+			trigger = history[index]
+			break
+		}
+	}
 	runtime.BeginTurnTranscript()
-	if err := runtime.Engine().RunTurnOnce(ctx, &trigger, nil, ""); err != nil {
+	if err := runtime.Engine().RunTurnOnce(ctx, &trigger, nil, "", inputs); err != nil {
 		runtime.DrainTurnTranscript()
 		// 失败前可能已提交裁切，摘要仍要落库
 		a.captureMaisakaSummary(session, runtime.History())
 		a.persistMaisakaSummary(ctx, session)
+		if errors.Is(err, maisaka.ErrPlannerInterrupted) {
+			return true
+		}
 		fields := []zap.Field{
 			zap.String("conversation_kind", kind),
 			zap.Int64("target_id", targetID),

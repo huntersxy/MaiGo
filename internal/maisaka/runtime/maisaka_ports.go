@@ -943,7 +943,7 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 		SessionID:       sessionID,
 		SessionName:     sessionID,
 		IsGroupSession:  isGroup,
-		PlannerSteering: a.plannerMessageSteeringEnabled(),
+		PlannerSteering: !isGroup || a.plannerMessageSteeringEnabled(),
 		Debouncer:       NewAgentDebouncer(a, kind, targetID),
 		DebounceMode: func(group bool) string {
 			if group {
@@ -1024,6 +1024,21 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 	}
 	toolRuntime := &AgentToolRuntime{Agent: a, Kind: kind, TargetID: targetID}
 	opts.Tools = toolRuntime
+	opts.WaitStarted = func(seconds *float64) {
+		delay := time.Duration(0)
+		if seconds != nil {
+			delay = time.Duration(*seconds * float64(time.Second))
+		}
+		generation := a.turnSchedule.beginWait(kind, targetID, delay)
+		a.armWaitTimeout(kind, targetID, delay, generation)
+	}
+	if isGroup {
+		opts.TurnStarted = func() { a.gates.activate(targetID, a.gateFrequency(targetID)) }
+		opts.PlannerCompleted = func() {
+			_, interval := a.groupContextInterval(targetID)
+			a.gates.recordPlannerRun(targetID, interval)
+		}
+	}
 	var built *maisaka.Runtime
 	// 主动回合回填真实用户消息，避免触发消息本身成为回复引用目标
 	opts.ProactiveContextRestore = func(callCtx context.Context, limit int) ([]maisaka.ContextMessage, error) {
@@ -1135,9 +1150,6 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 		toolRuntime.Runtime = built
 	}
 	if bot != nil {
-		opts.ReplyTiming = func() maisaka.IdleBackoffConfig {
-			return maibotcfg.IdleBackoffFromTiming(bot.Chat.ReplyTiming)
-		}
 		opts.InevitableAtReply = func() bool { return bot.Chat.ReplyTiming.InevitableAtReply }
 		opts.MentionedBotReply = func() bool { return bot.Chat.ReplyTiming.MentionedBotReply }
 	}
@@ -1191,23 +1203,6 @@ func (a *Agent) attachMaisakaRuntime(kind string, targetID int64, session *Sessi
 	cached := session.maisakaRuntime
 	session.mu.Unlock()
 	return cached
-}
-
-// consumeMaisakaWaitState 清理 Maisaka 侧遗留 wait，消息触发或超时后调用
-func consumeMaisakaWaitState(session *Session) {
-	if session == nil {
-		return
-	}
-	runtime := session.MaisakaRuntime()
-	if runtime == nil || !runtime.HasPendingWaitToolCall() {
-		return
-	}
-	toolCallID, logicalTurnID, elapsed, requested, err := runtime.ConsumePendingWaitState()
-	if err != nil {
-		return
-	}
-	zap.L().Debug("Maisaka wait 状态清理", zap.String("tool_call_id", toolCallID),
-		zap.String("logical_turn_id", logicalTurnID), zap.Float64("elapsed_seconds", elapsed), zap.Any("requested_seconds", requested))
 }
 
 // MaisakaRuntime 返回会话的 Maisaka 运行时，未接线时为 nil

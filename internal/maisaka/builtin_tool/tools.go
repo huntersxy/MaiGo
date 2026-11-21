@@ -142,7 +142,6 @@ type ToolContext struct {
 	UseVectorExpression bool
 	// Effective回复目标 本次发言实际使用的引用目标消息 ID（0 表示未引用），由 SpeakCallback 回填
 	EffectiveReplyTo *int64
-	RepliedThisTurn  *bool
 	LLMRouter        *llm.Router        // 子代理等内置工具的单次模型调用
 	SubagentLLM      model.AgenticModel // generation 快照：model_task_config.planner
 	UtilsLLM         model.AgenticModel // generation 快照：model_task_config.utils

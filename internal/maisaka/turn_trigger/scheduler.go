@@ -1,97 +1,81 @@
 package turn_trigger
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
+	"sort"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 )
 
-// MessageTurnScheduler 决定外部消息何时进入 Maisaka 内部循环
-//
-// 每次检查依次经过：消息防抖 → 快速反应续接 wait → 静默消费 → @ 强制触发 → 空闲退避 → 动态门控
-// 每一步只返回判定，由 ScheduleMessageTurn 统一投递或延迟重查
 type MessageTurnScheduler struct {
-	runtime          RuntimeView
-	dynamicReplyGate *DynamicReplyTurnGate
-	idleBackoff      *IdleBackoffController
+	runtime RuntimeView
+
+	mu                      sync.Mutex
+	viewFrequency           ViewFrequencyController
+	lastBatch               []string
+	acceptedWaitStartedAt   *time.Time
+	silenceTriggered        bool
+	silenceHandledAt        time.Time
+	silenceCancel           context.CancelFunc
+	silenceGeneration       uint64
+	currentContextInterval  *float64
+	previousContextInterval *float64
+	now                     func() time.Time
 }
 
-// NewMessageTurnScheduler 创建触发调度器
 func NewMessageTurnScheduler(runtime RuntimeView) *MessageTurnScheduler {
-	return &MessageTurnScheduler{
-		runtime:          runtime,
-		dynamicReplyGate: NewDynamicReplyTurnGate(runtime),
-		idleBackoff:      NewIdleBackoffController(runtime),
+	return &MessageTurnScheduler{runtime: runtime}
+}
+
+func (s *MessageTurnScheduler) SetClock(now func() time.Time) {
+	if now == nil {
+		return
 	}
+	s.mu.Lock()
+	s.now = now
+	s.mu.Unlock()
 }
 
-// DynamicReplyGate 暴露动态门控，供 agent 侧记录 reply 与强制触发
-func (s *MessageTurnScheduler) DynamicReplyGate() *DynamicReplyTurnGate {
-	return s.dynamicReplyGate
-}
-
-// IdleBackoff 暴露空闲退避控制器，供整轮结束时记录结束原因
-func (s *MessageTurnScheduler) IdleBackoff() *IdleBackoffController {
-	return s.idleBackoff
-}
-
-// RecordReply 记录 Planner 实际调用了一次 reply，供动态门控统计回复次数
-func (s *MessageTurnScheduler) RecordReply() {
-	s.dynamicReplyGate.RecordReply()
-}
-
-// ScheduleMessageTurn 检查并投递 message turn
 func (s *MessageTurnScheduler) ScheduleMessageTurn() {
 	runtime := s.runtime
-	if runtime.AgentState() == StateWait {
-		if runtime.IsReplyFrequencySilent() {
-			runtime.EnterStopState()
-		} else if !runtime.PlannerMessageSteering() {
-			if runtime.IsGroupSession() {
-				return
-			}
-			zap.L().Info(runtime.LogPrefix() + " 私聊 wait 期间收到新消息，结束等待并进入 Planner")
-			runtime.EnterRunningState()
-		}
-	}
-
-	if runtime.MessageTurnScheduled() {
+	state := runtime.AgentState()
+	if state == StateRunning {
 		return
 	}
-
-	pendingCount := runtime.PendingMessageCount()
-	if pendingCount <= 0 {
+	if state == StateWait && runtime.IsReplyFrequencySilent() {
+		runtime.EnterStopState()
+		state = StateStop
+	}
+	if runtime.MessageTurnScheduled() || runtime.PendingMessageCount() <= 0 {
 		return
 	}
-
-	result := s.Evaluate(pendingCount)
+	result := s.Evaluate(runtime.PendingMessageCount())
 	if result.Decision == DecisionDelay {
-		zap.L().Debug(runtime.LogPrefix()+" 回复调度",
-			zap.Int("待处理", pendingCount),
-			zap.String("detail", result.Detail),
-		)
+		zap.L().Debug(runtime.LogPrefix()+" 查看调度",
+			zap.Int("待处理", runtime.PendingMessageCount()),
+			zap.String("detail", result.Detail))
 		runtime.DeferMessageTurnCheck(result.DelaySeconds)
 		return
 	}
-
-	zap.L().Debug(runtime.LogPrefix()+" 回复调度",
-		zap.Int("待处理", pendingCount),
-		zap.String("detail", result.Detail),
-	)
-	if result.ShouldTrigger() {
-		if runtime.AgentState() == StateWait {
-			runtime.CancelWaitTimeout()
-			// 保留挂起状态到消费触发时，避免原工具批次收尾清掉 wait 调用关联
-			runtime.UpdateStageStatus("等待已打断", "收到新消息，准备继续思考")
-		}
-		runtime.EnqueueMessageTurn()
+	zap.L().Debug(runtime.LogPrefix()+" 查看调度",
+		zap.Int("待处理", runtime.PendingMessageCount()),
+		zap.String("detail", result.Detail))
+	if !result.ShouldTrigger() {
+		return
 	}
+	if state == StateWait {
+		runtime.CancelWaitTimeout()
+		runtime.UpdateStageStatus("等待已打断", "收到新消息，准备继续思考")
+	}
+	runtime.EnqueueMessageTurn()
 }
 
-// Evaluate 按流水线顺序返回第一个给出结论的判定
 func (s *MessageTurnScheduler) Evaluate(pendingCount int) TurnGateResult {
 	runtime := s.runtime
-	// 先收齐本批：后续门控按整批消息判断，防止只凭半批消息估计回复概率
 	quietSeconds := runtime.MessageQuietRemainingSeconds()
 	if quietSeconds > 0 {
 		return TurnGateResult{
@@ -101,34 +85,334 @@ func (s *MessageTurnScheduler) Evaluate(pendingCount int) TurnGateResult {
 		}
 	}
 
-	// 走到这里仍处于 wait 的只有快速反应模式：直接续接挂起的 wait，不再经过群聊频率与退避门控
-	if runtime.AgentState() == StateWait {
-		return TurnGateResult{Decision: DecisionTrigger, Detail: "快速反应模式收到新消息，提前结束 wait 并进入 Planner"}
-	}
-
 	frequency := runtime.EffectiveReplyFrequency()
+	state := runtime.AgentState()
+	if state == StateWait && !runtime.IsReplyFrequencySilent() {
+		if !runtime.IsGroupSession() {
+			s.setAcceptedWait()
+			return TurnGateResult{Decision: DecisionTrigger, Detail: "私聊收到新消息，提前结束 wait 并进入 Planner"}
+		}
+		return s.evaluateScene(pendingCount, frequency)
+	}
 	if runtime.IsReplyFrequencySilent() {
 		return TurnGateResult{Decision: DecisionTrigger, Detail: fmt.Sprintf("调度=静默消费 频率=%.3f", frequency)}
 	}
+	return s.evaluateScene(pendingCount, frequency)
+}
 
+func (s *MessageTurnScheduler) evaluateScene(pendingCount int, frequency float64) TurnGateResult {
+	runtime := s.runtime
 	if runtime.HasForcedTurnTrigger() {
-		// @ 强制触发的回复同样占用动态门控的回复额度
-		s.dynamicReplyGate.RecordForcedTurn(runtime.PendingMessages())
 		return TurnGateResult{Decision: DecisionTrigger, Detail: fmt.Sprintf("调度=强制触发 频率=%.3f", frequency)}
 	}
+	external := filterExternalMessages(runtime, runtime.PendingMessages())
+	if len(external) == 0 {
+		return TurnGateResult{Decision: DecisionWait, Detail: "没有新的外部消息 判定=等待更多消息"}
+	}
+	if !runtime.IsGroupSession() {
+		return TurnGateResult{Decision: DecisionTrigger, Detail: "私聊不设概率门控 判定=进入Planner"}
+	}
+	batch := make([]string, 0, len(external))
+	for _, message := range external {
+		batch = append(batch, message.MessageID)
+	}
+	s.mu.Lock()
+	if equalMessageIDs(batch, s.lastBatch) {
+		s.mu.Unlock()
+		return TurnGateResult{Decision: DecisionWait, Detail: "本批已判定，等待新批次或静默判定"}
+	}
+	s.lastBatch = append(s.lastBatch[:0], batch...)
+	probability := s.viewFrequency.Probability(frequency)
+	accepted := s.viewFrequency.Decide(frequency, rand.Float64())
+	internal := s.viewFrequency.Internal
+	phase := s.viewFrequency.Phase
+	s.mu.Unlock()
+	runtime.ConsumeMessageDebounce()
+	s.armSilenceCheck()
+	label := "等待更多消息"
+	decision := DecisionWait
+	if accepted {
+		if runtime.AgentState() == StateWait {
+			s.mu.Lock()
+			s.acceptedWaitStartedAt = cloneTimestamp(runtime.PendingWaitStartedAt())
+			s.mu.Unlock()
+		}
+		label = "进入Planner"
+		decision = DecisionTrigger
+	}
+	return TurnGateResult{
+		Decision: decision,
+		Detail: fmt.Sprintf("概率查看 外部频率=%.3f 内部频率=%.3f 放行概率=%.3f 阶段=%s 判定=%s",
+			frequency, internal, probability, phase, label),
+	}
+}
 
-	backoffSeconds := s.idleBackoff.GetDelaySeconds(pendingCount)
-	if backoffSeconds > 0 {
-		return TurnGateResult{
-			Decision:     DecisionDelay,
-			Detail:       fmt.Sprintf("空闲退避中 剩余=%.2fs", backoffSeconds),
-			DelaySeconds: backoffSeconds,
+func (s *MessageTurnScheduler) ObserveMessage() {
+	if s.runtime.IsGroupSession() {
+		s.armSilenceCheck()
+	}
+}
+
+func (s *MessageTurnScheduler) StartPlannerTurn() {
+	s.Close()
+	if !s.runtime.IsGroupSession() || s.runtime.FocusModeActive() {
+		return
+	}
+	s.mu.Lock()
+	s.viewFrequency.Activate(s.runtime.EffectiveReplyFrequency())
+	s.acceptedWaitStartedAt = nil
+	s.mu.Unlock()
+}
+
+func (s *MessageTurnScheduler) RecordPlannerRun() {
+	if !s.runtime.IsGroupSession() || s.runtime.FocusModeActive() {
+		return
+	}
+	interval := s.contextInterval()
+	s.mu.Lock()
+	s.previousContextInterval = cloneFloat(s.currentContextInterval)
+	s.currentContextInterval = interval
+	s.viewFrequency.RecordPlannerRun()
+	s.mu.Unlock()
+}
+
+func (s *MessageTurnScheduler) FinishPlannerTurn() {
+	if !s.runtime.RuntimeRunning() {
+		return
+	}
+	s.ScheduleMessageTurn()
+	s.armSilenceCheck()
+}
+
+func (s *MessageTurnScheduler) ConsumeSilenceTrigger() bool {
+	s.mu.Lock()
+	triggered := s.silenceTriggered
+	s.silenceTriggered = false
+	s.mu.Unlock()
+	return triggered
+}
+
+func (s *MessageTurnScheduler) AcceptedWaitStartedAt() *time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneTimestamp(s.acceptedWaitStartedAt)
+}
+
+func (s *MessageTurnScheduler) setAcceptedWait() {
+	startedAt := s.runtime.PendingWaitStartedAt()
+	s.mu.Lock()
+	s.acceptedWaitStartedAt = cloneTimestamp(startedAt)
+	s.mu.Unlock()
+}
+
+func (s *MessageTurnScheduler) ConsumeAcceptedWaitStartedAt() *time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	startedAt := cloneTimestamp(s.acceptedWaitStartedAt)
+	s.acceptedWaitStartedAt = nil
+	return startedAt
+}
+
+func (s *MessageTurnScheduler) Close() {
+	s.mu.Lock()
+	s.silenceGeneration++
+	if s.silenceCancel != nil {
+		s.silenceCancel()
+		s.silenceCancel = nil
+	}
+	s.mu.Unlock()
+}
+
+func (s *MessageTurnScheduler) contextInterval() *float64 {
+	limit := s.runtime.MaxContextSize()
+	if limit <= 0 {
+		return nil
+	}
+	received := make([]float64, 0, limit)
+	history := s.runtime.ChatHistory()
+	counted := 0
+	for index := len(history) - 1; index >= 0 && counted < limit; index-- {
+		message := history[index]
+		if !message.CountInContext {
+			continue
+		}
+		if message.Source == "user" && message.ReceivedAt != nil {
+			received = append(received, unixSeconds(*message.ReceivedAt))
+		}
+		counted++
+	}
+	for _, message := range filterExternalMessages(s.runtime, s.runtime.PendingMessages()) {
+		if message.ReceivedAt != nil {
+			received = append(received, unixSeconds(*message.ReceivedAt))
 		}
 	}
-
-	dynamicResult := s.dynamicReplyGate.Evaluate(runtime.PendingMessages(), frequency)
-	return TurnGateResult{
-		Decision: dynamicResult.Decision,
-		Detail:   fmt.Sprintf("频率=%.3f %s", frequency, dynamicResult.Detail),
+	sort.Float64s(received)
+	if len(received) > limit {
+		received = received[len(received)-limit:]
 	}
+	if interval, ok := MeanMessageInterval(received); ok {
+		return &interval
+	}
+	return nil
+}
+
+func (s *MessageTurnScheduler) armSilenceCheck() {
+	s.mu.Lock()
+	s.silenceGeneration++
+	generation := s.silenceGeneration
+	if s.silenceCancel != nil {
+		s.silenceCancel()
+		s.silenceCancel = nil
+	}
+	s.mu.Unlock()
+	runtime := s.runtime
+	lastReceived := runtime.LastMessageReceivedAt()
+	if !runtime.RuntimeRunning() || !runtime.IsGroupSession() || runtime.AgentState() == StateRunning || runtime.FocusModeActive() ||
+		runtime.MessageTurnScheduled() || runtime.IsReplyFrequencySilent() || lastReceived.IsZero() {
+		return
+	}
+	s.mu.Lock()
+	if !s.silenceHandledAt.IsZero() && !lastReceived.After(s.silenceHandledAt) {
+		s.mu.Unlock()
+		return
+	}
+	previous := cloneFloat(s.previousContextInterval)
+	s.mu.Unlock()
+	current := s.contextInterval()
+	interval, ok := PredictMessageInterval(valueOrZero(current), valueOrZero(previous), current != nil, previous != nil)
+	if !ok || interval <= 0 {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if generation != s.silenceGeneration {
+		s.mu.Unlock()
+		cancel()
+		return
+	}
+	s.silenceCancel = cancel
+	s.mu.Unlock()
+	go s.checkSilence(ctx, generation, lastReceived, interval)
+}
+
+func (s *MessageTurnScheduler) checkSilence(ctx context.Context, generation uint64, receivedAt time.Time, interval float64) {
+	deadline := receivedAt.Add(time.Duration(interval * float64(time.Second)))
+	for {
+		delay := deadline.Sub(s.currentTime())
+		if delay < 0 {
+			delay = 0
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		runtime := s.runtime
+		if !runtime.LastMessageReceivedAt().Equal(receivedAt) || runtime.AgentState() == StateRunning ||
+			runtime.FocusModeActive() || runtime.MessageTurnScheduled() || runtime.IsReplyFrequencySilent() {
+			return
+		}
+		if quiet := runtime.MessageQuietRemainingSeconds(); quiet > 0 {
+			deadline = s.currentTime().Add(time.Duration(quiet * float64(time.Second)))
+			continue
+		}
+		frequency := runtime.EffectiveReplyFrequency()
+		now := s.currentTime()
+		s.mu.Lock()
+		if generation != s.silenceGeneration {
+			s.mu.Unlock()
+			return
+		}
+		probability := s.viewFrequency.Probability(frequency)
+		accepted := s.viewFrequency.Decide(frequency, rand.Float64())
+		if accepted {
+			s.silenceHandledAt = receivedAt
+			s.silenceTriggered = true
+			if runtime.AgentState() == StateWait {
+				s.acceptedWaitStartedAt = cloneTimestamp(runtime.PendingWaitStartedAt())
+			}
+			s.silenceCancel = nil
+		}
+		phase := s.viewFrequency.Phase
+		internal := s.viewFrequency.Internal
+		if !accepted {
+			deadline = now.Add(time.Duration(interval * float64(time.Second)))
+		}
+		s.mu.Unlock()
+		zap.L().Debug(runtime.LogPrefix()+" 静默查看判定",
+			zap.Float64("间隔", interval), zap.Float64("概率", probability), zap.Bool("放行", accepted),
+			zap.Float64("内部频率", internal), zap.String("阶段", string(phase)))
+		if accepted {
+			if runtime.AgentState() == StateWait {
+				runtime.CancelWaitTimeout()
+			}
+			runtime.EnqueueMessageTurn()
+			return
+		}
+	}
+}
+
+func (s *MessageTurnScheduler) currentTime() time.Time {
+	s.mu.Lock()
+	now := s.now
+	s.mu.Unlock()
+	if now != nil {
+		return now()
+	}
+	return time.Now()
+}
+
+func filterExternalMessages(runtime RuntimeView, messages []PendingMessage) []PendingMessage {
+	accounts := make(map[string]map[string]struct{})
+	out := make([]PendingMessage, 0, len(messages))
+	for _, message := range messages {
+		set, ok := accounts[message.Platform]
+		if !ok {
+			set = runtime.OnlineBotAccountIDs(message.Platform)
+			accounts[message.Platform] = set
+		}
+		if _, isSelf := set[message.UserID]; !isSelf {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+func equalMessageIDs(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func unixSeconds(value time.Time) float64 { return float64(value.UnixNano()) / 1e9 }
+
+func cloneFloat(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func valueOrZero(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func cloneTimestamp(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

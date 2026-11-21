@@ -2,9 +2,9 @@ package runtime
 
 import (
 	"context"
-	"strconv"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -143,8 +143,8 @@ func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store
 		externalIdentities:   newAgentTTLCache[string, string](externalIdentityCapacity, externalIdentityTTL),
 	}
 	cfg := config.Snapshot()
-	a.groupConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxGroupConcurrency, a.thinkGroup)
-	a.privateConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxPrivateConcurrency, a.thinkPrivate)
+	a.groupConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxGroupConcurrency, a.thinkGroup, a.afterGroupThink)
+	a.privateConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxPrivateConcurrency, a.thinkPrivate, a.afterPrivateThink)
 	a.committer.Store(&committerHolder{instance: policy.InlineCommitter{}})
 	if enabled := strings.TrimSpace(os.Getenv("MAIBOT_MAISAKA_BACKGROUND_LOOP")); enabled != "" {
 		switch strings.ToLower(enabled) {

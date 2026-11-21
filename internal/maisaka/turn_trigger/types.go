@@ -65,13 +65,12 @@ type HistoryMessage struct {
 	CountInContext bool
 }
 
-// SelfMessageSource 自身发言的 source 取值
-const SelfMessageSource = "guided_reply"
-
 // RuntimeView 触发调度所需的 runtime 只读视图与少量动作端口
 type RuntimeView interface {
 	// LogPrefix 日志前缀
 	LogPrefix() string
+	// RuntimeRunning 运行时生命周期是否活跃
+	RuntimeRunning() bool
 	// AgentState 当前内部循环状态
 	AgentState() AgentState
 	// IsGroupSession 是否群聊会话
@@ -94,10 +93,14 @@ type RuntimeView interface {
 	FocusModeActive() bool
 	// ChatHistory 内部聊天历史，按到达顺序
 	ChatHistory() []HistoryMessage
-	// ReplyTiming 空闲退避参数
-	ReplyTiming() IdleBackoffConfig
-	// PlannerMessageSteering 是否启用快速反应模式（wait 期间新消息直接续接）
-	PlannerMessageSteering() bool
+	// MaxContextSize 当前上下文窗口条数
+	MaxContextSize() int
+	// LastMessageReceivedAt 最近一条消息的实际接收时间
+	LastMessageReceivedAt() time.Time
+	// PendingWaitStartedAt 当前 wait 开始时间
+	PendingWaitStartedAt() *time.Time
+	// ConsumeMessageDebounce 清除当前防抖批次
+	ConsumeMessageDebounce()
 	// OnlineBotAccountIDs 平台在线机器人账号 ID 集合，用于过滤自身消息
 	OnlineBotAccountIDs(platform string) map[string]struct{}
 	// CancelWaitTimeout 取消挂起的 wait 超时任务

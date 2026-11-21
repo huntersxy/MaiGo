@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"MaiGo/internal/common/database"
 	"MaiGo/internal/maisaka/turn_trigger"
 
 	"go.uber.org/zap"
@@ -8,7 +9,7 @@ import (
 
 // requestMaisakaPlannerInterrupt 在快速反应模式下用新消息打断正在运行的 Planner
 func (a *Agent) requestMaisakaPlannerInterrupt(session *Session) {
-	if a == nil || session == nil || !a.plannerMessageSteeringEnabled() {
+	if a == nil || session == nil || (session.kind == memory.ConversationKindGroup && !a.plannerMessageSteeringEnabled()) {
 		return
 	}
 	runtime := session.MaisakaRuntime()

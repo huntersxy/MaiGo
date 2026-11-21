@@ -20,21 +20,21 @@ func (a *Agent) onPrivateMessage(msg *onebot.ConversationMessage, mediaRefs []me
 }
 
 func (a *Agent) schedulePrivateThink(targetID int64, receivedAt time.Time) {
-	if a.privateStopped || a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsRunning(targetID) {
+	if a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsBusy(targetID) {
 		return
 	}
 	if sessionID := a.resolveMaiBotSessionID(context.Background(), memory.ConversationKindPrivate, targetID); sessionID != "" &&
 		services.ChatMigrationGateInstance.Blocked(sessionID) {
 		return
 	}
-	quiet := a.messageQuietRemaining(memory.ConversationKindPrivate, targetID, receivedAt)
-	session := a.sessions.get(memory.ConversationKindPrivate, targetID)
-	result := a.evaluatePrivateMessageTurn(targetID, session, session.PendingMessages(), quiet)
-	delay := time.Duration(0)
-	if result.Decision == maisaka.TurnDelay {
-		delay = result.Delay
+	a.armPrivateThinkTimer(targetID, a.messageQuietRemaining(memory.ConversationKindPrivate, targetID, receivedAt))
+}
+
+func (a *Agent) afterPrivateThink(targetID int64) {
+	pending := a.sessions.get(memory.ConversationKindPrivate, targetID).pendingAfterTurn()
+	if hasActionableMessage(pending) {
+		a.schedulePrivateThink(targetID, latestReceivedAt(pending))
 	}
-	a.armPrivateThinkTimer(targetID, delay)
 }
 
 func (a *Agent) flushPrivateThink(targetID int64, expected *pendingThink, generation uint64) {
@@ -42,7 +42,7 @@ func (a *Agent) flushPrivateThink(targetID int64, expected *pendingThink, genera
 	pending := a.pendingPrivateThinks[targetID]
 	// 挂起的思考只能由最新一代定时器触发；进入 running 前同样持有锁，
 	// schedulePrivateThink 会在 running 期间跳过创建挂起项，因此这里无需复查
-	if pending != expected || pending.generation != generation || a.privateStopped || a.stopping.Load() || a.ctx.Err() != nil {
+	if pending != expected || pending.generation != generation || a.privateStopped || a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsBusy(targetID) {
 		a.privateMu.Unlock()
 		return
 	}
@@ -54,11 +54,15 @@ func (a *Agent) flushPrivateThink(targetID int64, expected *pendingThink, genera
 	if len(pendingMsgs) == 0 || !hasActionableMessage(pendingMsgs) {
 		return
 	}
-	result := a.evaluatePrivateMessageTurn(targetID, session, pendingMsgs, 0)
+	quiet := a.messageQuietRemaining(memory.ConversationKindPrivate, targetID, latestReceivedAt(pendingMsgs))
+	result := a.evaluatePrivateMessageTurn(targetID, quiet)
 	a.applyPrivateTurnDecision(targetID, result)
 }
 
 func (a *Agent) thinkPrivate(targetID int64) {
+	session := a.sessions.get(memory.ConversationKindPrivate, targetID)
+	pending := session.PendingMessages()
+	session.markTurnInputs(pending)
 	a.emitMonitorThinkStart(memory.ConversationKindPrivate, targetID)
 	defer a.emitMonitorThinkEnd(memory.ConversationKindPrivate, targetID)
 
@@ -75,23 +79,16 @@ func (a *Agent) thinkPrivate(targetID int64) {
 	if !a.conversationAllowed(memory.ConversationKindPrivate, targetID) {
 		return
 	}
-	session := a.sessions.get(memory.ConversationKindPrivate, targetID)
-	pending := session.PendingMessages()
 	if len(pending) == 0 || !hasActionableMessage(pending) {
 		return
 	}
+	a.completeConversationWait(memory.ConversationKindPrivate, targetID, 0, sessionHasActionableUserSinceWait(session))
 	a.consumeMessageDebounce(memory.ConversationKindPrivate, targetID)
 	ctx := withRunState(a.ctx, state)
 	ctx = withGeneration(ctx, generation)
 	ctx = a.buildConversationToolContext(ctx, memory.ConversationKindPrivate, targetID, session)
 	a.restoreFocusCheckpoint(ctx, session)
-	if runtime := a.attachMaisakaRuntime(memory.ConversationKindPrivate, targetID, session); runtime != nil {
-		if runtime.HasPendingWaitToolCall() {
-			if toolCallID, _, _, _, err := runtime.ConsumePendingWaitState(); err == nil {
-				zap.L().Debug("私聊思考消费遗留 wait 状态", zap.Int64("target_id", targetID), zap.String("tool_call_id", toolCallID))
-			}
-		}
-		runtime.EnterRunningState()
+	if a.attachMaisakaRuntime(memory.ConversationKindPrivate, targetID, session) != nil {
 		defer a.saveFocusCheckpoint(ctx, session)
 	}
 	tc := tools.GetToolContext(ctx)

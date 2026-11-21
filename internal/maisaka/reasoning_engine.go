@@ -92,9 +92,19 @@ func (e *ReasoningEngine) LastReasoningContent() string { return e.lastReasoning
 // ActiveLogicalTurnID 返回当前完整模型—工具—模型循环的逻辑轮次 ID
 func (e *ReasoningEngine) ActiveLogicalTurnID() string { return e.activeLogicalTurnID }
 
+type TurnInputs struct {
+	Pending func() bool
+	Collect func() []ContextMessage
+}
+
+type turnInputsKey struct{}
+
 // RunTurnOnce 以显式快照执行一次完整内部思考轮次，供宿主主链路按批次驱动
-func (e *ReasoningEngine) RunTurnOnce(ctx context.Context, trigger *ContextMessage, cached []ContextMessage, logicalTurnID string) error {
+func (e *ReasoningEngine) RunTurnOnce(ctx context.Context, trigger *ContextMessage, cached []ContextMessage, logicalTurnID string, inputs ...TurnInputs) error {
 	runtime := e.runtime
+	if len(inputs) > 0 {
+		ctx = context.WithValue(ctx, turnInputsKey{}, inputs[0])
+	}
 	if trigger == nil && len(cached) > 0 {
 		last := cached[len(cached)-1]
 		trigger = &last
@@ -167,6 +177,7 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 	triggerMessage := startContext.TriggerMessage
 
 	runtime.setRunning(true)
+	runtime.EnterRunningState()
 	passiveReplyer := runtime.opts.PassiveReplyer
 	e.turnPassiveReplyer = &passiveReplyer
 	if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok {
@@ -183,9 +194,10 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 		}
 		if runtime.AgentState() == turn_trigger.StateWait {
 			runtime.UpdateStageStatus("等待", "等待后继续思考")
-			return
+		} else {
+			runtime.UpdateStageStatus("空闲", "本轮处理结束")
 		}
-		runtime.UpdateStageStatus("空闲", "本轮处理结束")
+		runtime.scheduler.FinishPlannerTurn()
 	}()
 
 	e.activeLogicalTurnID = startContext.LogicalTurnID
@@ -194,6 +206,10 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 	}
 	if reason := runtime.ConsumeForcedTurnReason(); reason != "" {
 		zap.L().Info(runtime.logPrefix + " " + reason)
+	}
+	runtime.scheduler.StartPlannerTurn()
+	if runtime.opts.TurnStarted != nil {
+		runtime.opts.TurnStarted()
 	}
 
 	for roundIndex := 0; roundIndex < runtime.maxInternalRounds; roundIndex++ {
@@ -250,7 +266,7 @@ func (e *ReasoningEngine) runCycleRound(ctx context.Context, cycleDetail CycleDe
 			state.Response = interrupted
 			state.PlannerExtraLines = extraLines
 			if len(retryMessages) == 0 {
-				return true, nil, nil
+				return true, nil, err
 			}
 			return false, retryMessages, nil
 		}
@@ -265,6 +281,7 @@ func (e *ReasoningEngine) runCycleRound(ctx context.Context, cycleDetail CycleDe
 		return true, nil, err
 	}
 	state.Response = response
+	state.HasResponse = true
 	return e.handlePlannerResponseActions(ctx, response, cycleDetail, state), nil, nil
 }
 
@@ -314,7 +331,7 @@ func (e *ReasoningEngine) handlePlannerInterrupt(ctx context.Context, err error,
 	zap.L().Info(fmt.Sprintf("%s Planner 打断成功: 回合=%d 开始时间=%.3f 打断时间=%.3f 耗时=%.3f 秒",
 		runtime.logPrefix, roundIndex+1,
 		float64(startedAt.UnixNano())/1e9, float64(interruptedAt.UnixNano())/1e9, elapsed))
-	if roundIndex+1 >= runtime.maxInternalRounds || !runtime.HasPendingMessages() {
+	if roundIndex+1 >= runtime.maxInternalRounds || !e.hasPendingInputs(ctx) {
 		return response, extraLines, nil
 	}
 	retryMessages := e.ingestPendingMessages(ctx)
@@ -346,18 +363,28 @@ func (e *ReasoningEngine) finalizeCycle(ctx context.Context, cycleDetail CycleDe
 		end = CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "Planner本轮思考结束。"}
 	}
 	state.CycleEnd = end
+	if state.HasResponse && !state.PlannerInterrupted && end.Reason != "cycle_error" && end.Reason != "cancelled" {
+		runtime.scheduler.RecordPlannerRun()
+		if runtime.opts.PlannerCompleted != nil {
+			runtime.opts.PlannerCompleted()
+		}
+	}
 	runtime.emitPlannerFinalized(cycleDetail, state)
-	runtime.scheduler.IdleBackoff().RecordCycleResult(end.Reason)
 }
 
 // PrepareTurnStartContext 消费触发信号并准备本轮初始消息与触发消息
 func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued TurnTriggerSource) TurnStartContext {
 	runtime := e.runtime
 	messageTriggered, timeoutTriggered, proactiveTriggered := e.drainReadyTurnTriggers(queued)
+	silenceTriggered := runtime.scheduler.ConsumeSilenceTrigger()
+	acceptedWaitStartedAt := runtime.scheduler.ConsumeAcceptedWaitStartedAt()
+	pendingWaitStartedAt := runtime.PendingWaitStartedAt()
+	acceptedWaitMessage := messageTriggered && runtime.HasPendingMessages() && acceptedWaitStartedAt != nil &&
+		pendingWaitStartedAt != nil && acceptedWaitStartedAt.Equal(*pendingWaitStartedAt)
 	silent := runtime.IsReplyFrequencySilent()
 
 	if runtime.AgentState() == turn_trigger.StateWait &&
-		!(timeoutTriggered || proactiveTriggered) &&
+		!(timeoutTriggered || proactiveTriggered || silenceTriggered || acceptedWaitMessage) &&
 		!silent &&
 		!(runtime.PlannerMessageSteering() && messageTriggered && runtime.HasPendingMessages()) {
 		runtime.MarkMessageTurnUnscheduled()
@@ -548,11 +575,14 @@ func (e *ReasoningEngine) handleSilentTurn(ctx context.Context, startContext Tur
 
 func (e *ReasoningEngine) ingestPendingMessages(ctx context.Context) []ContextMessage {
 	runtime := e.runtime
-	if !runtime.HasPendingMessages() {
+	if !e.hasPendingInputs(ctx) {
 		return nil
 	}
 	runtime.WaitForMessageQuietPeriod(ctx)
 	cached := runtime.CollectPendingMessages()
+	if inputs, ok := ctx.Value(turnInputsKey{}).(TurnInputs); ok && inputs.Collect != nil && ctx.Err() == nil {
+		cached = append(cached, inputs.Collect()...)
+	}
 	if len(cached) == 0 {
 		return nil
 	}
@@ -561,12 +591,19 @@ func (e *ReasoningEngine) ingestPendingMessages(ctx context.Context) []ContextMe
 	return cached
 }
 
+func (e *ReasoningEngine) hasPendingInputs(ctx context.Context) bool {
+	inputs, ok := ctx.Value(turnInputsKey{}).(TurnInputs)
+	return e.runtime.HasPendingMessages() || (ok && inputs.Pending != nil && inputs.Pending())
+}
+
 func (e *ReasoningEngine) ingestMessages(messages []ContextMessage) {
 	runtime := e.runtime
 	for _, message := range messages {
 		history := message
-		history.CountInContext = true
-		history.Source = firstNonEmpty(history.Source, SourceUser)
+		if history.Role == RoleUser && (history.Source == "" || history.Source == SourceUser) {
+			history.CountInContext = true
+			history.Source = SourceUser
+		}
 		runtime.AppendHistory(history)
 	}
 }
@@ -612,7 +649,7 @@ func (e *ReasoningEngine) runPlannerRequest(ctx context.Context, trigger *Contex
 		defer func() { service.LogicalTurnID = "" }()
 	}
 	// 覆盖整理上下文到绑定中断标记之间收到消息的窗口
-	if runtime.PlannerMessageSteering() && runtime.HasPendingMessages() {
+	if runtime.PlannerMessageSteering() && e.hasPendingInputs(ctx) {
 		controller.Request()
 	}
 	return loop.ChatLoopStep(ctx, runtime.History(), "planner", runtime.MaxContextSize(), tools, "", finalReminder, injected, nil, deferredNotice)

@@ -15,7 +15,7 @@ func (a *Agent) configureMaisakaChatLoop(loop *maisaka.ChatLoopService, isGroup 
 		return
 	}
 	loop.Locale = prompt.InitialLocale()
-	loop.PlannerMessageSteering = a.plannerMessageSteeringEnabled()
+	loop.PlannerMessageSteering = !isGroup || a.plannerMessageSteeringEnabled()
 	loop.MaxImageSide = replyer.ContextImageMaxSide("")
 	bot := a.instanceBotConfig()
 	if bot == nil {

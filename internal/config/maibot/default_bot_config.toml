@@ -65,10 +65,6 @@ use_token_limit = false
 max_context_tokens = 128000
 private_use_token_limit = false
 private_max_context_tokens = 128000
-use_token_limit = false
-max_context_tokens = 128000
-private_use_token_limit = false
-private_max_context_tokens = 128000
 
 [chat.reply_timing]
 message_debounce_mode = "natural"
@@ -79,10 +75,6 @@ private_reply_paused = false
 private_reply_pause_rules = []
 mentioned_bot_reply = true
 inevitable_at_reply = true
-no_action_backoff_base_seconds = 15
-no_action_backoff_cap_seconds = 300
-no_action_backoff_start_count = 2
-no_action_backoff_bypass_pending_count = 6
 
 [chat.reply_timing.talk_rule_groups]
 active_group = "默认"

@@ -20,12 +20,13 @@ type ThinkConcurrency struct {
 	wg             sync.WaitGroup
 
 	handler func(targetID int64)
+	onIdle  func(targetID int64)
 }
 
 // NewThinkConcurrency 创建思考并发管理器
-func NewThinkConcurrency(parent context.Context, max int, h func(targetID int64)) *ThinkConcurrency {
+func NewThinkConcurrency(parent context.Context, max int, h func(targetID int64), onIdle ...func(int64)) *ThinkConcurrency {
 	ctx, cancel := context.WithCancel(parent)
-	return &ThinkConcurrency{
+	concurrency := &ThinkConcurrency{
 		ctx:            ctx,
 		cancel:         cancel,
 		maxConcurrency: max,
@@ -33,6 +34,16 @@ func NewThinkConcurrency(parent context.Context, max int, h func(targetID int64)
 		running:        make(map[int64]bool),
 		handler:        h,
 	}
+	if len(onIdle) > 0 {
+		concurrency.onIdle = onIdle[0]
+	}
+	return concurrency
+}
+
+func (m *ThinkConcurrency) IsBusy(targetID int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[targetID] || m.queued[targetID]
 }
 
 // IsRunning 判断目标是否正在执行
@@ -92,13 +103,16 @@ func (m *ThinkConcurrency) startLocked(targetID int64) {
 
 func (m *ThinkConcurrency) finish(targetID int64) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	delete(m.running, targetID)
 	m.currentRunning--
 	if m.currentRunning < 0 {
 		m.currentRunning = 0
 	}
 	m.drainLocked()
+	m.mu.Unlock()
+	if m.onIdle != nil && m.ctx.Err() == nil {
+		m.onIdle(targetID)
+	}
 }
 
 func (m *ThinkConcurrency) drainLocked() {

@@ -289,6 +289,7 @@ func (r *Runtime) Stop() {
 	r.mu.Lock()
 	r.running = false
 	r.mu.Unlock()
+	r.scheduler.Close()
 	r.cancel()
 	if r.subagentTasks != nil {
 		r.subagentTasks.CancelAll()
