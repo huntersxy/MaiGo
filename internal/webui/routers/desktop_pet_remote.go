@@ -280,10 +280,11 @@ func (d Deps) handleDesktopPetRemoteChat(w http.ResponseWriter, r *http.Request)
 	text, _ := payload["text"].(string)
 	images := desktopPetChatImages(payload)
 	result, err := remoteRecentExecute(peer.ClientID(), "chat", requestID, payload, func() (any, error) {
-		if err := service.RemoteChat(r.Context(), text, images); err != nil {
+		messageID, err := service.RemoteChat(r.Context(), peer, text, images)
+		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"accepted": true, "request_id": requestID}, nil
+		return map[string]any{"accepted": true, "request_id": requestID, "message_id": messageID}, nil
 	})
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]any{"detail": err.Error()})

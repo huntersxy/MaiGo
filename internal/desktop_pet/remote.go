@@ -213,6 +213,13 @@ func (s *Service) ReceiveRemoteEvent(ctx context.Context, peer *RemotePeer, even
 	if current != peer || closing {
 		return errors.New("远端桌宠连接已失效")
 	}
+	if asString(event["type"]) == "history" {
+		if !ready {
+			return errIPCNotReady
+		}
+		go s.publishHistory(ctx, event, peer.Send)
+		return nil
+	}
 	if asString(event["type"]) == "ready" {
 		if ready {
 			return errors.New("桌宠不能重复上报就绪")
@@ -225,20 +232,19 @@ func (s *Service) ReceiveRemoteEvent(ctx context.Context, peer *RemotePeer, even
 }
 
 // RemoteChat 中继远端桌宠的图文消息
-func (s *Service) RemoteChat(ctx context.Context, text string, images []ChatRequestImage) error {
+func (s *Service) RemoteChat(ctx context.Context, peer *RemotePeer, text string, images []ChatRequestImage) (string, error) {
 	s.mu.RLock()
 	relay := s.chatRelay
 	current := s.remote
 	ready := s.ready
 	s.mu.RUnlock()
-	if current == nil || !ready {
-		return errors.New("远端桌宠连接已断开或尚未就绪")
+	if current == nil || current != peer || !ready {
+		return "", errors.New("远端桌宠连接已断开或尚未就绪")
 	}
 	if relay == nil {
-		return errors.New("桌宠聊天中继尚未就绪")
+		return "", errors.New("桌宠聊天中继尚未就绪")
 	}
-	_, err := relay(ctx, "builtin.desktop_pet", text, images)
-	return err
+	return relay(ctx, "builtin.desktop_pet", text, images)
 }
 
 // RemoteTodo 执行远端待办请求

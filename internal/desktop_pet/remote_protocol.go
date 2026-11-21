@@ -155,6 +155,15 @@ func ValidateRemoteEvent(event map[string]any) error {
 			return err
 		}
 		return remoteTextField(event, "request_id", 64, false)
+	case "history":
+		if err := remoteTextField(event, "request_id", 64, false); err != nil {
+			return err
+		}
+		if _, exists := event["cursors"]; !exists {
+			return fmt.Errorf("历史记录游标格式无效")
+		}
+		_, err := historyCursors(event["cursors"])
+		return err
 	case "explore":
 		return remoteTextField(event, "goal", 2000, false)
 	default:
