@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -53,8 +54,8 @@ func displayName(user map[string]any) string {
 	if user == nil {
 		return ""
 	}
-	if title := asString(user["title"]); title != "" {
-		return title
+	if title, exists := user["title"]; exists {
+		return asString(title)
 	}
 	parts := make([]string, 0, 2)
 	if v := asString(user["first_name"]); v != "" {
@@ -70,7 +71,11 @@ func displayName(user map[string]any) string {
 }
 
 func utf16Length(text string) int {
-	return len(utf16.Encode([]rune(text)))
+	n := 0
+	for _, r := range text {
+		n += utf16.RuneLen(r)
+	}
+	return n
 }
 
 func utf16Index(text string, offset int) (int, error) {
@@ -100,18 +105,35 @@ func decodeText(text string, entities []map[string]any, botID, botUsername strin
 	cursor := 0
 	mentioned := false
 	runes := []rune(text)
+	type indexedEntity struct {
+		data   map[string]any
+		offset int
+	}
+	ordered := make([]indexedEntity, 0, len(entities))
 	for _, entity := range entities {
+		offset, ok := asInt64(entity["offset"])
+		if !ok || offset < 0 || offset > int64(len(text)) {
+			return nil, false, fmt.Errorf("Telegram entity 偏移无效")
+		}
+		ordered = append(ordered, indexedEntity{data: entity, offset: int(offset)})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].offset < ordered[j].offset })
+	for _, item := range ordered {
+		entity := item.data
 		kind := asString(entity["type"])
 		if kind != "mention" && kind != "text_mention" {
 			continue
 		}
-		offset, _ := asInt(entity["offset"])
-		length, _ := asInt(entity["length"])
+		offset := item.offset
+		length, ok := asInt64(entity["length"])
+		if !ok || length < 0 || length > int64(len(text)-offset) {
+			return nil, false, fmt.Errorf("Telegram entity 长度无效")
+		}
 		start, err := utf16Index(text, offset)
 		if err != nil {
 			return nil, false, err
 		}
-		end, err := utf16Index(text, offset+length)
+		end, err := utf16Index(text, offset+int(length))
 		if err != nil {
 			return nil, false, err
 		}
@@ -165,13 +187,17 @@ func BinarySegment(kind string, binary []byte, label string) (map[string]any, er
 	}, nil
 }
 
-func topicGroup(payload map[string]any, topicName string) map[string]string {
+func topicGroup(payload map[string]any, topicName string) (map[string]any, error) {
 	chat, _ := asMap(payload["chat"])
 	groupID := asString(chat["id"])
 	name := asString(chat["title"])
 	if asBool(payload["is_topic_message"]) {
-		threadID, _ := asInt64(payload["message_thread_id"])
-		groupID = fmt.Sprintf("%s:%d", groupID, threadID)
+		threadID, ok := asInt64(payload["message_thread_id"])
+		chatID, chatOK := asInt64(chat["id"])
+		if !ok || !chatOK || chatID >= 0 || threadID <= 0 {
+			return nil, fmt.Errorf("Telegram 话题目标必须为负群 ID 和正话题 ID")
+		}
+		groupID = ExternalID(chatID, threadID)
 		if topicName == "" {
 			topicName = fmt.Sprintf("话题 %d", threadID)
 		}
@@ -179,7 +205,7 @@ func topicGroup(payload map[string]any, topicName string) map[string]string {
 	} else if asBool(chat["is_forum"]) {
 		name = name + " / General"
 	}
-	return map[string]string{"group_id": groupID, "group_name": name}
+	return map[string]any{"group_id": groupID, "group_name": name}, nil
 }
 
 // DecodeMessage 对齐 codec.decode_message；media 已准备好的段
@@ -193,7 +219,7 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 		return nil, nil
 	}
 	var sender map[string]any
-	if sc, ok := asMap(payload["sender_chat"]); ok {
+	if sc, ok := asMap(payload["sender_chat"]); ok && len(sc) > 0 {
 		sender = sc
 	} else if from, ok := asMap(payload["from"]); ok {
 		sender = from
@@ -201,18 +227,19 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 		return nil, fmt.Errorf("Telegram 消息缺少发送者身份")
 	}
 	if asString(sender["id"]) == botID {
-		if _, hasSenderChat := asMap(payload["sender_chat"]); !hasSenderChat {
+		if senderChat, _ := asMap(payload["sender_chat"]); len(senderChat) == 0 {
 			return nil, nil
 		}
 	}
-	text := asString(payload["text"])
-	if text == "" {
-		text = asString(payload["caption"])
+	text, err := messageText(payload)
+	if err != nil {
+		return nil, err
 	}
-	entities := entityList(payload["entities"])
-	if len(entities) == 0 {
-		entities = entityList(payload["caption_entities"])
+	entityValue, exists := payload["entities"]
+	if !exists {
+		entityValue = payload["caption_entities"]
 	}
+	entities := entityList(entityValue)
 	body, mentioned, err := decodeText(text, entities, botID, botUsername)
 	if err != nil {
 		return nil, err
@@ -221,9 +248,13 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 	if len(body) == 0 {
 		return nil, nil
 	}
-	chatID := asString(chat["id"])
-	msgIDNum, _ := asInt64(payload["message_id"])
-	messageID := ExternalID(mustParseInt64(chatID), msgIDNum)
+	chatIDNum, validChatID := asInt64(chat["id"])
+	msgIDNum, validMsgID := asInt64(payload["message_id"])
+	if !validChatID || !validMsgID || msgIDNum < 0 {
+		return nil, fmt.Errorf("Telegram 聊天或消息 ID 格式无效")
+	}
+	chatID := strconv.FormatInt(chatIDNum, 10)
+	messageID := ExternalID(chatIDNum, msgIDNum)
 	additional := map[string]any{
 		"telegram_chat_id":    chatID,
 		"telegram_message_id": msgIDNum,
@@ -259,8 +290,15 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 	}
 	var replyTo any
 	if reply, ok := asMap(payload["reply_to_message"]); ok {
-		replyMsgID, _ := asInt64(reply["message_id"])
-		replyTo = ExternalID(mustParseInt64(chatID), replyMsgID)
+		replyMsgID, ok := asInt64(reply["message_id"])
+		if !ok || replyMsgID < 0 {
+			return nil, fmt.Errorf("Telegram 引用消息 ID 格式无效")
+		}
+		replyTo = ExternalID(chatIDNum, replyMsgID)
+		replyText, err := messageText(reply)
+		if err != nil {
+			return nil, err
+		}
 		var author map[string]any
 		if a, ok := asMap(reply["sender_chat"]); ok {
 			author = a
@@ -269,7 +307,7 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 		}
 		replyData := map[string]any{
 			"target_message_id":              replyTo,
-			"target_message_content":         firstNonEmpty(asString(reply["text"]), asString(reply["caption"])),
+			"target_message_content":         replyText,
 			"target_message_sender_id":       nil,
 			"target_message_sender_nickname": nil,
 		}
@@ -290,7 +328,11 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 		"additional_config": additional,
 	}
 	if chatType != "private" {
-		info["group_info"] = topicGroup(payload, topicName)
+		group, err := topicGroup(payload, topicName)
+		if err != nil {
+			return nil, err
+		}
+		info["group_info"] = group
 	}
 	isPicture := false
 	isEmoji := false
@@ -305,8 +347,8 @@ func DecodeMessage(payload map[string]any, botID, botUsername string, media []ma
 	isCommand := false
 	for _, entity := range entities {
 		if asString(entity["type"]) == "bot_command" {
-			offset, _ := asInt(entity["offset"])
-			if offset == 0 {
+			offset, ok := asInt64(entity["offset"])
+			if ok && offset == 0 {
 				isCommand = true
 				break
 			}
@@ -349,18 +391,19 @@ func entityList(v any) []map[string]any {
 	}
 }
 
-func mustParseInt64(s string) int64 {
-	n, _ := strconv.ParseInt(s, 10, 64)
-	return n
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
+func messageText(message map[string]any) (string, error) {
+	value, exists := message["text"]
+	if !exists {
+		value, exists = message["caption"]
 	}
-	return ""
+	if !exists {
+		return "", nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("Telegram 文本或说明必须为字符串")
+	}
+	return text, nil
 }
 
 func sha256Hex(binary []byte) string {

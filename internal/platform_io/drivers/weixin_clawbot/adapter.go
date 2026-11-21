@@ -15,6 +15,7 @@ import (
 type Orchestrator struct {
 	platformio.BaseAdapter
 	mu        sync.Mutex
+	lifecycle sync.Mutex
 	desc      platformio.DriverDescriptor
 	settings  Settings
 	hostHooks *HostHooks
@@ -60,8 +61,18 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	if o == nil {
 		return fmt.Errorf("weixin orchestrator 为空")
 	}
+	o.lifecycle.Lock()
+	defer o.lifecycle.Unlock()
 	o.mu.Lock()
-	defer o.mu.Unlock()
+	var connections []*AccountConnection
+	defer func() {
+		o.mu.Unlock()
+		if o.started {
+			for _, conn := range connections {
+				conn.Start(false)
+			}
+		}
+	}()
 	if o.started {
 		return nil
 	}
@@ -71,7 +82,9 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 	dataDir := resolveDataDir(o.hostHooks)
 	for slot := 0; slot < MaxAccounts; slot++ {
 		store := NewStore(filepath.Join(dataDir, AccountFileName(slot)))
-		_ = store.Load()
+		if err := store.Load(); err != nil {
+			return err
+		}
 		conn := NewAccountConnection(o, slot, store)
 		adapter := NewSlotAdapter(o, slot, conn)
 		o.slots[slot] = conn
@@ -86,10 +99,7 @@ func (o *Orchestrator) Start(ctx context.Context) error {
 				_ = o.hostHooks.ReportGatewayState(ctx, GatewayName(slot), false, st.AccountID, st.Remark)
 			}
 		}
-		if store.HasIdentity() {
-			o.dialed = true
-			conn.Start(false)
-		}
+		connections = append(connections, conn)
 	}
 	if o.hostHooks != nil && o.hostHooks.APIs != nil {
 		RegisterLocalAPIs(o.hostHooks.APIs, o)
@@ -105,20 +115,27 @@ func (o *Orchestrator) Stop(ctx context.Context) error {
 	if o == nil {
 		return nil
 	}
+	o.lifecycle.Lock()
+	defer o.lifecycle.Unlock()
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	if o.cancel != nil {
 		o.cancel()
 		o.cancel = nil
 	}
+	connections := make([]*AccountConnection, 0, len(o.slots))
 	for _, conn := range o.slots {
-		_ = conn.Stop(ctx)
+		connections = append(connections, conn)
+	}
+	o.started, o.dialed = false, false
+	o.mu.Unlock()
+	for _, conn := range connections {
+		if err := conn.Stop(ctx); err != nil {
+			return err
+		}
 	}
 	if o.hostHooks != nil && o.hostHooks.APIs != nil {
 		o.hostHooks.APIs.RemoveAPIsByPlugin(PluginID)
 	}
-	o.started = false
-	o.dialed = false
 	return nil
 }
 

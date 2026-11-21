@@ -27,6 +27,7 @@ type HostHooks struct {
 	ReportGatewayState func(ctx context.Context, state *RuntimeState) error
 	RegisterDriver     func(ctx context.Context, adapter platformio.Adapter) error
 	DataDir            func() string
+	ResolveFile        platformio.PluginFileResolver
 }
 
 func driverID() string {
@@ -42,9 +43,9 @@ func resolveDataDir(hooks *HostHooks) string {
 	return filepath.Join("data", "plugins", PluginID)
 }
 
-func deliverInbound(ctx context.Context, sink InboundSink, accountID string, message map[string]any) error {
+func deliverInbound(ctx context.Context, sink InboundSink, accountID string, message map[string]any) (bool, error) {
 	if sink == nil {
-		return fmt.Errorf("入站端口未接线")
+		return false, fmt.Errorf("入站端口未接线")
 	}
 	request := capabilities.PluginGatewayInboundRequest{
 		PluginID:          PluginID,
@@ -56,6 +57,6 @@ func deliverInbound(ctx context.Context, sink InboundSink, accountID string, mes
 		ExternalMessageID: asString(message["message_id"]),
 		DedupeKey:         asString(message["message_id"]),
 	}
-	_, _, err := sink.ReceiveGatewayMessage(ctx, request, message)
-	return err
+	accepted, _, err := sink.ReceiveGatewayMessage(ctx, request, message)
+	return accepted, err
 }

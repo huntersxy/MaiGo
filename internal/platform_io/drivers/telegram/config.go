@@ -1,9 +1,12 @@
 package telegram
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"MaiGo/internal/platform_io"
 )
 
 const (
@@ -89,39 +92,18 @@ func SettingsToMap(s Settings) map[string]any {
 
 // ParseSettings 从配置 map 解析；缺键走默认
 func ParseSettings(config map[string]any) (Settings, error) {
-	settings := DefaultSettings()
-	if config == nil {
-		return settings, nil
+	normalized, err := platformio.NormalizeNativeConfig(config, ConfigSchemaMap())
+	if err != nil {
+		return Settings{}, err
 	}
-	if plugin, ok := asMap(config["plugin"]); ok {
-		if v, ok := plugin["enabled"]; ok {
-			settings.Plugin.Enabled = asBool(v)
-		}
-		if v := strings.TrimSpace(asString(plugin["config_version"])); v != "" {
-			settings.Plugin.ConfigVersion = v
-		}
-	}
-	if tg, ok := asMap(config["telegram"]); ok {
-		settings.Telegram.BotToken = strings.TrimSpace(asString(tg["bot_token"]))
-		if v := strings.TrimSpace(asString(tg["api_base_url"])); v != "" {
-			settings.Telegram.APIBaseURL = strings.TrimRight(v, "/")
-		}
-		settings.Telegram.ProxyURL = strings.TrimSpace(asString(tg["proxy_url"]))
-		if n, ok := asInt(tg["poll_timeout_sec"]); ok {
-			settings.Telegram.PollTimeoutSec = clampInt(n, 1, 50, DefaultPollTimeoutSec)
-		}
-		if f, ok := asFloat(tg["reconnect_delay_sec"]); ok {
-			settings.Telegram.ReconnectDelaySec = clampFloat(f, 1, 300, DefaultReconnectSec)
-		}
-		if n, ok := asInt(tg["max_download_mb"]); ok {
-			settings.Telegram.MaxDownloadMB = clampInt(n, 1, 50, DefaultMaxDownloadMB)
-		}
-		if n, ok := asInt(tg["media_timeout_sec"]); ok {
-			settings.Telegram.MediaTimeoutSec = clampInt(n, 10, 300, DefaultMediaTimeoutSec)
-		}
-	}
-	if settings.Plugin.ConfigVersion == "" {
-		settings.Plugin.ConfigVersion = SupportedConfigVersion
+	var settings Settings
+	plugin := normalized["plugin"]
+	settings.Plugin = PluginOptions{Enabled: plugin["enabled"].(bool), ConfigVersion: plugin["config_version"].(string)}
+	tg := normalized["telegram"]
+	settings.Telegram = TelegramOptions{
+		BotToken: tg["bot_token"].(string), APIBaseURL: tg["api_base_url"].(string), ProxyURL: tg["proxy_url"].(string),
+		PollTimeoutSec: tg["poll_timeout_sec"].(int), ReconnectDelaySec: tg["reconnect_delay_sec"].(float64),
+		MaxDownloadMB: tg["max_download_mb"].(int), MediaTimeoutSec: tg["media_timeout_sec"].(int),
 	}
 	return settings, nil
 }
@@ -153,20 +135,9 @@ func asString(v any) string {
 	}
 }
 
-func asBool(v any) bool {
-	switch typed := v.(type) {
-	case bool:
-		return typed
-	case string:
-		switch strings.ToLower(strings.TrimSpace(typed)) {
-		case "true", "1", "yes", "on", "enabled":
-			return true
-		default:
-			return false
-		}
-	default:
-		return false
-	}
+func asBool(value any) bool {
+	b, _ := value.(bool)
+	return b
 }
 
 func asInt(v any) (int, bool) {
@@ -174,45 +145,17 @@ func asInt(v any) (int, bool) {
 	case int:
 		return typed, true
 	case int64:
-		return int(typed), true
+		return int(typed), int64(int(typed)) == typed
 	case float64:
-		return int(typed), true
+		n := int(typed)
+		return n, float64(n) == typed
+	case json.Number:
+		n, err := strconv.Atoi(string(typed))
+		return n, err == nil
 	case string:
 		n, err := strconv.Atoi(strings.TrimSpace(typed))
 		return n, err == nil
 	default:
 		return 0, false
 	}
-}
-
-func asFloat(v any) (float64, bool) {
-	switch typed := v.(type) {
-	case float64:
-		return typed, true
-	case float32:
-		return float64(typed), true
-	case int:
-		return float64(typed), true
-	case int64:
-		return float64(typed), true
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		return f, err == nil
-	default:
-		return 0, false
-	}
-}
-
-func clampInt(v, lo, hi, def int) int {
-	if v < lo || v > hi {
-		return def
-	}
-	return v
-}
-
-func clampFloat(v, lo, hi, def float64) float64 {
-	if v < lo || v > hi {
-		return def
-	}
-	return v
 }

@@ -3,9 +3,11 @@ package qq_official
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+	"unicode"
+
+	memutils "MaiGo/internal/A_memorix/core/utils"
 )
 
 const (
@@ -33,8 +35,12 @@ func isGroupEvent(event string) bool {
 	return event == groupAtEvent || event == groupMessageEvent
 }
 
-// DecodeMessage 对齐 codec.decode_message（P0：文本；附件以标签降级）
+// DecodeMessage 将 QQ 官方事件转换为网关消息。
 func DecodeMessage(event string, payload map[string]any, accountID, botName, unifiedAccountID, groupName string, attachmentSegments []map[string]any, attachmentLabels []string) (map[string]any, string, string, error) {
+	return decodeMessage(event, payload, accountID, botName, unifiedAccountID, groupName, attachmentSegments, attachmentLabels, idMapping{}, false, false)
+}
+
+func decodeMessage(event string, payload map[string]any, accountID, botName, unifiedAccountID, groupName string, attachmentSegments []map[string]any, attachmentLabels []string, mapping idMapping, hasPicture, hasEmoji bool) (map[string]any, string, string, error) {
 	if !isSupportedEvent(event) {
 		return nil, "", "", fmt.Errorf("不支持的事件类型: %s", event)
 	}
@@ -71,11 +77,15 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 	additional := map[string]any{}
 	if isGroup {
 		additional["qq_official_group_openid"] = groupID
-		additional["platform_io_target_group_id"] = groupID
+		additional["platform_io_target_group_id"] = firstNonEmpty(mapping.Group[groupID], groupID)
 	} else {
-		additional["platform_io_target_user_id"] = userID
+		additional["platform_io_target_user_id"] = firstNonEmpty(mapping.User[userID], userID)
 	}
 	additional["qq_official_user_openid"] = userID
+	userID = firstNonEmpty(mapping.User[userID], userID)
+	if isGroup {
+		groupID = firstNonEmpty(mapping.Group[groupID], groupID)
+	}
 	msgIdx, refMsgIdx := extractMessageSceneFields(payload)
 	if msgIdx != "" {
 		additional["qq_official_msg_idx"] = msgIdx
@@ -86,7 +96,6 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 
 	content := normalizeContent(extractContent(payload))
 	segments := append([]map[string]any(nil), attachmentSegments...)
-	var hasEmoji, hasPicture bool
 	for _, segment := range segments {
 		switch segment["type"] {
 		case "emoji":
@@ -106,7 +115,7 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 		}
 	}
 	isAt := isBotMentioned(event, payload, content, accountID)
-	content, bodySegments, bodyPlain := rewriteMentionTokens(content, accountID, botName, payload, unifiedAccountID)
+	content, bodySegments, bodyPlain := rewriteMentionTokens(content, accountID, botName, payload, unifiedAccountID, mapping.User)
 	if content == "" && len(segments) == 0 && len(bodySegments) == 0 {
 		return nil, "", "", fmt.Errorf("消息不包含文本或可处理的附件")
 	}
@@ -138,29 +147,24 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 		targetID = groupID
 		messageInfo["group_info"] = map[string]any{
 			"group_id":   groupID,
-			"group_name": strings.TrimSpace(groupName),
+			"group_name": firstNonEmpty(groupName, asString(payload["group_name"])),
 		}
 	}
 	rawMessage := append([]map[string]any{}, bodySegments...)
-	if content != "" {
-		rawMessage = append(rawMessage, map[string]any{"type": "text", "data": content})
-	}
 	rawMessage = append(rawMessage, segments...)
 	plainParts := make([]string, 0, 1+len(labels))
 	if bodyPlain != "" {
 		plainParts = append(plainParts, bodyPlain)
-	}
-	if content != "" {
-		plainParts = append(plainParts, content)
 	}
 	plainParts = append(plainParts, labels...)
 	routeAccount := unifiedAccountID
 	if routeAccount == "" {
 		routeAccount = accountID
 	}
+	stamp, _ := memutils.PyJSONMarshal(receivedAt)
 	message := map[string]any{
 		"message_id":           messageID,
-		"timestamp":            fmt.Sprintf("%v", receivedAt),
+		"timestamp":            stamp,
 		"platform":             PlatformQQ,
 		"account_id":           routeAccount,
 		"scope":                nil,
@@ -175,48 +179,6 @@ func DecodeMessage(event string, payload map[string]any, accountID, botName, uni
 		"session_id":           "",
 	}
 	return message, scene, targetID, nil
-}
-
-// imageAttachmentSegments 保留 QQ 官方图片与表情附件，由宿主统一下载和缓存。
-func imageAttachmentSegments(payload map[string]any) ([]map[string]any, []string) {
-	const maxAttachments = 10
-	attachments, _ := payload["attachments"].([]any)
-	content := strings.TrimSpace(asString(payload["content"]))
-	inlineEmoji := len(attachments) == 1 && qqFaceTagPattern.MatchString(content)
-	var segments []map[string]any
-	var labels []string
-	for _, entry := range attachments[:min(len(attachments), maxAttachments)] {
-		attachment, ok := asMap(entry)
-		if !ok {
-			continue
-		}
-		kind := strings.ToLower(strings.TrimSpace(asString(attachment["type"])))
-		mime := strings.ToLower(strings.TrimSpace(asString(attachment["content_type"])))
-		emojiType := kind == "emoji" || kind == "face" || kind == "sticker"
-		label := "[attachment]"
-		var segment map[string]any
-		if strings.HasPrefix(mime, "image/") || kind == "image" || emojiType {
-			mediaKind := "image"
-			label = "[图片]"
-			if emojiType || asBool(attachment["is_emoji"]) || inlineEmoji || content == "[表情]" || content == "[动画表情]" {
-				mediaKind = "emoji"
-				label = "[表情]"
-			}
-			url := strings.TrimSpace(asString(attachment["url"]))
-			if strings.HasPrefix(url, "//") {
-				url = "https:" + url
-			}
-			if strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://") {
-				segment = map[string]any{"type": mediaKind, "data": url}
-			}
-		}
-		if segment == nil {
-			segment = map[string]any{"type": "text", "data": label}
-		}
-		segments = append(segments, segment)
-		labels = append(labels, label)
-	}
-	return segments, labels
 }
 
 func IsBotAuthor(payload map[string]any) bool {
@@ -272,13 +234,7 @@ func extractContent(payload map[string]any) string {
 		if !ok {
 			continue
 		}
-		if asString(element["message_type"]) == "103" || asString(element["type"]) == "103" {
-			continue
-		}
-		if n, ok := asInt(element["message_type"]); ok && n == 103 {
-			continue
-		}
-		if n, ok := asInt(element["type"]); ok && n == 103 {
+		if isQuoteElement(element) {
 			continue
 		}
 		for _, key := range []string{"content", "text"} {
@@ -288,13 +244,15 @@ func extractContent(payload map[string]any) string {
 					parts = append(parts, strings.TrimSpace(typed))
 				}
 			case map[string]any:
-				if nested := strings.TrimSpace(asString(typed["content"])); nested != "" {
+				if text, _ := typed["content"].(string); strings.TrimSpace(text) != "" {
+					nested := strings.TrimSpace(text)
 					parts = append(parts, nested)
 				}
 			}
 		}
 		if textElement, ok := asMap(element["text_element"]); ok {
-			if nested := strings.TrimSpace(asString(textElement["content"])); nested != "" {
+			if text, _ := textElement["content"].(string); strings.TrimSpace(text) != "" {
+				nested := strings.TrimSpace(text)
 				parts = append(parts, nested)
 			}
 		}
@@ -302,24 +260,67 @@ func extractContent(payload map[string]any) string {
 	return strings.Join(parts, "")
 }
 
+func isQuoteElement(element map[string]any) bool {
+	for _, field := range []string{"type", "message_type"} {
+		switch element[field] {
+		case int(103), int64(103), float64(103), "103":
+			return true
+		}
+	}
+	return false
+}
+
 func isBotMentioned(event string, payload map[string]any, content, accountID string) bool {
 	if event == groupAtEvent {
 		return true
 	}
-	if strings.Contains(content, "<@"+accountID+">") || strings.Contains(content, "<@!"+accountID+">") {
+	if event != groupMessageEvent || accountID == "" {
+		return false
+	}
+	mentions, _ := payload["mentions"].([]any)
+	for _, item := range mentions {
+		mention, _ := asMap(item)
+		for _, key := range []string{"id", "openid", "user_openid", "member_openid"} {
+			if strings.TrimSpace(asString(mention[key])) == accountID {
+				return true
+			}
+		}
+	}
+	if treeMentionsBot(payload["msg_elements"], accountID) ||
+		strings.Contains(content, "<@"+accountID+">") || strings.Contains(content, "<@!"+accountID+">") {
 		return true
 	}
-	return treeMentionsBot(payload, accountID)
+	return regexp.MustCompile(`@(?:机器人)?` + regexp.QuoteMeta(accountID) + `(?:[\s\p{Z}]|$)`).MatchString(content)
 }
 
 func treeMentionsBot(value any, accountID string) bool {
+	matchKey := func(key string) bool {
+		switch key {
+		case "id", "openid", "user_id", "target_id", "member_openid":
+			return true
+		}
+		return false
+	}
 	switch typed := value.(type) {
 	case map[string]any:
-		for k, v := range typed {
-			if (k == "id" || k == "openid" || strings.HasSuffix(k, "_openid")) && asString(v) == accountID {
+		if isQuoteElement(typed) {
+			return false
+		}
+		kind := strings.ToLower(firstNonEmpty(asString(typed["type"]), asString(typed["element_type"])))
+		mentionType := strings.Contains(kind, "at") || strings.Contains(kind, "mention")
+		for key, item := range typed {
+			key = strings.ToLower(key)
+			if nested, ok := asMap(item); ok && (strings.Contains(key, "at") || strings.Contains(key, "mention")) {
+				for name, id := range nested {
+					if matchKey(name) && strings.TrimSpace(asString(id)) == accountID {
+						return true
+					}
+				}
+			}
+			if mentionType && matchKey(key) && strings.TrimSpace(asString(item)) == accountID {
 				return true
 			}
-			if treeMentionsBot(v, accountID) {
+			if treeMentionsBot(item, accountID) {
 				return true
 			}
 		}
@@ -333,7 +334,7 @@ func treeMentionsBot(value any, accountID string) bool {
 	return false
 }
 
-func rewriteMentionTokens(content, accountID, botName string, payload map[string]any, botUserID string) (string, []map[string]any, string) {
+func rewriteMentionTokens(content, accountID, botName string, payload map[string]any, botUserID string, userMap map[string]string) (string, []map[string]any, string) {
 	if botUserID == "" {
 		botUserID = accountID
 	}
@@ -370,9 +371,7 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 	pieces := make([]piece, 0)
 	cursor := 0
 	for _, match := range qqMentionTokenPattern.FindAllStringSubmatchIndex(content, -1) {
-		if match[0] > cursor {
-			pieces = append(pieces, piece{text: content[cursor:match[0]]})
-		}
+		pieces = append(pieces, piece{text: content[cursor:match[0]]})
 		mentionID := content[match[2]:match[3]]
 		if mentionID == accountID {
 			label := ""
@@ -400,7 +399,7 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 				seg: map[string]any{
 					"type": "at",
 					"data": map[string]any{
-						"target_user_id":       mentionID,
+						"target_user_id":       firstNonEmpty(userMap[mentionID], mentionID),
 						"target_user_nickname": nilIfEmpty(name),
 						"target_user_cardname": nil,
 					},
@@ -410,30 +409,32 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 		}
 		cursor = match[1]
 	}
-	if cursor < len(content) {
-		pieces = append(pieces, piece{text: content[cursor:]})
-	}
-	segments := make([]map[string]any, 0)
-	plainParts := make([]string, 0)
-	remaining := strings.Builder{}
-	for i, p := range pieces {
-		if p.seg != nil {
-			segments = append(segments, p.seg)
-			if p.label != "" {
-				plainParts = append(plainParts, p.label)
+	pieces = append(pieces, piece{text: content[cursor:]})
+	pieces[0].text = strings.TrimLeftFunc(pieces[0].text, unicode.IsSpace)
+	last := &pieces[len(pieces)-1]
+	last.text = strings.TrimRightFunc(last.text, unicode.IsSpace)
+
+	segments := make([]map[string]any, 0, len(pieces))
+	var plain, text strings.Builder
+	for i, part := range pieces {
+		if part.seg != nil {
+			segments = append(segments, part.seg)
+			if part.label != "" {
+				plain.WriteString(part.label)
+				if i+1 < len(pieces) {
+					next := pieces[i+1].text
+					if next != "" && strings.TrimLeftFunc(next, unicode.IsSpace) == next {
+						plain.WriteByte(' ')
+					}
+				}
 			}
-			continue
+		} else if part.text != "" {
+			segments = append(segments, map[string]any{"type": "text", "data": part.text})
+			text.WriteString(part.text)
+			plain.WriteString(part.text)
 		}
-		text := p.text
-		if i == 0 {
-			text = strings.TrimLeft(text, " \t\r\n")
-		}
-		if i == len(pieces)-1 {
-			text = strings.TrimRight(text, " \t\r\n")
-		}
-		remaining.WriteString(text)
 	}
-	return remaining.String(), segments, strings.Join(plainParts, " ")
+	return strings.TrimSpace(text.String()), segments, strings.TrimSpace(plain.String())
 }
 
 func nilIfEmpty(s string) any {
@@ -444,81 +445,11 @@ func nilIfEmpty(s string) any {
 }
 
 func parseTimestamp(v any) (float64, error) {
-	raw := strings.TrimSpace(asString(v))
-	if raw == "" {
-		return 0, fmt.Errorf("消息缺少有效的 timestamp")
-	}
-	raw = strings.ReplaceAll(raw, "Z", "+00:00")
-	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
-		return float64(t.UnixNano()) / 1e9, nil
-	}
-	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return float64(t.UnixNano()) / 1e9, nil
-	}
-	if f, err := strconv.ParseFloat(raw, 64); err == nil {
-		return f, nil
+	raw, _ := v.(string)
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return float64(t.UnixMicro()) / 1e6, nil
+		}
 	}
 	return 0, fmt.Errorf("消息缺少有效的 timestamp")
-}
-
-// EncodeOutboundText P0：仅文本/@ 合并为 body；媒体降级占位
-func EncodeOutboundText(outbound map[string]any) (scene, target, text string, err error) {
-	messageInfo, ok := asMap(outbound["message_info"])
-	if !ok {
-		return "", "", "", fmt.Errorf("出站消息缺少 message_info")
-	}
-	config, _ := asMap(messageInfo["additional_config"])
-	groupInfo, _ := asMap(messageInfo["group_info"])
-	groupID := strings.TrimSpace(asString(groupInfo["group_id"]))
-	if groupID == "" {
-		groupID = strings.TrimSpace(asString(config["platform_io_target_group_id"]))
-	}
-	userID := strings.TrimSpace(asString(config["platform_io_target_user_id"]))
-	if groupID != "" {
-		scene = "group"
-		target = groupID
-	} else {
-		scene = "private"
-		target = userID
-	}
-	if target == "" {
-		return "", "", "", fmt.Errorf("出站消息缺少目标 OpenID")
-	}
-	segments, _ := outbound["raw_message"].([]any)
-	if len(segments) == 0 {
-		return "", "", "", fmt.Errorf("出站消息缺少消息段")
-	}
-	parts := make([]string, 0)
-	for _, raw := range segments {
-		seg, ok := asMap(raw)
-		if !ok {
-			continue
-		}
-		switch asString(seg["type"]) {
-		case "text":
-			parts = append(parts, asString(seg["data"]))
-		case "at":
-			data, _ := asMap(seg["data"])
-			nick := asString(data["target_user_cardname"])
-			if nick == "" {
-				nick = asString(data["target_user_nickname"])
-			}
-			if nick != "" {
-				parts = append(parts, "@"+nick+" ")
-			}
-		case "image", "emoji":
-			parts = append(parts, "[image]")
-		case "voice":
-			parts = append(parts, "[voice]")
-		case "video", "file":
-			parts = append(parts, "[file]")
-		case "reply":
-			continue
-		}
-	}
-	text = strings.TrimSpace(strings.Join(parts, ""))
-	if text == "" {
-		return "", "", "", fmt.Errorf("出站消息为空")
-	}
-	return scene, target, text, nil
 }

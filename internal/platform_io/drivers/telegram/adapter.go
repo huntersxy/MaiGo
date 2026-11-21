@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/vmihailenco/msgpack/v5"
 	"go.uber.org/zap"
 
 	"MaiGo/internal/platform_io"
@@ -16,6 +18,7 @@ import (
 type Adapter struct {
 	platformio.BaseAdapter
 	mu        sync.Mutex
+	lifecycle sync.Mutex
 	desc      platformio.DriverDescriptor
 	settings  Settings
 	runtime   *RuntimeState
@@ -25,6 +28,7 @@ type Adapter struct {
 	started   bool
 	polling   bool
 	cancel    context.CancelFunc
+	done      chan struct{}
 	sendMu    sync.Mutex
 }
 
@@ -66,6 +70,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 	if a == nil {
 		return fmt.Errorf("telegram adapter 为空")
 	}
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.started {
@@ -99,6 +105,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 	a.cancel = cancel
 	a.started = true
 	a.polling = true
+	done := make(chan struct{})
+	a.done = done
 	poller := NewPoller(
 		a.settings.Telegram,
 		client,
@@ -109,13 +117,14 @@ func (a *Adapter) Start(ctx context.Context) error {
 		a.onUnready,
 	)
 	go func() {
-			defer func() {
-				a.mu.Lock()
-				a.polling = false
-				a.mu.Unlock()
-			}()
-			poller.Run(runCtx)
+		defer close(done)
+		defer func() {
+			a.mu.Lock()
+			a.polling = false
+			a.mu.Unlock()
 		}()
+		poller.Run(runCtx)
+	}()
 	return nil
 }
 
@@ -124,31 +133,36 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	if a == nil {
 		return nil
 	}
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
+	cancel, done := a.cancel, a.done
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	if a.client != nil {
-		a.client.Close()
-		a.client = nil
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
+	a.mu.Lock()
+	client, store := a.client, a.store
+	a.client, a.store, a.cancel, a.done = nil, nil, nil, nil
+	a.started, a.polling = false, false
+	a.mu.Unlock()
+	if client != nil {
+		client.Close()
 	}
-	if a.store != nil {
-		_ = a.store.Close()
-		a.store = nil
+	if store != nil {
+		_ = store.Close()
 	}
-	if a.runtime != nil {
-		a.runtime.MarkNotReady()
-	}
-	if a.hostHooks != nil && a.hostHooks.ReportGatewayState != nil {
-		_ = a.hostHooks.ReportGatewayState(ctx, a.runtime)
-	}
+	_ = a.onUnready(ctx)
 	if a.hostHooks != nil && a.hostHooks.APIs != nil {
 		a.hostHooks.APIs.RemoveAPIsByPlugin(PluginID)
 	}
-	a.polling = false
-	a.started = false
 	return nil
 }
 
@@ -198,69 +212,79 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Error = err.Error()
 		return receipt, err
 	}
-	parts, err := EncodeOutbound(outbound)
+	reply, err := replyParameters(outbound, chatID)
 	if err != nil {
-		receipt.Status = platformio.DeliveryStatusFailed
-		receipt.Error = err.Error()
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
 		return receipt, err
 	}
-	sent := make([]string, 0, len(parts))
-	for index, part := range parts {
-		method := asString(part["method"])
-		body, _ := asMap(part["body"])
-		if body == nil {
-			body = map[string]any{}
+	parts, err := encodeOutbound(ctx, outbound.Segments, 0)
+	if err == nil && len(parts) == 0 {
+		err = fmt.Errorf("出站消息为空")
+	}
+	if err != nil {
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
+		return receipt, err
+	}
+	requests, err := prepareRequests(ctx, parts, store, accountID, time.Duration(a.settings.Telegram.MediaTimeoutSec)*time.Second)
+	if err != nil {
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
+		return receipt, err
+	}
+	if reply != nil && requests[0].method == "forwardMessage" {
+		requests = append([]telegramRequest{{method: "sendMessage", body: map[string]any{"text": "转发消息："}}}, requests...)
+	}
+	sent := make([]string, 0, len(requests))
+	fail := func(err error) (platformio.DeliveryReceipt, error) {
+		if len(sent) > 0 {
+			err = fmt.Errorf("已发送 %d 条后失败，不能整体重发: %w", len(sent), err)
+			receipt.ExternalMessageID = sent[0]
 		}
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
+		receipt.Metadata = map[string]any{"telegram_message_ids": sent}
+		return receipt, err
+	}
+	for index, request := range requests {
+		body := request.body
 		body["chat_id"] = chatID
 		if threadID != nil {
 			body["message_thread_id"] = *threadID
 		}
-		if index == 0 && outbound.ExternalReplyToMessageID != "" {
-			if replyChat, replyMsg, parseErr := ParseMessageID(outbound.ExternalReplyToMessageID); parseErr == nil && replyChat == chatID {
-				body["reply_parameters"] = map[string]any{"message_id": replyMsg}
+		if index == 0 && reply != nil {
+			body["reply_parameters"] = reply
+		}
+		result, err := client.Call(ctx, request.method, body, request.uploads)
+		if err != nil {
+			return fail(err)
+		}
+		items := []any{result}
+		if request.method == "sendMediaGroup" {
+			items, _ = result.([]any)
+			if len(items) == 0 {
+				return fail(fmt.Errorf("Telegram 相册发送结果为空或格式无效"))
 			}
 		}
-		result, callErr := client.Call(ctx, method, body, nil)
-		if callErr != nil {
-			receipt.Status = platformio.DeliveryStatusFailed
-			if len(sent) > 0 {
-				receipt.Error = fmt.Sprintf("已发送 %d 条后失败，不能整体重发: %v", len(sent), callErr)
-				receipt.ExternalMessageID = sent[0]
-			} else {
-				receipt.Error = callErr.Error()
+		for _, raw := range items {
+			item, _ := asMap(raw)
+			msgID, valid := asInt64(item["message_id"])
+			chat, _ := asMap(item["chat"])
+			sentChat, validChat := asInt64(chat["id"])
+			if !valid || msgID <= 0 || !validChat {
+				return fail(fmt.Errorf("Telegram 发送结果缺少 message_id 或 chat.id"))
 			}
-			receipt.Metadata = map[string]any{"telegram_message_ids": sent}
-			return receipt, callErr
-		}
-		item, _ := asMap(result)
-		if item == nil || item["message_id"] == nil {
-			receipt.Status = platformio.DeliveryStatusFailed
-			receipt.Error = "Telegram 发送结果缺少 message_id"
-			return receipt, fmt.Errorf("%s", receipt.Error)
-		}
-		msgID, _ := asInt64(item["message_id"])
-		sentChat := chatID
-		if chat, ok := asMap(item["chat"]); ok {
-			if n, ok := asInt64(chat["id"]); ok {
-				sentChat = n
-			}
-		}
-		sentID := ExternalID(sentChat, msgID)
-		sent = append(sent, sentID)
-		if chatID < 0 && store != nil {
-			group := map[string]string{"group_id": fmt.Sprint(chatID), "group_name": fmt.Sprint(chatID)}
-			if threadID != nil {
-				group["group_id"] = fmt.Sprintf("%d:%d", chatID, *threadID)
-			}
-			if outbound.MessageInfo.GroupInfo != nil {
-				if outbound.MessageInfo.GroupInfo.GroupID != "" {
-					group["group_id"] = outbound.MessageInfo.GroupInfo.GroupID
+			sentID := ExternalID(sentChat, msgID)
+			sent = append(sent, sentID)
+			if chatID < 0 && store != nil {
+				group := map[string]string{"group_id": fmt.Sprint(chatID), "group_name": fmt.Sprint(chatID)}
+				if threadID != nil {
+					group["group_id"] = ExternalID(chatID, *threadID)
 				}
-				if outbound.MessageInfo.GroupInfo.GroupName != "" {
-					group["group_name"] = outbound.MessageInfo.GroupInfo.GroupName
+				if info := outbound.MessageInfo.GroupInfo; info != nil {
+					group["group_id"], group["group_name"] = info.GroupID, info.GroupName
+				}
+				if err := store.SaveMessageGroup(accountID, sentID, group); err != nil {
+					return fail(err)
 				}
 			}
-			_ = store.SaveMessageGroup(accountID, sentID, group)
 		}
 	}
 	receipt.Status = platformio.DeliveryStatusSent
@@ -330,19 +354,56 @@ func (a *Adapter) onUpdate(ctx context.Context, update map[string]any) error {
 	if a == nil {
 		return nil
 	}
+	accountID := a.runtime.AccountID()
+	_, individual := update["message_reaction"]
+	_, counts := update["message_reaction_count"]
+	if individual || counts {
+		message, err := DecodeReaction(update, accountID)
+		if err != nil || message == nil {
+			return err
+		}
+		var group map[string]string
+		if a.store != nil {
+			group, err = a.store.MessageGroup(accountID, asString(message["reply_to"]))
+			if err != nil {
+				return err
+			}
+		}
+		info, _ := asMap(message["message_info"])
+		if group != nil {
+			info["group_info"] = map[string]any{"group_id": group["group_id"], "group_name": group["group_name"]}
+		} else {
+			extra, _ := asMap(info["additional_config"])
+			event, _ := asMap(extra["telegram_event_payload"])
+			chat, _ := asMap(event["chat"])
+			if asBool(chat["is_forum"]) {
+				return nil
+			}
+		}
+		return a.routeInbound(ctx, accountID, message)
+	}
 	payload, ok := asMap(update["message"])
 	if !ok {
 		return nil
 	}
-	media, err := PrepareInboundMedia(payload)
-	if err != nil {
-		return err
+	chat, _ := asMap(payload["chat"])
+	chatType := asString(chat["type"])
+	if chatType != "private" && chatType != "group" && chatType != "supergroup" {
+		return nil
+	}
+	sender, _ := asMap(payload["from"])
+	senderChat, _ := asMap(payload["sender_chat"])
+	if asString(sender["id"]) == accountID && len(senderChat) == 0 {
+		return nil
 	}
 	topicName := ""
-	accountID := a.runtime.AccountID()
 	if asBool(payload["is_topic_message"]) && a.store != nil {
 		chat, _ := asMap(payload["chat"])
-		threadID, _ := asInt64(payload["message_thread_id"])
+		threadID, valid := asInt64(payload["message_thread_id"])
+		chatID, validChat := asInt64(chat["id"])
+		if !valid || !validChat || chatID >= 0 || threadID <= 0 {
+			return fmt.Errorf("Telegram 话题目标必须为负群 ID 和正话题 ID")
+		}
 		topic, _ := asMap(payload["forum_topic_created"])
 		if topic == nil {
 			topic, _ = asMap(payload["forum_topic_edited"])
@@ -351,7 +412,15 @@ func (a *Adapter) onUpdate(ctx context.Context, update map[string]any) error {
 		if topic != nil {
 			name = asString(topic["name"])
 		}
-		topicName, _ = a.store.TopicName(accountID, asString(chat["id"]), threadID, name)
+		var err error
+		topicName, err = a.store.TopicName(accountID, asString(chat["id"]), threadID, name)
+		if err != nil {
+			return err
+		}
+	}
+	media, err := a.prepareInboundMedia(ctx, payload, accountID)
+	if err != nil {
+		return err
 	}
 	message, err := DecodeMessage(payload, accountID, a.runtime.Username(), media, topicName)
 	if err != nil {
@@ -362,11 +431,24 @@ func (a *Adapter) onUpdate(ctx context.Context, update map[string]any) error {
 	}
 	if info, ok := asMap(message["message_info"]); ok && a.store != nil {
 		if groupAny, ok := asMap(info["group_info"]); ok {
-			_ = a.store.SaveMessageGroup(accountID, asString(message["message_id"]), map[string]string{
+			if err := a.store.SaveMessageGroup(accountID, asString(message["message_id"]), map[string]string{
 				"group_id":   asString(groupAny["group_id"]),
 				"group_name": asString(groupAny["group_name"]),
-			})
+			}); err != nil {
+				return err
+			}
 		}
+	}
+	return a.routeInbound(ctx, accountID, message)
+}
+
+func (a *Adapter) routeInbound(ctx context.Context, accountID string, message map[string]any) error {
+	binary, err := msgpack.Marshal(message)
+	if err != nil {
+		return err
+	}
+	if len(binary) > 15<<20 {
+		return fmt.Errorf("Telegram 消息超过麦麦 IPC 大小限制")
 	}
 	var sink InboundSink
 	if a.hostHooks != nil {

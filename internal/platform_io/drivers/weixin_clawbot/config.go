@@ -1,9 +1,12 @@
 package weixin_clawbot
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"MaiGo/internal/platform_io"
 )
 
 const (
@@ -64,63 +67,50 @@ func DefaultSettings() Settings {
 			Enabled:       false,
 			ConfigVersion: SupportedConfigVersion,
 		},
-Weixin: WeixinOptions{
-				AllowedUsers: []string{},
-				RetrySeconds: DefaultRetrySeconds,
-				MaxImageMB:   DefaultMaxImageMB,
-			},
-		}
+		Weixin: WeixinOptions{
+			AllowedUsers: []string{},
+			RetrySeconds: DefaultRetrySeconds,
+			MaxImageMB:   DefaultMaxImageMB,
+		},
 	}
+}
 
-	// DefaultConfigMap 供 NativeRegistration / Repair
-	func DefaultConfigMap() map[string]any {
-		return SettingsToMap(DefaultSettings())
-	}
+// DefaultConfigMap 供 NativeRegistration / Repair
+func DefaultConfigMap() map[string]any {
+	return SettingsToMap(DefaultSettings())
+}
 
-	// SettingsToMap 序列化为嵌套 map（Validate / Inspect）
-	func SettingsToMap(s Settings) map[string]any {
-		users := s.Weixin.AllowedUsers
-		if users == nil {
-			users = []string{}
-		}
-		return map[string]any{
-			"plugin": map[string]any{
-				"enabled":        s.Plugin.Enabled,
-				"config_version": s.Plugin.ConfigVersion,
-			},
-			"weixin": map[string]any{
-				"allowed_users": append([]string{}, users...),
-				"retry_seconds": s.Weixin.RetrySeconds,
-				"max_image_mb":  s.Weixin.MaxImageMB,
-			},
-		}
+// SettingsToMap 序列化为嵌套 map（Validate / Inspect）
+func SettingsToMap(s Settings) map[string]any {
+	users := s.Weixin.AllowedUsers
+	if users == nil {
+		users = []string{}
 	}
+	return map[string]any{
+		"plugin": map[string]any{
+			"enabled":        s.Plugin.Enabled,
+			"config_version": s.Plugin.ConfigVersion,
+		},
+		"weixin": map[string]any{
+			"allowed_users": append([]string{}, users...),
+			"retry_seconds": s.Weixin.RetrySeconds,
+			"max_image_mb":  s.Weixin.MaxImageMB,
+		},
+	}
+}
 
 // ParseSettings 从配置 map 解析
 func ParseSettings(config map[string]any) (Settings, error) {
-	settings := DefaultSettings()
-	if config == nil {
-		return settings, nil
+	normalized, err := platformio.NormalizeNativeConfig(config, ConfigSchemaMap())
+	if err != nil {
+		return Settings{}, err
 	}
-	if plugin, ok := asMap(config["plugin"]); ok {
-		if v, ok := plugin["enabled"]; ok {
-			settings.Plugin.Enabled = asBool(v)
-		}
-		if v := strings.TrimSpace(asString(plugin["config_version"])); v != "" {
-			settings.Plugin.ConfigVersion = v
-		}
-	}
-	if wx, ok := asMap(config["weixin"]); ok {
-		settings.Weixin.AllowedUsers = asStringSlice(wx["allowed_users"])
-		if n, ok := asInt(wx["retry_seconds"]); ok {
-			settings.Weixin.RetrySeconds = clampInt(n, 1, 60, DefaultRetrySeconds)
-		}
-		if n, ok := asInt(wx["max_image_mb"]); ok {
-			settings.Weixin.MaxImageMB = clampInt(n, 1, 8, DefaultMaxImageMB)
-		}
-	}
-	if settings.Plugin.ConfigVersion == "" {
-		settings.Plugin.ConfigVersion = SupportedConfigVersion
+	var settings Settings
+	plugin := normalized["plugin"]
+	settings.Plugin = PluginOptions{Enabled: plugin["enabled"].(bool), ConfigVersion: plugin["config_version"].(string)}
+	wx := normalized["weixin"]
+	settings.Weixin = WeixinOptions{
+		AllowedUsers: wx["allowed_users"].([]string), RetrySeconds: wx["retry_seconds"].(int), MaxImageMB: wx["max_image_mb"].(int),
 	}
 	return settings, nil
 }
@@ -162,45 +152,19 @@ func asInt(v any) (int, bool) {
 	case int:
 		return typed, true
 	case int64:
-		return int(typed), true
+		return int(typed), int64(int(typed)) == typed
 	case float64:
-		return int(typed), true
+		n := int(typed)
+		return n, float64(n) == typed
+	case json.Number:
+		n, err := strconv.Atoi(string(typed))
+		return n, err == nil
 	case string:
 		n, err := strconv.Atoi(strings.TrimSpace(typed))
 		return n, err == nil
 	default:
 		return 0, false
 	}
-}
-
-func asStringSlice(v any) []string {
-	switch typed := v.(type) {
-	case []string:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if s := strings.TrimSpace(item); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	case []any:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if s := strings.TrimSpace(asString(item)); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func clampInt(v, lo, hi, def int) int {
-	if v < lo || v > hi {
-		return def
-	}
-	return v
 }
 
 func driverID(gatewayName string) string {

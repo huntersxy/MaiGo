@@ -8,6 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+
+	"MaiGo/internal/platform_io"
 	"strings"
 	"sync"
 	"time"
@@ -15,13 +18,13 @@ import (
 
 // Client QQ 官方 OpenAPI HTTP 客户端
 type Client struct {
-	mu            sync.Mutex
-	baseURL       string
-	appID         string
-	appSecret     string
-	http          *http.Client
-	accessToken   string
-	tokenExpires  time.Time
+	mu           sync.Mutex
+	baseURL      string
+	appID        string
+	appSecret    string
+	http         *http.Client
+	accessToken  string
+	tokenExpires time.Time
 }
 
 func NewClient(baseURL, appID, appSecret string) *Client {
@@ -29,15 +32,18 @@ func NewClient(baseURL, appID, appSecret string) *Client {
 	if baseURL == "" {
 		baseURL = DefaultAPIBaseURL
 	}
+	transport := &http.Transport{}
+	if baseTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = baseTransport.Clone()
+		transport.Proxy = nil
+	}
 	return &Client{
 		baseURL:   baseURL,
 		appID:     strings.TrimSpace(appID),
 		appSecret: strings.TrimSpace(appSecret),
 		http: &http.Client{
-			Timeout: 20 * time.Second,
-			Transport: &http.Transport{
-				Proxy: nil,
-			},
+			Timeout:   20 * time.Second,
+			Transport: transport,
 		},
 	}
 }
@@ -86,8 +92,8 @@ func (c *Client) Authorize(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
+	payload, err := platformio.DecodeWireObject(raw)
+	if err != nil {
 		return "", fmt.Errorf("获取 QQ 访问凭证失败: HTTP %d", resp.StatusCode)
 	}
 	token := asString(payload["access_token"])
@@ -127,8 +133,12 @@ func (c *Client) GatewayURL(ctx context.Context) (string, error) {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return "", fmt.Errorf("获取 QQ 网关失败: HTTP %d %s", resp.StatusCode, string(raw))
 	}
-	var payload map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	payload, err := platformio.DecodeWireObject(raw)
+	if err != nil {
 		return "", err
 	}
 	urlStr := asString(payload["url"])
@@ -139,6 +149,10 @@ func (c *Client) GatewayURL(ctx context.Context) (string, error) {
 }
 
 func (c *Client) APIPost(ctx context.Context, path string, body map[string]any) (map[string]any, error) {
+	return c.apiPost(ctx, path, body, 0)
+}
+
+func (c *Client) apiPost(ctx context.Context, path string, body map[string]any, timeout time.Duration) (map[string]any, error) {
 	token, err := c.Authorize(ctx)
 	if err != nil {
 		return nil, err
@@ -153,19 +167,31 @@ func (c *Client) APIPost(ctx context.Context, path string, body map[string]any) 
 	}
 	req.Header.Set("Authorization", "QQBot "+token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	httpClient := *c.http
+	if timeout > 0 {
+		httpClient.Timeout = timeout
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
 	var payload map[string]any
-	_ = json.Unmarshal(data, &payload)
+	if len(bytes.TrimSpace(data)) != 0 {
+		payload, err = platformio.DecodeWireObject(data)
+	}
 	if resp.StatusCode == 401 {
 		c.InvalidateToken()
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return payload, fmt.Errorf("QQ API %s 失败: HTTP %d", path, resp.StatusCode)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("QQ API %s 响应格式无效: %w", path, err)
 	}
 	if payload == nil {
 		payload = map[string]any{}
@@ -190,24 +216,14 @@ func asInt(v any) (int, bool) {
 	case int:
 		return typed, true
 	case int64:
-		return int(typed), true
-	case float64:
-		return int(typed), true
+		return int(typed), int64(int(typed)) == typed
+	case json.Number:
+		n, err := strconv.Atoi(string(typed))
+		return n, err == nil
 	case string:
-		n, err := strconvAtoi(strings.TrimSpace(typed))
+		n, err := strconv.Atoi(strings.TrimSpace(typed))
 		return n, err == nil
 	default:
 		return 0, false
 	}
-}
-
-func strconvAtoi(s string) (int, error) {
-	var n int
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("not int")
-		}
-		n = n*10 + int(r-'0')
-	}
-	return n, nil
 }

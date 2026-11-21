@@ -1,6 +1,7 @@
 package qq_official
 
 import (
+	"MaiGo/internal/platform_io"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -210,8 +211,8 @@ func (t *Transport) connectOnce(parent context.Context) (closeCode int, err erro
 		if readErr != nil {
 			return closeCodeFromErr(readErr), readErr
 		}
-		var payload map[string]any
-		if err := json.Unmarshal(data, &payload); err != nil {
+		payload, err := platformio.DecodeWireObject(data)
+		if err != nil {
 			continue
 		}
 		if err := t.handlePayload(parent, payload); err != nil {

@@ -1,13 +1,17 @@
 package weixin_clawbot
 
 import (
+	"MaiGo/internal/platform_io"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,12 +47,18 @@ func NewClient(baseURL, token string, maxBytes int) (*Client, error) {
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxImageMB * 1024 * 1024
 	}
+	transport := &http.Transport{}
+	if baseTransport, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = baseTransport.Clone()
+		transport.Proxy = nil
+	}
 	return &Client{
 		baseURL:  base,
 		token:    token,
 		maxBytes: maxBytes,
 		http: &http.Client{
-			Timeout: 45 * time.Second,
+			Transport: transport,
+			Timeout:   45 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -65,7 +75,7 @@ func trustedURL(raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	host := parsed.Hostname()
+	host := strings.ToLower(parsed.Hostname())
 	if parsed.Scheme != "https" || !strings.HasSuffix(host, ".weixin.qq.com") || parsed.User != nil {
 		return "", fmt.Errorf("微信返回了非受信任的服务地址")
 	}
@@ -92,9 +102,11 @@ func (c *Client) Call(ctx context.Context, endpoint string, payload map[string]a
 	if c == nil {
 		return nil, fmt.Errorf("weixin client 为空")
 	}
+	var seed [4]byte
+	rand.Read(seed[:])
 	headers := map[string]string{
 		"AuthorizationType": "ilink_bot_token",
-		"X-WECHAT-UIN":      base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(rand.Uint32()))),
+		"X-WECHAT-UIN":      base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(binary.BigEndian.Uint32(seed[:])))),
 	}
 	method := http.MethodPost
 	if login {
@@ -148,12 +160,12 @@ func (c *Client) Call(ctx context.Context, endpoint string, payload map[string]a
 	if resp.StatusCode != 200 {
 		return nil, &APIError{Code: resp.StatusCode, Endpoint: endpoint}
 	}
-	var data map[string]any
-	if err := json.Unmarshal(raw, &data); err != nil {
+	data, err := platformio.DecodeWireObject(raw)
+	if err != nil {
 		return nil, fmt.Errorf("微信接口响应必须为对象")
 	}
 	code := 0
-	if n, ok := asInt(data["errcode"]); ok {
+	if n, ok := asInt(data["errcode"]); ok && n != 0 {
 		code = n
 	} else if n, ok := asInt(data["ret"]); ok {
 		code = n
@@ -171,7 +183,8 @@ func (c *Client) Updates(ctx context.Context, cursor string) (map[string]any, er
 			return nil, err
 		}
 		// 空闲长轮询超时不当作掉线
-		if strings.Contains(err.Error(), "Timeout") || strings.Contains(err.Error(), "deadline") {
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
 			return map[string]any{"msgs": []any{}, "get_updates_buf": cursor}, nil
 		}
 		return nil, err
@@ -189,6 +202,8 @@ func (c *Client) Send(ctx context.Context, user, contextToken string, items []ma
 			"to_user_id":    user,
 			"context_token": contextToken,
 			"client_id":     clientID,
+			"message_type":  2,
+			"message_state": 2,
 			"item_list":     items,
 		},
 	}, nil, false)

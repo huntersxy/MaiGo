@@ -3,8 +3,12 @@ package qq_official
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -14,18 +18,21 @@ import (
 // Adapter 进程内 QQ 官方适配器
 type Adapter struct {
 	platformio.BaseAdapter
-	mu        sync.Mutex
-	desc      platformio.DriverDescriptor
-	settings  Settings
-	runtime   *RuntimeState
-	hostHooks *HostHooks
-	client    *Client
-	transport *Transport
-	identity  *IdentityBridge
-	started   bool
-	dialed    bool
-	cancel    context.CancelFunc
-	sendMu    sync.Mutex
+	mu         sync.Mutex
+	lifecycle  sync.Mutex
+	desc       platformio.DriverDescriptor
+	settings   Settings
+	runtime    *RuntimeState
+	hostHooks  *HostHooks
+	client     *Client
+	transport  *Transport
+	identity   *IdentityBridge
+	started    bool
+	dialed     bool
+	cancel     context.CancelFunc
+	sendMu     sync.Mutex
+	references messageReferences
+	mapping    idMapping
 }
 
 // NewAdapter 构造适配器；enabled=false 时 Start 不拨号
@@ -46,6 +53,7 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 	if hooks != nil {
 		invoker = hooks.InvokeAPI
 	}
+	settings.QQOfficial.UnifiedAccountID = strings.TrimSpace(settings.QQOfficial.UnifiedAccountID)
 	return &Adapter{
 		BaseAdapter: platformio.NewBaseAdapter(desc),
 		desc:        desc,
@@ -53,6 +61,7 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 		runtime:     NewRuntimeState(),
 		hostHooks:   hooks,
 		identity:    NewIdentityBridge(invoker),
+		references:  messageReferences{proactiveSequence: rand.IntN(10000)},
 	}
 }
 
@@ -71,6 +80,8 @@ func (a *Adapter) Start(ctx context.Context) error {
 	if a == nil {
 		return fmt.Errorf("qq official adapter 为空")
 	}
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.started {
@@ -79,6 +90,11 @@ func (a *Adapter) Start(ctx context.Context) error {
 	if !a.settings.Plugin.Enabled {
 		return nil
 	}
+	mapping, err := loadIDMapping(resolveDataDir(a.hostHooks))
+	if err != nil {
+		return err
+	}
+	a.mapping = mapping
 	if strings.TrimSpace(a.settings.QQOfficial.AppID) == "" || strings.TrimSpace(a.settings.QQOfficial.AppSecret) == "" {
 		zap.L().Error("QQ 官方适配器缺少凭据，请在插件配置 [qq_official] 中填写 app_id 和 app_secret")
 		return nil
@@ -114,31 +130,34 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	if a == nil {
 		return nil
 	}
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	a.runtime.MarkNotReady()
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	cancel, transport := a.cancel, a.transport
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if transport != nil {
+		if err := transport.Stop(ctx); err != nil {
+			return err
+		}
+	}
 	if a.identity != nil {
 		a.identity.Stop()
 	}
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
-	}
-	if a.transport != nil {
-		_ = a.transport.Stop(ctx)
-		a.transport = nil
-	}
-	if a.client != nil {
-		a.client.Close()
-		a.client = nil
-	}
-	if a.runtime != nil {
-		a.runtime.MarkNotReady()
-	}
-	if a.hostHooks != nil && a.hostHooks.ReportGatewayState != nil {
-		_ = a.hostHooks.ReportGatewayState(ctx, a.runtime)
-	}
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
+	a.mu.Lock()
+	client := a.client
+	a.cancel, a.transport, a.client = nil, nil, nil
 	a.started = false
-	return nil
+	a.mu.Unlock()
+	if client != nil {
+		client.Close()
+	}
+	return a.onUnready(ctx)
 }
 
 // Send 独立出站，不走 PluginPlatformDriver
@@ -180,31 +199,72 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Error = "出站消息的路由身份与 QQ 官方网关不一致"
 		return receipt, fmt.Errorf("%s", receipt.Error)
 	}
-	msg := outboundEnvelopeToMap(outbound)
-	scene, target, text, err := EncodeOutboundText(msg)
+	scene, target, parts, quote, err := encodeOutbound(ctx, outbound, a.mapping)
 	if err != nil {
-		receipt.Status = platformio.DeliveryStatusFailed
-		receipt.Error = err.Error()
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
 		return receipt, err
 	}
-	fields := map[string]any{}
-	if outbound.ExternalReplyToMessageID != "" {
-		fields["msg_id"] = outbound.ExternalReplyToMessageID
+	routeTarget := target
+	openID := firstNonEmpty(a.mapping.reverse(scene)[target], target)
+	scope := messageScope{account: a.runtime.AccountID(), scene: scene, target: routeTarget}
+	basePath := "/v2/users/" + url.PathEscape(openID)
+	if scene == "group" {
+		basePath = "/v2/groups/" + url.PathEscape(openID)
 	}
-	result, err := client.SendText(ctx, scene, target, text, fields)
-	if err != nil {
-		receipt.Status = platformio.DeliveryStatusFailed
-		receipt.Error = err.Error()
+	sent := 0
+	fail := func(err error) (platformio.DeliveryReceipt, error) {
+		if sent > 0 {
+			err = fmt.Errorf("已发送 %d 条后失败: %w", sent, err)
+		}
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
 		return receipt, err
 	}
-	id := asString(result["id"])
-	if id == "" {
-		receipt.Status = platformio.DeliveryStatusFailed
-		receipt.Error = "QQ 发送失败: 响应缺少消息 ID"
-		return receipt, fmt.Errorf("%s", receipt.Error)
+	for i, part := range parts {
+		body := part.body
+		if part.fileType != 0 {
+			if part.fileRef != "" {
+				if a.hostHooks == nil || a.hostHooks.ResolveFile == nil {
+					return fail(fmt.Errorf("出站附件缺少宿主下载票据"))
+				}
+				address, err := a.hostHooks.ResolveFile(ctx, part.fileRef, outbound.SessionID)
+				if err != nil {
+					return fail(err)
+				}
+				part.binary, err = client.downloadFile(ctx, address, part.size)
+				if err != nil {
+					return fail(err)
+				}
+			}
+			info, err := client.uploadMedia(ctx, basePath, part)
+			if err != nil {
+				return fail(err)
+			}
+			body = map[string]any{"msg_type": 7, "media": map[string]any{"file_info": info}}
+		}
+		if i == 0 && quote != "" && body["msg_type"] != 2 {
+			if index := a.references.reference(scopedMessage{scope, quote}); index != "" {
+				body["message_reference"] = map[string]any{"message_id": index}
+			}
+		}
+		for key, value := range a.references.sendFields(scopedMessage{scope, outbound.ExternalReplyToMessageID}) {
+			body[key] = value
+		}
+		result, err := client.APIPost(ctx, basePath+"/messages", body)
+		if err != nil {
+			return fail(err)
+		}
+		id := asString(result["id"])
+		if id == "" {
+			return fail(fmt.Errorf("QQ 发送失败: 响应缺少消息 ID"))
+		}
+		ext, _ := asMap(result["ext_info"])
+		a.references.recordSent(scopedMessage{scope, id}, asString(ext["ref_idx"]))
+		if sent == 0 {
+			receipt.ExternalMessageID = id
+		}
+		sent++
 	}
 	receipt.Status = platformio.DeliveryStatusSent
-	receipt.ExternalMessageID = id
 	return receipt, nil
 }
 
@@ -245,7 +305,6 @@ func (a *Adapter) onReady(ctx context.Context, accountID, botName, sessionID str
 	if botName == "" && a.runtime != nil {
 		botName = a.runtime.BotName()
 	}
-	a.runtime.MarkReady(accountID, botName, unified)
 	routeAccount := unified
 	if routeAccount == "" {
 		routeAccount = accountID
@@ -266,7 +325,7 @@ func (a *Adapter) onReady(ctx context.Context, accountID, botName, sessionID str
 
 	if settings.QQOfficial.SnowlumaIdentityOnly && identity != nil {
 		if err := identity.Renew(ctx, settings, true, true); err != nil {
-			zap.L().Warn("ready 前 SL 身份查询续期失败，降级开放路由", zap.Error(err))
+			return fmt.Errorf("QQ 官方网关等待 SL 身份查询模式就绪: %w", err)
 		}
 	}
 	if hooks != nil && hooks.RegisterDriver != nil {
@@ -274,8 +333,12 @@ func (a *Adapter) onReady(ctx context.Context, accountID, botName, sessionID str
 			return err
 		}
 	}
+	a.runtime.MarkReady(accountID, botName, unified)
 	if hooks != nil && hooks.ReportGatewayState != nil {
-		return hooks.ReportGatewayState(ctx, adapter.runtime)
+		if err := hooks.ReportGatewayState(ctx, adapter.runtime); err != nil {
+			a.runtime.MarkNotReady()
+			return err
+		}
 	}
 	return nil
 }
@@ -305,8 +368,16 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 	accountID := a.runtime.AccountID()
 	botName := a.runtime.BotName()
 	unified := a.settings.QQOfficial.UnifiedAccountID
-	attachmentSegments, attachmentLabels := imageAttachmentSegments(data)
-	message, _, _, err := DecodeMessage(event, data, accountID, botName, unified, "", attachmentSegments, attachmentLabels)
+	a.mu.Lock()
+	client := a.client
+	a.mu.Unlock()
+	var attachmentSegments []map[string]any
+	var attachmentLabels []string
+	var picture, emoji bool
+	if client != nil {
+		attachmentSegments, attachmentLabels, picture, emoji = client.inboundAttachments(ctx, data)
+	}
+	message, scene, target, err := decodeMessage(event, data, accountID, botName, unified, "", attachmentSegments, attachmentLabels, a.mapping, picture, emoji)
 	if err != nil {
 		zap.L().Info("忽略 QQ 官方消息", zap.Error(err))
 		return nil
@@ -315,59 +386,18 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 	if a.hostHooks != nil {
 		sink = a.hostHooks.Inbound
 	}
-	return deliverInbound(ctx, sink, a.runtime.RouteAccountID(), message)
-}
-
-func outboundEnvelopeToMap(outbound platformio.OutboundMessageEnvelope) map[string]any {
-	info := map[string]any{
-		"user_info": map[string]any{
-			"user_id":       outbound.MessageInfo.UserInfo.UserID,
-			"user_nickname": outbound.MessageInfo.UserInfo.UserNickname,
-		},
+	message["is_picture"], message["is_emoji"] = picture, emoji
+	key := scopedMessage{messageScope{account: accountID, scene: scene, target: target}, asString(message["message_id"])}
+	stamp, _ := strconv.ParseFloat(asString(message["timestamp"]), 64)
+	idx, replyIdx := extractMessageSceneFields(data)
+	quotedID, inserted := a.references.recordInbound(key, time.UnixMicro(int64(stamp*1e6)), idx, replyIdx)
+	if quotedID != "" {
+		body, _ := message["raw_message"].([]map[string]any)
+		message["raw_message"] = append([]map[string]any{{"type": "reply", "data": map[string]any{"target_message_id": quotedID}}}, body...)
 	}
-	if outbound.MessageInfo.GroupInfo != nil {
-		info["group_info"] = map[string]any{
-			"group_id":   outbound.MessageInfo.GroupInfo.GroupID,
-			"group_name": outbound.MessageInfo.GroupInfo.GroupName,
-		}
+	accepted, err := deliverInbound(ctx, sink, a.runtime.RouteAccountID(), message)
+	if inserted && (!accepted || err != nil) {
+		a.references.discardPassive(key)
 	}
-	if outbound.MessageInfo.AdditionalConfig != nil {
-		info["additional_config"] = outbound.MessageInfo.AdditionalConfig
-	} else {
-		info["additional_config"] = map[string]any{}
-	}
-	raw := make([]any, 0, len(outbound.Segments))
-	for _, seg := range outbound.Segments {
-		switch seg.Kind {
-		case platformio.SegmentText:
-			raw = append(raw, map[string]any{"type": "text", "data": seg.Text})
-		case platformio.SegmentAt:
-			data := seg.Data
-			if data == nil {
-				data = map[string]any{
-					"target_user_id":       seg.AtUserID,
-					"target_user_nickname": seg.Text,
-				}
-			}
-			raw = append(raw, map[string]any{"type": "at", "data": data})
-		case platformio.SegmentImage, platformio.SegmentEmoji:
-			raw = append(raw, map[string]any{"type": "image", "data": seg.Data})
-		case platformio.SegmentVoice, platformio.SegmentRecord:
-			raw = append(raw, map[string]any{"type": "voice", "data": seg.Data})
-		case platformio.SegmentReply:
-			raw = append(raw, map[string]any{"type": "reply", "data": seg.Data})
-		default:
-			if seg.Text != "" {
-				raw = append(raw, map[string]any{"type": "text", "data": seg.Text})
-			}
-		}
-	}
-	if len(raw) == 0 && outbound.PlainText != "" {
-		raw = append(raw, map[string]any{"type": "text", "data": outbound.PlainText})
-	}
-	return map[string]any{
-		"message_info": info,
-		"raw_message":  raw,
-		"reply_to":     outbound.ExternalReplyToMessageID,
-	}
+	return err
 }

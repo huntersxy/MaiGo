@@ -39,16 +39,3 @@ func TestMissingCredentialsDoesNotDial(t *testing.T) {
 		t.Fatal("missing credentials must not dial")
 	}
 }
-
-func TestImageAttachmentSegmentsKeepQQSticker(t *testing.T) {
-	segments, labels := imageAttachmentSegments(map[string]any{
-		"content": "<faceType=1>",
-		"attachments": []any{
-			map[string]any{"content_type": "image/gif", "url": "//example.com/sticker.gif"},
-		},
-	})
-	if len(segments) != 1 || segments[0]["type"] != "emoji" || segments[0]["data"] != "https://example.com/sticker.gif" ||
-		len(labels) != 1 || labels[0] != "[表情]" {
-		t.Fatalf("unexpected segments and labels: %+v, %v", segments, labels)
-	}
-}

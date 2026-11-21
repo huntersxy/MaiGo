@@ -11,12 +11,12 @@ import (
 
 // Poller 长轮询 getUpdates；传输失败不推进 offset
 type Poller struct {
-	settings TelegramOptions
-	client   *Client
-	store    *Store
-	runtime  *RuntimeState
-	onReady  func(ctx context.Context, accountID, username string) error
-	onUpdate func(ctx context.Context, update map[string]any) error
+	settings  TelegramOptions
+	client    *Client
+	store     *Store
+	runtime   *RuntimeState
+	onReady   func(ctx context.Context, accountID, username string) error
+	onUpdate  func(ctx context.Context, update map[string]any) error
 	onUnready func(ctx context.Context) error
 }
 
@@ -59,14 +59,14 @@ func (p *Poller) Run(ctx context.Context) {
 		if err == nil {
 			continue
 		}
+		if p.onUnready != nil {
+			_ = p.onUnready(ctx)
+		}
 		if apiErr, ok := err.(*APIError); ok {
 			if apiErr.Code < 500 && apiErr.Code != 429 {
 				zap.L().Error("Telegram 接收任务停止，未确认的更新将保留", zap.Error(err))
 				return
 			}
-		}
-		if p.onUnready != nil {
-			_ = p.onUnready(ctx)
 		}
 		if _, ok := err.(*TransportError); ok || isRetryableAPI(err) {
 			zap.L().Warn("Telegram 连接暂时不可用，稍后重连", zap.Error(err))
@@ -99,9 +99,10 @@ func (p *Poller) pollOnce(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("getMe 响应无效")
 	}
-	accountID := asString(me["id"])
+	id, valid := asInt64(me["id"])
+	accountID := asString(id)
 	username := asString(me["username"])
-	if accountID == "" {
+	if !valid || id <= 0 {
 		return fmt.Errorf("getMe 缺少 id")
 	}
 	webhookAny, err := p.client.Call(ctx, "getWebhookInfo", nil, nil)

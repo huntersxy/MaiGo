@@ -1,6 +1,7 @@
 package weixin_clawbot
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	memutils "MaiGo/internal/A_memorix/core/utils"
 	"MaiGo/internal/platform_io"
 )
 
@@ -17,31 +19,23 @@ const Platform = PlatformWeixin
 
 func MessageID(account string, msg map[string]any) string {
 	identity := firstNonEmpty(
-		asString(msg["message_id"]),
-		asString(msg["msg_id"]),
+		messageIdentity(msg["message_id"]),
+		messageIdentity(msg["msg_id"]),
 	)
 	if identity == "" {
-		raw, _ := json.Marshal(msg)
-		sum := sha256.Sum256(raw)
+		raw, _ := memutils.PyJSONMarshal(msg)
+		sum := sha256.Sum256([]byte(raw))
 		identity = hex.EncodeToString(sum[:])
 	}
-	return fmt.Sprintf("%s:%s:%s", account, asString(msg["from_user_id"]), identity)
+	return fmt.Sprintf("%s:%s:%s", account, messageIdentity(msg["from_user_id"]), identity)
 }
 
 func Inbound(account string, msg map[string]any, segments []map[string]any, nickname string) map[string]any {
-	stamp := asFloat64(msg["create_time_ms"])
-	if stamp == 0 {
-		stamp = asFloat64(msg["create_time"])
-	}
-	if stamp == 0 {
-		stamp = float64(time.Now().Unix())
-	}
-	if stamp > 1_000_000_000_000 {
-		stamp /= 1000
-	}
+	stamp, _ := messageStamp(msg)
 	if nickname == "" {
-		nickname = asString(msg["from_user_id"])
+		nickname = messageIdentity(msg["from_user_id"])
 	}
+	timestamp, _ := memutils.PyJSONMarshal(stamp)
 	isPicture := false
 	for _, seg := range segments {
 		if asString(seg["type"]) == "image" {
@@ -53,10 +47,10 @@ func Inbound(account string, msg map[string]any, segments []map[string]any, nick
 		"platform":   Platform,
 		"account_id": account,
 		"message_id": MessageID(account, msg),
-		"timestamp":  fmt.Sprint(stamp),
+		"timestamp":  timestamp,
 		"message_info": map[string]any{
 			"user_info": map[string]any{
-				"user_id":       asString(msg["from_user_id"]),
+				"user_id":       messageIdentity(msg["from_user_id"]),
 				"user_nickname": nickname,
 			},
 			"additional_config": map[string]any{},
@@ -74,7 +68,11 @@ type OutboundPart struct {
 }
 
 func EncodeOutbound(outbound platformio.OutboundMessageEnvelope, maxBytes int) (target string, parts []OutboundPart, err error) {
-	if outbound.MessageInfo.GroupInfo != nil && strings.TrimSpace(outbound.MessageInfo.GroupInfo.GroupID) != "" {
+	return encodeOutbound(context.Background(), outbound, maxBytes)
+}
+
+func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnvelope, maxBytes int) (target string, parts []OutboundPart, err error) {
+	if outbound.MessageInfo.GroupInfo != nil {
 		return "", nil, fmt.Errorf("ClawBot 适配器不支持群聊")
 	}
 	if outbound.MessageInfo.AdditionalConfig != nil {
@@ -98,7 +96,7 @@ func EncodeOutbound(outbound platformio.OutboundMessageEnvelope, maxBytes int) (
 				parts = append(parts, OutboundPart{Kind: "text", Text: segment.Text})
 			}
 		case platformio.SegmentImage, platformio.SegmentEmoji:
-			raw, decodeErr := decodeSegmentBinary(segment)
+			raw, decodeErr := decodeSegmentBinary(ctx, segment, maxBytes)
 			if decodeErr != nil {
 				return "", nil, decodeErr
 			}
@@ -107,13 +105,8 @@ func EncodeOutbound(outbound platformio.OutboundMessageEnvelope, maxBytes int) (
 			}
 			parts = append(parts, OutboundPart{Kind: "image", Raw: raw})
 		default:
-			if segment.Text != "" {
-				parts = append(parts, OutboundPart{Kind: "text", Text: segment.Text})
-			}
+			return "", nil, fmt.Errorf("暂不支持发送 %s 消息", segment.Kind)
 		}
-	}
-	if len(parts) == 0 && strings.TrimSpace(outbound.PlainText) != "" {
-		parts = append(parts, OutboundPart{Kind: "text", Text: outbound.PlainText})
 	}
 	if len(parts) == 0 {
 		return "", nil, fmt.Errorf("没有可发送的消息内容")
@@ -121,22 +114,39 @@ func EncodeOutbound(outbound platformio.OutboundMessageEnvelope, maxBytes int) (
 	return target, parts, nil
 }
 
-func decodeSegmentBinary(segment platformio.Segment) ([]byte, error) {
-	if segment.Extra != nil {
-		if b64 := segment.Extra["binary_data_base64"]; b64 != "" {
-			return base64.StdEncoding.DecodeString(b64)
+func decodeSegmentBinary(ctx context.Context, segment platformio.Segment, maxBytes int) ([]byte, error) {
+	value := segment.Extra["binary_data_base64"]
+	if value == "" {
+		var err error
+		value, err = platformio.SegmentMediaBase64(ctx, segment)
+		if err != nil {
+			return nil, err
 		}
 	}
-	if data, ok := segment.Data.(string); ok && data != "" {
-		return base64.StdEncoding.DecodeString(data)
+	if len(value) > base64.StdEncoding.EncodedLen(maxBytes) {
+		return nil, fmt.Errorf("图片超过大小限制")
 	}
-	if segment.URL != "" && strings.HasPrefix(segment.URL, "data:") {
-		idx := strings.Index(segment.URL, ",")
-		if idx > 0 {
-			return base64.StdEncoding.DecodeString(segment.URL[idx+1:])
+	if strings.ContainsAny(value, "\r\n") {
+		return nil, fmt.Errorf("图片 Base64 无效")
+	}
+	return base64.StdEncoding.DecodeString(value)
+}
+
+func messageIdentity(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		if v != 0 {
+			text, _ := memutils.PyJSONMarshal(v)
+			return text
+		}
+	case int, int64, uint64, json.Number:
+		if n := fmt.Sprint(v); n != "0" {
+			return n
 		}
 	}
-	return nil, fmt.Errorf("图片超过大小限制")
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {
@@ -148,22 +158,31 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func asFloat64(v any) float64 {
-	switch typed := v.(type) {
-	case float64:
-		return typed
-	case float32:
-		return float64(typed)
-	case int:
-		return float64(typed)
-	case int64:
-		return float64(typed)
-	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-		if err == nil {
-			return f
-		}
-	default:
+func messageStamp(msg map[string]any) (float64, error) {
+	value := msg["create_time_ms"]
+	if messageIdentity(value) == "" {
+		value = msg["create_time"]
 	}
-	return 0
+	if messageIdentity(value) == "" {
+		return float64(time.Now().UnixNano()) / 1e9, nil
+	}
+	var stamp float64
+	switch v := value.(type) {
+	case float64:
+		stamp = v
+	case int64:
+		stamp = float64(v)
+	case int:
+		stamp = float64(v)
+	default:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(messageIdentity(value)), 64)
+		if err != nil {
+			return 0, fmt.Errorf("微信消息时间戳无效")
+		}
+		stamp = parsed
+	}
+	if stamp > 1_000_000_000_000 {
+		stamp /= 1000
+	}
+	return stamp, nil
 }

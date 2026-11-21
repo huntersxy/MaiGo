@@ -182,19 +182,11 @@ func readNativePluginEnabledValue(raw string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	switch typed := value.(type) {
-	case bool:
-		return typed, nil
-	case string:
-		switch strings.ToLower(strings.TrimSpace(typed)) {
-		case "true", "1", "yes", "on", "enabled":
-			return true, nil
-		default:
-			return false, nil
-		}
-	default:
-		return false, nil
+	enabled, err := platformio.ParseNativeConfigBool(value)
+	if err != nil {
+		return false, fmt.Errorf("plugin.enabled: %w", err)
 	}
+	return enabled, nil
 }
 
 // StartNativeRuntimeIfEnabled 按本地配置决定是否 StartRuntime

@@ -20,9 +20,16 @@ func (h *Host) buildQQOfficialHostHooks() *qq_official.HostHooks {
 	if port, ok := h.MessageGatewayPort().(PluginGatewayInboundPort); ok && port != nil {
 		inbound = port
 	}
+	var resolver platformio.PluginFileResolver
+	if port, ok := h.MessageGatewayPort().(interface {
+		ResolvePluginFileURL(context.Context, string, string) (string, error)
+	}); ok {
+		resolver = port.ResolvePluginFileURL
+	}
 	return &qq_official.HostHooks{
-		Inbound: inbound,
-		InvokeAPI: qqOfficialAPIInvoker{host: h},
+		Inbound:     inbound,
+		ResolveFile: resolver,
+		InvokeAPI:   qqOfficialAPIInvoker{host: h},
 		ReportGatewayState: func(ctx context.Context, state *qq_official.RuntimeState) error {
 			return h.reportQQOfficialGatewayState(ctx, state)
 		},

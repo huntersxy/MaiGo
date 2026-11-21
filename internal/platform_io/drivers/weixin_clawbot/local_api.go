@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // RegisterLocalAPIs 注册账号管理 LocalAPI（P0 可读列表；写操作预留）
@@ -43,7 +45,10 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
-		slot, _ := asInt(args["slot"])
+		slot, ok := asInt(args["slot"])
+		if !ok || slot < 0 || slot >= MaxAccounts {
+			return nil, fmt.Errorf("微信账号槽位无效")
+		}
 		return orch.handleRenameAccount(slot, asString(args["remark"]))
 	})
 	binder.SetAPILocalHandler("login_account", PluginID, map[string]any{
@@ -55,7 +60,10 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
-		slot, _ := asInt(args["slot"])
+		slot, ok := asInt(args["slot"])
+		if !ok || slot < 0 || slot >= MaxAccounts {
+			return nil, fmt.Errorf("微信账号槽位无效")
+		}
 		return orch.handleLoginAccount(slot)
 	})
 	binder.SetAPILocalHandler("remove_account", PluginID, map[string]any{
@@ -67,7 +75,10 @@ func RegisterLocalAPIs(binder LocalAPIBinder, orch *Orchestrator) {
 		_ = ctx
 		_ = pluginID
 		_ = componentName
-		slot, _ := asInt(args["slot"])
+		slot, ok := asInt(args["slot"])
+		if !ok || slot < 0 || slot >= MaxAccounts {
+			return nil, fmt.Errorf("微信账号槽位无效")
+		}
 		return orch.handleRemoveAccount(slot)
 	})
 }
@@ -79,7 +90,8 @@ func (o *Orchestrator) handleAccounts() (any, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	accounts := make([]map[string]any, 0)
-	for slot, conn := range o.slots {
+	for slot := 0; slot < MaxAccounts; slot++ {
+		conn := o.slots[slot]
 		if conn == nil || !conn.Store.HasIdentity() {
 			continue
 		}
@@ -88,14 +100,21 @@ func (o *Orchestrator) handleAccounts() (any, error) {
 		if remark == "" {
 			remark = fmt.Sprintf("微信账号 %d", slot+1)
 		}
+		conn.mu.Lock()
+		var qr any
+		if conn.qr != "" {
+			qr = conn.qr
+		}
+		status, ready, busy := conn.status, conn.ready, conn.busy
+		conn.mu.Unlock()
 		accounts = append(accounts, map[string]any{
 			"slot":       slot,
 			"remark":     remark,
 			"account_id": state.AccountID,
-			"status":     conn.Status(),
-			"ready":      conn.Ready(),
-			"qr":         conn.QR(),
-			"busy":       false,
+			"status":     status,
+			"ready":      ready,
+			"qr":         qr,
+			"busy":       busy,
 		})
 	}
 	return map[string]any{
@@ -122,19 +141,22 @@ func (o *Orchestrator) handleAddAccount(remark string) (any, error) {
 		return nil, fmt.Errorf("请先启用微信适配器")
 	}
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	for slot := 0; slot < MaxAccounts; slot++ {
 		conn := o.slots[slot]
-		if conn == nil {
+		if conn == nil || conn.Store.HasIdentity() {
 			continue
 		}
-		if !conn.Store.HasIdentity() {
-			conn.Store.SetRemark(remark)
-			_ = conn.Store.Save()
-			conn.Start(true)
-			return map[string]any{"slot": slot}, nil
+		err := conn.Store.updateAndSave(func(state *AccountState) { state.Remark = remark })
+		o.mu.Unlock()
+		if err != nil {
+			return nil, err
 		}
+		if err := o.scheduleAccountAction(conn, false); err != nil {
+			return nil, err
+		}
+		return map[string]any{"slot": slot}, nil
 	}
+	o.mu.Unlock()
 	return nil, fmt.Errorf("最多同时绑定 %d 个账号", MaxAccounts)
 }
 
@@ -143,12 +165,13 @@ func (o *Orchestrator) handleRenameAccount(slot int, remark string) (any, error)
 	if err != nil {
 		return nil, err
 	}
+	o.lifecycle.Lock()
+	defer o.lifecycle.Unlock()
 	conn, _, ok := o.Slot(slot)
-	if !ok || conn == nil {
+	if !ok || conn == nil || !conn.Store.HasIdentity() {
 		return nil, fmt.Errorf("账号不存在，请刷新页面")
 	}
-	conn.Store.SetRemark(remark)
-	if err := conn.Store.Save(); err != nil {
+	if err := conn.Store.updateAndSave(func(state *AccountState) { state.Remark = remark }); err != nil {
 		return nil, err
 	}
 	return map[string]any{"success": true}, nil
@@ -159,19 +182,64 @@ func (o *Orchestrator) handleLoginAccount(slot int) (any, error) {
 		return nil, fmt.Errorf("请先启用微信适配器")
 	}
 	conn, _, ok := o.Slot(slot)
-	if !ok || conn == nil {
+	if !ok || conn == nil || !conn.Store.HasIdentity() {
 		return nil, fmt.Errorf("账号不存在，请刷新页面")
 	}
-	conn.Start(true)
+	if err := o.scheduleAccountAction(conn, false); err != nil {
+		return nil, err
+	}
 	return map[string]any{"success": true}, nil
 }
 
 func (o *Orchestrator) handleRemoveAccount(slot int) (any, error) {
 	conn, _, ok := o.Slot(slot)
-	if !ok || conn == nil {
+	if !ok || conn == nil || !conn.Store.HasIdentity() {
 		return nil, fmt.Errorf("账号不存在，请刷新页面")
 	}
-	_ = conn.Stop(context.Background())
-	_ = conn.Store.Clear()
+	if err := o.scheduleAccountAction(conn, true); err != nil {
+		return nil, err
+	}
 	return map[string]any{"success": true}, nil
+}
+
+func (o *Orchestrator) scheduleAccountAction(conn *AccountConnection, remove bool) error {
+	conn.mu.Lock()
+	if conn.busy {
+		conn.mu.Unlock()
+		return fmt.Errorf("该账号操作仍在进行，请稍后再试")
+	}
+	conn.busy = true
+	conn.status = "正在获取二维码"
+	if remove {
+		conn.status = "正在移除账号"
+	}
+	conn.mu.Unlock()
+	go func() {
+		o.lifecycle.Lock()
+		defer o.lifecycle.Unlock()
+		defer func() {
+			conn.mu.Lock()
+			conn.busy = false
+			conn.mu.Unlock()
+		}()
+		o.mu.Lock()
+		active := o.started && o.slots[conn.slot] == conn
+		o.mu.Unlock()
+		if !active {
+			return
+		}
+		err := conn.Stop(context.Background())
+		if err == nil {
+			if remove {
+				err = conn.Store.Clear()
+			} else {
+				conn.Start(true)
+			}
+		}
+		if err != nil {
+			conn.setStatus("账号操作失败，请查看日志后重试")
+			zap.L().Error("微信账号操作失败", zap.Int("slot", conn.slot), zap.Error(err))
+		}
+	}()
+	return nil
 }

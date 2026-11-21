@@ -1,14 +1,17 @@
 package telegram
 
 import (
+	"MaiGo/internal/platform_io"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"strings"
@@ -73,52 +76,52 @@ func NewClient(token, baseURL, proxy string, pollTimeoutSec, maxBytes int) (*Cli
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf("Bot API 地址必须是无凭据、无查询参数的 HTTP(S) 地址")
 	}
-proxy = strings.TrimSpace(proxy)
-		dialer := &net.Dialer{Timeout: 15 * time.Second}
-		// trust_env=false：默认不读环境代理
-		proxyFunc := func(*http.Request) (*url.URL, error) { return nil, nil }
-		dialContext := dialer.DialContext
-		if proxy != "" {
-			proxyURL, err := url.Parse(proxy)
+	proxy = strings.TrimSpace(proxy)
+	dialer := &net.Dialer{Timeout: 15 * time.Second}
+	// trust_env=false：默认不读环境代理
+	proxyFunc := func(*http.Request) (*url.URL, error) { return nil, nil }
+	dialContext := dialer.DialContext
+	if proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("代理地址无效")
+		}
+		switch proxyURL.Scheme {
+		case "http", "https":
+			proxyFunc = http.ProxyURL(proxyURL)
+		case "socks5", "socks5h":
+			socksDialer, err := xproxy.FromURL(proxyURL, dialer)
 			if err != nil {
 				return nil, fmt.Errorf("代理地址无效")
 			}
-			switch proxyURL.Scheme {
-			case "http", "https":
-				proxyFunc = http.ProxyURL(proxyURL)
-			case "socks5", "socks5h":
-				socksDialer, err := xproxy.FromURL(proxyURL, dialer)
-				if err != nil {
-					return nil, fmt.Errorf("代理地址无效")
+			if contextDialer, ok := socksDialer.(xproxy.ContextDialer); ok {
+				dialContext = contextDialer.DialContext
+			} else {
+				dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return socksDialer.Dial(network, addr)
 				}
-				if contextDialer, ok := socksDialer.(xproxy.ContextDialer); ok {
-					dialContext = contextDialer.DialContext
-				} else {
-					dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-						return socksDialer.Dial(network, addr)
-					}
-				}
-			default:
-				return nil, fmt.Errorf("代理仅支持 HTTP(S)/SOCKS5")
 			}
+		default:
+			return nil, fmt.Errorf("代理仅支持 HTTP(S)/SOCKS5")
 		}
-		if maxBytes <= 0 {
-			maxBytes = DefaultMaxDownloadMB * 1024 * 1024
-		}
-		if pollTimeoutSec <= 0 {
-			pollTimeoutSec = DefaultPollTimeoutSec
-		}
-		timeout := time.Duration(pollTimeoutSec+15) * time.Second
-		if timeout < 60*time.Second {
-			timeout = 60 * time.Second
-		}
-		transport := &http.Transport{
-			Proxy:                 proxyFunc,
-			DialContext:           dialContext,
-			TLSHandshakeTimeout:   15 * time.Second,
-			ResponseHeaderTimeout: timeout,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
+	}
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxDownloadMB * 1024 * 1024
+	}
+	if pollTimeoutSec <= 0 {
+		pollTimeoutSec = DefaultPollTimeoutSec
+	}
+	timeout := time.Duration(pollTimeoutSec+15) * time.Second
+	if timeout < 60*time.Second {
+		timeout = 60 * time.Second
+	}
+	transport := &http.Transport{
+		Proxy:                 proxyFunc,
+		DialContext:           dialContext,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: timeout,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 	return &Client{
 		token:    token,
 		base:     baseURL,
@@ -201,7 +204,10 @@ func (c *Client) Call(ctx context.Context, method string, body map[string]any, u
 				}
 			}
 			for _, upload := range uploads {
-				part, createErr := w.CreateFormFile(upload.Field, upload.Filename)
+				header := make(textproto.MIMEHeader)
+				header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": upload.Field, "filename": upload.Filename}))
+				header.Set("Content-Type", upload.MIME)
+				part, createErr := w.CreatePart(header)
 				if createErr != nil {
 					_ = w.Close()
 					return nil, createErr
@@ -229,8 +235,8 @@ func (c *Client) Call(ctx context.Context, method string, body map[string]any, u
 		if readErr != nil {
 			return nil, &TransportError{Message: fmt.Sprintf("Telegram 网络请求失败（%T）", readErr)}
 		}
-		var result map[string]any
-		if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		result, err := platformio.DecodeWireObject(bodyBytes)
+		if err != nil {
 			return nil, &APIError{Code: resp.StatusCode, Description: "响应不是 JSON"}
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -244,8 +250,8 @@ func (c *Client) Call(ctx context.Context, method string, body map[string]any, u
 		}
 		delay := 0
 		if params, ok := asMap(result["parameters"]); ok {
-			if n, ok := asInt(params["retry_after"]); ok {
-				delay = n
+			if n, ok := asInt64(params["retry_after"]); ok && n > 0 && n <= 300 {
+				delay = int(n)
 			}
 		}
 		if code == 429 && delay > 0 && delay <= 300 && attempt < 2 {
@@ -303,16 +309,18 @@ func (c *Client) Download(ctx context.Context, fileID string) ([]byte, error) {
 	if size, ok := asInt(file["file_size"]); ok && size > c.maxBytes {
 		return nil, fmt.Errorf("Telegram 媒体超过配置的下载上限")
 	}
-	path := asString(file["file_path"])
+	path, _ := file["file_path"].(string)
 	if path == "" || strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\") {
 		return nil, fmt.Errorf("Telegram 未返回有效的相对文件路径；本地 Bot API 的 --local 模式暂不支持")
 	}
-	for _, piece := range strings.Split(path, "/") {
+	pieces := strings.Split(path, "/")
+	for i, piece := range pieces {
 		if piece == ".." {
 			return nil, fmt.Errorf("Telegram 未返回有效的相对文件路径；本地 Bot API 的 --local 模式暂不支持")
 		}
+		pieces[i] = url.PathEscape(piece)
 	}
-	fileURL := fmt.Sprintf("%s/file/bot%s/%s", c.base, c.token, path)
+	fileURL := fmt.Sprintf("%s/file/bot%s/%s", c.base, c.token, strings.Join(pieces, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
 		return nil, &TransportError{Message: fmt.Sprintf("Telegram 媒体下载失败（%T）", err)}

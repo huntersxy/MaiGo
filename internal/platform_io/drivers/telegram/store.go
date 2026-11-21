@@ -191,8 +191,6 @@ func asInt64(v any) (int64, bool) {
 		return int64(typed), true
 	case int64:
 		return typed, true
-	case float64:
-		return int64(typed), true
 	case json.Number:
 		n, err := typed.Int64()
 		return n, err == nil

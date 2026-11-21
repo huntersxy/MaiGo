@@ -37,6 +37,16 @@ func (g *Gateway) SetFileResolver(resolver platformio.PluginFileResolver) {
 	g.mu.Unlock()
 }
 
+func (g *Gateway) ResolvePluginFileURL(ctx context.Context, fileRef, sessionID string) (string, error) {
+	g.mu.Lock()
+	resolver := g.fileResolver
+	g.mu.Unlock()
+	if resolver == nil {
+		return "", fmt.Errorf("宿主附件解析器未接线")
+	}
+	return resolver(ctx, fileRef, sessionID)
+}
+
 // SetInboundHandler 注入外部消息入站处理器（由 Agent 在启动后接线）
 func (g *Gateway) SetInboundHandler(handler func(ctx context.Context, message map[string]any) error) {
 	if g == nil {

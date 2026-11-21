@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"MaiGo/internal/platform_io"
 )
 
 const (
@@ -27,11 +29,11 @@ type PluginOptions struct {
 
 // QQOfficialOptions 对齐 [qq_official]
 type QQOfficialOptions struct {
-	AppID               string
-	AppSecret           string
-	APIBaseURL          string
-	UnifiedAccountID    string
-	SilentUserSync      bool
+	AppID                string
+	AppSecret            string
+	APIBaseURL           string
+	UnifiedAccountID     string
+	SilentUserSync       bool
 	SnowlumaIdentityOnly bool
 }
 
@@ -168,76 +170,31 @@ func SettingsToMap(s Settings) map[string]any {
 
 // ParseSettings 从配置 map 解析；缺键走默认
 func ParseSettings(config map[string]any) (Settings, error) {
-	settings := DefaultSettings()
-	if config == nil {
-		return settings, nil
+	normalized, err := platformio.NormalizeNativeConfig(config, ConfigSchemaMap())
+	if err != nil {
+		return Settings{}, err
 	}
-	if plugin, ok := asMap(config["plugin"]); ok {
-		if v, ok := plugin["enabled"]; ok {
-			settings.Plugin.Enabled = asBool(v)
-		}
-		if v := strings.TrimSpace(asString(plugin["config_version"])); v != "" {
-			settings.Plugin.ConfigVersion = v
-		}
+	var settings Settings
+	plugin := normalized["plugin"]
+	settings.Plugin = PluginOptions{Enabled: plugin["enabled"].(bool), ConfigVersion: plugin["config_version"].(string)}
+	qq := normalized["qq_official"]
+	settings.QQOfficial = QQOfficialOptions{
+		AppID: qq["app_id"].(string), AppSecret: qq["app_secret"].(string), APIBaseURL: qq["api_base_url"].(string),
+		UnifiedAccountID: qq["unified_account_id"].(string), SilentUserSync: qq["silent_user_sync"].(bool),
+		SnowlumaIdentityOnly: qq["snowluma_identity_only"].(bool),
 	}
-	if qq, ok := asMap(config["qq_official"]); ok {
-		settings.QQOfficial.AppID = strings.TrimSpace(asString(qq["app_id"]))
-		settings.QQOfficial.AppSecret = strings.TrimSpace(asString(qq["app_secret"]))
-		if v := strings.TrimSpace(asString(qq["api_base_url"])); v != "" {
-			settings.QQOfficial.APIBaseURL = strings.TrimRight(v, "/")
-		}
-		settings.QQOfficial.UnifiedAccountID = strings.TrimSpace(asString(qq["unified_account_id"]))
-		if v, ok := qq["silent_user_sync"]; ok {
-			settings.QQOfficial.SilentUserSync = asBool(v)
-		}
-		if v, ok := qq["snowluma_identity_only"]; ok {
-			settings.QQOfficial.SnowlumaIdentityOnly = asBool(v)
-		}
+	mute, recall, kick := normalized["mute"], normalized["recall"], normalized["kick"]
+	settings.Mute = MuteOptions{
+		Enabled: mute["enabled"].(bool), AllowedGroups: mute["allowed_groups"].([]string), AdminUsers: mute["admin_users"].([]string),
+		MinDuration: mute["min_duration"].(int), MaxDuration: mute["max_duration"].(int),
 	}
-	if filter, ok := asMap(config["filter"]); ok {
-		if v, ok := filter["ignore_other_bots"]; ok {
-			settings.Filter.IgnoreOtherBots = asBool(v)
-		}
-	}
-if adv, ok := asMap(config["advanced"]); ok {
-			if v, ok := adv["show_debug_info"]; ok {
-				settings.Advanced.ShowDebugInfo = asBool(v)
-			}
-			if f, ok := asFloat(adv["reconnect_delay_sec"]); ok {
-				settings.Advanced.ReconnectDelaySec = clampFloat(f, 1, 300, DefaultReconnectSec)
-			}
-		}
-		if mute, ok := asMap(config["mute"]); ok {
-			if v, ok := mute["enabled"]; ok {
-				settings.Mute.Enabled = asBool(v)
-			}
-			settings.Mute.AllowedGroups = asStringSlice(mute["allowed_groups"])
-			settings.Mute.AdminUsers = asStringSlice(mute["admin_users"])
-			if n, ok := asInt(mute["min_duration"]); ok {
-				settings.Mute.MinDuration = clampInt(n, 1, 2592000, 60)
-			}
-			if n, ok := asInt(mute["max_duration"]); ok {
-				settings.Mute.MaxDuration = clampInt(n, 1, 2592000, 2592000)
-			}
-		}
-		if recall, ok := asMap(config["recall"]); ok {
-			if v, ok := recall["enabled"]; ok {
-				settings.Recall.Enabled = asBool(v)
-			}
-			settings.Recall.AllowedGroups = asStringSlice(recall["allowed_groups"])
-		}
-		if kick, ok := asMap(config["kick"]); ok {
-			if v, ok := kick["enabled"]; ok {
-				settings.Kick.Enabled = asBool(v)
-			}
-			settings.Kick.AllowedGroups = asStringSlice(kick["allowed_groups"])
-			settings.Kick.AdminUsers = asStringSlice(kick["admin_users"])
-		}
-		if settings.Plugin.ConfigVersion == "" {
-			settings.Plugin.ConfigVersion = SupportedConfigVersion
-		}
-		return settings, nil
-	}
+	settings.Recall = RecallOptions{Enabled: recall["enabled"].(bool), AllowedGroups: recall["allowed_groups"].([]string)}
+	settings.Kick = KickOptions{Enabled: kick["enabled"].(bool), AllowedGroups: kick["allowed_groups"].([]string), AdminUsers: kick["admin_users"].([]string)}
+	settings.Filter.IgnoreOtherBots = normalized["filter"]["ignore_other_bots"].(bool)
+	settings.Advanced = AdvancedOptions{ShowDebugInfo: normalized["advanced"]["show_debug_info"].(bool),
+		ReconnectDelaySec: normalized["advanced"]["reconnect_delay_sec"].(float64)}
+	return settings, nil
+}
 
 func asMap(v any) (map[string]any, bool) {
 	m, ok := v.(map[string]any)
@@ -283,58 +240,21 @@ func asBool(v any) bool {
 }
 
 func asFloat(v any) (float64, bool) {
-		switch typed := v.(type) {
-		case float64:
-			return typed, true
-		case float32:
-			return float64(typed), true
-		case int:
-			return float64(typed), true
-		case int64:
-			return float64(typed), true
-		case string:
-			f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
-			return f, err == nil
-		default:
-			return 0, false
-		}
+	switch typed := v.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		return f, err == nil
+	default:
+		return 0, false
 	}
-
-func asStringSlice(v any) []string {
-		switch typed := v.(type) {
-		case []string:
-			out := make([]string, 0, len(typed))
-			for _, item := range typed {
-				if s := strings.TrimSpace(item); s != "" {
-					out = append(out, s)
-				}
-			}
-			return out
-		case []any:
-			out := make([]string, 0, len(typed))
-			for _, item := range typed {
-				if s := strings.TrimSpace(asString(item)); s != "" {
-					out = append(out, s)
-				}
-			}
-			return out
-		default:
-			return []string{}
-		}
-	}
-
-	func clampInt(v, lo, hi, def int) int {
-		if v < lo || v > hi {
-			return def
-		}
-		return v
-	}
-
-	func clampFloat(v, lo, hi, def float64) float64 {
-	if v < lo || v > hi {
-		return def
-	}
-	return v
 }
 
 func isDecimal(s string) bool {
