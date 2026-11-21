@@ -293,7 +293,7 @@ func (s *Service) pullRepository(ctx context.Context, repositoryPath, branch, re
 	if branch != "" {
 		target = "origin/" + branch
 	}
-	outcome := s.applyPluginCode(ctx, repositoryPath, target, force, expectedCommit, branch)
+	outcome := s.applyPluginCode(ctx, repositoryPath, target, force, expectedCommit)
 	outcome.Commands = append(executed, outcome.Commands...)
 	return outcome
 }
@@ -336,14 +336,14 @@ func (s *Service) pullGitHubRepository(ctx context.Context, repositoryPath, bran
 			StatusCode: http.StatusBadGateway,
 		}
 	}
-	outcome := s.applyPluginCode(ctx, repositoryPath, "FETCH_HEAD", force, expectedCommit, branch)
+	outcome := s.applyPluginCode(ctx, repositoryPath, "FETCH_HEAD", force, expectedCommit)
 	outcome.MirrorUsed = source.ID
 	outcome.Commands = append(executed, outcome.Commands...)
 	return outcome
 }
 
-// applyPluginCode 对齐 _apply_plugin_code：固定本次目标提交后再快进或强制替换
-func (s *Service) applyPluginCode(ctx context.Context, repositoryPath, target string, force bool, expectedCommit *string, branch string) pullOutcome {
+// applyPluginCode 固定目标提交，备份并原地替换插件代码。
+func (s *Service) applyPluginCode(ctx context.Context, repositoryPath, target string, force bool, expectedCommit *string) pullOutcome {
 	// 一旦开始写文件，即使请求取消也要等待替换或恢复完成。
 	applyCtx := context.WithoutCancel(ctx)
 	commitOutput, err := gitOutput(applyCtx, repositoryPath, "rev-parse", target)
@@ -374,7 +374,7 @@ func (s *Service) applyPluginCode(ctx context.Context, repositoryPath, target st
 	if safeString(manifest["id"]) != safeString(installed["id"]) {
 		return pullOutcome{Error: "新版本插件 ID 与已安装插件不一致", StatusCode: http.StatusBadRequest}
 	}
-	conflict, err := updateConflict(applyCtx, repositoryPath, selected)
+	conflict, err := updateConflict(applyCtx, repositoryPath, repositoryPath, selected)
 	if err != nil {
 		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
 	}
@@ -383,39 +383,17 @@ func (s *Service) applyPluginCode(ctx context.Context, repositoryPath, target st
 			Error: conflict.Message, Payload: conflict, StatusCode: http.StatusConflict,
 		}
 	}
-	executed := make([]string, 0, 2)
-	if !force {
-		if branch != "" {
-			args := []string{"checkout", branch}
-			executed = append(executed, "git "+strings.Join(args, " "))
-			if stdout, stderrText, runErr := runGitCommand(applyCtx, repositoryPath, updateGitTimeout, args...); runErr != nil {
-				return pullOutcome{
-					Error:    "Git 更新失败: " + gitFailureDetail(stdout, stderrText),
-					Commands: executed, StatusCode: http.StatusInternalServerError,
-				}
-			}
-		}
-		args := []string{"merge", "--ff-only", selected}
-		executed = append(executed, "git "+strings.Join(args, " "))
-		if stdout, stderrText, runErr := runGitCommand(applyCtx, repositoryPath, updateGitTimeout, args...); runErr != nil {
-			return pullOutcome{
-				Error:    "Git 更新失败: " + gitFailureDetail(stdout, stderrText),
-				Commands: executed, StatusCode: http.StatusInternalServerError,
-			}
-		}
-		return pullOutcome{Success: true, Branch: branch, Commands: executed}
-	}
 	backup := filepath.Join(filepath.Dir(repositoryPath), ".update_backups", filepath.Base(repositoryPath)+"."+randomHex(16))
 	if err := backupCode(applyCtx, repositoryPath, backup, selected); err != nil {
-		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError, Commands: executed}
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
 	}
 	if err := replaceCode(applyCtx, repositoryPath, selected); err != nil {
 		if restoreErr := restoreCode(applyCtx, repositoryPath, backup); restoreErr != nil {
 			zap.L().Error("恢复插件代码备份失败", zap.String("path", repositoryPath), zap.Error(restoreErr))
 		}
-		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError, Commands: executed}
+		return pullOutcome{Error: err.Error(), StatusCode: http.StatusInternalServerError}
 	}
-	return pullOutcome{Success: true, Branch: branch, BackupPath: backup, Commands: executed}
+	return pullOutcome{Success: true, BackupPath: backup}
 }
 
 // gitFailureDetail 对齐 stderr.strip() or stdout.strip()

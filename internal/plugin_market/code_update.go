@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -35,7 +34,6 @@ type CodeConflict struct {
 	Code         string   `json:"code"`
 	Message      string   `json:"message"`
 	Files        []string `json:"files"`
-	Diverged     bool     `json:"diverged"`
 	TargetCommit string   `json:"target_commit"`
 }
 
@@ -120,24 +118,6 @@ func gitOutput(ctx context.Context, root string, args ...string) (string, error)
 	return stdout, nil
 }
 
-// gitExitCode 返回 git 退出码，用于 merge-base --is-ancestor 的 0/1 判定
-func gitExitCode(ctx context.Context, root string, args ...string) (int, error) {
-	fullArgs := append([]string{"-C", root}, args...)
-	_, stderrText, err := runGitCommand(ctx, "", codeUpdateGitTimeout, fullArgs...)
-	if err == nil {
-		return 0, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode(), nil
-	}
-	detail := strings.TrimSpace(stderrText)
-	if detail == "" {
-		detail = err.Error()
-	}
-	return -1, fmt.Errorf("Git 操作失败：%s", detail)
-}
-
 func splitNulPaths(output string) []string {
 	parts := strings.Split(output, "\x00")
 	names := make([]string, 0, len(parts))
@@ -175,13 +155,9 @@ func codePaths(ctx context.Context, root, target string) ([]string, error) {
 	return paths, nil
 }
 
-// updateConflict 对齐 update_conflict：检测本地代码修改与提交分叉
-func updateConflict(ctx context.Context, root, target string) (*CodeConflict, error) {
-	paths, err := codePaths(ctx, root, target)
-	if err != nil {
-		return nil, err
-	}
-	changedOutput, err := gitOutput(ctx, root, "diff", "HEAD", "--name-only", "-z")
+// updateConflict 检查本地代码修改及目标版本会覆盖的未跟踪文件。
+func updateConflict(ctx context.Context, root, targetRoot, target string) (*CodeConflict, error) {
+	changedOutput, err := gitOutput(ctx, root, "diff", "HEAD", "--name-only", "--no-renames", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -190,13 +166,6 @@ func updateConflict(ctx context.Context, root, target string) (*CodeConflict, er
 		if isCodePath(name) {
 			filesSet[name] = struct{}{}
 		}
-	}
-	ancestor, err := gitExitCode(ctx, root, "merge-base", "--is-ancestor", "HEAD", target)
-	if err != nil {
-		return nil, err
-	}
-	if ancestor != 0 && ancestor != 1 {
-		return nil, fmt.Errorf("Git 操作失败：merge-base 退出码 %d", ancestor)
 	}
 	tracked := map[string]struct{}{}
 	for _, args := range [][]string{
@@ -211,15 +180,21 @@ func updateConflict(ctx context.Context, root, target string) (*CodeConflict, er
 			tracked[name] = struct{}{}
 		}
 	}
-	for _, name := range paths {
-		if _, ok := tracked[name]; ok {
+	incoming, err := gitOutput(ctx, targetRoot, "ls-tree", "-r", "--name-only", "-z", target)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range splitNulPaths(incoming) {
+		if _, ok := tracked[name]; ok || !isCodePath(name) {
 			continue
 		}
-		if pathExists(filepath.Join(root, filepath.FromSlash(name))) {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name))); err == nil {
 			filesSet[name] = struct{}{}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
 		}
 	}
-	if len(filesSet) == 0 && ancestor == 0 {
+	if len(filesSet) == 0 {
 		return nil, nil
 	}
 	files := make([]string, 0, len(filesSet))
@@ -227,15 +202,14 @@ func updateConflict(ctx context.Context, root, target string) (*CodeConflict, er
 		files = append(files, name)
 	}
 	sort.Strings(files)
-	commitOutput, err := gitOutput(ctx, root, "rev-parse", target)
+	commitOutput, err := gitOutput(ctx, targetRoot, "rev-parse", target)
 	if err != nil {
 		return nil, err
 	}
 	return &CodeConflict{
 		Code:         "local_changes",
-		Message:      "存在本地代码修改或提交分叉，可备份后强制更新",
+		Message:      "存在本地代码修改，可备份后强制更新",
 		Files:        files,
-		Diverged:     ancestor == 1,
 		TargetCommit: strings.TrimSpace(commitOutput),
 	}, nil
 }

@@ -14,12 +14,11 @@ func TestWriteInstallFailureCarriesStructuredConflict(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeInstallFailure(recorder, &pluginmarket.MarketError{
 		StatusCode: http.StatusConflict,
-		Message:    "存在本地代码修改或提交分叉，可备份后强制更新",
+		Message:    "存在本地代码修改，可备份后强制更新",
 		Payload: &pluginmarket.CodeConflict{
 			Code:         "local_changes",
-			Message:      "存在本地代码修改或提交分叉，可备份后强制更新",
+			Message:      "存在本地代码修改，可备份后强制更新",
 			Files:        []string{"plugin.py"},
-			Diverged:     true,
 			TargetCommit: strings.Repeat("d", 40),
 		},
 	})

@@ -253,7 +253,7 @@ func (s *Service) replaceFiles(ctx context.Context, candidate, target, backup st
 	}
 	receiptPayload := append(raw, '\n')
 	if existing && force {
-		if err := s.replaceExistingCode(ctx, target, candidate, backup, force); err != nil {
+		if err := s.replaceExistingCode(ctx, target, candidate, backup); err != nil {
 			return err
 		}
 		return os.WriteFile(filepath.Join(target, releaseReceiptName), receiptPayload, 0o644)
@@ -284,8 +284,31 @@ func (s *Service) replaceFiles(ctx context.Context, candidate, target, backup st
 
 // checkExistingCode 对齐 check_existing_code：检测已安装插件代码冲突，强制更新时允许覆盖
 func (s *Service) checkExistingCode(ctx context.Context, target, candidate string, force bool) error {
-	if !isGitRepository(target) {
+	if force || !isGitRepository(target) {
 		return nil
+	}
+	commitOutput, err := runPluginGit(ctx, candidate, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	commit := strings.TrimSpace(commitOutput)
+	conflict, err := updateConflict(ctx, target, candidate, commit)
+	if err != nil {
+		return err
+	}
+	if conflict != nil {
+		return conflictPayloadError(conflict)
+	}
+	return nil
+}
+
+// replaceExistingCode 对齐 replace_existing_code：只备份插件代码与配置，原地保留配置和数据
+func (s *Service) replaceExistingCode(ctx context.Context, target, candidate, backup string) error {
+	if err := checkTree(target); err != nil {
+		return err
+	}
+	if !isGitRepository(target) {
+		return badRequestError("强制替换代码需要 Git 安装")
 	}
 	commitOutput, err := runPluginGit(ctx, candidate, "rev-parse", "HEAD")
 	if err != nil {
@@ -296,35 +319,9 @@ func (s *Service) checkExistingCode(ctx context.Context, target, candidate strin
 	if err != nil {
 		return err
 	}
-	if _, err := runPluginGit(ctx, target, "fetch", "--no-tags", candidateResolved, commit); err != nil {
+	if _, err := runPluginGit(ctx, target, "fetch", "--update-shallow", "--no-tags", candidateResolved, commit); err != nil {
 		return err
 	}
-	conflict, err := updateConflict(ctx, target, commit)
-	if err != nil {
-		return err
-	}
-	if conflict != nil && !force {
-		return conflictPayloadError(conflict)
-	}
-	return nil
-}
-
-// replaceExistingCode 对齐 replace_existing_code：只备份插件代码与配置，原地保留配置和数据
-func (s *Service) replaceExistingCode(ctx context.Context, target, candidate, backup string, force bool) error {
-	if err := checkTree(target); err != nil {
-		return err
-	}
-	if err := s.checkExistingCode(ctx, target, candidate, force); err != nil {
-		return err
-	}
-	if !isGitRepository(target) {
-		return badRequestError("无 Git 安装不需要处理本地提交冲突")
-	}
-	commitOutput, err := runPluginGit(ctx, candidate, "rev-parse", "HEAD")
-	if err != nil {
-		return err
-	}
-	commit := strings.TrimSpace(commitOutput)
 	if err := backupCode(ctx, target, backup, commit); err != nil {
 		return err
 	}

@@ -65,7 +65,7 @@ func TestUpdateConflictAndBackupRestore(t *testing.T) {
 	writeTestFile(t, filepath.Join(repo, "config.toml"), "[plugin]\nenabled = true\n")
 	writeTestFile(t, filepath.Join(repo, "data", "state.txt"), "runtime\n")
 
-	conflict, err := updateConflict(context.Background(), repo, "HEAD")
+	conflict, err := updateConflict(context.Background(), repo, repo, "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestApplyPluginCodeForceAndConflict(t *testing.T) {
 
 	service := NewService()
 	wrong := strings.Repeat("a", 40)
-	outcome := service.applyPluginCode(context.Background(), repo, "HEAD", true, &wrong, "")
+	outcome := service.applyPluginCode(context.Background(), repo, "HEAD", true, &wrong)
 	if outcome.Success || outcome.StatusCode != 409 {
 		t.Fatalf("过期的 expected_commit 应返回 409，实际: %#v", outcome)
 	}
@@ -141,7 +141,7 @@ func TestApplyPluginCodeForceAndConflict(t *testing.T) {
 		t.Fatal("目标提交校验失败时不应改写代码")
 	}
 
-	outcome = service.applyPluginCode(context.Background(), repo, "HEAD", true, &head, "")
+	outcome = service.applyPluginCode(context.Background(), repo, "HEAD", true, &head)
 	if !outcome.Success || outcome.BackupPath == "" {
 		t.Fatalf("强制更新应成功并返回备份路径，实际: %#v", outcome)
 	}
@@ -150,7 +150,7 @@ func TestApplyPluginCodeForceAndConflict(t *testing.T) {
 	}
 
 	writeTestFile(t, filepath.Join(repo, "a.py"), "local-again\n")
-	outcome = service.applyPluginCode(context.Background(), repo, "HEAD", false, nil, "")
+	outcome = service.applyPluginCode(context.Background(), repo, "HEAD", false, nil)
 	if outcome.Success || outcome.StatusCode != 409 {
 		t.Fatalf("非强制更新遇到本地修改应返回 409，实际: %#v", outcome)
 	}
