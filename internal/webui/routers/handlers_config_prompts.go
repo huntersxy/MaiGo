@@ -85,7 +85,7 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 				modifiedAt = 0
 			}
 			infos = append(infos, map[string]any{
-				"name": name, "size": stat.Size(),
+				"name": name, "relative_path": strings.TrimPrefix(defaultPath, language+"/"), "size": stat.Size(),
 				"modified_at":  modifiedAt,
 				"display_name": meta.DisplayName, "advanced": meta.Advanced, "kind": kind,
 				"description": meta.Description,
@@ -265,7 +265,10 @@ func (d Deps) promptVersionContent(language, filename, versionID string) (string
 			return "", "", http.StatusNotFound, errors.New("Prompt 自定义版本不存在")
 		}
 		raw, err := os.ReadFile(customPath)
-		return string(raw), normalized, 0, err
+		if err != nil {
+			return "", "", http.StatusInternalServerError, err
+		}
+		return string(raw), normalized, 0, nil
 	}
 	versionPath, err := promptVersionFilePath(customRoot, language, filename, normalized)
 	if err != nil {
@@ -275,7 +278,10 @@ func (d Deps) promptVersionContent(language, filename, versionID string) (string
 		return "", "", http.StatusNotFound, errors.New("Prompt 自定义版本不存在")
 	}
 	raw, err := os.ReadFile(versionPath)
-	return string(raw), normalized, 0, err
+	if err != nil {
+		return "", "", http.StatusInternalServerError, err
+	}
+	return string(raw), normalized, 0, nil
 }
 
 // handleConfigPromptVersionGet 对应 GET .../versions/{version_id}
