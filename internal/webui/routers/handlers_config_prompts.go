@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"MaiGo/internal/chat/replyer"
 	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
@@ -21,6 +22,30 @@ type promptUpdateRequest struct {
 	VersionID     *string `json:"version_id"`
 	Label         string  `json:"label"`
 	CreateVersion bool    `json:"create_version"`
+}
+
+func (d Deps) handleConfigPromptBlocks(w http.ResponseWriter, r *http.Request) {
+	language := chiURLParam(r, "language")
+	if err := safePromptSegment(language, "reply_group_system.prompt"); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	resourcePath, err := resolvePromptResourcePath(d.promptResource(), language, "reply_group_system")
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if resourcePath == "" {
+		writeAPIError(w, http.StatusNotFound, "Prompt 文件不存在")
+		return
+	}
+	isGroup := true
+	switch r.URL.Query().Get("filename") {
+	case "reply_private_system.prompt", "reply_private.prompt", "reply_private_followup.prompt",
+		"reply_private_mai_replier.prompt", "reply_private_followup_mai_replier.prompt", "reply_mai_replier_private_system.prompt":
+		isGroup = false
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reply_guidance": replyer.ReplyGuidance(language, isGroup)})
 }
 
 // handleConfigPromptsList 对应 GET /api/webui/config/prompts
