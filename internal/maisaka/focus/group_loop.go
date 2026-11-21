@@ -195,8 +195,9 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 			DeferredToolsReminder: g.tools.DeferredNotice(),
 			InjectedUserMessages:  injected,
 			TailUserMessages:      maisaka.BuildConsecutiveWaitReminders(g.promptSource(), waits),
-			MaxContextSize:        maxContextSize,
-			LogicalTurnID:         logicalTurnID,
+			MaxContextSize:        maxContextSize, UseTokenLimit: g.opts.UseTokenLimit != nil && g.opts.UseTokenLimit(),
+			MaxContextTokens: tokenLimit(g.opts.MaxContextTokens),
+			LogicalTurnID:    logicalTurnID,
 			CaptureSnapshot: func(snapshot *maisaka.PlannerRequestSnapshot) {
 				capturedSnapshot = snapshot
 			},
@@ -224,6 +225,7 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 		}
 		g.mu.Lock()
 		stale := generation != g.generation || g.closed
+		g.lastPlannerPromptTokens = response.Usage.PromptTokens
 		if stale {
 			g.plannerSnapshot = nil
 		}
@@ -575,6 +577,9 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 	snapshot := append([]*Entry(nil), g.entries...)
 	generation := g.generation
 	maxContextSize := g.MaxContextSize()
+	useTokenLimit := g.opts.UseTokenLimit != nil && g.opts.UseTokenLimit()
+	maxContextTokens := tokenLimit(g.opts.MaxContextTokens)
+	promptTokens := g.lastPlannerPromptTokens
 	g.mu.Unlock()
 	if plannerSnapshot == nil {
 		return nil
@@ -583,14 +588,18 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 	for _, entry := range snapshot {
 		size += entry.Size()
 	}
-	if size <= maxContextSize {
+	if useTokenLimit && (maxContextTokens <= 0 || promptTokens < maxContextTokens) || !useTokenLimit && size <= maxContextSize {
 		return nil
 	}
 	split := 0
 	remaining := size
-	target := maxContextSize / 2
-	if target < 1 {
-		target = 1
+	targetBase := maxContextSize
+	if useTokenLimit {
+		targetBase = size
+	}
+	target := int(float64(targetBase) * 0.2)
+	if target < 5 {
+		target = 5
 	}
 	for split < len(snapshot) && remaining > target {
 		remaining -= snapshot[split].Size()
@@ -669,6 +678,7 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 		}
 	}
 	g.plannerSnapshot = nil
+	g.lastPlannerPromptTokens = 0
 	var replacement *Entry
 	if summary != nil {
 		sourceNames := make([]string, 0, len(related))
@@ -739,7 +749,9 @@ func (g *GroupRuntime) Compact(ctx context.Context) error {
 			trigger.TriggerTrimmedHistoryLearning(own)
 		}
 		keep := 20
-		if size := member.MaxContextSize() * 2; size > keep {
+		if useTokenLimit {
+			keep = len(member.ChatHistory()) + 1
+		} else if size := member.MaxContextSize() * 2; size > keep {
 			keep = size
 		}
 		member.TrimChatHistory(keep)

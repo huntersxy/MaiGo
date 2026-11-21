@@ -1377,8 +1377,8 @@ func (e *ReasoningEngine) PostProcessChatHistoryAfterCycle(ctx context.Context, 
 		return
 	}
 	result := processor(originalHistory, HistoryPostProcessOptions{
-		MaxContextSize:    runtime.MaxContextSize(),
-		PendingCallIDs:    runtime.PendingWaitToolCallIDs(),
+		MaxContextSize: runtime.MaxContextSize(), MaxContextTokens: runtime.MaxContextTokens(),
+		PromptTokens: runtime.lastPlannerPromptTokens(), PendingCallIDs: runtime.PendingWaitToolCallIDs(),
 		ConsumeReferences: consumeReferences,
 	})
 	if result.ChangedCount <= 0 {
@@ -1425,6 +1425,11 @@ func (e *ReasoningEngine) PostProcessChatHistoryAfterCycle(ctx context.Context, 
 		return
 	}
 	runtime.SetHistory(finalHistory)
+	if len(result.RemovedMessages) > 0 {
+		if loop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok && loop != nil {
+			loop.lastPlannerPromptTokens = 0
+		}
+	}
 	// 提交后同步宿主工作集，避免被裁条目在下一轮装配时复活
 	if sink := runtime.opts.HistoryTrimSink; sink != nil {
 		sink(originalHistory, finalHistory)

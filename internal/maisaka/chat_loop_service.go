@@ -160,7 +160,10 @@ type ChatLoopService struct {
 	// MaxImageNum 多模态图片上限，0 表示使用 visual.max_image_num 默认值 64
 	MaxImageNum int
 	// MaxContextSize 上下文窗口，0 表示使用调用方传入值
-	MaxContextSize int
+	MaxContextSize          int
+	UseTokenLimit           bool
+	MaxContextTokens        int
+	lastPlannerPromptTokens int
 	// IncludeDayBoundaryTimeMessages 是否在跨日历史消息前插入时间提示
 	IncludeDayBoundaryTimeMessages bool
 	// PlannerMessageSteering 是否启用快速反应模式：启用时 Planner 走流式请求，打断可保留已收到的片段
@@ -625,6 +628,15 @@ func (s *ChatLoopService) SelectLLMContextMessages(chatHistory []ContextMessage,
 	if effectiveContextSize < MinRetainedChatMessages {
 		effectiveContextSize = MinRetainedChatMessages
 	}
+	useTokenLimit := s.UseTokenLimit && (requestKind == "planner" || requestKind == "replyer")
+	if useTokenLimit {
+		effectiveContextSize = 1
+		for _, message := range filtered {
+			if message.CountInContext {
+				effectiveContextSize++
+			}
+		}
+	}
 	enableVisual := s.EnableVisualMessage && ResolveEnableVisualMessage(requestKind)
 
 	alwaysSelected := CollectAlwaysSelectedReferenceIndices(filtered, enableVisual)
@@ -669,6 +681,9 @@ func (s *ChatLoopService) SelectLLMContextMessages(chatHistory []ContextMessage,
 		overflow = 0
 	}
 	stabilityText := fmt.Sprintf("|cache_window %d->%d", baseContextSize, effectiveContextSize)
+	if useTokenLimit {
+		stabilityText = "|token_limit"
+	}
 	overflowText := ""
 	if overflow > 0 {
 		overflowText = fmt.Sprintf("|tool_turn_overflow +%d", overflow)
@@ -995,6 +1010,9 @@ func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []Contex
 	if err != nil {
 		return ChatResponse{}, err
 	}
+	if requestKind == "planner" {
+		s.lastPlannerPromptTokens = response.Usage.PromptTokens
+	}
 	response.SelectedHistoryCount = len(selected)
 	response.ToolCount = len(tools)
 	if s.MeasureSections != nil {
@@ -1036,6 +1054,10 @@ func (s *ChatLoopService) PlannerSnapshot() *PlannerRequestSnapshot {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
 	return s.Snapshot
+}
+
+func (s *ChatLoopService) LastPlannerPromptTokens() int {
+	return s.lastPlannerPromptTokens
 }
 
 // ClearPlannerSnapshot 提交压缩后清空旧前缀，避免同一批资料重复复用

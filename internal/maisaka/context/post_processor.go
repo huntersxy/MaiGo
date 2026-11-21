@@ -39,8 +39,14 @@ func ProcessChatHistoryAfterCycle(history []maisaka.ContextMessage, options Post
 
 	compactRemoved := 0
 	removedMessages := []maisaka.ContextMessage{}
-	if options.MaxContextSize > 0 && remaining >= options.MaxContextSize {
-		target := int(float64(options.MaxContextSize) * TrimTargetRatio)
+	shouldTrim := options.MaxContextSize > 0 && remaining >= options.MaxContextSize
+	retainedBase := options.MaxContextSize
+	if options.MaxContextTokens > 0 {
+		shouldTrim = options.PromptTokens >= options.MaxContextTokens
+		retainedBase = remaining
+	}
+	if shouldTrim {
+		target := int(float64(retainedBase) * TrimTargetRatio)
 		if target < MinRetainedChatMessages {
 			target = MinRetainedChatMessages
 		}

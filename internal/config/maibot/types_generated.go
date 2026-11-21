@@ -364,11 +364,19 @@ type CapabilitiesConfig struct {
 }
 
 type ChatConfig struct {
-	EnableReplyAt         bool                  `toml:"enable_reply_at,omitempty"`
-	MaxContextSize        int                   `toml:"max_context_size,omitempty"`
-	MaxPrivateContextSize int                   `toml:"max_private_context_size,omitempty"`
-	ReplyTiming           ChatReplyTimingConfig `toml:"reply_timing,omitempty"`
-	ReplyStyle            ChatReplyStyleConfig  `toml:"reply_style,omitempty"`
+	EnableReplyAt           bool                  `toml:"enable_reply_at,omitempty"`
+	MaxContextSize          int                   `toml:"max_context_size,omitempty"`
+	MaxPrivateContextSize   int                   `toml:"max_private_context_size,omitempty"`
+	UseTokenLimit           bool                  `toml:"use_token_limit,omitempty"`
+	MaxContextTokens        int                   `toml:"max_context_tokens,omitempty"`
+	PrivateUseTokenLimit    bool                  `toml:"private_use_token_limit,omitempty"`
+	PrivateMaxContextTokens int                   `toml:"private_max_context_tokens,omitempty"`
+	UseTokenLimit           bool                  `toml:"use_token_limit,omitempty"`
+	MaxContextTokens        int                   `toml:"max_context_tokens,omitempty"`
+	PrivateUseTokenLimit    bool                  `toml:"private_use_token_limit,omitempty"`
+	PrivateMaxContextTokens int                   `toml:"private_max_context_tokens,omitempty"`
+	ReplyTiming             ChatReplyTimingConfig `toml:"reply_timing,omitempty"`
+	ReplyStyle              ChatReplyStyleConfig  `toml:"reply_style,omitempty"`
 	// 8.14.19 前 [chat] 根级字段；升级链迁至 reply_timing / reply_style
 	ChatLegacyFlatFields `toml:",inline"`
 }

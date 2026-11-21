@@ -23,6 +23,13 @@ func (a *Agent) configureMaisakaChatLoop(loop *maisaka.ChatLoopService, isGroup 
 	}
 	loop.MaxImageSide = replyer.ContextImageMaxSide(bot.Visual.ImageQuality)
 	loop.MaxImageNum = bot.Visual.MaxImageNum
+	if isGroup {
+		loop.UseTokenLimit = bot.Chat.UseTokenLimit
+		loop.MaxContextTokens = bot.Chat.MaxContextTokens
+	} else {
+		loop.UseTokenLimit = bot.Chat.PrivateUseTokenLimit
+		loop.MaxContextTokens = bot.Chat.PrivateMaxContextTokens
+	}
 	loop.LimitImages = a.limitPlannerImages
 	loop.PlannerSubagent = bot.Capabilities.PlannerSubagent
 	loop.Personality = strings.TrimSpace(bot.Personality.Personality)

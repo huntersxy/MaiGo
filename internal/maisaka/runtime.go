@@ -136,7 +136,9 @@ type RuntimeOptions struct {
 	// ReplyFrequency 读取当前生效的回复频率
 	ReplyFrequency func() float64
 	// MaxContextSize 当前上下文条数上限，对齐 Python chat.max_context_size / max_private_context_size
-	MaxContextSize func() int
+	MaxContextSize   func() int
+	UseTokenLimit    func() bool
+	MaxContextTokens func() int
 	// ToolResultCondense 读取当前生效的工具结果整理开关与字符阈值，阈值 <=0 表示关闭
 	ToolResultCondense func() (enabled bool, threshold int)
 	// OnlineBotAccountIDs 平台在线机器人账号，用于过滤自身消息
@@ -444,6 +446,21 @@ func (r *Runtime) MaxContextSize() int {
 		return r.opts.MaxContextSize()
 	}
 	return 0
+}
+
+func (r *Runtime) MaxContextTokens() int {
+	if r.opts.UseTokenLimit == nil || !r.opts.UseTokenLimit() || r.opts.MaxContextTokens == nil {
+		return 0
+	}
+	return r.opts.MaxContextTokens()
+}
+
+func (r *Runtime) lastPlannerPromptTokens() int {
+	loop, ok := r.opts.ChatLoop.(*ChatLoopService)
+	if !ok || loop == nil {
+		return 0
+	}
+	return loop.LastPlannerPromptTokens()
 }
 
 // RefreshVisualPlaceholders 用已完成识图结果刷新历史占位；waitForTextModel 时按配置等待识别完成

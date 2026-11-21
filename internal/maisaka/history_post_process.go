@@ -3,7 +3,9 @@ package maisaka
 // HistoryPostProcessOptions 每轮结束后的历史后处理选项，由 Agent 注入的实现解释
 type HistoryPostProcessOptions struct {
 	// MaxContextSize 当前会话的上下文条数上限
-	MaxContextSize int
+	MaxContextSize   int
+	MaxContextTokens int
+	PromptTokens     int
 	// PendingCallIDs 仍处于等待中的工具调用编号
 	PendingCallIDs map[string]struct{}
 	// ConsumeReferences 是否消费一次性引用

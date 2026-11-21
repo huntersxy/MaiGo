@@ -61,6 +61,14 @@ multiple_probability = 0
 enable_reply_at = true
 max_context_size = 50
 max_private_context_size = 75
+use_token_limit = false
+max_context_tokens = 128000
+private_use_token_limit = false
+private_max_context_tokens = 128000
+use_token_limit = false
+max_context_tokens = 128000
+private_use_token_limit = false
+private_max_context_tokens = 128000
 
 [chat.reply_timing]
 message_debounce_mode = "natural"

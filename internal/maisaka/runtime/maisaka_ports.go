@@ -957,8 +957,21 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			}
 			return a.privateReplyFrequency(targetID)
 		},
-		// 上下文条数按 Python chat.max_context_size / max_private_context_size 解析，token 窗口只用于压缩
-		MaxContextSize:     func() int { return a.maisakaMaxContextSize(isGroup) },
+		MaxContextSize: func() int { return a.maisakaMaxContextSize(isGroup) },
+		UseTokenLimit: func() bool {
+			bot := a.instanceBotConfig()
+			return bot != nil && (bot.Chat.UseTokenLimit && isGroup || bot.Chat.PrivateUseTokenLimit && !isGroup)
+		},
+		MaxContextTokens: func() int {
+			bot := a.instanceBotConfig()
+			if bot == nil {
+				return 128000
+			}
+			if isGroup {
+				return bot.Chat.MaxContextTokens
+			}
+			return bot.Chat.PrivateMaxContextTokens
+		},
 		ToolResultCondense: a.maisakaToolResultCondense,
 		MentionDetector:    a.buildMentionDetector(kind, targetID),
 		OnlineBotAccountIDs: func(string) map[string]struct{} {

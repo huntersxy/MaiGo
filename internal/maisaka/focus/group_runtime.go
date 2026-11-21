@@ -81,6 +81,8 @@ type PlannerRequest struct {
 	InjectedUserMessages  []string
 	TailUserMessages      []string
 	MaxContextSize        int
+	UseTokenLimit         bool
+	MaxContextTokens      int
 	LogicalTurnID         string
 	// CaptureSnapshot 宿主在请求成功后回传 Planner 请求快照，供压缩复用前缀
 	CaptureSnapshot func(*maisaka.PlannerRequestSnapshot)
@@ -127,11 +129,13 @@ type FocusEmitter interface {
 
 // GroupOptions 共享组装配参数
 type GroupOptions struct {
-	Planner        PlannerStep
-	Summary        SummaryBuilder
-	Emitter        FocusEmitter
-	MaxContextSize func() int
-	StoreRoot      string
+	Planner          PlannerStep
+	Summary          SummaryBuilder
+	Emitter          FocusEmitter
+	MaxContextSize   func() int
+	UseTokenLimit    func() bool
+	MaxContextTokens func() int
+	StoreRoot        string
 	// Prompts 提示词来源，用于连续等待提醒
 	Prompts maisaka.PromptSource
 }
@@ -141,31 +145,32 @@ type GroupRuntime struct {
 	scopeID string
 	opts    GroupOptions
 
-	mu              sync.Mutex
-	members         map[string]GroupMember
-	entries         []*Entry
-	pending         map[string][]*Entry
-	ready           map[string]struct{}
-	debouncing      map[string]struct{}
-	seen            *seenSet
-	considered      map[string]int
-	sequence        int
-	generation      int
-	closed          bool
-	failed          bool
-	hydrating       bool
-	restored        map[string]struct{}
-	waitUntil       *float64
-	waitSession     string
-	waitToken       string
-	waits           int
-	sent            []*Entry
-	activeBatch     *Entry
-	post            []maisaka.ContextMessage
-	runID           string
-	cycle           int
-	state           string
-	plannerSnapshot *maisaka.PlannerRequestSnapshot
+	mu                      sync.Mutex
+	members                 map[string]GroupMember
+	entries                 []*Entry
+	pending                 map[string][]*Entry
+	ready                   map[string]struct{}
+	debouncing              map[string]struct{}
+	seen                    *seenSet
+	considered              map[string]int
+	sequence                int
+	generation              int
+	closed                  bool
+	failed                  bool
+	hydrating               bool
+	restored                map[string]struct{}
+	waitUntil               *float64
+	waitSession             string
+	waitToken               string
+	waits                   int
+	sent                    []*Entry
+	activeBatch             *Entry
+	post                    []maisaka.ContextMessage
+	runID                   string
+	cycle                   int
+	state                   string
+	plannerSnapshot         *maisaka.PlannerRequestSnapshot
+	lastPlannerPromptTokens int
 	// plannerRetryAfter 失败请求没有确认输入进度；收到更新的序列号前不重试
 	plannerRetryAfter *int
 	startedAt         float64
@@ -188,6 +193,13 @@ type GroupRuntime struct {
 	checkpointMu   sync.Mutex
 	dirty          bool
 	flushing       bool
+}
+
+func tokenLimit(provider func() int) int {
+	if provider == nil {
+		return 0
+	}
+	return provider()
 }
 
 // NewGroupRuntime 构造共享组运行时
