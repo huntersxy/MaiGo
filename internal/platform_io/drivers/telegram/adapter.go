@@ -30,6 +30,10 @@ type Adapter struct {
 	cancel    context.CancelFunc
 	done      chan struct{}
 	sendMu    sync.Mutex
+	avatarMu  sync.Mutex
+	avatars   avatarRelay
+	runCtx    context.Context
+	typing    map[typingTarget]*typingTask
 }
 
 // NewAdapter 构造适配器；enabled=false 时 Start 不轮询
@@ -103,8 +107,14 @@ func (a *Adapter) Start(ctx context.Context) error {
 	a.client = client
 	a.store = store
 	a.cancel = cancel
+	a.runCtx = runCtx
 	a.started = true
 	a.polling = true
+	if a.hostHooks != nil && a.hostHooks.APIs != nil {
+		a.hostHooks.APIs.SetAPILocalHandler("adapter.avatar.get", PluginID, map[string]any{
+			"version": "1", "public": true, "enabled": true, "description": "获取 Telegram 用户或群头像资源",
+		}, a.avatar)
+	}
 	done := make(chan struct{})
 	a.done = done
 	poller := NewPoller(
@@ -151,8 +161,12 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	a.mu.Lock()
 	client, store := a.client, a.store
 	a.client, a.store, a.cancel, a.done = nil, nil, nil, nil
+	a.runCtx = nil
 	a.started, a.polling = false, false
 	a.mu.Unlock()
+	a.avatarMu.Lock()
+	a.avatars.close()
+	a.avatarMu.Unlock()
 	if client != nil {
 		client.Close()
 	}
@@ -243,6 +257,7 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Metadata = map[string]any{"telegram_message_ids": sent}
 		return receipt, err
 	}
+	a.stopTyping(newTypingTarget(chatID, threadID))
 	for index, request := range requests {
 		body := request.body
 		body["chat_id"] = chatID
@@ -344,6 +359,12 @@ func (a *Adapter) onUnready(ctx context.Context) error {
 	if a.runtime != nil {
 		a.runtime.MarkNotReady()
 	}
+	a.mu.Lock()
+	for target, task := range a.typing {
+		delete(a.typing, target)
+		task.cancel()
+	}
+	a.mu.Unlock()
 	if a.hostHooks != nil && a.hostHooks.ReportGatewayState != nil {
 		return a.hostHooks.ReportGatewayState(ctx, a.runtime)
 	}

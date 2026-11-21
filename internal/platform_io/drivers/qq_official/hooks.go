@@ -20,9 +20,15 @@ type LocalAPIInvoker interface {
 	InvokeAPI(ctx context.Context, pluginID, componentName string, args map[string]any, timeoutMS int64) (map[string]any, error)
 }
 
-// HostHooks 适配器与 Host 的交互面（与 snowluma/Telegram 同形）
+type LocalAPIBinder interface {
+	SetAPILocalHandler(name, pluginID string, metadata map[string]any, handler func(ctx context.Context, pluginID, componentName string, args map[string]any) (any, error)) bool
+	RemoveAPIsByPlugin(pluginID string) int
+}
+
+// HostHooks 适配器与 Host 的交互面。
 type HostHooks struct {
 	Inbound            InboundSink
+	APIs               LocalAPIBinder
 	InvokeAPI          LocalAPIInvoker
 	ReportGatewayState func(ctx context.Context, state *RuntimeState) error
 	RegisterDriver     func(ctx context.Context, adapter platformio.Adapter) error

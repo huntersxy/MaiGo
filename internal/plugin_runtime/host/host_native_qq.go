@@ -28,6 +28,7 @@ func (h *Host) buildQQOfficialHostHooks() *qq_official.HostHooks {
 	}
 	return &qq_official.HostHooks{
 		Inbound:     inbound,
+		APIs:        h.APIRegistry(),
 		ResolveFile: resolver,
 		InvokeAPI:   qqOfficialAPIInvoker{host: h},
 		ReportGatewayState: func(ctx context.Context, state *qq_official.RuntimeState) error {
@@ -88,21 +89,21 @@ func (i qqOfficialAPIInvoker) InvokeAPI(ctx context.Context, pluginID, component
 	if handler == nil {
 		return nil, fmt.Errorf("snowluma LocalAPI 未就绪")
 	}
-if args == nil {
-			args = map[string]any{}
-		}
-		result, err := handler(ctx, pluginID, componentName, args)
-		if err != nil {
-			return nil, err
-		}
-		if result == nil {
-			return map[string]any{}, nil
-		}
-		if payload, ok := result.(map[string]any); ok {
-			return payload, nil
-		}
-		return map[string]any{"result": result}, nil
+	if args == nil {
+		args = map[string]any{}
 	}
+	result, err := handler(ctx, pluginID, componentName, args)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return map[string]any{}, nil
+	}
+	if payload, ok := result.(map[string]any); ok {
+		return payload, nil
+	}
+	return map[string]any{"result": result}, nil
+}
 
 func (h *Host) reportQQOfficialGatewayState(ctx context.Context, state *qq_official.RuntimeState) error {
 	if h == nil || state == nil {
@@ -151,6 +152,9 @@ func (h *Host) startQQOfficialIfEnabled(ctx context.Context, config map[string]a
 	if err := adapter.Start(ctx); err != nil {
 		platformio.DefaultNativeRuntime().StopRuntime(qq_official.PluginID)
 		return err
+	}
+	if native, ok := adapter.(*qq_official.Adapter); ok {
+		h.registerQQOfficialComponents(native)
 	}
 	zap.L().Info("原生适配器运行时已启动", zap.String("plugin_id", qq_official.PluginID))
 	return nil

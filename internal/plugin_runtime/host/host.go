@@ -1,6 +1,7 @@
 package host
 
 import (
+	database "MaiGo/internal/common/database"
 	"MaiGo/internal/plugin_runtime/capabilities"
 	"context"
 	"errors"
@@ -11,12 +12,12 @@ import (
 	"sync/atomic"
 	"time"
 
-"MaiGo/internal/core/eventbus"
-		"MaiGo/internal/core/tooling"
-		"MaiGo/internal/platform_io/drivers/qq_official"
-		"MaiGo/internal/plugin_runtime/hooks"
-		"MaiGo/internal/plugin_runtime/protocol"
-	)
+	"MaiGo/internal/core/eventbus"
+	"MaiGo/internal/core/tooling"
+	"MaiGo/internal/platform_io/drivers/qq_official"
+	"MaiGo/internal/plugin_runtime/hooks"
+	"MaiGo/internal/plugin_runtime/protocol"
+)
 
 // CapabilityHandler Host 侧能力实现，对齐 capability_service.CapabilityImpl 签名
 //
@@ -43,18 +44,19 @@ type PluginRecord struct {
 
 // Host 插件运行时 Host 骨架，对齐 PluginRunnerSupervisor + CapabilityService 的子集
 type Host struct {
-	mu             sync.RWMutex
-	capabilities   map[string]CapabilityHandler
-	plugins        map[string]PluginRecord
-	pluginRevision map[string]uint64
-	runners        map[RunnerGroup]*RunnerState
-	hooks          *hooks.Registry
-	hookSpecs      *hooks.SpecRegistry
-	components     *ComponentRegistry
-	authorization  *CapabilityAuthorization
-	apis           *APIRegistry
-	maisakaPort    PluginMaisakaPort
-	restartMu      sync.Mutex
+	mu                  sync.RWMutex
+	capabilities        map[string]CapabilityHandler
+	nativeMessageLookup func(context.Context, string, string) (*database.MessageLog, error)
+	plugins             map[string]PluginRecord
+	pluginRevision      map[string]uint64
+	runners             map[RunnerGroup]*RunnerState
+	hooks               *hooks.Registry
+	hookSpecs           *hooks.SpecRegistry
+	components          *ComponentRegistry
+	authorization       *CapabilityAuthorization
+	apis                *APIRegistry
+	maisakaPort         PluginMaisakaPort
+	restartMu           sync.Mutex
 	// lastStartOptions 最近一次启动选项，供源码变更与配置启用时重启复用
 	lastStartOptions StartRunnerOptions
 	hasStartOptions  bool
@@ -90,14 +92,14 @@ type Host struct {
 
 	webuiExtensions map[string]map[string]any
 	runnerReady     protocol.RunnerReadyPayload
-blockedReasons  map[string]string
-		// adapterMigrationErrors 适配器迁移失败原因，随每次依赖同步并入阻止列表
-		adapterMigrationErrors map[string]string
-// nativeInProcessReasons 进程内 Go 适配器已可承接原因，随每次 Sync 并入阻止列表
-		nativeInProcessReasons map[string]string
-		// qqOfficialQRLogin QQ 官方扫码登录状态机（配置页 widgets）
-		qqOfficialQRLogin *qq_official.QRLogin
-		qqOfficialQRMu    sync.Mutex
+	blockedReasons  map[string]string
+	// adapterMigrationErrors 适配器迁移失败原因，随每次依赖同步并入阻止列表
+	adapterMigrationErrors map[string]string
+	// nativeInProcessReasons 进程内 Go 适配器已可承接原因，随每次 Sync 并入阻止列表
+	nativeInProcessReasons map[string]string
+	// qqOfficialQRLogin QQ 官方扫码登录状态机（配置页 widgets）
+	qqOfficialQRLogin *qq_official.QRLogin
+	qqOfficialQRMu    sync.Mutex
 
 	externalAvailablePlugins map[string]string
 	forcePluginCompatibility bool

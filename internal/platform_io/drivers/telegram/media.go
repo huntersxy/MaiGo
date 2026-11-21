@@ -87,7 +87,7 @@ func (a *Adapter) prepareInboundMedia(ctx context.Context, payload map[string]an
 				return video(binary)
 			}
 			if asBool(sticker["is_animated"]) {
-				return nil, fmt.Errorf("Telegram TGS 贴纸需要 Lottie 渲染")
+				return renderTGS(ctx, binary)
 			}
 			img, err := decodeImage(binary)
 			if err != nil {
@@ -209,6 +209,13 @@ func prepareImage(binary []byte, sticker bool) (string, UploadField, error) {
 	}
 	if bytes.HasPrefix(binary, []byte("GIF8")) {
 		return "sendAnimation", UploadField{"animation", "animation.gif", "image/gif", binary}, nil
+	}
+	animation, err := prepareAnimatedImage(binary)
+	if err != nil {
+		return "", UploadField{}, err
+	}
+	if animation != nil {
+		return "sendAnimation", UploadField{"animation", "animation.gif", "image/gif", animation}, nil
 	}
 	img, err := decodeImage(binary)
 	if err != nil {

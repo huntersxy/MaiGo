@@ -55,12 +55,14 @@ jobs:
             -v "$PWD":/src -w /src \
             -e VERSION="${{ steps.version.outputs.version }}" -e GITHUB_SHA \
             golang:${GO_VERSION}-alpine sh -ec '
-              apk add --no-cache build-base libwebp-dev libwebp-static
+              apk add --no-cache build-base libwebp-dev libwebp-static curl meson ninja
+              sh deploy/build-rlottie.sh
               go mod download
               CGO_ENABLED=1 CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm" \
-                go build -trimpath \
+                go build -tags=rlottie -trimpath \
                 -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION} -X MaiGo/internal/common/version.revision=${GITHUB_SHA}" \
                 -o dist/maigo .
+              cp -a /usr/local/share/licenses/rlottie dist/rlottie-licenses
             '
 
       - name: 验证二进制
@@ -80,6 +82,7 @@ jobs:
           mkdir -p "$stage"
 
           cp dist/maigo "$stage/maigo"
+          cp -a dist/rlottie-licenses "$stage/rlottie-licenses"
           echo "$version" > "$stage/VERSION"
           echo "${GITHUB_SHA}" > "$stage/COMMIT"
 

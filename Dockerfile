@@ -42,7 +42,9 @@ ENV GOPROXY=$GOPROXY GOSUMDB=$GOSUMDB
 RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
         sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
     fi && \
-    apk add --no-cache build-base libwebp-dev libwebp-static
+    apk add --no-cache build-base libwebp-dev libwebp-static curl meson ninja
+COPY deploy/build-rlottie.sh /tmp/build-rlottie.sh
+RUN sh /tmp/build-rlottie.sh
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -52,7 +54,7 @@ ARG TARGETARCH
 ARG VERSION=dev
 # 整份静态链接，产物不依赖任何系统动态库；sharpyuv 的 gamma 转换需要 libm
 ENV CGO_LDFLAGS="-static -lwebp -lsharpyuv -lm"
-RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" -o /out/maigo .
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -tags=rlottie -trimpath -ldflags="-s -w -X MaiGo/internal/common/version.Build=${VERSION}" -o /out/maigo .
 
 FROM alpine:3.23
 ARG APK_MIRROR
@@ -67,6 +69,7 @@ RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
     addgroup -S maibot && adduser -S -G maibot maibot
 WORKDIR /app
 COPY --chown=maibot:maibot --from=build /out/maigo /app/maigo
+COPY --from=build /usr/local/share/licenses/rlottie /usr/share/licenses/rlottie
 COPY --chown=maibot:maibot --from=dashboard /out/maibot_dashboard/dist /app/dashboard/dist
 # Python Runner 独立 venv；MAIBOT_PLUGIN_SPAWN=1 时直接用它拉起原版 runner_main
 COPY --chown=maibot:maibot --from=plugin-runtime /runner /app/plugin-runtime

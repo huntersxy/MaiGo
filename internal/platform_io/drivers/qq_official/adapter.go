@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -27,12 +28,16 @@ type Adapter struct {
 	client     *Client
 	transport  *Transport
 	identity   *IdentityBridge
+	syncIDs    *identitySync
 	started    bool
 	dialed     bool
 	cancel     context.CancelFunc
 	sendMu     sync.Mutex
 	references messageReferences
 	mapping    idMapping
+	groupNames map[string]groupNameEntry
+	profileMu  sync.Mutex
+	botProfile botAvatarEntry
 }
 
 // NewAdapter 构造适配器；enabled=false 时 Start 不拨号
@@ -54,7 +59,7 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 		invoker = hooks.InvokeAPI
 	}
 	settings.QQOfficial.UnifiedAccountID = strings.TrimSpace(settings.QQOfficial.UnifiedAccountID)
-	return &Adapter{
+	adapter := &Adapter{
 		BaseAdapter: platformio.NewBaseAdapter(desc),
 		desc:        desc,
 		settings:    settings,
@@ -63,6 +68,8 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 		identity:    NewIdentityBridge(invoker),
 		references:  messageReferences{proactiveSequence: rand.IntN(10000)},
 	}
+	adapter.identity.syncOnce = adapter.syncIdentities
+	return adapter
 }
 
 // Descriptor 返回可变驱动描述
@@ -94,7 +101,16 @@ func (a *Adapter) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	syncIDs, err := loadIdentitySync(resolveDataDir(a.hostHooks))
+	if err != nil {
+		return err
+	}
+	a.syncIDs = syncIDs
 	a.mapping = mapping
+	a.groupNames = make(map[string]groupNameEntry)
+	if a.hostHooks != nil && a.hostHooks.APIs != nil {
+		a.registerAPIs(a.hostHooks.APIs)
+	}
 	if strings.TrimSpace(a.settings.QQOfficial.AppID) == "" || strings.TrimSpace(a.settings.QQOfficial.AppSecret) == "" {
 		zap.L().Error("QQ 官方适配器缺少凭据，请在插件配置 [qq_official] 中填写 app_id 和 app_secret")
 		return nil
@@ -157,6 +173,9 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	if client != nil {
 		client.Close()
 	}
+	if a.hostHooks != nil && a.hostHooks.APIs != nil {
+		a.hostHooks.APIs.RemoveAPIsByPlugin(PluginID)
+	}
 	return a.onUnready(ctx)
 }
 
@@ -183,6 +202,7 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 	if a.runtime != nil {
 		routeAccount = a.runtime.RouteAccountID()
 	}
+	mapping := a.mapping
 	a.mu.Unlock()
 	if client == nil || !ready {
 		receipt.Status = platformio.DeliveryStatusFailed
@@ -199,13 +219,20 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Error = "出站消息的路由身份与 QQ 官方网关不一致"
 		return receipt, fmt.Errorf("%s", receipt.Error)
 	}
-	scene, target, parts, quote, err := encodeOutbound(ctx, outbound, a.mapping)
+	if outbound.ChatType == platformio.ChatTypeGroup || outbound.MessageInfo.GroupInfo != nil {
+		group := outbound.TargetID
+		if outbound.MessageInfo.GroupInfo != nil {
+			group = firstNonEmpty(group, outbound.MessageInfo.GroupInfo.GroupID)
+		}
+		mapping, _ = a.groupUserMapping(mapping, firstNonEmpty(mapping.reverse("group")[group], group))
+	}
+	scene, target, parts, quote, err := encodeOutbound(ctx, outbound, mapping)
 	if err != nil {
 		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
 		return receipt, err
 	}
 	routeTarget := target
-	openID := firstNonEmpty(a.mapping.reverse(scene)[target], target)
+	openID := firstNonEmpty(mapping.reverse(scene)[target], target)
 	scope := messageScope{account: a.runtime.AccountID(), scene: scene, target: routeTarget}
 	basePath := "/v2/users/" + url.PathEscape(openID)
 	if scene == "group" {
@@ -370,17 +397,47 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 	unified := a.settings.QQOfficial.UnifiedAccountID
 	a.mu.Lock()
 	client := a.client
+	mapping := a.mapping
+	syncIDs := a.syncIDs
 	a.mu.Unlock()
 	var attachmentSegments []map[string]any
 	var attachmentLabels []string
 	var picture, emoji bool
+	var groupName string
+	var groupOpenID string
 	if client != nil {
+		if isGroupEvent(event) {
+			groupOpenID = strings.TrimSpace(asString(data["group_openid"]))
+			groupName = strings.TrimSpace(asString(data["group_name"]))
+			if groupName == "" && groupOpenID != "" {
+				groupName = a.fetchGroupName(ctx, client, groupOpenID)
+			}
+		}
 		attachmentSegments, attachmentLabels, picture, emoji = client.inboundAttachments(ctx, data)
 	}
-	message, scene, target, err := decodeMessage(event, data, accountID, botName, unified, "", attachmentSegments, attachmentLabels, a.mapping, picture, emoji)
+	mapping, profiles := a.groupUserMapping(mapping, groupOpenID)
+	message, scene, target, err := decodeMessage(event, data, accountID, botName, unified, groupName, attachmentSegments, attachmentLabels, mapping, picture, emoji)
 	if err != nil {
 		zap.L().Info("忽略 QQ 官方消息", zap.Error(err))
 		return nil
+	}
+	if binding := mapping.Group[groupOpenID]; a.settings.QQOfficial.SilentUserSync && groupOpenID != "" && isDecimal(unified) && isDecimal(binding) {
+		info, _ := asMap(message["message_info"])
+		config, _ := asMap(info["additional_config"])
+		openid := asString(config["qq_official_user_openid"])
+		scope := identityScope{strings.TrimSpace(a.settings.QQOfficial.AppID), unified, groupOpenID, binding, openid}
+		syncIDs.observe(scope, message)
+		profile, exists := profiles[openid]
+		userInfo, _ := asMap(info["user_info"])
+		if exists && !profile.Conflict && userInfo["user_id"] == profile.UserID {
+			if profile.Nickname != "" {
+				userInfo["user_nickname"] = profile.Nickname
+			}
+			userInfo["user_cardname"] = nil
+			if profile.Cardname != "" {
+				userInfo["user_cardname"] = profile.Cardname
+			}
+		}
 	}
 	var sink InboundSink
 	if a.hostHooks != nil {
@@ -400,4 +457,37 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 		a.references.discardPassive(key)
 	}
 	return err
+}
+
+type groupNameEntry struct {
+	name string
+	time time.Time
+}
+
+func (a *Adapter) fetchGroupName(ctx context.Context, client *Client, openID string) string {
+	if cached, ok := a.groupNames[openID]; ok && time.Since(cached.time) < time.Hour {
+		return cached.name
+	}
+	query, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	info, err := client.apiRequest(query, http.MethodGet, "/v2/groups/"+url.PathEscape(openID)+"/info", nil, 0)
+	name := strings.TrimSpace(asString(info["group_name"]))
+	if err != nil {
+		zap.L().Info("获取 QQ 群名称失败，保留已有群名", zap.String("group_openid", openID), zap.Error(err))
+	}
+	now := time.Now()
+	var oldestID string
+	var oldest time.Time
+	for id, cached := range a.groupNames {
+		if now.Sub(cached.time) >= time.Hour {
+			delete(a.groupNames, id)
+		} else if oldest.IsZero() || cached.time.Before(oldest) {
+			oldestID, oldest = id, cached.time
+		}
+	}
+	if len(a.groupNames) >= 2000 {
+		delete(a.groupNames, oldestID)
+	}
+	a.groupNames[openID] = groupNameEntry{name: name, time: now}
+	return name
 }

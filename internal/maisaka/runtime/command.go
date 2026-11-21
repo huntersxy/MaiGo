@@ -104,8 +104,8 @@ func (a *Agent) handleCommand(ctx context.Context, msg *onebot.ConversationMessa
 		}
 		groupName = msg.GroupName
 	}
-	accountID := ""
-	if selfID := a.SelfID(); selfID > 0 {
+	accountID := strings.TrimSpace(msg.AccountID)
+	if selfID := a.SelfID(); accountID == "" && selfID > 0 {
 		accountID = strconv.FormatInt(selfID, 10)
 	}
 	message := commandMessageDict(msg, text, sessionID, accountID, groupID, groupName, mediaRefs, forwards)
@@ -288,15 +288,23 @@ func commandMessageDict(msg *onebot.ConversationMessage, text, sessionID, accoun
 	if !msg.Time.IsZero() {
 		timestamp = strconv.FormatFloat(float64(msg.Time.UnixNano())/1e9, 'f', -1, 64)
 	}
+	messageID := any(msg.MessageID)
+	if msg.ExternalMessageID != "" {
+		messageID = msg.ExternalMessageID
+	}
+	userID := msg.ExternalUserID
+	if userID == "" {
+		userID = strconv.FormatInt(msg.UserID, 10)
+	}
 	out := map[string]any{
-		"message_id": msg.MessageID,
+		"message_id": messageID,
 		"timestamp":  timestamp,
 		"platform":   messagePlatform(msg),
 		"account_id": accountID,
 		"scope":      msg.ConversationKind,
 		"message_info": map[string]any{
 			"user_info": map[string]any{
-				"user_id":       strconv.FormatInt(msg.UserID, 10),
+				"user_id":       userID,
 				"user_nickname": msg.Nickname,
 				"user_cardname": nullableString(msg.GroupCard),
 			},

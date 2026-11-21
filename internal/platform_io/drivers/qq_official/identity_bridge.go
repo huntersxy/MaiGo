@@ -15,12 +15,14 @@ import (
 
 // IdentityBridge 调用 snowluma LocalAPI；未就绪则跳过，绝不落到 Runner
 type IdentityBridge struct {
-	mu            sync.Mutex
-	invoker       LocalAPIInvoker
-	owner         string
-	target        string
-	cancelOnly    context.CancelFunc
-	cancelSync    context.CancelFunc
+	mu         sync.Mutex
+	invoker    LocalAPIInvoker
+	owner      string
+	target     string
+	cancelOnly context.CancelFunc
+	cancelSync context.CancelFunc
+	syncDone   chan struct{}
+	syncOnce   func(context.Context) error
 }
 
 func NewIdentityBridge(invoker LocalAPIInvoker) *IdentityBridge {
@@ -42,13 +44,17 @@ func (b *IdentityBridge) Start(ctx context.Context, settings Settings, readyFn f
 		b.mu.Unlock()
 		go b.identityOnlyLoop(runCtx, settings, readyFn)
 	}
-	// silent_user_sync 完整三指纹匹配属 P1；P0 仅保留开关语义与循环骨架（不落盘）
-	if settings.QQOfficial.SilentUserSync && isDecimal(settings.QQOfficial.UnifiedAccountID) {
-		runCtx, cancel := context.WithCancel(context.Background())
+	if settings.QQOfficial.SilentUserSync && isDecimal(settings.QQOfficial.UnifiedAccountID) && b.syncOnce != nil {
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
 		b.mu.Lock()
 		b.cancelSync = cancel
+		b.syncDone = done
 		b.mu.Unlock()
-		go b.silentSyncLoop(runCtx, settings, readyFn)
+		go func() {
+			defer close(done)
+			b.silentSyncLoop(runCtx, readyFn)
+		}()
 	}
 }
 
@@ -65,7 +71,12 @@ func (b *IdentityBridge) Stop() {
 		b.cancelSync()
 		b.cancelSync = nil
 	}
+	done := b.syncDone
+	b.syncDone = nil
 	b.mu.Unlock()
+	if done != nil {
+		<-done
+	}
 	_ = b.Release(context.Background())
 }
 
@@ -140,7 +151,7 @@ func (b *IdentityBridge) identityOnlyLoop(ctx context.Context, settings Settings
 	}
 }
 
-func (b *IdentityBridge) silentSyncLoop(ctx context.Context, settings Settings, readyFn func() bool) {
+func (b *IdentityBridge) silentSyncLoop(ctx context.Context, readyFn func() bool) {
 	failed := false
 	for {
 		delay := 2 * time.Second
@@ -155,8 +166,7 @@ func (b *IdentityBridge) silentSyncLoop(ctx context.Context, settings Settings, 
 		if readyFn == nil || !readyFn() {
 			continue
 		}
-		// P0：探测 LocalAPI 是否可达；完整 reconcile 属 remaining
-		_, err := b.callObservations(ctx, settings.QQOfficial.UnifiedAccountID, nil)
+		err := b.syncOnce(ctx)
 		if err != nil {
 			if !failed {
 				zap.L().Warn("QQ 静默身份同步暂不可用", zap.Error(err))

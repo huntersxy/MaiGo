@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-toml "github.com/pelletier/go-toml/v2"
+	toml "github.com/pelletier/go-toml/v2"
 	"go.uber.org/zap"
 
 	"MaiGo/internal/platform_io"
@@ -60,11 +60,17 @@ func (h *Host) NativeTeardown(ctx context.Context, pluginID string) error {
 	if h.components != nil {
 		h.components.RemoveComponentsByPlugin(pluginID)
 	}
-platformio.DefaultNativeRuntime().StopRuntime(pluginID)
-		h.ClearNativeInProcessReason(pluginID)
-		h.rememberNativeLoadStatus(pluginID, "inactive")
-		return firstErr
+	if h.hooks != nil {
+		h.hooks.RemovePlugin(pluginID)
 	}
+	if pluginID == qq_official.PluginID {
+		_ = h.ApplyWebUIExtension(pluginID, nil)
+	}
+	platformio.DefaultNativeRuntime().StopRuntime(pluginID)
+	h.ClearNativeInProcessReason(pluginID)
+	h.rememberNativeLoadStatus(pluginID, "inactive")
+	return firstErr
+}
 
 // RegisterNativeGatewayDriver 注册原生 Adapter：storeMessageGatewayState + 端口 Bind 路由
 func (h *Host) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatewayDriverSpec) error {
@@ -76,7 +82,7 @@ func (h *Host) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatew
 	if spec.PluginID == "" || spec.GatewayName == "" {
 		return fmt.Errorf("原生网关 plugin_id/gateway_name 不能为空")
 	}
-if spec.Metadata == nil {
+	if spec.Metadata == nil {
 		spec.Metadata = map[string]any{}
 	}
 	spec.Metadata["plugin_type"] = "adapter"
@@ -220,16 +226,16 @@ func (h *Host) StartNativeRuntimeIfEnabled(ctx context.Context, pluginID string)
 	if err != nil {
 		return err
 	}
-switch pluginID {
-		case "maibot-team.snowluma-adapter":
-			return h.startSnowlumaIfEnabled(ctx, snapshot.NormalizedConfig)
-		case telegram.PluginID:
-			return h.startTelegramIfEnabled(ctx, snapshot.NormalizedConfig)
-		case weixin_clawbot.PluginID:
-			return h.startWeixinIfEnabled(ctx, snapshot.NormalizedConfig)
-		case qq_official.PluginID:
-			return h.startQQOfficialIfEnabled(ctx, snapshot.NormalizedConfig)
-		}
+	switch pluginID {
+	case "maibot-team.snowluma-adapter":
+		return h.startSnowlumaIfEnabled(ctx, snapshot.NormalizedConfig)
+	case telegram.PluginID:
+		return h.startTelegramIfEnabled(ctx, snapshot.NormalizedConfig)
+	case weixin_clawbot.PluginID:
+		return h.startWeixinIfEnabled(ctx, snapshot.NormalizedConfig)
+	case qq_official.PluginID:
+		return h.startQQOfficialIfEnabled(ctx, snapshot.NormalizedConfig)
+	}
 	adapter, err := platformio.DefaultNativeRuntime().StartRuntime(ctx, pluginID, snapshot.NormalizedConfig)
 	if err != nil {
 		return err

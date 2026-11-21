@@ -1,15 +1,23 @@
 package test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/gif"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -17,6 +25,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/gen2brain/webp"
 
 	platformio "MaiGo/internal/platform_io"
 	"MaiGo/internal/platform_io/drivers/qq_official"
@@ -113,9 +122,25 @@ func TestNativeAdapterTelegramInboundParity(t *testing.T) {
 }
 
 func TestNativeAdapterTelegramBotAPI(t *testing.T) {
+	firstFrame, secondFrame := image.NewNRGBA(image.Rect(0, 0, 3, 4)), image.NewNRGBA(image.Rect(0, 0, 3, 4))
+	draw.Draw(firstFrame, firstFrame.Bounds(), image.NewUniform(color.RGBA{R: 255, A: 255}), image.Point{}, draw.Src)
+	draw.Draw(secondFrame, secondFrame.Bounds(), image.NewUniform(color.RGBA{B: 255, A: 255}), image.Point{}, draw.Src)
+	var webpAnimation bytes.Buffer
+	if err := webp.EncodeAll(&webpAnimation, &webp.WEBP{Image: []image.Image{firstFrame, secondFrame}, Delay: []int{100, 210}}, webp.Options{Lossless: true}); err != nil {
+		t.Fatal(err)
+	}
+	pngAnimation, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAMAAAAECAYAAABLLYUHAAAACGFjVEwAAAACAAAAAPONk3AAAAAaZmNUTAAAAAAAAAADAAAABAAAAAAAAAAAAAEACgAAHUyIqgAAABVJREFUeJxj/M/A8J8BCpgYkABuDgBjoQIGGiTe+gAAABpmY1RMAAAAAQAAAAMAAAAEAAAAAAAAAAAAFQBkAABRFrUWAAAAGWZkQVQAAAACeJxjZGD4/58BCpgYkABuDgBhowIGVBcK3QAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var avatarImage bytes.Buffer
+	if err := png.Encode(&avatarImage, image.NewNRGBA(image.Rect(0, 0, 3, 4))); err != nil {
+		t.Fatal(err)
+	}
 	var requests atomic.Int64
 	stopPoll := make(chan struct{})
 	outbound := make(chan map[string]any, 2)
+	actions := make(chan map[string]any, 3)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -129,14 +154,54 @@ func TestNativeAdapterTelegramBotAPI(t *testing.T) {
 				return
 			}
 			<-stopPoll
+		case strings.HasSuffix(r.URL.Path, "/getUserProfilePhotos"):
+			decoder := json.NewDecoder(r.Body)
+			decoder.UseNumber()
+			var body map[string]any
+			if err := decoder.Decode(&body); err != nil || body["limit"] != json.Number("1") || body["user_id"] != json.Number("9007199254740995") {
+				t.Errorf("avatar API request: %#v, %v", body, err)
+			}
+			fmt.Fprint(w, `{"ok":true,"result":{"photos":[[{"file_id":"avatar-big","width":3,"height":4},{"file_id":"avatar-small","width":1,"height":1}]]}}`)
 		case strings.HasSuffix(r.URL.Path, "/getFile"):
 			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["file_id"] != "big" {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Errorf("getFile body = %#v, %v", body, err)
 			}
+			if body["file_id"] == "avatar-big" {
+				fmt.Fprintf(w, `{"ok":true,"result":{"file_path":"photo/avatar.png","file_size":%d}}`, avatarImage.Len())
+				return
+			}
+			if body["file_id"] != "big" {
+				t.Errorf("getFile body = %#v", body)
+			}
 			fmt.Fprint(w, `{"ok":true,"result":{"file_path":"photo/photo.png","file_size":3}}`)
+		case strings.HasSuffix(r.URL.Path, "/photo/avatar.png"):
+			_, _ = w.Write(avatarImage.Bytes())
 		case strings.HasSuffix(r.URL.Path, "/photo/photo.png"):
 			fmt.Fprint(w, "png")
+		case strings.HasSuffix(r.URL.Path, "/sendChatAction"), strings.HasSuffix(r.URL.Path, "/setMessageReaction"):
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			actions <- body
+			fmt.Fprint(w, `{"ok":true,"result":true}`)
+		case strings.HasSuffix(r.URL.Path, "/sendAnimation"):
+			file, header, err := r.FormFile("animation")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer file.Close()
+			animation, err := gif.DecodeAll(file)
+			if err != nil || header.Filename != "animation.gif" || !reflect.DeepEqual(animation.Delay, []int{10, 21}) || len(animation.Image) != 2 {
+				t.Errorf("animated APNG/WebP did not preserve frames: %#v, %v", animation, err)
+			} else {
+				r0, _, b0, _ := animation.Image[0].At(0, 0).RGBA()
+				r1, _, b1, _ := animation.Image[1].At(0, 0).RGBA()
+				if r0 <= b0 || b1 <= r1 {
+					t.Error("animation frame content or order changed")
+				}
+			}
+			fmt.Fprint(w, `{"ok":true,"result":{"chat":{"id":-41},"message_id":9}}`)
 		case strings.HasSuffix(r.URL.Path, "/sendMessage"):
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -155,8 +220,10 @@ func TestNativeAdapterTelegramBotAPI(t *testing.T) {
 	settings.Telegram.BotToken = "1:local_test"
 	settings.Telegram.APIBaseURL = server.URL
 	dir := t.TempDir()
+	apis := nativeAdapterAPIs{}
 	adapter := telegram.NewAdapter(settings, &telegram.HostHooks{
 		DataDir: func() string { return dir },
+		APIs:    apis,
 		Inbound: nativeAdapterSink(func(message map[string]any) error {
 			inbound <- message
 			return nil
@@ -176,6 +243,55 @@ func TestNativeAdapterTelegramBotAPI(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+	resource, err := apis["adapter.avatar.get"](ctx, "", "", map[string]any{
+		"platform": "telegram", "target_id": "9007199254740995", "account_id": "9007199254740993",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	avatar := resource.(map[string]any)
+	address, _ := avatar["url"].(string)
+	if avatar["status"] != "available" || avatar["expires_in"] != 600 || !strings.HasPrefix(address, "http://127.0.0.1:") || strings.Contains(address, settings.Telegram.BotToken) {
+		t.Fatalf("invalid Telegram avatar resource: %#v", resource)
+	}
+	response, err := http.Get(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotAvatar, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || !bytes.Equal(gotAvatar, avatarImage.Bytes()) || response.Header.Get("Content-Type") != "image/png" || response.Header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("invalid Telegram relay: %v %v", response.Header, err)
+	}
+	if err := adapter.StartTyping("9007199254740993", "", "-41:4"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case action := <-actions:
+		if action["chat_id"] != float64(-41) || action["message_thread_id"] != float64(4) || action["action"] != "typing" {
+			t.Fatalf("wrong Telegram typing action: %#v", action)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if _, err := adapter.SetReaction(ctx, "9007199254740993", "", "-41:4", "-41:7", "👍"); err == nil {
+		t.Fatal("reaction crossed Telegram topic boundary")
+	}
+	for _, emoji := range []string{"👍", ""} {
+		if _, err := adapter.SetReaction(ctx, "9007199254740993", "", "-41", "-41:7", emoji); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case action := <-actions:
+			reactions, valid := action["reaction"].([]any)
+			if !valid || action["chat_id"] != float64(-41) || action["message_id"] != float64(7) || (emoji == "" && len(reactions) != 0) ||
+				(emoji != "" && (len(reactions) != 1 || reactions[0].(map[string]any)["emoji"] != emoji)) {
+				t.Fatalf("wrong Telegram reaction payload: %#v", action)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
 	}
 
 	out := platformio.OutboundMessageEnvelope{
@@ -201,6 +317,14 @@ func TestNativeAdapterTelegramBotAPI(t *testing.T) {
 			t.Fatalf("multipart mention is invalid: %#v", entity)
 		}
 	}
+	for _, binary := range [][]byte{pngAnimation, webpAnimation.Bytes()} {
+		animation := platformio.OutboundMessageEnvelope{TargetID: "-41", Segments: []platformio.Segment{
+			{Kind: platformio.SegmentImage, Extra: map[string]string{"binary_data_base64": base64.StdEncoding.EncodeToString(binary)}},
+		}}
+		if receipt, err := adapter.Send(ctx, animation, route); err != nil || receipt.ExternalMessageID != "-41:9" {
+			t.Fatalf("animation send failed: %+v, %v", receipt, err)
+		}
+	}
 }
 
 type nativeAdapterSink func(map[string]any) error
@@ -208,6 +332,12 @@ type nativeAdapterSink func(map[string]any) error
 func (sink nativeAdapterSink) ReceiveGatewayMessage(_ context.Context, _ capabilities.PluginGatewayInboundRequest, msg map[string]any) (bool, map[string]any, error) {
 	err := sink(msg)
 	return err == nil, nil, err
+}
+
+type nativeAdapterInvoker func(context.Context, string, string, map[string]any) (map[string]any, error)
+
+func (invoke nativeAdapterInvoker) InvokeAPI(ctx context.Context, pluginID, component string, args map[string]any, _ int64) (map[string]any, error) {
+	return invoke(ctx, pluginID, component, args)
 }
 
 type nativeAPIHandler = func(context.Context, string, string, map[string]any) (any, error)
@@ -351,9 +481,13 @@ func TestNativeAdapterWeixinILink(t *testing.T) {
 }
 
 func TestNativeAdapterQQOfficialAPI(t *testing.T) {
+	var groupLookups, profileLookups atomic.Int64
 	wire := make(chan map[string]any, 2)
 	stopGateway := make(chan struct{})
+	startEvidence := make(chan time.Time, 1)
 	fileBytes := []byte("\x89PNG\r\n\x1a\n")
+	evidence := []string{"第一条用于匹配的文本消息", "第二条匹配文本长度足够", "第三条会话消息内容不同"}
+	var recordedEvidence atomic.Int64
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -377,7 +511,30 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 				t.Error(err)
 				return
 			}
+			second := `{"op":0,"t":"GROUP_MESSAGE_CREATE","s":3,"d":{"id":"second","group_openid":"group","author":{"member_openid":"peer"},"timestamp":"2026-11-21T01:00:00Z","content":"第二条"}}`
+			if err := conn.Write(r.Context(), websocket.MessageText, []byte(second)); err != nil {
+				t.Error(err)
+				return
+			}
+			select {
+			case stamp := <-startEvidence:
+				for i, message := range evidence {
+					update := fmt.Sprintf(`{"op":0,"t":"GROUP_MESSAGE_CREATE","s":%d,"d":{"id":"evidence-%d","group_openid":"group","author":{"member_openid":"new-user"},"timestamp":%q,"content":%q}}`, i+4, i, stamp.UTC().Format(time.RFC3339Nano), message)
+					if err := conn.Write(r.Context(), websocket.MessageText, []byte(update)); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+			case <-stopGateway:
+				return
+			}
 			<-stopGateway
+		case "/v2/groups/group/info":
+			groupLookups.Add(1)
+			fmt.Fprint(w, `{"group_name":"本地群名"}`)
+		case "/users/@me":
+			profileLookups.Add(1)
+			fmt.Fprint(w, `{"avatar":"https://qq.example/avatar.png"}`)
 		case "/sticker":
 			_, _ = w.Write(fileBytes)
 		case "/v2/groups/group/upload_prepare":
@@ -406,6 +563,15 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&payload)
 			wire <- payload
 			fmt.Fprint(w, `{"id":9007199254740995,"ext_info":{"ref_idx":"REFIDX_out"}}`)
+		case "/v2/groups/group/restrict_chat_setting", "/v2/groups/group/batch_remove_members", "/v2/groups/group/messages/9007199254740993":
+			var payload map[string]any
+			if r.Method != http.MethodDelete {
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+			} else {
+				payload = map[string]any{"method": r.Method}
+			}
+			wire <- payload
+			fmt.Fprint(w, `{"remove_members_result":"success"}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -427,23 +593,44 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 	settings := qq_official.DefaultSettings()
 	settings.Plugin.Enabled = true
 	settings.QQOfficial.AppID, settings.QQOfficial.AppSecret = "local-app", "local-secret"
+	settings.QQOfficial.UnifiedAccountID = "1234"
 	settings.QQOfficial.APIBaseURL = "https://grouppro.grouppro.qq.com"
+	settings.Mute.Enabled, settings.Kick.Enabled, settings.Recall.Enabled = true, true, true
 	dir := t.TempDir()
+	apis := nativeAdapterAPIs{}
 	adapter := qq_official.NewAdapter(settings, &qq_official.HostHooks{
 		DataDir: func() string { return dir },
+		APIs:    apis,
+		InvokeAPI: nativeAdapterInvoker(func(_ context.Context, pluginID, component string, args map[string]any) (map[string]any, error) {
+			if pluginID != "maibot-team.snowluma-adapter" || component != "identity_observations" || args["account_id"] != "1234" ||
+				!reflect.DeepEqual(args["group_ids"], []string{"9007199254740997"}) {
+				return nil, fmt.Errorf("unexpected identity observation query: %v %v %#v", pluginID, component, args)
+			}
+			rows := make([]map[string]any, 0, len(evidence))
+			for i, line := range evidence {
+				rows = append(rows, map[string]any{
+					"key": fmt.Sprintf("remote-%d", i), "account_id": "1234", "group_id": "9007199254740997", "user_id": "4321",
+					"timestamp": float64(recordedEvidence.Load()) / 1e6, "fingerprint": platformio.IdentityTextFingerprint([]map[string]any{{"type": "text", "data": line}}),
+					"nickname": "对齐昵称", "cardname": "对齐名片",
+				})
+			}
+			return map[string]any{"protocol": 1, "observations": rows}, nil
+		}),
 		Inbound: nativeAdapterSink(func(message map[string]any) error {
 			inbound <- message
 			return nil
 		}),
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := adapter.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 	defer adapter.Stop(ctx)
+	var bindingMessage map[string]any
 	select {
 	case message := <-inbound:
+		bindingMessage = message
 		parts := message["raw_message"].([]map[string]any)
 		if message["message_id"] != "9007199254740993" || message["is_emoji"] != true || len(parts) != 1 ||
 			parts[0]["type"] != "emoji" || parts[0]["binary_data_base64"] != base64.StdEncoding.EncodeToString(fileBytes) {
@@ -451,6 +638,25 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+	select {
+	case message := <-inbound:
+		info := message["message_info"].(map[string]any)
+		group := info["group_info"].(map[string]any)
+		if message["message_id"] != "second" || group["group_name"] != "本地群名" || groupLookups.Load() != 1 {
+			t.Fatalf("QQ group name cache: %#v, lookups=%d", message, groupLookups.Load())
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	for range 2 {
+		got, err := apis["adapter.avatar.get"](ctx, "", "", map[string]any{"platform": "qq", "target_id": "bot"})
+		if err != nil || got.(map[string]any)["url"] != "https://qq.example/avatar.png" {
+			t.Fatalf("QQ bot avatar: %#v, %v", got, err)
+		}
+	}
+	if profileLookups.Load() != 1 {
+		t.Fatalf("QQ bot avatar cache requests = %d", profileLookups.Load())
 	}
 	out := platformio.OutboundMessageEnvelope{
 		TargetID: "group", ChatType: platformio.ChatTypeGroup, ExternalReplyToMessageID: "9007199254740993",
@@ -460,7 +666,7 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 			{Kind: platformio.SegmentImage, Extra: map[string]string{"binary_data_base64": base64.StdEncoding.EncodeToString(fileBytes)}},
 		},
 	}
-	receipt, err := adapter.Send(ctx, out, platformio.RouteKey{Platform: "qq", AccountID: "bot"})
+	receipt, err := adapter.Send(ctx, out, platformio.RouteKey{Platform: "qq", AccountID: "1234"})
 	if err != nil || receipt.ExternalMessageID != "9007199254740995" {
 		t.Fatalf("QQ send failed: %+v: %v", receipt, err)
 	}
@@ -469,5 +675,76 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 	if first["msg_type"] != float64(0) || first["msg_seq"] != float64(1) || ref["message_id"] != "REFIDX_abc" ||
 		second["msg_type"] != float64(7) || second["msg_seq"] != float64(2) || second["message_reference"] != nil {
 		t.Fatalf("wrong QQ message bodies: %#v, %#v", first, second)
+	}
+	bindingMessage["raw_message"] = []map[string]any{{"type": "text", "data": "/assign_group_id 9007199254740997"}}
+	success, confirmation, err := adapter.AssignIdentity(ctx, "group", bindingMessage)
+	if err != nil || !success || !strings.Contains(confirmation, "9007199254740997") {
+		t.Fatalf("QQ group binding did not complete: %v, %s, %v", success, confirmation, err)
+	}
+	select {
+	case receipt := <-wire:
+		if receipt["msg_id"] != "9007199254740993" || receipt["msg_seq"] != float64(3) || receipt["content"] != confirmation {
+			t.Fatalf("QQ binding used wrong passive reply credential: %#v", receipt)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "id_map.json"))
+	var saved map[string]map[string]string
+	if err != nil || json.Unmarshal(raw, &saved) != nil || saved["group"]["group"] != "9007199254740997" {
+		t.Fatalf("QQ binding did not preserve textual ID on disk: %s, %v", raw, err)
+	}
+	value, err := apis["webui_group_mappings"](ctx, "", "", nil)
+	if err != nil || !reflect.DeepEqual(value, map[string]any{"total": 1, "groups": []map[string]any{{"group_openid": "group", "group_id": "9007199254740997"}}}) {
+		t.Fatalf("QQ binding WebUI status: %#v, %v", value, err)
+	}
+	stamp := time.Now()
+	recordedEvidence.Store(stamp.UnixMicro())
+	startEvidence <- stamp
+	for range evidence {
+		select {
+		case <-inbound:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	for {
+		result, err := apis["webui_mappings"](ctx, "", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		users := result.(map[string]any)["user"].([]map[string]any)
+		if len(users) == 1 && users[0]["id"] == "4321" && users[0]["nickname"] == "对齐昵称" {
+			path := filepath.Join(dir, "auto_user_profiles.json")
+			if saved, readErr := os.ReadFile(path); readErr == nil && bytes.Contains(saved, []byte(`"user_id":"4321"`)) {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("QQ automatic identity profile never persisted: %v", users)
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	target := qq_official.ModerationTarget{MessageID: "9007199254740993", GroupID: "9007199254740997", UserID: "4321"}
+	if result, err := adapter.Moderate(ctx, qq_official.MuteToolName, target, 0, "回放"); err != nil || result["success"] != true {
+		t.Fatalf("QQ mute: %#v, %v", result, err)
+	}
+	mute := (<-wire)["members"].([]any)[0].(map[string]any)
+	if mute["op"] != "del" || mute["member_openid"] != "new-user" || mute["mute_expire_at"] != "" {
+		t.Fatalf("QQ unmute wire types: %#v", mute)
+	}
+	if result, err := adapter.Moderate(ctx, qq_official.KickToolName, target, 0, "回放"); err != nil || result["success"] != true {
+		t.Fatalf("QQ kick: %#v, %v", result, err)
+	}
+	kick := <-wire
+	if !reflect.DeepEqual(kick["member_openids"], []any{"new-user"}) || kick["add_to_member_blacklist"] != false {
+		t.Fatalf("QQ kick wire types: %#v", kick)
+	}
+	if result, err := adapter.Moderate(ctx, qq_official.RecallToolName, target, 0, ""); err != nil || result["success"] != true {
+		t.Fatalf("QQ recall: %#v, %v", result, err)
+	}
+	if request := <-wire; request["method"] != http.MethodDelete {
+		t.Fatalf("QQ recall request: %#v", request)
 	}
 }

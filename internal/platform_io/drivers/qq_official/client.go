@@ -153,20 +153,26 @@ func (c *Client) APIPost(ctx context.Context, path string, body map[string]any) 
 }
 
 func (c *Client) apiPost(ctx context.Context, path string, body map[string]any, timeout time.Duration) (map[string]any, error) {
-	token, err := c.Authorize(ctx)
-	if err != nil {
-		return nil, err
-	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(raw))
+	return c.apiRequest(ctx, http.MethodPost, path, bytes.NewReader(raw), timeout)
+}
+
+func (c *Client) apiRequest(ctx context.Context, method, path string, body io.Reader, timeout time.Duration) (map[string]any, error) {
+	token, err := c.Authorize(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "QQBot "+token)
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	httpClient := *c.http
 	if timeout > 0 {
 		httpClient.Timeout = timeout

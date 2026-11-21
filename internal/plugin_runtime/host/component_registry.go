@@ -43,6 +43,7 @@ type ComponentEntry struct {
 	Parameters    []any
 	ParametersRaw any
 	InvokeMethod  string
+	localTool     func(context.Context, map[string]any, ToolExecutionContext) (any, error)
 
 	// EVENT_HANDLER
 	EventType string

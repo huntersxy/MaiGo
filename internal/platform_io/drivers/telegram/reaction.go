@@ -1,11 +1,60 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 )
+
+const ReactionToolName = "telegram_react_message"
+
+func (a *Adapter) SetReaction(ctx context.Context, account, scope, target, externalMessageID, emoji string) (map[string]any, error) {
+	a.sendMu.Lock()
+	defer a.sendMu.Unlock()
+	a.mu.Lock()
+	client, store := a.client, a.store
+	ready, current := a.runtime.Ready(), a.runtime.AccountID()
+	a.mu.Unlock()
+	if scope != "" || account != current {
+		return nil, fmt.Errorf("聊天动作的路由身份与 Telegram 网关不一致")
+	}
+	if !ready || client == nil || store == nil {
+		return nil, fmt.Errorf("Telegram 网关尚未就绪")
+	}
+	chatID, _, err := ParseGroupID(target)
+	if err != nil {
+		return nil, err
+	}
+	messageChatID, messageID, err := ParseMessageID(externalMessageID)
+	if err != nil || messageChatID != chatID || messageID <= 0 {
+		return nil, fmt.Errorf("表态目标消息不属于当前聊天或消息 ID 无效")
+	}
+	if chatID < 0 {
+		group, err := store.MessageGroup(account, externalMessageID)
+		if err != nil {
+			return nil, err
+		}
+		if group["group_id"] != target {
+			return nil, fmt.Errorf("表态目标消息的话题归属未知或与当前聊天不一致")
+		}
+	}
+	reaction := make([]map[string]string, 0, 1)
+	content := "已撤销消息表态"
+	if emoji != "" {
+		reaction = append(reaction, map[string]string{"type": "emoji", "emoji": emoji})
+		content = "已给消息表态 " + emoji
+	}
+	confirmed, err := client.Call(ctx, "setMessageReaction", map[string]any{"chat_id": chatID, "message_id": messageID, "reaction": reaction}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if confirmed != true {
+		return nil, fmt.Errorf("Telegram 未确认消息表态")
+	}
+	return map[string]any{"success": true, "message_id": externalMessageID, "emoji": emoji, "message": content}, nil
+}
 
 func DecodeReaction(update map[string]any, botID string) (map[string]any, error) {
 	eventType := "message_reaction"

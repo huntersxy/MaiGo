@@ -116,6 +116,20 @@ func passiveLimits(scene string) (time.Duration, int) {
 func (s *messageReferences) sendFields(key scopedMessage) map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if fields := s.claimPassiveLocked(key); fields != nil {
+		return fields
+	}
+	s.proactiveSequence = s.proactiveSequence%10000 + 1
+	return map[string]any{"msg_seq": s.proactiveSequence}
+}
+
+func (s *messageReferences) claimPassive(key scopedMessage) map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.claimPassiveLocked(key)
+}
+
+func (s *messageReferences) claimPassiveLocked(key scopedMessage) map[string]any {
 	if reply, ok := s.passive[key]; ok {
 		window, limit := passiveLimits(key.scene)
 		if time.Since(reply.at) < window && reply.used < limit {
@@ -124,6 +138,5 @@ func (s *messageReferences) sendFields(key scopedMessage) map[string]any {
 			return map[string]any{"msg_id": key.id, "msg_seq": reply.used}
 		}
 	}
-	s.proactiveSequence = s.proactiveSequence%10000 + 1
-	return map[string]any{"msg_seq": s.proactiveSequence}
+	return nil
 }

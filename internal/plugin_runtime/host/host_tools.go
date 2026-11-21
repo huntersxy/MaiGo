@@ -112,9 +112,23 @@ func (h *Host) executePluginToolDirect(ctx context.Context, toolName string, arg
 		SessionID:   execCtx.SessionID,
 		IsGroupChat: isGroup,
 		GroupID:     execCtx.GroupID,
+		Platform:    execCtx.Platform,
 	})
 	if entry == nil {
 		return pluginToolFailure(toolName, "未找到插件工具："+toolName)
+	}
+	if entry.localTool != nil {
+		timeout, err := ResolveComponentRPCTimeoutMS(entry.TimeoutMS)
+		if err != nil {
+			return pluginToolFailure(entry.Name, err.Error())
+		}
+		toolCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Millisecond)
+		defer cancel()
+		result, err := entry.localTool(toolCtx, args, execCtx)
+		if err != nil {
+			return parsePluginToolResult(entry, map[string]any{"success": false, "error": err.Error()})
+		}
+		return parsePluginToolResult(entry, result)
 	}
 	payload := pluginToolPayload(entry, args, execCtx)
 	scope := ""

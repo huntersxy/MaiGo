@@ -11,6 +11,7 @@ import (
 	"MaiGo/internal/common/database"
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/platform_io"
+	"MaiGo/internal/services"
 
 	capnames "MaiGo/internal/plugin_runtime/capabilities"
 
@@ -71,6 +72,18 @@ func RegisterHostCapabilities(host *Host, deps HostCapabilityDeps) ([]string, er
 	}
 	host.SetUploadStore(deps.Uploads)
 	host.SetPluginDataDirResolver(deps.PluginDataDir)
+	host.mu.Lock()
+	host.nativeMessageLookup = nil
+	if deps.Memory != nil {
+		messages := services.NewMessageService(deps.Memory.GetDB(), 0, "")
+		host.nativeMessageLookup = func(ctx context.Context, session, id string) (*memory.MessageLog, error) {
+			if session == "" {
+				return messages.GetMessageByID(ctx, id, "")
+			}
+			return deps.Memory.FindMessageBySessionIDAndMessageID(ctx, session, id)
+		}
+	}
+	host.mu.Unlock()
 	type registration struct {
 		name    string
 		handler CapabilityHandler

@@ -1,14 +1,12 @@
 package snowluma
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
-	"unicode"
+
+	"MaiGo/internal/platform_io"
 )
 
 const (
@@ -34,8 +32,8 @@ type IdentityObservation struct {
 
 // IdentityObservations 短期消息指纹缓存
 type IdentityObservations struct {
-	mu   sync.Mutex
-	rows map[string]*IdentityObservation
+	mu    sync.Mutex
+	rows  map[string]*IdentityObservation
 	order []string
 }
 
@@ -100,7 +98,7 @@ func (o *IdentityObservations) Observe(message map[string]any) {
 		GroupID:     groupID,
 		UserID:      userID,
 		Timestamp:   timestamp,
-		Fingerprint: textFingerprint(message["raw_message"]),
+		Fingerprint: platformio.IdentityTextFingerprint(segmentList(message["raw_message"])),
 		Nickname:    truncateRunes(asString(user["user_nickname"]), 128),
 		Cardname:    truncateRunes(asString(user["user_cardname"]), 128),
 		receivedAt:  now,
@@ -179,40 +177,6 @@ func (o *IdentityObservations) removeLocked(key string) {
 	}
 }
 
-func textFingerprint(raw any) string {
-	segments := segmentList(raw)
-	if len(segments) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(segments))
-	for _, segment := range segments {
-		segType := asString(segment["type"])
-		switch segType {
-		case "text", "at", "reply":
-		default:
-			return ""
-		}
-		if segType == "text" {
-			data := segment["data"]
-			text, ok := data.(string)
-			if !ok {
-				return ""
-			}
-			parts = append(parts, text)
-		}
-	}
-	text := strings.Join(parts, "")
-	if len(text) > 2048 {
-		return ""
-	}
-	text = strings.Join(strings.Fields(normalizeNFKC(text)), " ")
-	if len([]rune(text)) < 8 || uniqueRuneCount(text) < 4 || strings.HasPrefix(text, "/") {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
-
 func segmentList(raw any) []map[string]any {
 	switch typed := raw.(type) {
 	case []map[string]any:
@@ -248,25 +212,4 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
-}
-
-func uniqueRuneCount(value string) int {
-	seen := map[rune]struct{}{}
-	for _, r := range value {
-		seen[r] = struct{}{}
-	}
-	return len(seen)
-}
-
-func normalizeNFKC(value string) string {
-	// 轻量近似：去掉不可见控制字符，空格折叠由 Fields 完成。
-	// 完整 NFKC 留后续；指纹算法核心（长度/字符集/sha256）已对齐。
-	var b strings.Builder
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
