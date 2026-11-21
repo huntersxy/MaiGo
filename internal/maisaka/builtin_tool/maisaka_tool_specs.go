@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"MaiGo/internal/mcp_module"
+	"MaiGo/internal/services/schedules"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/tool"
@@ -51,6 +52,7 @@ func loadMaisakaToolSpecs() (map[string]MaisakaToolSpec, error) {
 				Schema:      item.Schema,
 			}
 		}
+		loaded["schedule"] = scheduleToolSpec(false)
 		maisakaSpecs = loaded
 	})
 	return maisakaSpecs, maisakaSpecsErr
@@ -135,12 +137,16 @@ func (t *maisakaSpecResultTool) InvokeToolResult(ctx context.Context, argumentsI
 
 // ToolInfoForContext 按当前会话配置生成模型可见声明
 func (s MaisakaToolSpec) ToolInfoForContext(ctx context.Context) (*schema.ToolInfo, error) {
-	if s.Name != "reply" {
+	switch s.Name {
+	case "schedule":
+		tc := GetToolContext(ctx)
+		return scheduleToolSpec(tc != nil && schedules.Default().IsOwner(ctx, tc.SessionID)).ToolInfo()
+	case "reply":
+		s.Schema = replySpecSchemaForContext(s.Schema, ctx)
+		return s.ToolInfo()
+	default:
 		return s.ToolInfo()
 	}
-	adjusted := s
-	adjusted.Schema = replySpecSchemaForContext(s.Schema, ctx)
-	return adjusted.ToolInfo()
 }
 
 // replySpecSchemaForContext 对齐 Python reply.py:145-226 的动态参数门控

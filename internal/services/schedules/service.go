@@ -94,6 +94,13 @@ func (s *Service) Started() bool {
 	return s.started
 }
 
+func (s *Service) IsOwner(ctx context.Context, sessionID string) bool {
+	s.mu.Lock()
+	check := s.hooks.OwnerCheck
+	s.mu.Unlock()
+	return sessionID != "" && check != nil && check(ctx, sessionID)
+}
+
 func (s *Service) run(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	ticker := time.NewTicker(time.Second)
@@ -149,7 +156,13 @@ func (s *Service) execute(ctx context.Context, store *TodoStore, hooks Hooks, co
 			}
 			return map[string]any{"items": items}, nil
 		}
-		if action != "add" && action != "update" && action != "cancel" && action != "complete" {
+		switch action {
+		case "add", "update", "cancel", "complete":
+		case "delete", "claim_condition", "finish":
+			if !owner {
+				return nil, errors.New("不支持的日程操作")
+			}
+		default:
 			return nil, errors.New("不支持的日程操作")
 		}
 		if action != "add" {
@@ -228,16 +241,19 @@ func (s *Service) Tick(ctx context.Context) error {
 }
 
 // TriggerCondition 模型判断条件成立后领取并立即投递
-func (s *Service) TriggerCondition(ctx context.Context, todoID, revision, evidence string) (map[string]any, error) {
-	return s.triggerCondition(ctx, todoID, revision, evidence, false)
+func (s *Service) TriggerCondition(ctx context.Context, sessionID, todoID, revision, evidence string) (map[string]any, error) {
+	if !s.IsOwner(ctx, sessionID) {
+		return nil, errors.New("条件待办仅限主人内部聊天")
+	}
+	return s.triggerCondition(ctx, sessionID, todoID, revision, evidence, false)
 }
 
 // TriggerConditionForApp 桌面应用条件已由设备侧确认后领取并投递
 func (s *Service) TriggerConditionForApp(ctx context.Context, todoID, revision, evidence string) (map[string]any, error) {
-	return s.triggerCondition(ctx, todoID, revision, evidence, true)
+	return s.triggerCondition(ctx, "", todoID, revision, evidence, true)
 }
 
-func (s *Service) triggerCondition(ctx context.Context, todoID, revision, evidence string, appEvidence bool) (map[string]any, error) {
+func (s *Service) triggerCondition(ctx context.Context, sessionID, todoID, revision, evidence string, appEvidence bool) (map[string]any, error) {
 	s.mu.Lock()
 	store := s.store
 	hooks := s.hooks
@@ -245,8 +261,12 @@ func (s *Service) triggerCondition(ctx context.Context, todoID, revision, eviden
 	if store == nil {
 		return nil, errors.New("日程服务尚未启动")
 	}
+	snapshot, err := s.execute(ctx, store, hooks, map[string]any{"action": "list"}, sessionID)
+	if err != nil {
+		return nil, err
+	}
 	var original map[string]any
-	for _, item := range store.List(false) {
+	for _, item := range snapshot["items"].([]map[string]any) {
 		if asString(item["id"]) == todoID {
 			original = item
 			break
@@ -292,7 +312,7 @@ func (s *Service) triggerCondition(ctx context.Context, todoID, revision, eviden
 		return nil, dispatchErr
 	}
 	store.Finish(todoID, revision, "")
-	return map[string]any{"item": item}, nil
+	return map[string]any{"id": todoID, "status": "triggered", "evidence": item["evidence"]}, nil
 }
 
 func (s *Service) finish(todoID, revision, errorText string) {

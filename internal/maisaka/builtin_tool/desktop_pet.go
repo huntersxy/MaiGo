@@ -1,10 +1,7 @@
 package tools
 
-// 桌宠主人聊天的跨会话与待办工具，对齐 src/desktop_pet/chat_tools.py 与 todo_tools.py
-
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,7 +13,6 @@ import (
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/core/internal_chat"
 	"MaiGo/internal/desktop_pet"
-	"MaiGo/internal/services/schedules"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -43,7 +39,6 @@ func currentDesktopPetService() *desktoppet.Service {
 // DesktopPetToolBuilders 返回主人聊天可用的桌宠工具构建器
 func DesktopPetToolBuilders() []func() (tool.BaseTool, error) {
 	return []func() (tool.BaseTool, error){
-		NewDesktopPetTodoTool,
 		NewListChatSessionsTool,
 		NewHandoffToChatTool,
 		func() (tool.BaseTool, error) { return NewDesktopPetScreenTool() },
@@ -68,7 +63,7 @@ func DesktopPetChatToolsEnabled() bool {
 // DesktopPetToolVisible 对齐 Python list_tools 的 owner 会话过滤
 func DesktopPetToolVisible(ctx context.Context, name string) bool {
 	ownerOnly := map[string]string{
-		"desktop_pet_todo": "chat", "list_chat_sessions": "chat", "handoff_to_chat": "chat",
+		"list_chat_sessions": "chat", "handoff_to_chat": "chat",
 		"desktop_pet_screen":           "screen",
 		"desktop_pet_exploration_task": "exploration", "search_exploration_products": "exploration",
 		"record_experience_reuse": "exploration", "desktop_pet_schema": "exploration",
@@ -113,122 +108,6 @@ func desktopPetOwnerContext(ctx context.Context, message string) (*ToolContext, 
 		return nil, fmt.Errorf("%s", message)
 	}
 	return tc, nil
-}
-
-// DesktopPetTodoInput 对齐 desktop_pet_todo 参数
-type DesktopPetTodoInput struct {
-	Action           string   `json:"action" jsonschema:"description=list 查询；add 新增；update 修改；delete 删除；complete 完成并归档；trigger 条件触发,enum=list,enum=add,enum=update,enum=delete,enum=complete,enum=trigger"`
-	IncludeCompleted *bool    `json:"include_completed,omitempty" jsonschema:"description=list 时是否包含已完成的历史事项，默认 false"`
-	Kind             string   `json:"kind,omitempty" jsonschema:"description=事项类型，默认 user,enum=bot,enum=user"`
-	DueAt            *string  `json:"due_at,omitempty" jsonschema:"description=未来 ISO 8601 日期时间，建议含时区；无时区按服务器本地时间"`
-	DelaySeconds     *float64 `json:"delay_seconds,omitempty" jsonschema:"description=从现在起多少秒后触发"`
-	ConditionType    string   `json:"condition_type,omitempty" jsonschema:"description=条件类型，默认 natural,enum=natural,enum=app"`
-	Condition        *string  `json:"condition,omitempty" jsonschema:"description=触发条件，空字符串取消条件"`
-	Revision         string   `json:"revision,omitempty" jsonschema:"description=trigger 必填，来自当前上下文或 list 的真实版本"`
-	Evidence         string   `json:"evidence,omitempty" jsonschema:"description=trigger 必填，说明当前条件成立的具体观察"`
-	TodoID           string   `json:"todo_id,omitempty" jsonschema:"description=update、delete、complete、trigger 必填，使用查询结果中的 id"`
-	Text             string   `json:"text,omitempty" jsonschema:"description=add 必填；update 可选，新的事项内容"`
-	// DueAtSet 区分未填写与显式 null（取消定时）
-	DueAtSet bool `json:"-" jsonschema:"-"`
-}
-
-// UnmarshalJSON 记录 due_at 是否显式传入，null 表示取消定时
-func (in *DesktopPetTodoInput) UnmarshalJSON(data []byte) error {
-	type alias DesktopPetTodoInput
-	var decoded alias
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*in = DesktopPetTodoInput(decoded)
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	if value, exists := raw["due_at"]; exists {
-		in.DueAtSet = true
-		if string(value) == "null" {
-			in.DueAt = nil
-		}
-	}
-	return nil
-}
-
-// DesktopPetTodoOutput 桌宠待办命令回执
-type DesktopPetTodoOutput struct {
-	Success bool           `json:"success"`
-	Result  map[string]any `json:"result,omitempty"`
-}
-
-func desktopPetTodo(ctx context.Context, input *DesktopPetTodoInput) (*DesktopPetTodoOutput, error) {
-	if _, err := desktopPetOwnerContext(ctx, "只有主人内部聊天可以管理待办"); err != nil {
-		return nil, err
-	}
-	if input == nil {
-		input = &DesktopPetTodoInput{}
-	}
-	action := strings.TrimSpace(input.Action)
-	switch action {
-	case "list", "add", "update", "delete", "complete", "trigger":
-	default:
-		return nil, fmt.Errorf("未知待办操作")
-	}
-	command := map[string]any{"action": action}
-	if action == "list" && input.IncludeCompleted != nil {
-		command["include_completed"] = *input.IncludeCompleted
-	}
-	if action == "add" || (action == "update" && strings.TrimSpace(input.Text) != "") {
-		text := strings.TrimSpace(input.Text)
-		if count := utf8.RuneCountInString(text); count < 1 || count > 200 {
-			return nil, fmt.Errorf("待办内容必须为 1 至 200 字")
-		}
-		command["text"] = text
-	}
-	if action == "add" || action == "update" {
-		options := map[string]any{}
-		if input.Kind != "" {
-			options["kind"] = input.Kind
-		}
-		if input.DueAtSet {
-			if input.DueAt == nil {
-				options["due_at"] = nil
-			} else {
-				options["due_at"] = *input.DueAt
-			}
-		}
-		if input.DelaySeconds != nil {
-			options["delay_seconds"] = *input.DelaySeconds
-		}
-		if input.ConditionType != "" {
-			options["condition_type"] = input.ConditionType
-		}
-		if input.Condition != nil {
-			options["condition"] = *input.Condition
-		}
-		command["options"] = options
-	}
-	todoID := strings.TrimSpace(input.TodoID)
-	if action == "update" || action == "delete" || action == "complete" || action == "trigger" {
-		if todoID == "" {
-			return nil, fmt.Errorf("请先查询待办并提供 todo_id")
-		}
-		command["todo_id"] = todoID
-	}
-	var result map[string]any
-	var err error
-	if action == "trigger" {
-		result, err = schedules.Default().TriggerCondition(ctx, todoID, input.Revision, input.Evidence)
-	} else {
-		result, err = schedules.Default().Command(ctx, command, "")
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &DesktopPetTodoOutput{Success: true, Result: result}, nil
-}
-
-// NewDesktopPetTodoTool 创建桌宠待办工具
-func NewDesktopPetTodoTool() (tool.BaseTool, error) {
-	return utils.InferTool("desktop_pet_todo", "管理桌宠事项：bot 是到期唤醒自己的任务，user 是给主人的桌面提醒。支持绝对时间 due_at 或相对秒数 delay_seconds，不能同时传；省略时间保留原计划，due_at=null 取消定时。执行失败可查询 error，重新设置时间后重试。list 默认查询未完成，include_completed=true 包含归档；add 新增；update 修改；complete 完成并归档保留；delete 仅在明确要求删除时永久删除。修改、删除前先查询真实 todo_id，不猜 ID。condition_type=app 时程序检测应用，condition 填进程名或窗口标题关键字；natural 时 condition 保存自然语言触发条件，空字符串取消。条件与时间同时存在时，必须到时且条件成立。trigger 仅用于有当前证据的条件待办，必须提供真实 todo_id、revision 和 evidence。", desktopPetTodo)
 }
 
 // ListChatSessionsInput 对齐 list_chat_sessions 参数
