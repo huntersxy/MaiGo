@@ -176,7 +176,7 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 			for key, value := range replyToolArgs {
 				args[key] = value
 			}
-			args["reply_reference"] = replyReference
+			args["chat_anlyze"] = replyReference
 			if raw := strings.TrimSpace(msgID); raw != "" {
 				args["msg_id"] = raw
 			}
@@ -231,9 +231,6 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 	tc.AgentFilesHost = a.newAgentFilesHost(sessionID)
 	if instance := a.instanceBotConfig(); instance != nil {
 		tc.BotName = strings.TrimSpace(instance.Bot.Nickname)
-	}
-	if instance != nil {
-		tc.ToolSearchTailLoading = instance.Bot.Experimental.ToolSearchTailLoading
 	}
 	if generation := generationFrom(ctx); generation != nil {
 		var chatTools []tool.BaseTool

@@ -38,7 +38,7 @@ type ExpressionRequest struct {
 	SessionID     string
 	TargetMessage string
 	ReplyReason   string
-	// ReplyToolArgs Planner reply 工具参数，透传 expression_intent/reply_reference
+	// ReplyToolArgs Planner reply 工具参数，透传 expression_intent/chat_anlyze
 	ReplyToolArgs map[string]any
 }
 

@@ -49,12 +49,9 @@ func (b *PromptBuilder) buildRetroVisualRequest(history []ChatMessage, maxImages
 		maxSide := retroHistoryImageMaxSide
 		if index >= recentStart {
 			maxSide = retroRecentImageMaxSide
-			if qualityMaxSide < maxSide {
-				maxSide = qualityMaxSide
-			}
 		}
-		if candidate.emoji {
-			maxSide = emojiMaxSide
+		if !candidate.emoji && qualityMaxSide < maxSide {
+			maxSide = qualityMaxSide
 		}
 		encoded, ok := transcodeImage(candidate.image.Base64, maxSide)
 		if !ok {
@@ -107,8 +104,11 @@ func collectRetroVisualCandidates(history []ChatMessage) []retroVisualCandidate 
 func (b *PromptBuilder) buildRetroDialogueWithVisual(history []ChatMessage, sent map[int]map[int]bool) string {
 	lines := make([]string, 0, len(history))
 	historyByID := make(map[string]ChatMessage, len(history))
-	for _, message := range history {
+	for messageIndex, message := range history {
 		if message.MessageID != "" {
+			if len(sent[messageIndex]) != 0 {
+				message.Content, _ = retroMessageContentWithVisual(messageIndex, message, sent[messageIndex])
+			}
 			historyByID[message.MessageID] = message
 		}
 	}

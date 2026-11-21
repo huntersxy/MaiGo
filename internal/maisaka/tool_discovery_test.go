@@ -44,21 +44,19 @@ func TestBuildToolSearchResultCarriesDefinitions(t *testing.T) {
 	}
 }
 
-func TestDeferredToolsReminderFollowsTailLoading(t *testing.T) {
+func TestDeferredToolsReminderKeepsStableDirectory(t *testing.T) {
 	runtime := NewRuntime(RuntimeOptions{SessionID: "s"})
 	runtime.UpdateDeferredToolSpecs([]ToolSpec{
 		{Name: "search", Description: "搜索"},
 		{Name: "fetch", Description: "抓取"},
 	})
-	runtime.DiscoverDeferredTools([]string{"search"})
 	reminder := runtime.BuildDeferredToolsReminder()
-	if reminder == "" || strings.Contains(reminder, "1. search:") || !strings.Contains(reminder, "1. fetch:") {
-		t.Fatalf("普通模式只应提示未发现工具: %s", reminder)
-	}
-	runtime.SetToolSearchTailLoading(true)
-	reminder = runtime.BuildDeferredToolsReminder()
 	if !strings.Contains(reminder, "1. fetch:") || !strings.Contains(reminder, "2. search:") {
-		t.Fatalf("末尾加载模式应保留完整目录: %s", reminder)
+		t.Fatalf("应保留完整目录: %s", reminder)
+	}
+	runtime.DiscoverDeferredTools([]string{"search"})
+	if refreshed := runtime.BuildDeferredToolsReminder(); refreshed != reminder {
+		t.Fatalf("工具发现不应改变系统目录: %s", refreshed)
 	}
 }
 

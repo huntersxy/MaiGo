@@ -600,20 +600,6 @@ func (r *Runtime) IsActionToolCurrentlyAvailable(toolName string) bool {
 	return ok
 }
 
-// SetToolSearchTailLoading 设置 deferred 工具定义末尾加载模式
-func (r *Runtime) SetToolSearchTailLoading(enabled bool) {
-	r.mu.Lock()
-	r.toolSearchTailLoading = enabled
-	r.mu.Unlock()
-}
-
-// ToolSearchTailLoading 当前是否启用 deferred 工具定义末尾加载
-func (r *Runtime) ToolSearchTailLoading() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.toolSearchTailLoading
-}
-
 // UpdateDeferredToolSpecs 刷新当前会话的 deferred tools 池，并清理失效的已发现工具
 func (r *Runtime) UpdateDeferredToolSpecs(specs []ToolSpec) {
 	next := map[string]ToolSpec{}
@@ -736,24 +722,18 @@ func (r *Runtime) HasDeferredToolSpec(name string) bool {
 // BuildDeferredToolsReminder 构造供 planner 使用的 deferred tools 提示消息
 func (r *Runtime) BuildDeferredToolsReminder() string {
 	r.mu.Lock()
-	// 末尾加载模式的目录不随激活改变；普通模式只列出尚未展开的工具。
-	undiscovered := make([]ToolSpec, 0, len(r.deferredToolSpecs))
-	for name, spec := range r.deferredToolSpecs {
-		if !r.toolSearchTailLoading {
-			if _, ok := r.discoveredToolNames[name]; ok {
-				continue
-			}
-		}
-		undiscovered = append(undiscovered, spec)
+	deferred := make([]ToolSpec, 0, len(r.deferredToolSpecs))
+	for _, spec := range r.deferredToolSpecs {
+		deferred = append(deferred, spec)
 	}
 	r.mu.Unlock()
-	if len(undiscovered) == 0 {
+	if len(deferred) == 0 {
 		return ""
 	}
-	sort.SliceStable(undiscovered, func(i, j int) bool { return undiscovered[i].Name < undiscovered[j].Name })
-	lines := make([]string, 0, len(undiscovered)+5)
+	sort.SliceStable(deferred, func(i, j int) bool { return deferred[i].Name < deferred[j].Name })
+	lines := make([]string, 0, len(deferred)+5)
 	lines = append(lines, "<system-reminder>", "以下工具当前未直接暴露给你，但可以通过 tool_search 工具发现并在后续轮次中使用：")
-	for index, spec := range undiscovered {
+	for index, spec := range deferred {
 		name := strings.TrimSpace(spec.Name)
 		description := strings.TrimSpace(spec.Description)
 		if description != "" {

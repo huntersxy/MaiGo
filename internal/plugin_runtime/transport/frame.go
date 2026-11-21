@@ -10,7 +10,7 @@ const (
 	// FrameHeaderSize 长度前缀字节数
 	FrameHeaderSize = 4
 	// MaxFrameSize 单帧 payload 上限
-	MaxFrameSize = 16 * 1024 * 1024
+	MaxFrameSize = 32 * 1024 * 1024
 )
 
 // ReadFrame 从连接读取一帧（大端 uint32 长度 + payload）

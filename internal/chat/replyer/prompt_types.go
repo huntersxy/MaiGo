@@ -2,6 +2,7 @@ package replyer
 
 import (
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -126,9 +127,6 @@ type GeneratorConfig struct {
 	// PromptLocale 用于输出格式说明；为空时默认 zh-CN
 	PromptLocale string
 
-	// CreativeMode 对齐 chat.creative_mode：普通模型使用通用复古模板
-	CreativeMode bool
-
 	// SuperCreativeMode 对齐 experimental.super_creative_mode：按生成语言构建后由同一模型翻译为中文
 	SuperCreativeMode bool
 	// SuperCreativeLanguage 对齐 experimental.super_creative_language：ja-JP/ru-RU/fr-FR
@@ -171,7 +169,7 @@ type ReplyRequest struct {
 	EnableVisualMessage bool
 	// ModelInfo 本次实际选中的模型；用于按模型解析提示词适配
 	ModelInfo *ModelInfo
-	// PromptProfile 调用方显式指定的提示词适配：standard/retro/mai_replier/document
+	// PromptProfile 调用方显式指定的提示词适配：reply/mai_replier/document
 	PromptProfile string
 	// ThinkLevel 对齐 think_level：0 表示简短回复
 	ThinkLevel int
@@ -251,13 +249,13 @@ type ReplyerManager struct {
 // RequestMessages 按本次实际模型选择提示词模板
 func (b *PromptBuilder) RequestMessages(ctx context.Context, req ReplyRequest) ([]RequestMessage, error) {
 	profile := strings.TrimSpace(req.PromptProfile)
-	if profile == "" && req.ModelInfo != nil {
+	if profile == "" {
 		profile = b.ResolvePromptProfile(req.ModelInfo)
 	}
-	if profile == "retro" || profile == "mai_replier" {
-		return b.BuildRetroRequestMessages(ctx, req, profile == "mai_replier")
+	if profile != "reply" && profile != "mai_replier" {
+		return nil, fmt.Errorf("不支持的聊天回复模板模式：%s", profile)
 	}
-	return b.BuildRequestMessages(ctx, req)
+	return b.buildReplyRequestMessages(req, profile == "mai_replier")
 }
 
 // ResolvePromptProfile 按本次实际模型选适配；不修改会话实例状态，避免并发请求互相污染
@@ -270,10 +268,7 @@ func (b *PromptBuilder) ResolvePromptProfile(info *ModelInfo) string {
 			}
 		}
 	}
-	if b.Config.CreativeMode {
-		return "retro"
-	}
-	return "standard"
+	return "reply"
 }
 
 // LoadPrompt 调用注入的模板加载器

@@ -24,9 +24,8 @@ type ToolRoute struct {
 
 // FocusToolRouter 合并各会话工具，保留权限差异与同名工具的来源身份
 type FocusToolRouter struct {
-	group       *GroupRuntime
-	routes      map[string]*ToolRoute
-	tailLoading bool
+	group  *GroupRuntime
+	routes map[string]*ToolRoute
 }
 
 // NewFocusToolRouter 构造组级工具路由
@@ -67,7 +66,6 @@ func (r *FocusToolRouter) Refresh(ctx context.Context) ([]maisaka.ToolSpec, erro
 	if r == nil || r.group == nil {
 		return nil, nil
 	}
-	r.tailLoading = r.group.opts.ToolSearchTailLoading != nil && r.group.opts.ToolSearchTailLoading()
 	identities := map[string]string{}
 	routes := map[string]*ToolRoute{}
 	members := r.group.ValidMembers()
@@ -257,20 +255,7 @@ func (r *FocusToolRouter) Definitions() []map[string]any {
 	definitions := make([]map[string]any, 0, len(names))
 	for _, name := range names {
 		route := r.routes[name]
-		visible := r.IsDefaultVisible(route.Spec)
-		if !visible && !r.tailLoading {
-			for sessionID := range route.Variants {
-				member, ok := r.group.Members()[sessionID]
-				if !ok {
-					continue
-				}
-				if _, discovered := member.DiscoveredToolNames()[name]; discovered {
-					visible = true
-					break
-				}
-			}
-		}
-		if visible {
+		if r.IsDefaultVisible(route.Spec) {
 			definitions = append(definitions, route.Spec.ToLLMDefinition())
 		}
 	}

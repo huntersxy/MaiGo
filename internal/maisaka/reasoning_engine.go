@@ -51,7 +51,7 @@ type ReplyExecutor interface {
 
 // ChatLoopRunner 主对话循环端口
 type ChatLoopRunner interface {
-	ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string) (ChatResponse, error)
+	ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string, deferredToolsReminder ...string) (ChatResponse, error)
 }
 
 // TurnStartContext 一次内部循环触发的前置上下文
@@ -595,7 +595,7 @@ func (e *ReasoningEngine) runPlannerRequest(ctx context.Context, trigger *Contex
 		return ChatResponse{}, err
 	}
 	state.ActionToolCount = len(tools)
-	injected := e.buildPlannerInjectedUserMessages(ctx, trigger, source, deferredNotice, roundText)
+	injected := e.buildPlannerInjectedUserMessages(ctx, trigger, source, roundText)
 	state.ReplyTargetMessage = lastReplyTargetMessage(runtime.History(), runtime.SessionID())
 	finalReminder := e.plannerFinalUserReminder()
 	loop := e.chatLoop()
@@ -615,14 +615,11 @@ func (e *ReasoningEngine) runPlannerRequest(ctx context.Context, trigger *Contex
 	if runtime.PlannerMessageSteering() && runtime.HasPendingMessages() {
 		controller.Request()
 	}
-	return loop.ChatLoopStep(ctx, runtime.History(), "planner", runtime.MaxContextSize(), tools, "", finalReminder, injected, nil)
+	return loop.ChatLoopStep(ctx, runtime.History(), "planner", runtime.MaxContextSize(), tools, "", finalReminder, injected, nil, deferredNotice)
 }
 
 func (e *ReasoningEngine) buildActionToolDefinitions(ctx context.Context) ([]ToolSpec, string, error) {
 	runtime := e.runtime
-	if runtime.opts.ToolSearchTailLoading != nil {
-		runtime.SetToolSearchTailLoading(runtime.opts.ToolSearchTailLoading())
-	}
 	if runtime.opts.Tools == nil {
 		runtime.UpdateDeferredToolSpecs(nil)
 		runtime.SetCurrentActionTools(nil)
@@ -668,18 +665,11 @@ func (e *ReasoningEngine) buildActionToolDefinitions(ctx context.Context) ([]Too
 	activeSpecs = append(activeSpecs, discoveredSpecs...)
 	runtime.SetCurrentActionTools(activeSpecs)
 
-	definitions := visibleBuiltin
-	if !runtime.ToolSearchTailLoading() {
-		definitions = append(append([]ToolSpec(nil), definitions...), discoveredSpecs...)
-	}
-	return definitions, runtime.BuildDeferredToolsReminder(), nil
+	return visibleBuiltin, runtime.BuildDeferredToolsReminder(), nil
 }
 
-func (e *ReasoningEngine) buildPlannerInjectedUserMessages(ctx context.Context, trigger *ContextMessage, source []ContextMessage, deferredNotice, roundText string) []string {
+func (e *ReasoningEngine) buildPlannerInjectedUserMessages(ctx context.Context, trigger *ContextMessage, source []ContextMessage, roundText string) []string {
 	injected := make([]string, 0, 6)
-	if deferredNotice != "" {
-		injected = append(injected, deferredNotice)
-	}
 	if hook := e.runtime.opts.PlannerExtraInjections; hook != nil {
 		for _, extra := range hook(ctx, trigger, source) {
 			if strings.TrimSpace(extra) != "" {
@@ -1476,7 +1466,7 @@ func lastContextSummary(history []ContextMessage) *ContextMessage {
 
 // plannerReplyArguments 把 Planner 正文转成 reply 工具参数，供 Replyer 选择表达与目标
 func plannerReplyArguments(content string, target *ContextMessage) map[string]any {
-	args := map[string]any{"reply_reference": content}
+	args := map[string]any{"chat_anlyze": content}
 	if target != nil && target.MessageID != "" {
 		args["msg_id"] = target.MessageID
 	}
@@ -1584,6 +1574,6 @@ func roundTo(value float64, places int) float64 {
 // defaultChatLoop 未注入对话循环端口时的兜底：直接暴露协议错误
 type defaultChatLoop struct{ runtime *Runtime }
 
-func (d defaultChatLoop) ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string) (ChatResponse, error) {
+func (d defaultChatLoop) ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string, deferredToolsReminder ...string) (ChatResponse, error) {
 	return ChatResponse{}, fmt.Errorf("Maisaka 对话循环端口未初始化")
 }

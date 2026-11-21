@@ -33,16 +33,16 @@ func judgeLoop(t *testing.T, client ChatClient) *ChatLoopService {
 
 func replyWaitTools(routes ...string) []ToolSpec {
 	sessionSchema := func() map[string]any {
+		properties := map[string]any{"chat_anlyze": map[string]any{"type": "string"}}
 		if len(routes) == 0 {
-			return map[string]any{"type": "object", "properties": map[string]any{}}
+			return map[string]any{"type": "object", "properties": properties}
 		}
 		values := make([]any, 0, len(routes))
 		for _, route := range routes {
 			values = append(values, route)
 		}
-		return map[string]any{"type": "object", "properties": map[string]any{
-			"session_id": map[string]any{"type": "string", "enum": values},
-		}}
+		properties["session_id"] = map[string]any{"type": "string", "enum": values}
+		return map[string]any{"type": "object", "properties": properties}
 	}
 	return []ToolSpec{
 		{Name: "reply", Parameters: sessionSchema()},
@@ -55,7 +55,7 @@ func judgeHistory() []ContextMessage {
 }
 
 func TestPlannerActionJudgeCompletesReply(t *testing.T) {
-	client := &fakeJudgeClient{response: ChatResponse{Content: `{"action":"reply"}`, ModelName: "fast"}}
+	client := &fakeJudgeClient{response: ChatResponse{Content: `{"action":"reply","arguments":{"chat_anlyze":"用户问在不在"}}`, ModelName: "fast"}}
 	service := judgeLoop(t, client)
 	judgment, err := service.CompleteMissingPlannerAction(context.Background(), ChatResponse{Content: "我来回答这个问题"},
 		replyWaitTools(), judgeHistory())
@@ -65,8 +65,8 @@ func TestPlannerActionJudgeCompletesReply(t *testing.T) {
 	if judgment == nil || judgment.ToolCall.Name != "reply" {
 		t.Fatalf("应补全 reply 调用: %+v", judgment)
 	}
-	if judgment.ToolCall.Arguments["reply_reference"] != "我来回答这个问题" {
-		t.Fatalf("reply_reference 应使用 Planner 正文: %+v", judgment.ToolCall.Arguments)
+	if judgment.ToolCall.Arguments["chat_anlyze"] != "用户问在不在" {
+		t.Fatalf("应保留判断后的 chat_anlyze: %+v", judgment.ToolCall.Arguments)
 	}
 	if judgment.ToolCall.ExtraContent["tool_call_source"] != PlannerActionJudgeSource {
 		t.Fatalf("应标记动作判断来源: %+v", judgment.ToolCall.ExtraContent)
@@ -80,7 +80,7 @@ func TestPlannerActionJudgeCompletesReply(t *testing.T) {
 }
 
 func TestPlannerActionJudgeFocusUsesRoutedSession(t *testing.T) {
-	client := &fakeJudgeClient{response: ChatResponse{Content: `{"action":"wait"}`}}
+	client := &fakeJudgeClient{response: ChatResponse{Content: `{"action":"wait","arguments":{"session_id":"session-b"}}`}}
 	service := judgeLoop(t, client)
 	judgment, err := service.CompleteMissingPlannerAction(context.Background(), ChatResponse{Content: "先不回复"},
 		replyWaitTools("session-a", "session-b"), judgeHistory())
@@ -90,8 +90,8 @@ func TestPlannerActionJudgeFocusUsesRoutedSession(t *testing.T) {
 	if judgment == nil || judgment.ToolCall.Name != "wait" {
 		t.Fatalf("应补全 wait 调用: %+v", judgment)
 	}
-	if judgment.ToolCall.Arguments["session_id"] != "session-a" {
-		t.Fatalf("Focus wait 应指定首个真实会话: %+v", judgment.ToolCall.Arguments)
+	if judgment.ToolCall.Arguments["session_id"] != "session-b" {
+		t.Fatalf("Focus wait 应保留判断后的真实会话: %+v", judgment.ToolCall.Arguments)
 	}
 }
 

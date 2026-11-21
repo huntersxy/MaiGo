@@ -111,7 +111,8 @@ func listReasoningStageInfos(root string) []reasoningStageInfo {
 	if err != nil {
 		return []reasoningStageInfo{}
 	}
-	infos := make([]reasoningStageInfo, 0, len(entries))
+	stageSessions := map[string]map[string]struct{}{}
+	stageModified := map[string]float64{}
 	for _, entry := range entries {
 		if !entry.IsDir() || !isSafeReasoningName(entry.Name()) {
 			continue
@@ -120,23 +121,26 @@ func listReasoningStageInfos(root string) []reasoningStageInfo {
 		if err != nil {
 			continue
 		}
-		count := 0
-		var latest float64
+		name, _ := resolveReasoningStageName(entry.Name())
+		if stageSessions[name] == nil {
+			stageSessions[name] = map[string]struct{}{}
+		}
 		for _, sessionEntry := range sessionEntries {
 			if !sessionEntry.IsDir() || !isSafeReasoningName(sessionEntry.Name()) {
 				continue
 			}
-			count++
+			stageSessions[name][sessionEntry.Name()] = struct{}{}
 			info, err := sessionEntry.Info()
 			if err != nil {
 				continue
 			}
 			modified := float64(info.ModTime().UnixNano()) / 1e9
-			if modified > latest {
-				latest = modified
-			}
+			stageModified[name] = max(stageModified[name], modified)
 		}
-		infos = append(infos, reasoningStageInfo{Name: entry.Name(), SessionCount: count, LatestModifiedAt: latest})
+	}
+	infos := make([]reasoningStageInfo, 0, len(stageSessions))
+	for name, sessions := range stageSessions {
+		infos = append(infos, reasoningStageInfo{Name: name, SessionCount: len(sessions), LatestModifiedAt: stageModified[name]})
 	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 	return infos
@@ -147,34 +151,45 @@ func resolveReasoningStageName(stage string) (string, bool) {
 	if normalized == "" || normalized == "all" {
 		return "planner", true
 	}
+	if normalized == "maisaka.replyer" {
+		return "replyer", true
+	}
 	return normalized, isSafeReasoningName(normalized)
 }
 
+func reasoningStageStorageNames(stage string) []string {
+	if stage == "replyer" {
+		return []string{"replyer", "maisaka.replyer"}
+	}
+	return []string{stage}
+}
+
 func listReasoningSessionNames(root, stage string) []string {
-	entries, err := os.ReadDir(filepath.Join(root, stage))
-	if err != nil {
-		return []string{}
-	}
-	type sessionEntry struct {
-		name    string
-		modTime int64
-	}
-	sessions := make([]sessionEntry, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() || !isSafeReasoningName(entry.Name()) {
-			continue
-		}
-		info, err := entry.Info()
+	sessions := map[string]int64{}
+	for _, storageName := range reasoningStageStorageNames(stage) {
+		entries, err := os.ReadDir(filepath.Join(root, storageName))
 		if err != nil {
 			continue
 		}
-		sessions = append(sessions, sessionEntry{name: entry.Name(), modTime: info.ModTime().UnixNano()})
+		for _, entry := range entries {
+			if !entry.IsDir() || !isSafeReasoningName(entry.Name()) {
+				continue
+			}
+			if info, err := entry.Info(); err == nil {
+				sessions[entry.Name()] = max(sessions[entry.Name()], info.ModTime().UnixNano())
+			}
+		}
 	}
-	sort.SliceStable(sessions, func(i, j int) bool { return sessions[i].modTime > sessions[j].modTime })
 	names := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		names = append(names, session.name)
+	for name := range sessions {
+		names = append(names, name)
 	}
+	sort.Slice(names, func(left, right int) bool {
+		if sessions[names[left]] == sessions[names[right]] {
+			return names[left] < names[right]
+		}
+		return sessions[names[left]] > sessions[names[right]]
+	})
 	return names
 }
 
@@ -215,7 +230,6 @@ func parseReasoningSessionDirectoryName(name string) (platform, chatType, target
 	}
 	return "", "", "", false
 }
-
 
 func reasoningSessionInfosList(sessions []string, infoMap map[string]*reasoningSessionInfo) []*reasoningSessionInfo {
 	result := make([]*reasoningSessionInfo, 0, len(sessions))
@@ -312,15 +326,20 @@ func collectReasoningRecordsForSession(root, stage, session string, infoMap map[
 }
 
 func collectReasoningRecords(root, stage, session string, infoMap map[string]*reasoningSessionInfo) []*reasoningPromptFile {
-	if session != reasoningAllGroupSessions {
-		return collectReasoningRecordsForSession(root, stage, session, infoMap)
+	sessions := []string{session}
+	if session == reasoningAllGroupSessions {
+		sessions = sessions[:0]
+		for name, info := range infoMap {
+			if isGroupReasoningSession(name, info) {
+				sessions = append(sessions, name)
+			}
+		}
 	}
 	var items []*reasoningPromptFile
-	for name, info := range infoMap {
-		if !isGroupReasoningSession(name, info) {
-			continue
+	for _, storageName := range reasoningStageStorageNames(stage) {
+		for _, name := range sessions {
+			items = append(items, collectReasoningRecordsForSession(root, storageName, name, infoMap)...)
 		}
-		items = append(items, collectReasoningRecordsForSession(root, stage, name, infoMap)...)
 	}
 	sortReasoningRecords(items)
 	return items

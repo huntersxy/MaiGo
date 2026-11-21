@@ -211,11 +211,11 @@ const maisakaToolSpecsJSON = `
           "type": "object"
         },
         "msg_id": {
-          "description": "要回复的消息msg_id。",
+          "description": "可选。要回复的真实聊天消息 msg_id；省略或留空表示向当前会话主动发言。",
           "type": "string"
         },
-        "reply_reference": {
-          "description": "提供本次回复的上下文关键信息与回复方向，包括当前聊天状态、人物关系、事实信息、回忆信息；不是回复正文。",
+        "chat_anlyze": {
+          "description": "用一段话，约100-200字描述当前对话局面与查到的关键事实：如同转述一样梳理上文核心逻辑，提炼通过搜索或工具查证到的关键事实结论，不写入长段原文时间戳或者具体的消息ID。不要原文引用，不评价回复价值、不写回复原因、不构想或指导如何回复。",
           "minLength": 1,
           "type": "string"
         },
@@ -235,8 +235,7 @@ const maisakaToolSpecsJSON = `
         }
       },
       "required": [
-        "msg_id",
-        "reply_reference"
+        "chat_anlyze"
       ],
       "type": "object"
     },
@@ -361,7 +360,7 @@ const maisakaToolSpecsJSON = `
     "provider_type": "builtin"
   },
   "tool_search": {
-    "description": "在 deferred tools 列表中按名称或关键词搜索工具，并将命中的工具加入后续轮次的可用工具列表。",
+    "description": "在 deferred tools 列表中按名称或关键词搜索工具，在搜索结果中加载命中工具的定义和调用指引，供后续轮次调用。",
     "name": "tool_search",
     "parameters_schema": {
       "properties": {

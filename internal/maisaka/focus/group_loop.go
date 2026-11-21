@@ -186,16 +186,17 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 			maxContextSize = total + 1
 		}
 		injected := make([]string, 0, len(references)+2)
-		injected = append(injected, g.Roster(), g.tools.DeferredNotice())
+		injected = append(injected, g.Roster())
 		injected = append(injected, references...)
 		var capturedSnapshot *maisaka.PlannerRequestSnapshot
 		request := PlannerRequest{
-			History:              history,
-			Tools:                g.toolSpecs(),
-			InjectedUserMessages: injected,
-			TailUserMessages:     maisaka.BuildConsecutiveWaitReminders(g.promptSource(), waits),
-			MaxContextSize:       maxContextSize,
-			LogicalTurnID:        logicalTurnID,
+			History:               history,
+			Tools:                 g.toolSpecs(),
+			DeferredToolsReminder: g.tools.DeferredNotice(),
+			InjectedUserMessages:  injected,
+			TailUserMessages:      maisaka.BuildConsecutiveWaitReminders(g.promptSource(), waits),
+			MaxContextSize:        maxContextSize,
+			LogicalTurnID:         logicalTurnID,
 			CaptureSnapshot: func(snapshot *maisaka.PlannerRequestSnapshot) {
 				capturedSnapshot = snapshot
 			},
@@ -288,7 +289,9 @@ func (g *GroupRuntime) runTurn(ctx context.Context) error {
 func (g *GroupRuntime) toolSpecs() []maisaka.ToolSpec {
 	specs := make([]maisaka.ToolSpec, 0)
 	for _, route := range g.tools.Routes() {
-		specs = append(specs, route.Spec)
+		if g.tools.IsDefaultVisible(route.Spec) {
+			specs = append(specs, route.Spec)
+		}
 	}
 	sort.Slice(specs, func(i, j int) bool { return specs[i].Name < specs[j].Name })
 	return specs

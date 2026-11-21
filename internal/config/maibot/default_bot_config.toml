@@ -61,7 +61,6 @@ multiple_probability = 0
 enable_reply_at = true
 max_context_size = 50
 max_private_context_size = 75
-creative_mode = true
 
 [chat.reply_timing]
 message_debounce_mode = "natural"
@@ -98,7 +97,6 @@ planner_subagent = false
 advanced_sub_agent = false
 
 [experimental]
-tool_search_tail_loading = false
 desktop_pet_exploration_enabled = false
 passive_replyer = false
 focus_mode = false

@@ -81,10 +81,10 @@ func runMaisaka(directory string) (int, error) {
 		}
 
 		if !llmBridge.available() {
-			console.PrintStyled(StyleWarning, "LLM 未配置，无法回复。可用 /prompt maisaka_replyer 查看模板，或配置 MAIBOT_MAISAKA_API_KEY。")
+			console.PrintStyled(StyleWarning, "LLM 未配置，无法回复。可用 /prompt reply_private_system 查看模板，或配置 MAIBOT_MAISAKA_API_KEY。")
 			continue
 		}
-		systemPrompt, err := renderMaisakaPrompt(pm, "maisaka_replyer")
+		systemPrompt, err := renderMaisakaPrompt(pm, "reply_private_system")
 		if err != nil {
 			console.Errorf("渲染 replyer prompt 失败: %v\n", err)
 			continue
@@ -134,7 +134,7 @@ func handleMaisakaSlashCommand(out, errOut fmtWriter, pm *prompt.Manager, llmBri
 		return -1, nil
 	case "/prompt", "/p":
 		if len(fields) < 2 {
-			return -1, fmt.Errorf("用法: /prompt <模板名>，例如 /prompt maisaka_replyer")
+			return -1, fmt.Errorf("用法: /prompt <模板名>，例如 /prompt reply_private_system")
 		}
 		name := fields[1]
 		text, err := renderMaisakaPrompt(pm, name)
@@ -158,7 +158,7 @@ func handleMaisakaSlashCommand(out, errOut fmtWriter, pm *prompt.Manager, llmBri
 		if !llmBridge.available() {
 			return -1, fmt.Errorf("LLM 未配置")
 		}
-		systemPrompt, err := renderMaisakaPrompt(pm, "maisaka_replyer")
+		systemPrompt, err := renderMaisakaPrompt(pm, "reply_private_system")
 		if err != nil {
 			return -1, err
 		}
@@ -185,7 +185,7 @@ func printMaisakaHelp(w fmtWriter) {
 	fmt.Fprintln(w, "  /preview           渲染默认 Maisaka 模板")
 	fmt.Fprintln(w, "  /prompt <名称>     渲染指定 prompt 模板（演示占位变量）")
 	fmt.Fprintln(w, "  /prompts           列出 maisaka_* 模板名")
-	fmt.Fprintln(w, "  /chat <内容>       使用 maisaka_replyer 系统提示做单次 LLM")
+	fmt.Fprintln(w, "  /chat <内容>       使用 reply_private_system 系统提示做单次 LLM")
 	fmt.Fprintln(w, "  /exit              退出")
 	fmt.Fprintln(w, "  直接输入一行       同 /chat（需 MAIBOT_MAISAKA_API_KEY 或实例 model_config）")
 }

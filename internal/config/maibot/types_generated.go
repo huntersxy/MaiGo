@@ -365,7 +365,6 @@ type CapabilitiesConfig struct {
 
 type ChatConfig struct {
 	EnableReplyAt         bool                  `toml:"enable_reply_at,omitempty"`
-	CreativeMode          bool                  `toml:"creative_mode,omitempty"`
 	MaxContextSize        int                   `toml:"max_context_size,omitempty"`
 	MaxPrivateContextSize int                   `toml:"max_private_context_size,omitempty"`
 	ReplyTiming           ChatReplyTimingConfig `toml:"reply_timing,omitempty"`
@@ -485,10 +484,8 @@ type EmojiConfig struct {
 }
 
 type ExperimentalConfig struct {
-	ToolSearchTailLoading        bool   `toml:"tool_search_tail_loading,omitempty"`
 	DesktopPetExplorationEnabled bool   `toml:"desktop_pet_exploration_enabled,omitempty"`
 	PassiveReplyer               bool   `toml:"passive_replyer,omitempty"`
-	ReplyCache                   bool   `toml:"reply_cache,omitempty"`
 	SuperCreativeMode            bool   `toml:"super_creative_mode,omitempty"`
 	SuperCreativeLanguage        string `toml:"super_creative_language,omitempty"`
 	GroupAttentionDrift          any    `toml:"group_attention_drift,omitempty"`

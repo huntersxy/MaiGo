@@ -757,7 +757,7 @@ func (g *ReplyGenerator) promptProfileFor(info *ModelInfo) string {
 		return "document"
 	}
 	if g.Builder == nil {
-		return "standard"
+		return "reply"
 	}
 	return g.Builder.ResolvePromptProfile(info)
 }

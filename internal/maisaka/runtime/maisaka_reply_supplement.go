@@ -90,7 +90,7 @@ func buildReplySupplementArguments(
 	}
 	arguments["content"] = content
 	arguments["_replyer_generated"] = true
-	arguments["reply_reference"] = content
+	arguments["chat_anlyze"] = content
 	delete(arguments, "attach_emoji")
 	delete(arguments, "attach_at")
 	delete(arguments, "attach_pic")

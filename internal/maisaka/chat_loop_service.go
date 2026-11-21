@@ -218,18 +218,18 @@ func ResolveModelTaskName(requestKind, defaultTask string) string {
 // ChatPromptName 选择当前聊天使用的 Planner 模板
 func (s *ChatLoopService) ChatPromptName() string {
 	if s.FocusMode {
-		return "maisaka_chat_focus"
+		return "planner_focus"
 	}
 	if !s.IsGroupChat {
 		if s.PassiveReplyer() {
-			return "maisaka_chat_private_passive"
+			return "planner_passive_private"
 		}
-		return "maisaka_chat_private"
+		return "planner_default_private"
 	}
 	if s.PassiveReplyer() {
-		return "maisaka_chat_passive"
+		return "planner_passive_group"
 	}
-	return "maisaka_chat"
+	return "planner_default_group"
 }
 
 // PassiveReplyer 本轮是否使用被动回复器
@@ -370,16 +370,16 @@ func (s *ChatLoopService) BuildBotNicknameNotice(history []ContextMessage) strin
 func (s *ChatLoopService) BuildPlannerFinalUserReminder() string {
 	promptName := s.ChatPromptName()
 	instruction := map[string]string{
-		"maisaka_chat":                 "planner_turn_action",
-		"maisaka_chat_private":         "planner_turn_action",
-		"maisaka_chat_passive":         "planner_turn_passive",
-		"maisaka_chat_private_passive": "planner_turn_passive",
-		"maisaka_chat_focus":           "planner_turn_focus",
+		"planner_default_group":   "planner_turn_action",
+		"planner_default_private": "planner_turn_action",
+		"planner_passive_group":   "planner_turn_passive",
+		"planner_passive_private": "planner_turn_passive",
+		"planner_focus":           "planner_turn_focus",
 	}[promptName]
 	if text := s.renderLocalized(instruction, map[string]string{"bot_name": s.localizedText("bot_name")}); text != "" {
 		return text
 	}
-	if promptName == "maisaka_chat_focus" {
+	if promptName == "planner_focus" {
 		return fmt.Sprintf(FocusPlannerFinalUserReminderTemplate, s.localizedText("bot_name"))
 	}
 	if s.PassiveReplyer() {
@@ -484,7 +484,7 @@ func (s *ChatLoopService) BuildRequestMessages(
 	tailUserMessages []string,
 	finalUserMessage string,
 ) ([]ContextItem, int) {
-	return s.buildRequestMessages(selectedHistory, s.EnableVisualMessage, systemPrompt, injectedUserMessages, tailUserMessages, finalUserMessage)
+	return s.buildRequestMessages(selectedHistory, s.EnableVisualMessage, systemPrompt, injectedUserMessages, tailUserMessages, finalUserMessage, "")
 }
 
 // buildRequestMessages 按本次请求解析出的视觉开关构造消息列表
@@ -495,6 +495,7 @@ func (s *ChatLoopService) buildRequestMessages(
 	injectedUserMessages []string,
 	tailUserMessages []string,
 	finalUserMessage string,
+	deferredToolsReminder string,
 ) ([]ContextItem, int) {
 	items := make([]ContextItem, 0, len(selectedHistory)+4)
 	resolvedSystemPrompt := systemPrompt
@@ -516,6 +517,9 @@ func (s *ChatLoopService) buildRequestMessages(
 		if explorationContext := strings.TrimSpace(ExplorationReuseContextProvider(s.SessionID)); explorationContext != "" {
 			resolvedSystemPrompt += "\n\n" + explorationContext
 		}
+	}
+	if reminder := strings.TrimSpace(deferredToolsReminder); reminder != "" {
+		resolvedSystemPrompt += "\n\n" + reminder
 	}
 	items = append(items, ContextItem{Role: RoleSystem, Text: resolvedSystemPrompt})
 
@@ -955,11 +959,11 @@ func (s *ChatLoopService) SetInterruptFlag(flag <-chan struct{}) {
 }
 
 // ChatLoopStep 执行一轮 Maisaka 规划器请求
-func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string) (ChatResponse, error) {
+func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []ContextMessage, requestKind string, maxContextSize int, tools []ToolSpec, systemPrompt, finalUserMessage string, injected, tail []string, deferredToolsReminder ...string) (ChatResponse, error) {
 	selected, reason := s.SelectLLMContextMessages(chatHistory, requestKind, maxContextSize)
 	s.IncludeDayBoundaryTimeMessages = requestKind == "planner"
 	enableVisual := s.EnableVisualMessage && ResolveEnableVisualMessage(requestKind)
-	items, historyItemCount := s.buildRequestMessages(selected, enableVisual, systemPrompt, injected, tail, finalUserMessage)
+	items, historyItemCount := s.buildRequestMessages(selected, enableVisual, systemPrompt, injected, tail, finalUserMessage, strings.Join(deferredToolsReminder, "\n"))
 	if enableVisual && s.LimitImages != nil {
 		items = s.LimitImages(items, s.MaxImageNum)
 	}

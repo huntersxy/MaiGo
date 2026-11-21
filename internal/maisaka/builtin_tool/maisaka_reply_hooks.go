@@ -98,8 +98,8 @@ func replyToolArgs(input *ReplyInput) map[string]any {
 	if value := strings.TrimSpace(input.MsgID); value != "" {
 		args["msg_id"] = value
 	}
-	if value := strings.TrimSpace(input.ReplyReference); value != "" {
-		args["reply_reference"] = value
+	if value := strings.TrimSpace(input.ChatAnlyze); value != "" {
+		args["chat_anlyze"] = value
 	}
 	if value := strings.TrimSpace(input.ReplyStyle); value != "" {
 		args["reply_style"] = value

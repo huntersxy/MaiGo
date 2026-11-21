@@ -183,8 +183,6 @@ type RuntimeOptions struct {
 	ToolPostExecution ToolPostExecutionHandler
 	// Prompts Prompt 模板来源
 	Prompts PromptSource
-	// ToolSearchTailLoading 读取 deferred 工具定义末尾加载开关
-	ToolSearchTailLoading func() bool
 	// PlannerExtraInjections 本轮 Planner 一次性注入的额外内部参考（启发式记忆、图片记忆等）
 	PlannerExtraInjections func(ctx context.Context, trigger *ContextMessage, source []ContextMessage) []string
 	// Compactor 历史压缩端口
@@ -303,7 +301,6 @@ type Runtime struct {
 	currentActionToolSpecs map[string]ToolSpec
 	discoveredToolNames    map[string]struct{}
 	deferredToolSpecs      map[string]ToolSpec
-	toolSearchTailLoading  bool
 
 	minExtractionInterval        float64
 	lastExpressionExtractionTime float64

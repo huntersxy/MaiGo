@@ -632,9 +632,9 @@ func (t *AgentToolRuntime) injectReplyerContent(ctx context.Context, kind string
 	if parsed, err := strconv.ParseInt(target.MessageID, 10, 64); err == nil && parsed != 0 {
 		arguments["reply_to"] = parsed
 	}
-	reference, _ := arguments["reply_reference"].(string)
+	reference, _ := arguments["chat_anlyze"].(string)
 	if strings.TrimSpace(reference) == "" {
-		return fmt.Errorf("reply 工具必须提供非空 reply_reference")
+		return fmt.Errorf("reply 工具必须提供非空 chat_anlyze")
 	}
 	generated, err := t.Agent.generateReplyerText(ctx, reference, target, history, kind == memory.ConversationKindGroup, arguments)
 	if err != nil {
@@ -987,10 +987,6 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			return enabled
 		},
 		Prompts: a.newMaisakaPromptSource(),
-		ToolSearchTailLoading: func() bool {
-			cfg := a.instanceBotConfig()
-			return cfg != nil && cfg.Experimental.ToolSearchTailLoading
-		},
 		Compactor: &AgentHistoryCompactor{
 			Agent: a,
 		},

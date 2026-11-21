@@ -432,7 +432,6 @@ func (a *Agent) replyerGeneratorConfig(isGroup bool) replyer.GeneratorConfig {
 	cfg.MultipleProbability = bot.Personality.MultipleProbability
 	cfg.GroupChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.GroupChatPrompt)
 	cfg.PrivateChatPrompt = strings.TrimSpace(bot.Chat.ReplyStyle.PrivateChatPrompts)
-	cfg.CreativeMode = bot.Chat.CreativeMode
 	cfg.SuperCreativeMode = bot.Experimental.SuperCreativeMode
 	cfg.SuperCreativeLanguage = replyer.CreativeLanguage(bot.Experimental.SuperCreativeLanguage)
 	cfg.SaveReasoning = bot.Debug.SaveMaisakaReasoning
@@ -611,18 +610,9 @@ func (a *Agent) generateReplyerTextResult(ctx context.Context, plannerContent st
 		Now:                time.Now,
 	}
 	targetMessage := replyerTarget(target)
-	if targetMessage == nil {
-		for i := len(history) - 1; i >= 0; i-- {
-			if history[i].Role == maisaka.RoleUser && replyerHistoryMessageAllowed(history[i]) && strings.TrimSpace(history[i].Content) != "" {
-				message := history[i]
-				targetMessage = replyerTarget(&message)
-				break
-			}
-		}
-	}
 	reference := strings.TrimSpace(plannerContent)
 	replyStyle := replyer.ToolArgString(replyToolArgs, "reply_style")
-	if value := replyer.ToolArgString(replyToolArgs, "reply_reference"); value != "" {
+	if value := replyer.ToolArgString(replyToolArgs, "chat_anlyze"); value != "" {
 		reference = value
 	}
 	sessionID := replyer.SessionIDFromContext(target, history)
@@ -635,6 +625,7 @@ func (a *Agent) generateReplyerTextResult(ctx context.Context, plannerContent st
 		ReplyReference:      reference,
 		ReplyStyle:          replyStyle,
 		ReplyToolArgs:       replyToolArgs,
+		ThinkLevel:          1,
 		SessionID:           sessionID,
 		ImageQuality:        imageQuality,
 		MaxImageNum:         maxImageNum,

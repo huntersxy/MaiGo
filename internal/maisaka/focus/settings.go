@@ -13,7 +13,6 @@ type Settings struct {
 	FocusChatWhitelist    []maibot.TargetItem
 	FocusGroups           []maibot.ChatStreamGroup
 	PrivateReplyPausedAll bool
-	ToolSearchTailLoading bool
 }
 
 // SettingsFromExperimental 从 MaiBot bot_config.experimental 构造
@@ -24,7 +23,6 @@ func SettingsFromExperimental(exp maibot.ExperimentalConfig, chat maibot.ChatCon
 		FocusChatWhitelist:    ParseTargetItems(exp.FocusChatWhitelist),
 		FocusGroups:           ParseFocusGroups(exp.FocusGroups),
 		PrivateReplyPausedAll: chat.ReplyTiming.PrivateReplyPaused,
-		ToolSearchTailLoading: exp.ToolSearchTailLoading,
 	}
 }
 

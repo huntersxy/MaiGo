@@ -91,18 +91,13 @@
     "parameters_schema": {
       "properties": {
         "after_reply": {
-          "type": "string",
+          "default": "wait",
+          "description": "回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断。",
           "enum": [
             "continue",
             "wait"
           ],
-          "default": "wait",
-          "description": "回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断。"
-        },
-        "wait_seconds": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "可选。after_reply=wait 时最多等待的秒数，到期后即使没有新消息也会继续思考。不填表示结束本轮。"
+          "type": "string"
         },
         "attach_emoji": {
           "anyOf": [
@@ -213,11 +208,11 @@
           "type": "object"
         },
         "msg_id": {
-          "description": "要回复的消息msg_id。",
+          "description": "可选。要回复的真实聊天消息 msg_id；省略或留空表示向当前会话主动发言。",
           "type": "string"
         },
-        "reply_reference": {
-          "description": "提供本次回复的上下文关键信息与回复方向，包括当前聊天状态、人物关系、事实信息、回忆信息；不是回复正文。",
+        "chat_anlyze": {
+          "description": "用一段话，约100-200字描述当前对话局面与查到的关键事实：如同转述一样梳理上文核心逻辑，提炼通过搜索或工具查证到的关键事实结论，不写入长段原文时间戳或者具体的消息ID。不要原文引用，不评价回复价值、不写回复原因、不构想或指导如何回复。",
           "minLength": 1,
           "type": "string"
         },
@@ -229,11 +224,15 @@
             "长回复"
           ],
           "type": "string"
+        },
+        "wait_seconds": {
+          "description": "可选。after_reply=wait 时最多等待的秒数，到期后即使没有新消息也会继续思考。不填表示结束本轮。",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
-        "msg_id",
-        "reply_reference"
+        "chat_anlyze"
       ],
       "type": "object"
     },
@@ -358,7 +357,7 @@
     "provider_type": "builtin"
   },
   "tool_search": {
-    "description": "在 deferred tools 列表中按名称或关键词搜索工具，并将命中的工具加入后续轮次的可用工具列表。",
+    "description": "在 deferred tools 列表中按名称或关键词搜索工具，在搜索结果中加载命中工具的定义和调用指引，供后续轮次调用。",
     "name": "tool_search",
     "parameters_schema": {
       "properties": {
@@ -410,15 +409,15 @@
     "description": "暂停当前思考，不发送消息。不填 seconds 表示结束本轮，等待新消息；填写 seconds 表示定时等待，到期后即使没有新消息也会继续思考。定时等待可能被新消息提前唤醒。",
     "name": "wait",
     "parameters_schema": {
-      "type": "object",
+      "additionalProperties": false,
       "properties": {
         "seconds": {
-          "type": "integer",
+          "description": "等待秒数。",
           "minimum": 0,
-          "description": "等待秒数。"
+          "type": "integer"
         }
       },
-      "additionalProperties": false
+      "type": "object"
     },
     "provider_name": "maisaka_builtin",
     "provider_type": "builtin"

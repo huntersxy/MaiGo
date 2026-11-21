@@ -7,12 +7,13 @@ import (
 	"MaiGo/internal/prompt"
 )
 
-// maisakaPreviewTemplates 迁移期 CLI 默认展示的 Maisaka 模板（对齐 Python heartflow 主链路）
-var maisakaPreviewTemplates = []string{"maisaka_replyer", "maisaka_chat_focus"}
+var maisakaPreviewTemplates = []string{"reply_private_system", "planner_focus"}
 
 func maisakaDemoVars() map[string]string {
 	return map[string]string{
 		"identity":                   "你是 MaiSaka CLI 调试 Bot",
+		"chat_attention_block":       "",
+		"attention_drift_block":      "",
 		"reply_style":                "口语化、简短",
 		"group_chat_attention_block": "",
 		"replyer_output_instruction": "只输出给用户看的正文，不要解释规则",

@@ -75,12 +75,13 @@ type LearningTrigger interface {
 
 // PlannerRequest 组级 Planner 请求
 type PlannerRequest struct {
-	History              []maisaka.ContextMessage
-	Tools                []maisaka.ToolSpec
-	InjectedUserMessages []string
-	TailUserMessages     []string
-	MaxContextSize       int
-	LogicalTurnID        string
+	History               []maisaka.ContextMessage
+	Tools                 []maisaka.ToolSpec
+	DeferredToolsReminder string
+	InjectedUserMessages  []string
+	TailUserMessages      []string
+	MaxContextSize        int
+	LogicalTurnID         string
 	// CaptureSnapshot 宿主在请求成功后回传 Planner 请求快照，供压缩复用前缀
 	CaptureSnapshot func(*maisaka.PlannerRequestSnapshot)
 }
@@ -133,8 +134,6 @@ type GroupOptions struct {
 	StoreRoot      string
 	// Prompts 提示词来源，用于连续等待提醒
 	Prompts maisaka.PromptSource
-	// ToolSearchTailLoading 返回 deferred 工具定义末尾加载开关
-	ToolSearchTailLoading func() bool
 }
 
 // GroupRuntime 每个 Focus 共享组唯一的前台 Planner

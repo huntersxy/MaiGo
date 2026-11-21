@@ -83,7 +83,7 @@ type ReplyInput struct {
 	WaitSeconds *int `json:"wait_seconds,omitempty" jsonschema:"description=可选。after_reply=wait 时最多等待的秒数，到期后即使没有新消息也会继续思考。不填表示结束本轮。"`
 	// WaitUntil 已移除的绝对时间参数，出现时直接拒绝
 	WaitUntil        any                  `json:"wait_until,omitempty" jsonschema:"-"`
-	ReplyReference   string               `json:"reply_reference,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
+	ChatAnlyze       string               `json:"chat_anlyze,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
 	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
 	Content          string               `json:"content,omitempty" jsonschema:"description=内部桥接字段，模型不要填写；正文由回复生成器生成"`
@@ -157,11 +157,11 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	if afterReply == "continue" && input.WaitSeconds != nil {
 		return &maisakaStubOutput{Success: false, Message: "after_reply=continue 时不能填写等待时间。"}, nil
 	}
-	reference := strings.TrimSpace(input.ReplyReference)
+	reference := strings.TrimSpace(input.ChatAnlyze)
 	if reference == "" {
 		return &maisakaStubOutput{
 			Success: false,
-			Message: "reply 工具必须提供非空字符串 `reply_reference`，请填写本次回复的上下文关键信息与回复方向后重新调用。",
+			Message: "reply 工具必须提供非空字符串 `chat_anlyze`，请精炼转述当前对话局面与查证到的关键事实后重新调用。",
 		}, nil
 	}
 	content := strings.TrimSpace(input.Content)
@@ -434,8 +434,8 @@ func replyToolArguments(input *ReplyInput) map[string]any {
 	if value := strings.TrimSpace(input.MsgID); value != "" {
 		args["msg_id"] = value
 	}
-	if value := strings.TrimSpace(input.ReplyReference); value != "" {
-		args["reply_reference"] = value
+	if value := strings.TrimSpace(input.ChatAnlyze); value != "" {
+		args["chat_anlyze"] = value
 	}
 	if value := strings.TrimSpace(input.ReplyStyle); value != "" {
 		args["reply_style"] = value
@@ -472,7 +472,7 @@ func parseMessageIDAlias(raw string) int64 {
 func NewReplyTool() (tool.InvokableTool, error) {
 	return utils.InferTool(
 		"reply",
-		"根据当前思考生成并发送可见回复；必须提供目标消息 msg_id 与回复参考 reply_reference。",
+		"根据当前思考生成并发送可见回复；必须提供对话分析 chat_anlyze，可选填写目标消息 msg_id。",
 		replyFunc,
 	)
 }
@@ -1128,12 +1128,6 @@ type ToolSearchInput struct {
 	Limit *int   `json:"limit,omitempty" jsonschema:"description=最多返回多少个工具，默认 5"`
 }
 
-type ToolSearchMatch struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Deferred    bool   `json:"deferred,omitempty"`
-}
-
 type ToolSearchToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
@@ -1144,13 +1138,11 @@ type ToolSearchOutput struct {
 	Success                  bool                       `json:"success"`
 	Message                  string                     `json:"message,omitempty"`
 	Query                    string                     `json:"query,omitempty"`
-	MatchedToolNames         []string                   `json:"matched_tool_names,omitempty"`
-	NewlyDiscoveredToolNames []string                   `json:"newly_discovered_tool_names,omitempty"`
+	MatchedToolNames         []string                   `json:"matched_tool_names"`
+	NewlyDiscoveredToolNames []string                   `json:"newly_discovered_tool_names"`
 	Status                   string                     `json:"status,omitempty"`
 	Instruction              string                     `json:"instruction,omitempty"`
-	Tools                    []ToolSearchToolDefinition `json:"tools,omitempty"`
-	Matches                  []ToolSearchMatch          `json:"matches,omitempty"`
-	Note                     string                     `json:"note,omitempty"`
+	Tools                    []ToolSearchToolDefinition `json:"tools"`
 }
 
 func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOutput, error) {
@@ -1173,92 +1165,39 @@ func toolSearchFunc(ctx context.Context, input *ToolSearchInput) (*ToolSearchOut
 	}
 
 	tc := GetToolContext(ctx)
-	tailLoading := tc != nil && tc.ToolSearchTailLoading
 	catalog := catalogForToolSearch(tc)
 	matched := SearchToolCatalog(catalog, rawQuery, limit)
 	matchedNames := make([]string, 0, len(matched))
-	matches := make([]ToolSearchMatch, 0, len(matched))
 	for _, entry := range matched {
 		matchedNames = append(matchedNames, entry.Name)
-		matches = append(matches, ToolSearchMatch{
-			Name:        entry.Name,
-			Description: entry.Description,
-			Deferred:    entry.Deferred,
-		})
 	}
 
-	var newlyDiscovered []string
+	newlyDiscovered := []string{}
 	if tc != nil {
-		newlyDiscovered = tc.DiscoverDeferredTools(matchedNames)
+		newlyDiscovered = append(newlyDiscovered, tc.DiscoverDeferredTools(matchedNames)...)
 	}
-
-	if tailLoading {
-		structured := ToolSearchOutput{
-			Success:                  true,
-			Query:                    rawQuery,
-			MatchedToolNames:         matchedNames,
-			NewlyDiscoveredToolNames: newlyDiscovered,
-			Status:                   "not_found",
-			Instruction:              "未找到匹配工具，请换用工具名或其他关键词重新搜索。",
-		}
-		if len(matched) > 0 {
-			structured.Status = "loaded"
-			structured.Instruction = "本次返回的工具定义已经加载，现在可直接按定义的名称和参数发起工具调用；无需等待顶层 tools 数组更新，也不要再次搜索已返回的工具。"
-			structured.Tools = make([]ToolSearchToolDefinition, 0, len(matched))
-			for _, entry := range matched {
-				parameters := entry.Parameters
-				if len(parameters) == 0 {
-					parameters = map[string]any{"type": "object", "properties": map[string]any{}}
-				}
-				structured.Tools = append(structured.Tools, ToolSearchToolDefinition{
-					Name:        entry.Name,
-					Description: entry.Description,
-					Parameters:  parameters,
-				})
-			}
-		}
-		return &structured, nil
-	}
-
-	if len(catalog) == 0 || len(matchedNames) == 0 {
-		return &ToolSearchOutput{
-			Success:                  true,
-			Query:                    rawQuery,
-			MatchedToolNames:         matchedNames,
-			NewlyDiscoveredToolNames: newlyDiscovered,
-			Message:                  "未找到匹配的 deferred tools，请尝试更完整的工具名、前缀或其他关键词。",
-		}, nil
-	}
-
-	note := "按当前会话 deferred tools 检索；命中的工具会在后续模型轮次加入可用工具列表"
 	structured := ToolSearchOutput{
 		Success:                  true,
 		Query:                    rawQuery,
 		MatchedToolNames:         matchedNames,
 		NewlyDiscoveredToolNames: newlyDiscovered,
-		Matches:                  matches,
-		Note:                     note,
+		Status:                   "not_found",
+		Instruction:              "未找到匹配工具，请换用工具名或其他关键词重新搜索。",
+		Tools:                    make([]ToolSearchToolDefinition, 0, len(matched)),
 	}
-
-	newSet := map[string]struct{}{}
-	for _, name := range newlyDiscovered {
-		newSet[name] = struct{}{}
-	}
-	lines := []string{
-		fmt.Sprintf("已找到 %d 个 deferred tools，它们会在后续轮次中加入可用工具列表：", len(matchedNames)),
+	if len(matched) > 0 {
+		structured.Status = "loaded"
+		structured.Instruction = "本次返回的工具定义已经加载，现在可直接按定义的名称和参数发起工具调用；无需等待顶层 tools 数组更新，也不要再次搜索已返回的工具。"
 	}
 	for _, entry := range matched {
-		suffix := ""
-		if entry.Deferred {
-			if _, fresh := newSet[entry.Name]; fresh {
-				suffix = "（本次新发现）"
-			} else {
-				suffix = "（此前已发现）"
-			}
+		parameters := entry.Parameters
+		if len(parameters) == 0 {
+			parameters = map[string]any{"type": "object", "properties": map[string]any{}}
 		}
-		lines = append(lines, fmt.Sprintf("- %s%s", entry.Name, suffix))
+		structured.Tools = append(structured.Tools, ToolSearchToolDefinition{
+			Name: entry.Name, Description: entry.Description, Parameters: parameters,
+		})
 	}
-	structured.Message = strings.Join(lines, "\n")
 	return &structured, nil
 }
 

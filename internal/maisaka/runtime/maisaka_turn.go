@@ -736,10 +736,6 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 		Summary:        a.buildFocusSummary,
 		StoreRoot:      focus.DefaultCheckpointRoot,
 		Prompts:        a.newMaisakaPromptSource(),
-		ToolSearchTailLoading: func() bool {
-			settings, _, ok := a.focusExperimentalSnapshot()
-			return ok && settings.ToolSearchTailLoading
-		},
 		Planner: func(ctx context.Context, request focus.PlannerRequest) (maisaka.ChatResponse, error) {
 			generation := a.currentGeneration()
 			if generation == nil || generation.model == nil {
@@ -758,7 +754,7 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 			loop.MeasureSections = a.measurePlannerSections
 			loop.AttentionDriftBlock = a.buildAttentionDriftBlock(true)
 			a.configureMaisakaChatLoop(loop, true, "", 0)
-			response, err := loop.ChatLoopStep(ctx, request.History, "planner", request.MaxContextSize, request.Tools, "", loop.BuildPlannerFinalUserReminder(), request.InjectedUserMessages, request.TailUserMessages)
+			response, err := loop.ChatLoopStep(ctx, request.History, "planner", request.MaxContextSize, request.Tools, "", loop.BuildPlannerFinalUserReminder(), request.InjectedUserMessages, request.TailUserMessages, request.DeferredToolsReminder)
 			if err == nil && request.CaptureSnapshot != nil {
 				request.CaptureSnapshot(loop.PlannerSnapshot())
 			}

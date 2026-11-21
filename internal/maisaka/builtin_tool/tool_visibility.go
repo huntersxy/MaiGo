@@ -129,13 +129,12 @@ func (tc *ToolContext) SyncDiscoveredToolsFromMessages(messages []*schema.Agenti
 	tc.discoveredMu.Unlock()
 }
 
-// FilterVisibleToolInfos 按 deferred 发现状态裁剪模型可见工具
+// FilterVisibleToolInfos 从顶层声明排除按需加载工具。
 func FilterVisibleToolInfos(tc *ToolContext, infos []*schema.ToolInfo) []*schema.ToolInfo {
 	if tc == nil || len(tc.ToolCatalog) == 0 {
 		return infos
 	}
 	visible := make([]*schema.ToolInfo, 0, len(infos))
-	seen := make(map[string]struct{}, len(infos))
 	for _, info := range infos {
 		if info == nil {
 			continue
@@ -144,36 +143,15 @@ func FilterVisibleToolInfos(tc *ToolContext, infos []*schema.ToolInfo) []*schema
 		if name == "" {
 			continue
 		}
-		if tc.IsDeferredTool(name) && (tc.ToolSearchTailLoading || !tc.IsToolDiscovered(name)) {
+		if tc.IsDeferredTool(name) {
 			continue
 		}
 		visible = append(visible, info)
-		seen[name] = struct{}{}
-	}
-	if tc.ToolSearchTailLoading {
-		return visible
-	}
-	for _, info := range tc.DeferredToolInfos {
-		if info == nil {
-			continue
-		}
-		name := strings.TrimSpace(info.Name)
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		if !tc.IsToolDiscovered(name) {
-			continue
-		}
-		visible = append(visible, info)
-		seen[name] = struct{}{}
 	}
 	return visible
 }
 
-// DeferredToolsReminder 构造未发现 deferred 工具的提示，空列表返回空串
+// DeferredToolsReminder 构造按需加载工具的稳定目录。
 func DeferredToolsReminder(tc *ToolContext) string {
 	if tc == nil {
 		return ""
@@ -181,10 +159,6 @@ func DeferredToolsReminder(tc *ToolContext) string {
 	var lines []string
 	for _, entry := range tc.ToolCatalog {
 		if !entry.Deferred {
-			continue
-		}
-		// 末尾加载模式的目录不随激活改变；普通模式只列出尚未展开的工具。
-		if !tc.ToolSearchTailLoading && tc.IsToolDiscovered(entry.Name) {
 			continue
 		}
 		if desc := strings.TrimSpace(entry.Description); desc != "" {

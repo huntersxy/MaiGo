@@ -7,10 +7,10 @@ import (
 )
 
 // replyRequestStages 超级创意请求阶段沿用 Replyer 的请求预览
-var replyRequestStages = map[string]struct{}{"replyer": {}, "replyer_creative": {}}
+var replyRequestStages = map[string]struct{}{"replyer": {}, "maisaka.replyer": {}, "replyer_creative": {}}
 
 // replyOutputStages 所有产出最终回复正文的阶段
-var replyOutputStages = map[string]struct{}{"replyer": {}, "replyer_creative": {}, "replyer_translation": {}}
+var replyOutputStages = map[string]struct{}{"replyer": {}, "maisaka.replyer": {}, "replyer_creative": {}, "replyer_translation": {}}
 
 func isReplyRequestStage(stage string) bool {
 	_, ok := replyRequestStages[stage]

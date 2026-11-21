@@ -18,8 +18,10 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
+	"MaiGo/internal/chat/replyer"
 	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/llm_models"
+	"MaiGo/internal/prompt"
 )
 
 const (
@@ -133,7 +135,13 @@ func testChatModel(parent context.Context, cfg llm.ModelConfig, modelName, ident
 		}
 		options = append(options, model.WithTools(tools))
 	}
-	messages := []*schema.AgenticMessage{buildModelTestMessage(replyer, visual)}
+	messages := []*schema.AgenticMessage{buildModelTestMessage(visual)}
+	if replyer {
+		messages, err = buildReplyerTestMessages()
+		if err != nil {
+			return failModelTest(result, started, err)
+		}
+	}
 	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
 	defer cancel()
 	message, err := client.Generate(ctx, messages, options...)
@@ -168,23 +176,41 @@ func testChatModel(parent context.Context, cfg llm.ModelConfig, modelName, ident
 	return result
 }
 
-func buildModelTestMessage(replyer, visual bool) *schema.AgenticMessage {
+func buildModelTestMessage(visual bool) *schema.AgenticMessage {
 	blocks := []*schema.ContentBlock{}
-	if replyer {
-		blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: "你叫麦麦，是一个说话自然、随和的群友。"}))
-		blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: "小明：终于忙完了，准备出去散散步\n小红：今天阳光不错，正好出去透透气\n你准备参与这段聊天，请用日常口语简短回复一句。"}))
-	} else {
-		imageInstruction := "本次消息没有附带图片，请在工具参数 saw_image 中填 false。"
-		if visual {
-			imageInstruction = "本次消息还附带了一张测试图片，请在工具参数 saw_image 中填 true，并简要描述图片。"
-		}
-		prompt := fmt.Sprintf(modelTestPromptText, imageInstruction, modelTestToolName)
-		blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: prompt}))
-		if visual {
-			blocks = append(blocks, schema.NewContentBlock(&schema.UserInputImage{Base64Data: modelTestImageBase64, MIMEType: "image/png"}))
-		}
+	imageInstruction := "本次消息没有附带图片，请在工具参数 saw_image 中填 false。"
+	if visual {
+		imageInstruction = "本次消息还附带了一张测试图片，请在工具参数 saw_image 中填 true，并简要描述图片。"
+	}
+	text := fmt.Sprintf(modelTestPromptText, imageInstruction, modelTestToolName)
+	blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: text}))
+	if visual {
+		blocks = append(blocks, schema.NewContentBlock(&schema.UserInputImage{Base64Data: modelTestImageBase64, MIMEType: "image/png"}))
 	}
 	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeUser, ContentBlocks: blocks}
+}
+
+func buildReplyerTestMessages() ([]*schema.AgenticMessage, error) {
+	manager, err := prompt.NewManager()
+	if err != nil {
+		return nil, err
+	}
+	locale := prompt.InitialLocale()
+	text, err := manager.LoadPrompt("reply_group_mai_replier", locale, map[string]string{
+		"extra_info_block": "", "expression_habits_block": "", "bot_name": "麦麦", "time_block": "现在是周末下午。",
+		"dialogue_prompt":    "小明：终于忙完了，准备出去散散步\n小红：今天阳光不错，正好出去透透气",
+		"reply_target_block": "你准备参与这段聊天",
+		"planner_reasoning":  "跟着大家聊聊周末散步，轻松自然地回应一句。",
+		"reply_guidance":     replyer.ReplyGuidance(locale, true)["简短表达"],
+		"reply_style":        "用日常口语简短回复。",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []*schema.AgenticMessage{
+		schema.SystemAgenticMessage("你叫麦麦，是一个说话自然、随和的群友。"),
+		schema.UserAgenticMessage(text),
+	}, nil
 }
 
 func buildModelTestToolDefinition() string {

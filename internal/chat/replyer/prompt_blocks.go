@@ -217,25 +217,32 @@ func (b *PromptBuilder) chatPrompt() string {
 	return strings.TrimSpace(b.Config.ChatPrompt)
 }
 
-// BuildGroupChatAttentionBlock 对齐 _build_group_chat_attention_block
+// BuildGroupChatAttentionBlock 构造回复器的聊天背景。
 func (b *PromptBuilder) BuildGroupChatAttentionBlock() string {
 	lines := make([]string, 0, 2)
 	if b.Config.IsGroupChat != nil {
 		if *b.Config.IsGroupChat {
 			if prompt := strings.TrimSpace(b.Config.GroupChatPrompt); prompt != "" {
-				lines = append(lines, "通用注意事项：\n"+prompt)
+				lines = append(lines, prompt)
 			}
 		} else if prompt := strings.TrimSpace(b.Config.PrivateChatPrompt); prompt != "" {
-			lines = append(lines, "通用注意事项：\n"+prompt)
+			lines = append(lines, prompt)
 		}
 	}
 	if prompt := b.chatPrompt(); prompt != "" {
-		lines = append(lines, "当前聊天额外注意事项：\n"+prompt)
+		lines = append(lines, prompt)
 	}
 	if len(lines) == 0 {
 		return ""
 	}
-	return "在该聊天中的注意事项：\n" + strings.Join(lines, "\n\n") + "\n"
+	prefix := "在该聊天中的部分背景信息如下，"
+	switch b.Config.PromptLocale {
+	case "en-US":
+		prefix = "Some background information for this chat follows: "
+	case "ja-JP":
+		prefix = "このチャットの背景情報は以下のとおりです。"
+	}
+	return prefix + strings.Join(lines, "\n") + "\n"
 }
 
 // BuildReplyerOutputInstruction 对齐 _build_replyer_output_instruction
