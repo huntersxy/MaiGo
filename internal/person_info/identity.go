@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/person_info/identity"
 )
 
 // IdentityObservation 平台身份观察，对齐 _observe_sender_identity
@@ -28,6 +31,10 @@ type PlatformIdentity struct {
 	Success    bool           `json:"success"`
 	Error      string         `json:"error,omitempty"`
 	Raw        map[string]any `json:"raw,omitempty"`
+}
+
+func (r *Registry) IdentityState(ctx context.Context) (identity.State, error) {
+	return identity.LoadDatabase(ctx, r.db(ctx), memory.InstanceRoot())
 }
 
 // SetBotSelf 登记机器人自身账号，事实写回与画像观察时排除
@@ -78,6 +85,11 @@ func (r *Registry) ObserveIdentity(ctx context.Context, obs IdentityObservation)
 	if platform == "" || userID == "" {
 		return nil, fmt.Errorf("personinfo: 身份观察需要 platform 与 user_id")
 	}
+	state, err := r.IdentityState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userID = state.ResolveUserID(strings.TrimSpace(obs.Platform), userID)
 	args := map[string]any{
 		"platform": platform,
 		"user_id":  userID,

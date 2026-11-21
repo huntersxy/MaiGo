@@ -71,17 +71,10 @@ func (p *pluginPersonPort) GetValue(ctx context.Context, personID, fieldName str
 		return profile.Nickname, true, nil
 	case "person_name":
 		return profile.PersonName, true, nil
-	case "name_reason":
-		return profile.NameReason, true, nil
 	case "is_known":
 		return profile.IsKnown, true, nil
 	case "know_times":
 		return profile.KnowCounts, true, nil
-	case "memory_points":
-		if profile.MemoryPoints == nil {
-			return []string{}, true, nil
-		}
-		return profile.MemoryPoints, true, nil
 	case "group_cardname_list":
 		cards := make([]map[string]string, 0, len(profile.GroupCards))
 		for _, card := range profile.GroupCards {
@@ -106,8 +99,6 @@ func pluginUnknownPersonValue(personID, fieldName string) (any, bool) {
 		return "未知用户" + personID, true
 	case "know_times":
 		return 0, true
-	case "memory_points":
-		return []string{}, true
 	case "group_cardname_list":
 		return []map[string]string{}, true
 	default:

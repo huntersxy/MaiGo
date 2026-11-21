@@ -87,7 +87,7 @@ func personPlatform(platform string) string {
 	return platform
 }
 
-func formatPersonProfileSummary(prof *personinfo.Profile, limit int) (summary string, traits []string) {
+func formatPersonProfileSummary(prof *personinfo.Profile) (summary string, traits []string) {
 	if prof == nil {
 		return "未找到可用的人物画像", nil
 	}
@@ -107,11 +107,6 @@ func formatPersonProfileSummary(prof *personinfo.Profile, limit int) (summary st
 		b.WriteByte('\n')
 	}
 	b.WriteString(fmt.Sprintf("是否已知：%v；认识次数：%d\n", prof.IsKnown, prof.KnowCounts))
-	if reason := strings.TrimSpace(prof.NameReason); reason != "" {
-		b.WriteString("命名依据：")
-		b.WriteString(reason)
-		b.WriteByte('\n')
-	}
 	if len(prof.GroupCards) > 0 {
 		b.WriteString("群名片：")
 		for i, card := range prof.GroupCards {
@@ -123,22 +118,6 @@ func formatPersonProfileSummary(prof *personinfo.Profile, limit int) (summary st
 			b.WriteString(card.GroupCardname)
 		}
 		b.WriteByte('\n')
-	}
-	points := prof.MemoryPoints
-	if limit > 0 && len(points) > limit {
-		points = points[:limit]
-	}
-	if len(points) > 0 {
-		b.WriteString("记忆要点：\n")
-		for _, p := range points {
-			line := strings.TrimSpace(p)
-			if line == "" {
-				continue
-			}
-			b.WriteString("- ")
-			b.WriteString(line)
-			b.WriteByte('\n')
-		}
 	}
 	summary = strings.TrimSpace(b.String())
 	if summary == "" {

@@ -85,7 +85,7 @@ func (s *PersonProfileService) profileGenerationSignature() map[string]any {
 
 // ProfileEvidenceFingerprint 对齐 _profile_evidence_fingerprint
 // 检索分数不属于证据内容，故不进入指纹
-func (s *PersonProfileService) ProfileEvidenceFingerprint(personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any, memoryTraits []string, factClaims []map[string]any) string {
+func (s *PersonProfileService) ProfileEvidenceFingerprint(personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any, factClaims []map[string]any) string {
 	stableVectorEvidence := make([]map[string]any, 0, len(vectorEvidence))
 	for _, item := range vectorEvidence {
 		copied := make(map[string]any, len(item))
@@ -122,13 +122,10 @@ func (s *PersonProfileService) ProfileEvidenceFingerprint(personID string, prima
 		claimRows = append(claimRows, item)
 	}
 	aliasRows := personProfileAnySlice(aliases)
-	traitRows := personProfileAnySlice(memoryTraits)
-
 	payload := CanonicalPersonProfileValue(map[string]any{
 		"person_id":       personID,
 		"primary_name":    primaryName,
 		"aliases":         aliasRows,
-		"memory_traits":   traitRows,
 		"relation_edges":  relationRows,
 		"vector_evidence": vectorRows,
 		"fact_claims":     claimRows,

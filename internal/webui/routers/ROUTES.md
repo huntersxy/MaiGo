@@ -219,12 +219,17 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 
 | 方法 | 路径 | Go 状态 |
 | --- | --- | --- |
-| GET | `/list` | **done**（SQLite 直查 `person_info`，NULL 保真、LIKE 搜索、Python 排序 `last_known_time IS NULL` 最后） |
-| GET | `/{person_id}` | **done**（可空字段原样输出 `null`；`group_nick_name` 非法 JSON/空值返回 null） |
-| GET | `/stats/summary` | **done**（`personinfo` 汇总） |
+| GET | `/list` | **done**（分页查询账号及其 Individual 资料，支持数字用户 ID 过滤） |
+| GET | `/directory/list` | **done**（按 Individual 或账号分页、搜索和筛选） |
+| GET | `/individual/{individual_id}` | **done**（个体资料、来源及成员账号） |
+| POST | `/individual/preview`、`/individual/merge` | **done**（版本化预览、成员快照校验、冲突确认和合并审计） |
+| GET | `/{person_id}` | **done**（Individual 当前资料及账号来源字段） |
+| GET | `/stats/summary` | **done**（人物、已知状态、关联个体与平台汇总） |
 | POST | `/batch/delete` | **done** |
 | DELETE | `/{person_id}` | **done** |
-| PATCH / POST | `/{person_id}` | **done**（`personinfo.UpdateProfileFields`，body 对齐 Dashboard `PersonUpdateRequest`；Dashboard 用 PATCH，POST 为兼容别名） |
+| PATCH | `/{person_id}` | **done**（Individual 资料使用预期快照校验） |
+
+宿主在 `/api/host/bots/{bot_id}/proxy/api/webui/person-migrations/user-injection` 提供鉴权后的 GET、POST `/preview`、`/execute`、`/cancel`，与 Bot 运行状态无关。
 
 ## `/api/webui/expression`（`routers/expression.py`，27 条）
 

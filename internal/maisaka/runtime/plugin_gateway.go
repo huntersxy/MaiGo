@@ -1,11 +1,13 @@
 package runtime
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"MaiGo/internal/common/data_models/messagecomponent"
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
@@ -311,6 +313,7 @@ func pluginGatewayParts(message map[string]any) (
 			fileNames = append(fileNames, name)
 		case "forward":
 			part.Kind = "forward"
+			part.Forward = pluginGatewayForward(data)
 		case "json", "card", "dict":
 			part.Kind = "text"
 			part.Text = "[卡片消息]"
@@ -321,6 +324,86 @@ func pluginGatewayParts(message map[string]any) (
 		parts = append(parts, part)
 	}
 	return parts, images, faces, voices, fileNames, atList, externalAtList, atNames, reply
+}
+
+func pluginGatewayForward(data any) *messagecomponent.ForwardNodeComponent {
+	forward := &messagecomponent.ForwardNodeComponent{}
+	for _, item := range gatewaySegmentItems(data) {
+		node, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		content := []messagecomponent.Component{}
+		for _, raw := range gatewaySegmentItems(node["content"]) {
+			segment, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if component := pluginGatewayForwardComponent(segment); component != nil {
+				content = append(content, component)
+			}
+		}
+		if len(content) == 0 {
+			content = append(content, messagecomponent.TextComponent{Text: "[empty forward node]"})
+		}
+		nickname := pluginGatewayDataString(node, "user_nickname")
+		if nickname == "" {
+			nickname = "未知用户"
+		}
+		forward.ForwardComponents = append(forward.ForwardComponents, messagecomponent.ForwardComponent{
+			UserID: pluginGatewayOptionalString(node, "user_id"), UserNickname: nickname,
+			UserCardname: pluginGatewayOptionalString(node, "user_cardname"),
+			MessageID:    pluginGatewayDataString(node, "message_id"), Content: content,
+		})
+	}
+	if len(forward.ForwardComponents) == 0 {
+		return nil
+	}
+	return forward
+}
+
+func pluginGatewayForwardComponent(segment map[string]any) messagecomponent.Component {
+	data := segment["data"]
+	switch segment["type"] {
+	case "forward":
+		if forward := pluginGatewayForward(data); forward != nil {
+			return *forward
+		}
+	case "reply":
+		if payload, ok := data.(map[string]any); ok {
+			return messagecomponent.ReplyComponent{
+				TargetMessageID: pluginGatewayDataString(payload, "target_message_id"),
+				TargetContent:   pluginGatewayOptionalString(payload, "target_message_content"),
+				SenderID:        pluginGatewayOptionalString(payload, "target_message_sender_id"),
+				SenderNickname:  pluginGatewayOptionalString(payload, "target_message_sender_nickname"),
+				SenderCardname:  pluginGatewayOptionalString(payload, "target_message_sender_cardname"),
+			}
+		}
+	case "image", "emoji", "voice":
+		binary, _ := base64.StdEncoding.DecodeString(stringValueOf(segment["binary_data_base64"]))
+		hash, description := stringValueOf(segment["hash"]), stringValueOf(data)
+		switch segment["type"] {
+		case "image":
+			return messagecomponent.NewImageComponent(hash, description, binary)
+		case "emoji":
+			return messagecomponent.NewEmojiComponent(hash, description, binary)
+		default:
+			return messagecomponent.NewVoiceComponent(hash, description, binary)
+		}
+	}
+	sequence, err := messagecomponent.FromDict([]any{segment})
+	if err != nil {
+		return messagecomponent.DictComponent{Data: segment}
+	}
+	return sequence.Components[0]
+}
+
+func pluginGatewayOptionalString(data map[string]any, key string) *string {
+	value := pluginGatewayDataString(data, key)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // gatewaySegmentItems 归一化 JSON 消息段与进程内适配器构造的字典切片。

@@ -404,6 +404,7 @@ func messagePartsFromSegments(segments []platformio.Segment) inboundMessageParts
 			part.Text = file.Name
 		case platformio.SegmentForward:
 			part.Kind = "forward"
+			part.Forward = forwardComponentFromSegments(seg.ForwardNodes)
 		case platformio.SegmentDict, platformio.SegmentJSON:
 			// 对齐 Python process_dict_component：保留原负载供上层生成可读摘要
 			payload := seg.Data

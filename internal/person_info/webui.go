@@ -29,7 +29,7 @@ func (r *Registry) DeletePerson(ctx context.Context, personID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	display := strings.TrimSpace(rec.PersonName)
+	display := strings.TrimSpace(individualDisplayName(rec))
 	if display == "" {
 		display = strings.TrimSpace(rec.UserNickname)
 	}
@@ -43,21 +43,23 @@ func (r *Registry) DeletePerson(ctx context.Context, personID string) (string, e
 }
 
 // PersonStats 人物统计：总数、已认识、未知与平台分布
-func (r *Registry) PersonStats(ctx context.Context) (total, known int, platforms map[string]int, err error) {
+func (r *Registry) PersonStats(ctx context.Context) (total, known, individuals, linked int, platforms map[string]int, err error) {
 	db := r.db(ctx)
 	if db == nil {
-		return 0, 0, nil, ErrMemoryUnavailable
+		return 0, 0, 0, 0, nil, ErrMemoryUnavailable
 	}
 	if !db.Migrator().HasTable((PersonInfo{}).TableName()) {
-		return 0, 0, map[string]int{}, nil
+		return 0, 0, 0, 0, map[string]int{}, nil
 	}
 	var totals []struct {
 		IsKnown bool
 		Total   int
 	}
-	if err := db.WithContext(ctx).Model(&PersonInfo{}).
-		Select("is_known, COUNT(*) AS total").Group("is_known").Scan(&totals).Error; err != nil {
-		return 0, 0, nil, err
+	if err := db.WithContext(ctx).Table("person_info").
+		Select("individuals.is_known AS is_known, COUNT(person_info.id) AS total").
+		Joins("JOIN individuals ON individuals.individual_id = person_info.individual_id").
+		Group("individuals.is_known").Scan(&totals).Error; err != nil {
+		return 0, 0, 0, 0, nil, err
 	}
 	platforms = map[string]int{}
 	for _, row := range totals {
@@ -72,7 +74,7 @@ func (r *Registry) PersonStats(ctx context.Context) (total, known int, platforms
 	}
 	if err := db.WithContext(ctx).Model(&PersonInfo{}).
 		Select("platform, COUNT(*) AS total").Group("platform").Scan(&platformRows).Error; err != nil {
-		return 0, 0, nil, err
+		return 0, 0, 0, 0, nil, err
 	}
 	for _, row := range platformRows {
 		if strings.TrimSpace(row.Platform) == "" {
@@ -80,7 +82,15 @@ func (r *Registry) PersonStats(ctx context.Context) (total, known int, platforms
 		}
 		platforms[row.Platform] = row.Total
 	}
-	return total, known, platforms, nil
+	var individualCount, linkedCount int64
+	if err := db.WithContext(ctx).Model(&PersonInfo{}).Distinct("individual_id").Count(&individualCount).Error; err != nil {
+		return 0, 0, 0, 0, nil, err
+	}
+	linkedRows := db.WithContext(ctx).Model(&PersonInfo{}).Select("individual_id").Group("individual_id").Having("COUNT(*) > 1")
+	if err := db.WithContext(ctx).Table("(?) AS linked_individuals", linkedRows).Count(&linkedCount).Error; err != nil {
+		return 0, 0, 0, 0, nil, err
+	}
+	return total, known, int(individualCount), int(linkedCount), platforms, nil
 }
 
 // BatchDeletePersons 批量删除，缺失的 ID 计入失败列表

@@ -87,13 +87,16 @@ func Mount(r chi.Router, d Deps) {
 		})
 		api.Route("/person", func(pr chi.Router) {
 			pr.Use(d.requireAuthMiddleware)
+			pr.Get("/directory/list", d.handleIndividualDirectory)
+			pr.Get("/individual/{individual_id}", d.handleIndividualDetail)
+			pr.Post("/individual/preview", d.handleIndividualMergePreview)
+			pr.Post("/individual/merge", d.handleIndividualMerge)
 			pr.Get("/list", d.handlePersonList)
 			pr.Get("/stats/summary", d.handlePersonStats)
 			pr.Post("/batch/delete", d.handlePersonBatchDelete)
 			pr.Get("/{person_id}", d.handlePersonDetail)
 			pr.Delete("/{person_id}", d.handlePersonDelete)
 			pr.Patch("/{person_id}", d.handlePersonUpdate)
-			pr.Post("/{person_id}", d.handlePersonUpdate)
 		})
 		api.Route("/jargon", func(jr chi.Router) {
 			jr.Use(d.requireAuthMiddleware)

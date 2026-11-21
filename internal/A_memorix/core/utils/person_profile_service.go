@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -19,13 +18,11 @@ const PersonProfileClassificationRequestType = "A_Memorix.PersonProfileEvidenceC
 const PersonProfileGenerationVersion = 3
 
 // PersonProfilePersonInfo 人物主档，对齐 PersonInfo 表字段
-// GroupCardname 与 MemoryPoints 保持原始值，由服务按 Python 规则解析
 type PersonProfilePersonInfo struct {
 	PersonID      string
 	PersonName    string
 	UserNickname  string
 	GroupCardname any
-	MemoryPoints  any
 	UserID        string
 }
 
@@ -310,57 +307,6 @@ func ParsePersonProfileGroupNicks(rawValue any) []string {
 	return names
 }
 
-// ParsePersonProfileMemoryTraits 对齐 _parse_memory_traits
-func ParsePersonProfileMemoryTraits(rawValue any) []string {
-	if !isTruthy(rawValue) {
-		return []string{}
-	}
-	var values []any
-	switch typed := rawValue.(type) {
-	case []any:
-		values = typed
-	case []string:
-		values = make([]any, 0, len(typed))
-		for _, item := range typed {
-			values = append(values, item)
-		}
-	case string:
-		var payload any
-		if err := json.Unmarshal([]byte(typed), &payload); err != nil {
-			return []string{}
-		}
-		list, ok := payload.([]any)
-		if !ok {
-			return []string{}
-		}
-		values = list
-	default:
-		return []string{}
-	}
-	traits := make([]string, 0, len(values))
-	for _, item := range values {
-		text := pyStrip(pyStr(item))
-		if text == "" {
-			continue
-		}
-		if strings.Contains(text, ":") {
-			parts := strings.Split(text, ":")
-			if len(parts) >= 3 {
-				content := pyStrip(strings.Join(parts[1:len(parts)-1], ":"))
-				if content != "" {
-					traits = append(traits, content)
-					continue
-				}
-			}
-		}
-		traits = append(traits, text)
-	}
-	if len(traits) > 10 {
-		traits = traits[:10]
-	}
-	return traits
-}
-
 // collectAliasSuggestionsFromMemory 对齐 _collect_alias_suggestions_from_memory
 // 收集与人物同段出现的实体，仅作为待人工确认的别名候选
 func (s *PersonProfileService) collectAliasSuggestionsFromMemory(personID string, trustedAliases []string) []string {
@@ -434,12 +380,11 @@ func (s *PersonProfileService) collectAliasSuggestionsFromMemory(personID string
 }
 
 // derivedPersonAliases 对齐 _get_derived_person_aliases
-func (s *PersonProfileService) derivedPersonAliases(ctx context.Context, personID string) ([]string, string, []string) {
+func (s *PersonProfileService) derivedPersonAliases(ctx context.Context, personID string) ([]string, string) {
 	aliases := []string{}
 	primaryName := ""
-	memoryTraits := []string{}
 	if personID == "" {
-		return aliases, primaryName, memoryTraits
+		return aliases, primaryName
 	}
 	if s.store != nil {
 		identity, err := s.store.GetPersonIdentity(personID)
@@ -457,7 +402,7 @@ func (s *PersonProfileService) derivedPersonAliases(ctx context.Context, personI
 		if primaryName == "" {
 			primaryName = personID
 		}
-		return aliases, primaryName, memoryTraits
+		return aliases, primaryName
 	}
 	record, err := s.identity.GetPersonProfilePersonInfo(ctx, personID)
 	if err != nil {
@@ -470,12 +415,11 @@ func (s *PersonProfileService) derivedPersonAliases(ctx context.Context, personI
 		if primaryName == "" {
 			primaryName = personID
 		}
-		return aliases, primaryName, memoryTraits
+		return aliases, primaryName
 	}
 	personName := pyStrip(record.PersonName)
 	nickname := pyStrip(record.UserNickname)
 	groupNicks := ParsePersonProfileGroupNicks(record.GroupCardname)
-	memoryTraits = ParsePersonProfileMemoryTraits(record.MemoryPoints)
 	if primaryName == "" {
 		primaryName = firstNonEmptyString(personName, nickname)
 		if primaryName == "" {
@@ -517,7 +461,7 @@ func (s *PersonProfileService) derivedPersonAliases(ctx context.Context, personI
 		aliases = []string{firstNonEmptyString(primaryName, personID)}
 		primaryName = firstNonEmptyString(primaryName, personID)
 	}
-	return aliases, primaryName, memoryTraits
+	return aliases, primaryName
 }
 
 // GetPersonAliasDetails 对齐 get_person_alias_details
@@ -532,10 +476,9 @@ func (s *PersonProfileService) GetPersonAliasDetails(ctx context.Context, person
 			"manual_aliases":    []any{},
 			"effective_aliases": []any{},
 			"has_override":      false,
-			"memory_traits":     []any{},
 		}
 	}
-	derivedAliases, primaryName, memoryTraits := s.derivedPersonAliases(ctx, token)
+	derivedAliases, primaryName := s.derivedPersonAliases(ctx, token)
 	var override map[string]any
 	if s.store != nil {
 		value, err := s.store.GetPersonProfileAliasOverride(token)
@@ -563,18 +506,16 @@ func (s *PersonProfileService) GetPersonAliasDetails(ctx context.Context, person
 		"manual_aliases":    personProfileAnySlice(manualAliases),
 		"effective_aliases": personProfileAnySlice(effectiveAliases),
 		"has_override":      override != nil,
-		"memory_traits":     personProfileAnySlice(memoryTraits),
 		"override":          override,
 	}
 	return payload
 }
 
 // GetPersonAliases 对齐 get_person_aliases
-func (s *PersonProfileService) GetPersonAliases(ctx context.Context, personID string) ([]string, string, []string) {
+func (s *PersonProfileService) GetPersonAliases(ctx context.Context, personID string) ([]string, string) {
 	details := s.GetPersonAliasDetails(ctx, personID)
 	return personProfileStringList(details["effective_aliases"]),
-		pyStr(details["primary_name"]),
-		personProfileStringList(details["memory_traits"])
+		pyStr(details["primary_name"])
 }
 
 // personProfileStringList 把配置/字典值转成字符串列表

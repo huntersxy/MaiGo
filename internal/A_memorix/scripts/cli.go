@@ -25,7 +25,7 @@ type Command struct {
 	Run func(ctx context.Context, argv []string) int
 }
 
-// Commands 返回 13 个 Python 脚本对应的 Go 命令
+// Commands 返回 Python 脚本对应的 Go 命令
 func Commands() []Command {
 	return []Command{
 		{Name: "_bootstrap.py", Description: "脚本公共引导层（无独立操作）", Run: runBootstrapCommand},
@@ -36,7 +36,6 @@ func Commands() []Command {
 		{Name: "migrate_chat_history.py", Description: "迁移 chat_history 摘要", Run: RunMigrateChatHistory},
 		{Name: "migrate_maibot_memory.py", Description: "迁移 MaiBot 记忆到 A_Memorix", Run: RunMigrateMaiBotMemory},
 		{Name: "convert_lpmm.py", Description: "转换 LPMM parquet/graphml", Run: RunConvertLPMM},
-		{Name: "migrate_person_memory_points.py", Description: "迁移人物记忆点", Run: RunMigratePersonMemoryPoints},
 		{Name: "rebuild_episodes.py", Description: "重建 Episode", Run: RunRebuildEpisodes},
 		{Name: "release_vnext_migrate.py", Description: "vNext 发布迁移", Run: RunReleaseVNextMigrate},
 		{Name: "audit_vector_consistency.py", Description: "审计向量一致性", Run: RunAuditVectorConsistency},

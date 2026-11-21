@@ -108,7 +108,7 @@ func (a *Agent) handleCommand(ctx context.Context, msg *onebot.ConversationMessa
 	if selfID := a.SelfID(); accountID == "" && selfID > 0 {
 		accountID = strconv.FormatInt(selfID, 10)
 	}
-	message := commandMessageDict(msg, text, sessionID, accountID, groupID, groupName, mediaRefs, forwards)
+	message := commandMessageDict(msg, text, sessionID, accountID, groupID, groupName, mediaRefs)
 	hookCommandName, hookPluginID := commandName, pluginID
 	hookGroups := copyStringMap(matchedGroups)
 	before := a.pluginHost.EmitHook(ctx, "chat.command.before_execute", map[string]any{
@@ -262,7 +262,7 @@ func (a *Agent) persistCommandMessage(ctx context.Context, msg *onebot.Conversat
 	}
 }
 
-func commandMessageDict(msg *onebot.ConversationMessage, text, sessionID, accountID, groupID, groupName string, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) map[string]any {
+func commandMessageDict(msg *onebot.ConversationMessage, text, sessionID, accountID, groupID, groupName string, mediaRefs []media.Ref) map[string]any {
 	if msg == nil {
 		return map[string]any{}
 	}
@@ -279,7 +279,7 @@ func commandMessageDict(msg *onebot.ConversationMessage, text, sessionID, accoun
 		}
 	}
 	rawMessage := []map[string]any{}
-	if raw := messagereceive.BuildRawContent(msg, mediaRefs, forwards); len(raw) > 0 {
+	if raw := messagereceive.BuildRawContent(msg, mediaRefs); len(raw) > 0 {
 		if sequence, err := messagecomponent.DecodeDBRecord(raw); err == nil {
 			rawMessage = internalchat.SerializeSequence(sequence)
 		}

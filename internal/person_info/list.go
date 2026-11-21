@@ -9,12 +9,13 @@ import (
 
 // PersonListFilter 对齐 webui/routers/person.py 列表查询
 type PersonListFilter struct {
-	Page     int
-	PageSize int
-	Search   string
-	IsKnown  *bool
-	Platform string
-	UserID   string
+	Page                  int
+	PageSize              int
+	Search                string
+	IsKnown               *bool
+	Platform              string
+	UserID                string
+	ExcludeNumericUserIDs bool
 }
 
 // ListPersons 分页读取 person_info
@@ -27,7 +28,8 @@ func (r *Registry) ListPersons(ctx context.Context, filter PersonListFilter) ([]
 		return nil, 0, nil
 	}
 	page, size := normalizePersonPage(filter.Page, filter.PageSize)
-	q := db.WithContext(ctx).Model(&PersonInfo{})
+	q := db.WithContext(ctx).Model(&PersonInfo{}).
+		Joins("JOIN individuals ON individuals.individual_id = person_info.individual_id")
 	q = applyPersonListFilter(q, filter)
 
 	var total int64
@@ -35,7 +37,7 @@ func (r *Registry) ListPersons(ctx context.Context, filter PersonListFilter) ([]
 		return nil, 0, err
 	}
 	var rows []PersonInfo
-	if err := q.Order("last_known_time DESC NULLS LAST, id DESC").
+	if err := q.Preload("Individual").Order("person_info.last_known_time DESC NULLS LAST, person_info.id DESC").
 		Offset((page - 1) * size).Limit(size).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
@@ -47,16 +49,23 @@ func applyPersonListFilter(q *gorm.DB, filter PersonListFilter) *gorm.DB {
 	if search != "" {
 		like := "%" + search + "%"
 		// Python 侧用 col(...).contains()，即大小写敏感的 LIKE
-		q = q.Where("person_name LIKE ? OR user_nickname LIKE ? OR user_id LIKE ?", like, like, like)
+		q = q.Where("individuals.display_name LIKE ? OR person_info.user_nickname LIKE ? OR person_info.user_id LIKE ?", like, like, like)
 	}
 	if filter.IsKnown != nil {
-		q = q.Where("is_known = ?", *filter.IsKnown)
+		q = q.Where("individuals.is_known = ?", *filter.IsKnown)
 	}
 	if platform := strings.TrimSpace(filter.Platform); platform != "" {
-		q = q.Where("platform = ?", platform)
+		q = q.Where("person_info.platform = ?", platform)
 	}
 	if userID := strings.TrimSpace(filter.UserID); userID != "" {
-		q = q.Where("user_id = ?", userID)
+		q = q.Where("person_info.user_id = ?", userID)
+	}
+	if filter.ExcludeNumericUserIDs {
+		if q.Dialector.Name() == "postgres" {
+			q = q.Where("person_info.user_id !~ '^[0-9]+$'")
+		} else {
+			q = q.Where("person_info.user_id GLOB '*[^0-9]*'")
+		}
 	}
 	return q
 }

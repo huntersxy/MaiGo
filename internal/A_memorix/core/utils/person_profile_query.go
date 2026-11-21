@@ -98,7 +98,7 @@ func (s *PersonProfileService) QueryPersonProfile(ctx context.Context, personID 
 		return nil, err
 	}
 	if !forceRefresh && !s.IsSnapshotStale(latest, ttlSeconds) {
-		aliases, primaryName, _ := s.GetPersonAliases(ctx, pid)
+		aliases, primaryName := s.GetPersonAliases(ctx, pid)
 		payload := map[string]any{
 			"success":     true,
 			"person_id":   pid,
@@ -112,7 +112,7 @@ func (s *PersonProfileService) QueryPersonProfile(ctx context.Context, personID 
 		return s.ApplyManualOverride(pid, payload), nil
 	}
 
-	aliases, primaryName, memoryTraits := s.GetPersonAliases(ctx, pid)
+	aliases, primaryName := s.GetPersonAliases(ctx, pid)
 	if len(aliases) == 0 && keyword != "" {
 		aliases = []string{keyword}
 		primaryName = keyword
@@ -141,7 +141,7 @@ func (s *PersonProfileService) QueryPersonProfile(ctx context.Context, personID 
 	if err != nil {
 		return nil, err
 	}
-	fingerprint := s.ProfileEvidenceFingerprint(pid, primaryName, aliases, relationEdges, vectorEvidence, memoryTraits, factClaims)
+	fingerprint := s.ProfileEvidenceFingerprint(pid, primaryName, aliases, relationEdges, vectorEvidence, factClaims)
 
 	var expiresAt *float64
 	if ttlSeconds > 0 {
@@ -180,7 +180,7 @@ func (s *PersonProfileService) QueryPersonProfile(ctx context.Context, personID 
 		return s.ApplyManualOverride(pid, payload), nil
 	}
 
-	classifiedBuckets, classifyErr := s.classifyProfileEvidence(ctx, pid, primaryName, aliases, relationEdges, vectorEvidence, memoryTraits)
+	classifiedBuckets, classifyErr := s.classifyProfileEvidence(ctx, pid, primaryName, aliases, relationEdges, vectorEvidence)
 	if classifyErr != nil {
 		return nil, classifyErr
 	}
@@ -205,7 +205,7 @@ func (s *PersonProfileService) QueryPersonProfile(ctx context.Context, personID 
 		evidenceIDs = append(evidenceIDs, hashValue)
 	}
 
-	profileText := s.buildProfileText(pid, primaryName, aliases, relationEdges, vectorEvidence, memoryTraits, classifiedBuckets)
+	profileText := s.buildProfileText(pid, primaryName, aliases, relationEdges, vectorEvidence, classifiedBuckets)
 	claimIDs := make([]string, 0, len(factClaims))
 	for _, claim := range factClaims {
 		claimIDs = append(claimIDs, pyStr(claim["claim_id"]))

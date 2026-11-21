@@ -32,19 +32,8 @@ func newPersonProfileBuckets() map[string][]string {
 }
 
 // classifyProfileEvidenceRuleBased 对齐 _classify_profile_evidence_rule_based
-func (s *PersonProfileService) classifyProfileEvidenceRuleBased(relationEdges []map[string]any, vectorEvidence []map[string]any, memoryTraits []string) map[string][]string {
+func (s *PersonProfileService) classifyProfileEvidenceRuleBased(relationEdges []map[string]any, vectorEvidence []map[string]any) map[string][]string {
 	buckets := newPersonProfileBuckets()
-
-	traitLimit := len(memoryTraits)
-	if traitLimit > 6 {
-		traitLimit = 6
-	}
-	for _, trait := range memoryTraits[:traitLimit] {
-		text := pyStrip(trait)
-		if text != "" {
-			appendPersonProfileBucket(buckets, personProfileGuessBucket(text), text)
-		}
-	}
 
 	relationLimit := len(relationEdges)
 	if relationLimit > 8 {
@@ -77,10 +66,10 @@ func (s *PersonProfileService) classifyProfileEvidenceRuleBased(relationEdges []
 }
 
 // buildProfileText 对齐 _build_profile_text
-func (s *PersonProfileService) buildProfileText(personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any, memoryTraits []string, classifiedBuckets map[string][]string) string {
+func (s *PersonProfileService) buildProfileText(personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any, classifiedBuckets map[string][]string) string {
 	buckets := classifiedBuckets
 	if buckets == nil {
-		buckets = s.classifyProfileEvidenceRuleBased(relationEdges, vectorEvidence, memoryTraits)
+		buckets = s.classifyProfileEvidenceRuleBased(relationEdges, vectorEvidence)
 	}
 	aliasLimit := len(aliases)
 	if aliasLimit > 8 {
@@ -102,9 +91,9 @@ func (s *PersonProfileService) buildProfileText(personID string, primaryName str
 // classifyProfileEvidence 对齐 _classify_profile_evidence
 // 用 LLM 辅助证据分桶；模型未配置或调用失败时显式记录原因并回退到规则结果
 // 模型返回非法 JSON 时返回错误，避免把规则结果伪装成模型结果
-func (s *PersonProfileService) classifyProfileEvidence(ctx context.Context, personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any, memoryTraits []string) (map[string][]string, error) {
-	fallback := s.classifyProfileEvidenceRuleBased(relationEdges, vectorEvidence, memoryTraits)
-	candidates := s.buildProfileClassificationCandidates(relationEdges, vectorEvidence, memoryTraits)
+func (s *PersonProfileService) classifyProfileEvidence(ctx context.Context, personID string, primaryName string, aliases []string, relationEdges []map[string]any, vectorEvidence []map[string]any) (map[string][]string, error) {
+	fallback := s.classifyProfileEvidenceRuleBased(relationEdges, vectorEvidence)
+	candidates := s.buildProfileClassificationCandidates(relationEdges, vectorEvidence)
 	if len(candidates) == 0 {
 		return fallback, nil
 	}
@@ -242,24 +231,8 @@ func mergePersonProfileClassification(fallback map[string][]string, llmResult ma
 }
 
 // buildProfileClassificationCandidates 对齐 _build_profile_classification_candidates
-func (s *PersonProfileService) buildProfileClassificationCandidates(relationEdges []map[string]any, vectorEvidence []map[string]any, memoryTraits []string) []map[string]any {
-	candidates := make([]map[string]any, 0, 8+12+16)
-
-	traitLimit := len(memoryTraits)
-	if traitLimit > 8 {
-		traitLimit = 8
-	}
-	for index, trait := range memoryTraits[:traitLimit] {
-		text := pyStrip(trait)
-		if text != "" {
-			candidates = append(candidates, map[string]any{
-				"id":          fmt.Sprintf("trait-%d", index+1),
-				"source_type": "memory_trait",
-				"text":        text,
-			})
-		}
-	}
-
+func (s *PersonProfileService) buildProfileClassificationCandidates(relationEdges []map[string]any, vectorEvidence []map[string]any) []map[string]any {
+	candidates := make([]map[string]any, 0, 12+16)
 	relationLimit := len(relationEdges)
 	if relationLimit > 12 {
 		relationLimit = 12

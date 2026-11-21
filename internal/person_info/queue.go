@@ -154,7 +154,7 @@ func (q *WritebackQueue) worker() {
 
 func (q *WritebackQueue) process(job writebackJob) {
 	for {
-		err := q.registry.StoreMemoryPointsFromAnswer(context.Background(), job.input)
+		err := q.registry.StorePersonFactFromAnswer(context.Background(), job.input)
 		if err == nil {
 			q.mu.Lock()
 			q.stats.Processed++

@@ -217,7 +217,11 @@ func chatInboundRawMessage(msg *onebot.ConversationMessage) *messagecomponent.Me
 		case "card":
 			sequence.Text(chatCardText(msg, part.Index))
 		case "forward":
-			sequence.Text("[合并转发消息]")
+			if part.Forward != nil {
+				sequence.Components = append(sequence.Components, messagecomponent.CloneComponent(*part.Forward))
+			} else {
+				sequence.Text("[合并转发消息]")
+			}
 		}
 	}
 	for index, file := range msg.Files {

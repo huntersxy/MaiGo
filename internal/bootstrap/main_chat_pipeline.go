@@ -38,6 +38,7 @@ type chatRuntimePipeline struct {
 	sessions  *chatSessionRegistry
 	runtimes  *chatRuntimeProvider
 	policies  *policy.Registry
+	people    *personinfo.Registry
 	cancel    context.CancelFunc
 	inflight  sync.Map
 	delivered sync.Map
@@ -120,6 +121,7 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 		sessions: sessions,
 		runtimes: provider,
 		policies: policies,
+		people:   options.People,
 		cancel:   cancel,
 	}
 	if options.Agent != nil {
@@ -223,6 +225,14 @@ func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.Conversati
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if p.people != nil {
+		state, err := p.people.IdentityState(ctx)
+		if err != nil {
+			zap.L().Error("读取入站人物身份失败", zap.Error(err))
+			return
+		}
+		msg = normalizeInboundIdentity(msg, state)
 	}
 	sessionScheduler, ok := p.sessionScheduler()
 	if !ok || p.chat == nil || p.chat.ChatBot == nil {

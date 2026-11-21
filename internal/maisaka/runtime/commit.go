@@ -85,7 +85,7 @@ func (a *Agent) persistConversationMessage(ctx context.Context, msg *onebot.Conv
 			ExternalUserID:    msg.ExternalUserID,
 			AccountID:         msg.AccountID,
 			Scope:             msg.Scope,
-			RawContent:        messagereceive.BuildRawContent(msg, mediaRefs, forwards),
+			RawContent:        messagereceive.BuildRawContent(msg, mediaRefs),
 		}
 		if len(msg.AdditionalConfig) > 0 {
 			log.AdditionalConfig = memory.MessageAdditionalConfig(msg.AdditionalConfig)

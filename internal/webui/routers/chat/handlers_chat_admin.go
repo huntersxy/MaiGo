@@ -109,20 +109,25 @@ func (d Deps) handleChatPersons(w http.ResponseWriter, r *http.Request) {
 	}
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	limit := queryInt(r, "limit", 50, 1, 200)
-	query := d.Memory.GetDB().WithContext(r.Context()).Model(&personinfo.PersonInfo{}).Where("platform = ?", platform)
+	query := d.Memory.GetDB().WithContext(r.Context()).Model(&personinfo.PersonInfo{}).
+		Joins("JOIN individuals ON individuals.individual_id = person_info.individual_id").
+		Where("person_info.platform = ?", platform)
 	if search != "" {
 		pattern := "%" + search + "%"
-		query = query.Where("person_name LIKE ? OR user_nickname LIKE ? OR user_id LIKE ?", pattern, pattern, pattern)
+		query = query.Where("individuals.display_name LIKE ? OR person_info.user_nickname LIKE ? OR person_info.user_id LIKE ?", pattern, pattern, pattern)
 	}
 	var rows []personinfo.PersonInfo
-	if err := query.Order("CASE WHEN last_known_time IS NULL THEN 1 ELSE 0 END").
-		Order("last_known_time DESC").Limit(limit).Find(&rows).Error; err != nil {
+	if err := query.Preload("Individual").Order("CASE WHEN person_info.last_known_time IS NULL THEN 1 ELSE 0 END").
+		Order("person_info.last_known_time DESC").Limit(limit).Find(&rows).Error; err != nil {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"success": false, "error": err.Error(), "persons": []any{}})
 		return
 	}
 	persons := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		displayName := row.PersonName
+		displayName := ""
+		if row.Individual != nil {
+			displayName = row.Individual.DisplayName
+		}
 		if displayName == "" {
 			displayName = row.UserNickname
 		}
@@ -130,8 +135,8 @@ func (d Deps) handleChatPersons(w http.ResponseWriter, r *http.Request) {
 			displayName = row.UserID
 		}
 		persons = append(persons, map[string]any{
-			"person_id": row.PersonID, "user_id": row.UserID, "person_name": row.PersonName,
-			"nickname": row.UserNickname, "is_known": row.IsKnown, "platform": row.Platform,
+			"person_id": row.PersonID, "user_id": row.UserID, "person_name": displayName,
+			"nickname": row.UserNickname, "is_known": row.Individual != nil && row.Individual.IsKnown, "platform": row.Platform,
 			"display_name": displayName,
 		})
 	}

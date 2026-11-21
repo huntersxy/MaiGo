@@ -109,6 +109,16 @@ func ParseMessageContent(ctx context.Context, msg *onebot.ConversationMessage, r
 			pieces = append(pieces, ContentPiece{MediaIdx: len(pending) - 1, Fallback: fallback})
 		case "video":
 			pieces = append(pieces, ContentPiece{Text: " [视频，无法查看]", MediaIdx: -1})
+		case "forward":
+			text := "[合并转发消息]"
+			if part.Forward != nil {
+				drafts := buildForwardDrafts(*part.Forward, "", 1)
+				if len(drafts) > 0 {
+					text = "[合并转发消息:" + drafts[0].Handle + "]"
+					forwards = append(forwards, drafts...)
+				}
+			}
+			pieces = append(pieces, ContentPiece{Text: text, MediaIdx: -1})
 		case "record":
 			pieces = append(pieces, ContentPiece{Text: " [语音]", MediaIdx: -1})
 		case "file":

@@ -241,6 +241,7 @@ func (w *WebUI) mountManagement(router chi.Router) {
 	router.Put("/api/host/settings", w.handleSaveCommonSettings)
 	router.Patch("/api/host/settings/appearance", w.handleSaveAppearance)
 	w.mountDataTransfer(router)
+	w.mountPersonMigration(router)
 }
 
 // mountGoDeveloper 提供榫卯设置页，并把配置接口转发到当前选中的 Bot。

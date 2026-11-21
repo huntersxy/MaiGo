@@ -8,6 +8,8 @@ var (
 	errMemoryUnavailable = ErrMemoryUnavailable
 	// ErrPersonNotFound 未找到 person_info 行
 	ErrPersonNotFound       = errors.New("personinfo: 未找到人物记录")
+	ErrIndividualNotFound   = errors.New("personinfo: 个体不存在")
+	ErrIndividualChanged    = errors.New("personinfo: 人物资料或归属已变化，请重新加载")
 	errInvalidRegisterInput = errors.New("personinfo: platform、user_id、nickname 为必填")
 	errPersonNotFound       = ErrPersonNotFound
 	// ErrMemorixUnavailable Memorix 宿主未接线
@@ -21,3 +23,9 @@ var (
 	// ErrWritebackQueueClosed 人物事实写回队列已关闭
 	ErrWritebackQueueClosed = errors.New("personinfo: 人物事实写回队列已关闭")
 )
+
+type IndividualInputError struct {
+	Message string
+}
+
+func (e *IndividualInputError) Error() string { return e.Message }

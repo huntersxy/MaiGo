@@ -238,7 +238,7 @@ var latestTables = []string{
 	"conversation_transcript", "context_compaction_checkpoints", "topic_threads",
 	"topic_assignments", "topic_summaries", "topic_summary_sources", "knowledge_items",
 	"knowledge_revisions", "emotion_states", "emotion_revisions", "member_profiles",
-	"member_names", "person_info", "images", "mood_state", "model_call_hourly",
+	"member_names", "person_info", "individuals", "individual_merge_events", "images", "mood_state", "model_call_hourly",
 	"message_traffic_hourly", "message_traffic_chat_hourly", "online_time_daily",
 	"conversation_targets", "chat_sessions", "session_messages", "app_config",
 	"model_profiles", "mcp_servers", "expressions", "jargons",
@@ -271,4 +271,5 @@ var latestColumns = []columnRef{
 	{"high_frequency_terms", "chat_id"},
 	{"jargons", "evidence_messages"},
 	{"llm_usage", "session_id"},
+	{"person_info", "individual_id"},
 }

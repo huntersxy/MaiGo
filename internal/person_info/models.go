@@ -11,6 +11,8 @@ import (
 // PersonInfo 复用 schema 子包的模型定义
 // 类型别名保持既有调用方不变
 type PersonInfo = schema.PersonInfo
+type Individual = schema.Individual
+type IndividualMergeEvent = schema.IndividualMergeEvent
 
 // GroupCardEntry 群名片 JSON 元素，键名与 MaiBot 一致
 type GroupCardEntry struct {
@@ -58,34 +60,12 @@ func encodeGroupCards(items []GroupCardEntry) (string, error) {
 	return marshalJSONText(clean)
 }
 
-// decodeMemoryPoints 对齐 Person.load_from_database：只过滤 None，其余原样保留
-func decodeMemoryPoints(raw *string) []string {
-	if raw == nil || *raw == "" {
-		return nil
-	}
-	var items []any
-	if err := json.Unmarshal([]byte(*raw), &items); err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if text, ok := item.(string); ok {
-			out = append(out, text)
-		}
-	}
-	return out
-}
-
-// encodeMemoryPoints 对齐 Person.sync_to_database：空列表写 "[]"，不转义非 ASCII
-func encodeMemoryPoints(items []string) (string, error) {
-	if items == nil {
-		items = []string{}
-	}
-	return marshalJSONText(items)
-}
-
 // jsonTextPtr 返回 JSON 文本列的可空指针
 func jsonTextPtr(text string) *string {
+	return &text
+}
+
+func stringPtr(text string) *string {
 	return &text
 }
 

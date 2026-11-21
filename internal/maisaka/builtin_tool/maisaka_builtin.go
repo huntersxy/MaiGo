@@ -892,7 +892,7 @@ func queryPersonProfileFunc(ctx context.Context, input *QueryPersonProfileInput)
 		return nil, fmt.Errorf("人物画像查询失败: %w", err)
 	}
 
-	summary, traits := formatPersonProfileSummary(prof, limit)
+	summary, traits := formatPersonProfileSummary(prof)
 	displayName := prof.PersonName
 	if displayName == "" {
 		displayName = prof.Nickname

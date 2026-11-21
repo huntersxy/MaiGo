@@ -3,15 +3,18 @@ package personinfo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"MaiGo/internal/common/database"
+	"MaiGo/internal/person_info/identity"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// upsertPersonOnRegister 对齐 Person.register_person：已认识只补群名片，未认识才建档
 func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, userID, nickname string, in RegisterInput) (*PersonInfo, error) {
 	db := r.db(ctx)
 	if db == nil {
@@ -22,7 +25,7 @@ func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, us
 		now := time.Now()
 		return &PersonInfo{
 			PersonID: pid, Platform: platform, UserID: userID, UserNickname: nickname,
-			PersonName: nickname, IsKnown: true, KnowCounts: 1,
+			PersonName: stringPtr(nickname), IsKnown: true, KnowCounts: 1,
 			FirstKnownTime: &now, LastKnownTime: &now,
 		}, nil
 	}
@@ -33,88 +36,71 @@ func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, us
 	}
 	groupNick := strings.TrimSpace(in.GroupNickName)
 
-	var existing PersonInfo
-	findErr := db.Where("person_id = ?", pid).First(&existing).Error
-	if findErr != nil && findErr != gorm.ErrRecordNotFound {
-		return nil, findErr
-	}
-	notFound := findErr == gorm.ErrRecordNotFound
-
-	// is_person_known(person_id=...) 为真：只做 add_group_nick_name
-	if !notFound && existing.IsKnown {
-		if groupKey == "" || groupNick == "" {
-			return &existing, nil
+	var record PersonInfo
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "sqlite" {
+			if err := tx.Exec("UPDATE person_info SET id=id WHERE person_id=?", pid).Error; err != nil {
+				return err
+			}
 		}
-		cards := upsertGroupCard(decodeGroupCards(existing.GroupCardname), groupKey, groupNick)
-		raw, encErr := encodeGroupCards(cards)
-		if encErr != nil {
-			return nil, encErr
+		state, err := identity.LoadDatabase(ctx, tx, memory.InstanceRoot())
+		if err != nil {
+			return err
 		}
-		existing.GroupCardname = jsonTextPtr(raw)
-		// sync_to_database 由刚重新加载的 Person 触发，know_since/last_know 此时为空
-		if saveErr := r.syncLoadedPerson(ctx, &existing); saveErr != nil {
-			return nil, saveErr
+		userID = state.ResolveUserID(platform, userID)
+		pid = PersonID(platform, userID)
+		findErr := lockPersonRow(tx, pid).Preload("Individual").First(&record).Error
+		if findErr == nil {
+			if record.Individual == nil {
+				return fmt.Errorf("personinfo: 人物账号缺少 Individual 归属")
+			}
+			return updatePersonGroupCard(tx, &record, groupKey, groupNick)
 		}
-		return &existing, nil
-	}
-
-	// 未认识：register_person 新建 Person 后 sync_to_database 覆盖整行
-	now := time.Now()
-	cards := make([]GroupCardEntry, 0, 1)
-	if groupKey != "" && groupNick != "" {
-		cards = upsertGroupCard(cards, groupKey, groupNick)
-	}
-	groupRaw, err := encodeGroupCards(cards)
-	if err != nil {
-		return nil, err
-	}
-	memRaw, err := encodeMemoryPoints(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if notFound {
-		rec := PersonInfo{
-			IsKnown: true, PersonID: pid, PersonName: nickname, NameReason: "用户注册时设置的昵称",
+		if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+			return findErr
+		}
+		groupRaw, err := encodeGroupCards(upsertGroupCard(nil, groupKey, groupNick))
+		if err != nil {
+			return err
+		}
+		now := time.Now()
+		record = PersonInfo{
+			IsKnown: true, PersonID: pid, PersonName: stringPtr(nickname),
 			Platform: platform, UserID: userID, UserNickname: nickname,
-			GroupCardname: jsonTextPtr(groupRaw), MemoryPoints: jsonTextPtr(memRaw), KnowCounts: 1,
+			GroupCardname: jsonTextPtr(groupRaw), KnowCounts: 1,
 			FirstKnownTime: &now, LastKnownTime: &now,
 		}
-		if err := db.Create(&rec).Error; err != nil {
-			return nil, err
+		if err := tx.Create(&record).Error; err != nil {
+			return err
 		}
-		return &rec, nil
-	}
-
-	existing.IsKnown = true
-	existing.Platform = platform
-	existing.UserID = userID
-	existing.UserNickname = nickname
-	existing.PersonName = nickname
-	existing.NameReason = "用户注册时设置的昵称"
-	existing.KnowCounts = 1
-	existing.FirstKnownTime = &now
-	existing.LastKnownTime = &now
-	existing.MemoryPoints = jsonTextPtr(memRaw)
-	existing.GroupCardname = jsonTextPtr(groupRaw)
-	if err := db.Save(&existing).Error; err != nil {
+		return tx.Preload("Individual").Where("person_id = ?", pid).First(&record).Error
+	})
+	if err != nil {
 		return nil, err
 	}
-	return &existing, nil
+	return &record, nil
 }
 
-// syncLoadedPerson 复刻 Person.sync_to_database：未认识不写；整行回写，know_since/last_know 为空
-func (r *Registry) syncLoadedPerson(ctx context.Context, rec *PersonInfo) error {
-	if rec == nil || !rec.IsKnown {
+func lockPersonRow(tx *gorm.DB, personID string) *gorm.DB {
+	if tx.Dialector.Name() == "sqlite" {
+		if result := tx.Exec("UPDATE person_info SET id = id WHERE person_id = ?", personID); result.Error != nil {
+			return result
+		}
+		return tx.Where("person_id = ?", personID)
+	}
+	return tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("person_id = ?", personID)
+}
+
+func updatePersonGroupCard(tx *gorm.DB, rec *PersonInfo, groupID, card string) error {
+	if groupID == "" || card == "" {
 		return nil
 	}
-	db := r.db(ctx)
-	if db == nil {
-		return errMemoryUnavailable
+	raw, err := encodeGroupCards(upsertGroupCard(decodeGroupCards(rec.GroupCardname), groupID, card))
+	if err != nil {
+		return err
 	}
-	rec.FirstKnownTime = nil
-	rec.LastKnownTime = nil
-	return db.Save(rec).Error
+	rec.GroupCardname = jsonTextPtr(raw)
+	return tx.Model(&PersonInfo{}).Where("id = ?", rec.ID).Update("group_cardname", rec.GroupCardname).Error
 }
 
 func upsertGroupCard(list []GroupCardEntry, groupID, card string) []GroupCardEntry {
@@ -132,6 +118,48 @@ func upsertGroupCard(list []GroupCardEntry, groupID, card string) []GroupCardEnt
 	return append(list, GroupCardEntry{GroupID: groupID, GroupCardname: card})
 }
 
+// AddGroupNickname 添加或更新群名片
+func (r *Registry) AddGroupNickname(ctx context.Context, personID, groupID, groupNickname string) error {
+	groupID = strings.TrimSpace(groupID)
+	groupNickname = strings.TrimSpace(groupNickname)
+	if groupID == "" || groupNickname == "" {
+		return nil
+	}
+	db := r.db(ctx)
+	if db == nil {
+		return errMemoryUnavailable
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var rec PersonInfo
+		if err := lockPersonRow(tx, personID).First(&rec).Error; err != nil {
+			return err
+		}
+		return updatePersonGroupCard(tx, &rec, groupID, groupNickname)
+	})
+}
+
+// GetPersonIDByPersonName 返回唯一精确匹配的 person_id
+func (r *Registry) GetPersonIDByPersonName(ctx context.Context, personName string) string {
+	name := strings.TrimSpace(personName)
+	if name == "" {
+		return ""
+	}
+	db := r.db(ctx)
+	if db == nil || !db.Migrator().HasTable((PersonInfo{}).TableName()) {
+		return ""
+	}
+	var ids []string
+	if err := db.Model(&PersonInfo{}).
+		Joins("JOIN individuals ON individuals.individual_id = person_info.individual_id").
+		Where("individuals.display_name = ?", name).Limit(2).Pluck("person_info.person_id", &ids).Error; err != nil {
+		return ""
+	}
+	if len(ids) != 1 {
+		return ""
+	}
+	return ids[0]
+}
+
 func (r *Registry) loadPersonByID(ctx context.Context, personID string) (*PersonInfo, error) {
 	db := r.db(ctx)
 	if db == nil {
@@ -140,8 +168,13 @@ func (r *Registry) loadPersonByID(ctx context.Context, personID string) (*Person
 	if !db.Migrator().HasTable((PersonInfo{}).TableName()) {
 		return nil, gorm.ErrRecordNotFound
 	}
+	state, err := r.IdentityState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	personID = state.ResolvePersonID(personID)
 	var rec PersonInfo
-	if err := db.Where("person_id = ?", personID).First(&rec).Error; err != nil {
+	if err := db.Preload("Individual").Where("person_id = ?", personID).First(&rec).Error; err != nil {
 		return nil, err
 	}
 	return &rec, nil
@@ -163,14 +196,20 @@ func (r *Registry) IsKnown(ctx context.Context, personID string) bool {
 	if err != nil {
 		return false
 	}
-	return rec.IsKnown
+	return rec.Individual != nil && rec.Individual.IsKnown
 }
 
 // ResolvePersonID 对齐 resolve_person_id_for_memory：ID 优先，其次唯一精确 person_name
 func (r *Registry) ResolvePersonID(ctx context.Context, platform, userID, personName string, strictKnown bool) string {
+	rawPlatform := strings.TrimSpace(platform)
 	platform = normalizePlatform(platform)
 	userID = strings.TrimSpace(userID)
 	if platform != "" && userID != "" {
+		state, err := r.IdentityState(ctx)
+		if err != nil {
+			return ""
+		}
+		userID = state.ResolveUserID(rawPlatform, userID)
 		pid := PersonID(platform, userID)
 		if strictKnown && !r.IsKnown(ctx, pid) {
 			return ""
@@ -191,7 +230,7 @@ func (r *Registry) ResolvePersonID(ctx context.Context, platform, userID, person
 	return pid
 }
 
-// UpdateProfileFields 更新 person_info 可写字段，必要时同步 member_profiles 昵称
+// UpdateProfileFields 更新账号资料与共享人物资料
 func (r *Registry) UpdateProfileFields(ctx context.Context, personID string, upd ProfileUpdate) (*Profile, error) {
 	db := r.db(ctx)
 	if db == nil {
@@ -202,45 +241,65 @@ func (r *Registry) UpdateProfileFields(ctx context.Context, personID string, upd
 	}
 
 	var rec PersonInfo
-	if err := db.Where("person_id = ?", personID).First(&rec).Error; err != nil {
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := lockPersonRow(tx, personID).Preload("Individual").First(&rec).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errPersonNotFound
+			return errPersonNotFound
 		}
-		return nil, err
-	}
-
-	if upd.Nickname != nil {
-		rec.UserNickname = strings.TrimSpace(*upd.Nickname)
-	}
-	if upd.PersonName != nil {
-		rec.PersonName = strings.TrimSpace(*upd.PersonName)
-	}
-	if upd.NameReason != nil {
-		rec.NameReason = strings.TrimSpace(*upd.NameReason)
-	}
-	if upd.IsKnown != nil {
-		rec.IsKnown = *upd.IsKnown
-	}
-	if upd.MemoryPoints != nil {
-		raw, err := encodeMemoryPoints(*upd.MemoryPoints)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		rec.MemoryPoints = jsonTextPtr(raw)
-	}
-	if upd.GroupCard != nil {
-		cards := upsertGroupCard(decodeGroupCards(rec.GroupCardname), upd.GroupCard.GroupID, upd.GroupCard.GroupCardname)
-		raw, err := encodeGroupCards(cards)
-		if err != nil {
-			return nil, err
+		if rec.Individual == nil {
+			return fmt.Errorf("personinfo: 人物账号缺少 Individual 归属")
 		}
-		rec.GroupCardname = jsonTextPtr(raw)
-	}
-
-	now := time.Now()
-	rec.LastKnownTime = &now
-
-	if err := db.Clauses(clause.Returning{}).Save(&rec).Error; err != nil {
+		if upd.PersonName != nil || upd.IsKnown != nil {
+			if upd.ExpectedIndividualID == nil || upd.ExpectedProfile == nil ||
+				*upd.ExpectedIndividualID != rec.IndividualID ||
+				*upd.ExpectedProfile != (IndividualProfile{DisplayName: rec.Individual.DisplayName, IsKnown: rec.Individual.IsKnown}) {
+				return ErrIndividualChanged
+			}
+			updates := make(map[string]any, 2)
+			if upd.PersonName != nil {
+				name := strings.TrimSpace(*upd.PersonName)
+				if name == "" || len([]rune(name)) > 255 {
+					return fmt.Errorf("personinfo: 人物名称长度必须为 1～255")
+				}
+				updates["display_name"] = name
+				rec.Individual.DisplayName = name
+			}
+			if upd.IsKnown != nil {
+				updates["is_known"] = *upd.IsKnown
+				rec.Individual.IsKnown = *upd.IsKnown
+			}
+			result := tx.Model(&Individual{}).Where("individual_id = ? AND display_name = ? AND is_known = ?",
+				rec.IndividualID, upd.ExpectedProfile.DisplayName, upd.ExpectedProfile.IsKnown).Updates(updates)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return ErrIndividualChanged
+			}
+		}
+		personUpdates := make(map[string]any, 2)
+		if upd.Nickname != nil {
+			rec.UserNickname = strings.TrimSpace(*upd.Nickname)
+			personUpdates["user_nickname"] = rec.UserNickname
+		}
+		if upd.GroupCard != nil {
+			cards := upsertGroupCard(decodeGroupCards(rec.GroupCardname), upd.GroupCard.GroupID, upd.GroupCard.GroupCardname)
+			raw, err := encodeGroupCards(cards)
+			if err != nil {
+				return err
+			}
+			rec.GroupCardname = jsonTextPtr(raw)
+			personUpdates["group_cardname"] = raw
+		}
+		if len(personUpdates) == 0 {
+			return nil
+		}
+		return tx.Model(&PersonInfo{}).Where("id = ?", rec.ID).Updates(personUpdates).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 

@@ -26,13 +26,13 @@ type AnswerWritebackInput struct {
 	FactClaim          map[string]any
 }
 
-// StoreMemoryPointsFromAnswer 将人物事实写入 Memorix ingest_text；可选同步 legacy memory_points
-func StoreMemoryPointsFromAnswer(ctx context.Context, in AnswerWritebackInput) error {
-	return DefaultRegistry().StoreMemoryPointsFromAnswer(ctx, in)
+// StorePersonFactFromAnswer 将人物事实写入 Memorix
+func StorePersonFactFromAnswer(ctx context.Context, in AnswerWritebackInput) error {
+	return DefaultRegistry().StorePersonFactFromAnswer(ctx, in)
 }
 
-// StoreMemoryPointsFromAnswer 对齐 store_person_memory_from_answer
-func (r *Registry) StoreMemoryPointsFromAnswer(ctx context.Context, in AnswerWritebackInput) error {
+// StorePersonFactFromAnswer 对齐 store_person_memory_from_answer
+func (r *Registry) StorePersonFactFromAnswer(ctx context.Context, in AnswerWritebackInput) error {
 	content := strings.TrimSpace(in.MemoryContent)
 	if content == "" {
 		zap.L().Debug("人物事实写回跳过：memory_content 为空")

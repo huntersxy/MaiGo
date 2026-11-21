@@ -11,6 +11,7 @@ import (
 	"MaiGo/internal/chat/session"
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/maisaka"
+	"MaiGo/internal/person_info/identity"
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
@@ -23,6 +24,18 @@ type resolvedPlatformRoute struct {
 	Target     string
 	External   bool
 	HasAdapter bool
+}
+
+func (a *Agent) platformTransportTarget(ctx context.Context, route resolvedPlatformRoute, chatType platformio.ChatType) (string, error) {
+	if chatType != platformio.ChatTypePrivate || a.memory == nil {
+		return route.Target, nil
+	}
+	state, err := identity.LoadDatabase(ctx, a.memory.GetDB(), a.memory.InstanceRoot())
+	if err != nil {
+		return "", fmt.Errorf("读取私聊发送身份失败: %w", err)
+	}
+	key := route.RouteKey
+	return state.ResolvePrivateTransportUser(key.Platform, route.Target, key.AccountID, key.Scope), nil
 }
 
 // resolvePlatformRoute 解析会话的出站平台路由；非 QQ 外部身份优先使用原始字符串目标。
@@ -184,13 +197,17 @@ func (a *Agent) sendFileViaPlatformIO(
 	if err != nil {
 		return 0, 0, err
 	}
+	target, err := a.platformTransportTarget(ctx, resolved, chatType)
+	if err != nil {
+		return 0, 0, err
+	}
 	routeKey := resolved.RouteKey
 	outbound := platformio.OutboundMessageEnvelope{
 		RouteKey:    routeKey,
 		ChatType:    chatType,
-		TargetID:    resolved.Target,
+		TargetID:    target,
 		Timestamp:   time.Now(),
-		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, target),
 		Segments: []platformio.Segment{{
 			Kind:  platformio.SegmentFile,
 			URL:   fileURL,
@@ -243,6 +260,10 @@ func (a *Agent) sendViaPlatformIO(
 	if err != nil {
 		return 0, 0, err
 	}
+	target, err := a.platformTransportTarget(ctx, resolved, chatType)
+	if err != nil {
+		return 0, 0, err
+	}
 	routeKey := resolved.RouteKey
 	segments := a.outboundSegmentsForText(conversationKind, targetID, text, mentions)
 	if reply, ok := a.replySegment(conversationKind, targetID, replyTo); ok {
@@ -251,10 +272,10 @@ func (a *Agent) sendViaPlatformIO(
 	outbound := platformio.OutboundMessageEnvelope{
 		RouteKey:    routeKey,
 		ChatType:    chatType,
-		TargetID:    resolved.Target,
+		TargetID:    target,
 		PlainText:   text,
 		Timestamp:   time.Now(),
-		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, target),
 		Segments:    segments,
 	}
 	// 被动锚点与显示引用相互独立：对齐 Python，reply_to 取锚点消息，未选中引用时也要携带
@@ -303,14 +324,18 @@ func (a *Agent) sendImageViaPlatformIO(
 	if err != nil {
 		return 0, 0, err
 	}
+	target, err := a.platformTransportTarget(ctx, resolved, chatType)
+	if err != nil {
+		return 0, 0, err
+	}
 	routeKey := resolved.RouteKey
 	seg := outboundImageSegment(filePath, isSticker)
 	outbound := platformio.OutboundMessageEnvelope{
 		RouteKey:    routeKey,
 		ChatType:    chatType,
-		TargetID:    resolved.Target,
+		TargetID:    target,
 		Timestamp:   time.Now(),
-		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, resolved.Target),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, target),
 		Segments:    []platformio.Segment{seg},
 	}
 	if replyAnchor != 0 {

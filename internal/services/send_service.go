@@ -17,6 +17,7 @@ import (
 
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/emoji_system"
+	"MaiGo/internal/person_info/identity"
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/platform_io/drivers/onebot"
 )
@@ -342,6 +343,14 @@ func (s *SendService) Send(ctx context.Context, request SendRequest, options Sen
 	if chatType == "" {
 		chatType = platformio.ChatTypeGroup
 	}
+	transportTarget := request.TargetID
+	if chatType == platformio.ChatTypePrivate {
+		state, err := identity.LoadDatabase(ctx, s.DB, memory.InstanceRoot())
+		if err != nil {
+			return SendResult{}, fmt.Errorf("读取私聊发送身份失败: %w", err)
+		}
+		transportTarget = state.ResolvePrivateTransportUser(routeKey.Platform, request.TargetID, routeKey.AccountID, routeKey.Scope)
+	}
 	segments := append([]platformio.Segment(nil), request.Segments...)
 	if len(segments) == 0 {
 		return SendResult{}, errors.New("消息缺少可发送的消息段")
@@ -367,7 +376,7 @@ func (s *SendService) Send(ctx context.Context, request SendRequest, options Sen
 	}
 	envelope := platformio.OutboundMessageEnvelope{
 		InternalMessageID: request.MessageID, RouteKey: routeKey, ChatType: chatType,
-		TargetID: request.TargetID, Segments: segments, PlainText: plainText,
+		TargetID: transportTarget, Segments: segments, PlainText: plainText,
 		ReplyToMessageID: options.ReplyMessageID, ExternalReplyToMessageID: request.ExternalReplyToMessageID,
 		Timestamp: time.Now(),
 		SessionID: request.SessionID,

@@ -13,7 +13,7 @@ import (
 
 const (
 	baseSchemaVersion   = 17
-	latestSchemaVersion = 57
+	latestSchemaVersion = 58
 )
 
 // SchemaVersionSource 描述版本号的来源

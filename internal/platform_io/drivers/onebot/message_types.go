@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"MaiGo/internal/common/data_models/messagecomponent"
 )
 
 const AtAllUserID int64 = -1
@@ -19,6 +21,7 @@ type MessagePart struct {
 	ExternalAtUserID string // 非 QQ 平台 @ 的原始字符串 ID
 	Index            int
 	Count            int
+	Forward          *messagecomponent.ForwardNodeComponent
 }
 
 // ConversationMessage 群聊与私聊共用的消息事件
