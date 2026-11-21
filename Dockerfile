@@ -26,7 +26,7 @@ RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
     fi && \
     apk add --no-cache python3 py3-pip && \
     python3 -m venv /runner && \
-    /runner/bin/pip install --no-cache-dir --no-input --no-deps --index-url "$PIP_INDEX_URL" "maibot==1.4.5" && \
+    /runner/bin/pip install --no-cache-dir --no-input --no-deps --index-url "$PIP_INDEX_URL" "maibot==1.4.6" && \
     /runner/bin/pip install --no-cache-dir --no-input --index-url "$PIP_INDEX_URL" \
         pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk \
         "aiohttp>=3.14.3,<4" "httpx>=0.28,<1" "socksio>=1,<2" "pillow>=12.3" "qrcode>=8.2" \

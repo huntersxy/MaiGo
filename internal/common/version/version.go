@@ -7,7 +7,7 @@ import (
 
 const (
 	// Baseline 对齐 ../MaiBot/pyproject.toml 的 project.version
-	Baseline = "1.4.5"
+	Baseline = "1.4.6"
 	// RequiredWebUIVersion 对齐 ../MaiBot/pyproject.toml 的 maibot-dashboard==1.10.5
 	RequiredWebUIVersion = "1.10.5"
 )
@@ -40,8 +40,7 @@ func IsUnknown(raw string) bool {
 	return value == "" || strings.EqualFold(value, "dev")
 }
 
-// Resolve 返回对外版本号：构建注入值非空且非 dev 时优先，否则回退 Python 基线 1.4.3
-// Python 生产版本来自 ../MaiBot/pyproject.toml:7 的 project.version，由 src/config/config.py:76 读取
+// Resolve 优先使用构建版本，开发构建使用 MaiBot 基线版本。
 func Resolve(raw string) string {
 	if IsUnknown(raw) {
 		return Baseline
