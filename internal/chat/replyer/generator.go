@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"MaiGo/internal/llm_models"
+	"MaiGo/internal/llm_models/contract"
 	"MaiGo/internal/maisaka/display"
 	"MaiGo/internal/plugin_runtime/hooks"
 
@@ -729,6 +730,10 @@ func (g *ReplyGenerator) logReplyFailure(sessionID, taskName, modelName string, 
 		zap.Error(err),
 	}
 	fields = append(fields, llm.ErrorLogFields(err)...)
+	var requestError contract.LLMRequestError
+	if !errors.As(err, &requestError) {
+		fields = append(fields, zap.Stack("stacktrace"))
+	}
 	zap.L().Error("Maisaka 回复器调用失败", fields...)
 }
 

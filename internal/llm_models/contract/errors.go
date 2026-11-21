@@ -23,6 +23,17 @@ var maiBotErrorCodeMapping = map[int]string{
 	503: "服务器负载过高",
 }
 
+type LLMRequestError interface {
+	error
+	llmRequestError()
+}
+
+func (*HTTPStatusError) llmRequestError()    {}
+func (*EmptyResponseError) llmRequestError() {}
+func (*ParseError) llmRequestError()         {}
+func (*NetworkError) llmRequestError()       {}
+func (*TaskTimeoutError) llmRequestError()   {}
+
 // HTTPStatusError 对齐 MaiBot RespNotOkException：Provider 返回非 2xx
 type HTTPStatusError struct {
 	StatusCode int
