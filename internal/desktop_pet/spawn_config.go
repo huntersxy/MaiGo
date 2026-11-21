@@ -26,6 +26,7 @@ type EnvConfig struct {
 	Enabled          bool
 	ChatToolsEnabled bool
 	SkinID           string
+	MessageSound     string
 	SpawnEnv
 }
 
@@ -47,6 +48,7 @@ func LoadConfigFromEnv() EnvConfig {
 		Enabled:          settings.Enabled,
 		ChatToolsEnabled: settings.ChatToolsEnabled,
 		SkinID:           settings.SkinID,
+		MessageSound:     settings.MessageSound,
 		SpawnEnv: SpawnEnv{
 			PythonBin:    sc.PythonBin,
 			ProjectRoot:  root,

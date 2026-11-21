@@ -193,11 +193,12 @@ func (s *Service) handleChat(ctx context.Context, requestID string) {
 		fail("桌宠聊天中继尚未就绪")
 		return
 	}
-	if _, err := relay(ctx, "builtin.desktop_pet", request.Text, request.Images); err != nil {
+	messageID, err := relay(ctx, "builtin.desktop_pet", request.Text, request.Images)
+	if err != nil {
 		fail(err.Error())
 		return
 	}
-	if _, err := s.call(ctx, map[string]any{"type": "accepted", "request_id": requestID}); err != nil {
+	if _, err := s.call(ctx, map[string]any{"type": "accepted", "request_id": requestID, "message_id": messageID}); err != nil {
 		zap.L().Warn("桌宠聊天成功回执发送失败", zap.Error(err))
 	}
 }
@@ -222,12 +223,11 @@ func (s *Service) NotifyThinking() {
 }
 
 // NotifyReply 把内部聊天机器人消息渲染为气泡内容下发
-// text 仅为调用方兼容保留，气泡内容与 Python 一样只看 raw_message 段
-func (s *Service) NotifyReply(segments []map[string]any, text string) {
-	_ = text
+func (s *Service) NotifyReply(segments []map[string]any, messageID string) {
 	s.NotifyOwnerChatActivity()
 	s.mu.RLock()
 	ready := s.ready && !s.closing
+	sound, visible := s.cfg.MessageSound, s.visible
 	s.mu.RUnlock()
 	if !ready {
 		return
@@ -243,7 +243,13 @@ func (s *Service) NotifyReply(segments []map[string]any, text string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := s.call(ctx, map[string]any{"type": "reply", "parts": parts}); err != nil {
+	if !visible {
+		if _, err := s.call(ctx, map[string]any{"type": "show"}); err != nil {
+			s.setError(err)
+			return
+		}
+	}
+	if _, err := s.call(ctx, map[string]any{"type": "reply", "parts": parts, "message_id": messageID, "sound": sound}); err != nil {
 		s.setError(err)
 		zap.L().Warn("桌宠回复气泡发送失败", zap.Error(err))
 		return

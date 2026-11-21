@@ -33,6 +33,11 @@ func lookPathPython(bin string) (string, error) {
 // 与 pet_window.py 的管道协议一致：stdout 只走 JSON 事件，stderr 只记日志
 func buildPetCommand(spawn SpawnEnv) (*exec.Cmd, io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
 	projectRoot := strings.TrimSpace(spawn.ProjectRoot)
+	if cwd, err := os.Getwd(); err == nil {
+		if info, err := os.Stat(petScriptPath(cwd)); err == nil && !info.IsDir() {
+			projectRoot = cwd
+		}
+	}
 	if projectRoot == "" {
 		return nil, nil, nil, nil, fmt.Errorf("未找到 MaiBot Python 项目根，请把 %s 指向含 src/plugin_runtime 的目录", pluginruntime.EnvPluginProjectRoot)
 	}
@@ -58,7 +63,7 @@ func buildPetCommand(spawn SpawnEnv) (*exec.Cmd, io.WriteCloser, io.ReadCloser, 
 		return nil, nil, nil, nil, err
 	}
 
-	cmd := exec.Command(python, script, "--data-dir", dataDir, "--runtime-dir", runtimeDir)
+	cmd := exec.Command(python, "-m", "src.desktop_pet.pet_window", "--data-dir", dataDir, "--runtime-dir", runtimeDir)
 	cmd.Dir = projectRoot
 	cmd.Env = os.Environ()
 	cmd.SysProcAttr = petSysProcAttr()

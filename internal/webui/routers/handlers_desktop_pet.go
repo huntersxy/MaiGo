@@ -2,6 +2,7 @@ package webuiapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -19,10 +20,55 @@ import (
 type DesktopPetControl interface {
 	Status() desktoppet.Status
 	Control(ctx context.Context, action, text string, active bool) (desktoppet.Status, error)
+	Restart(context.Context) error
 }
 
 // desktopPetMaxBytes 皮肤包体积上限，对齐 skins.MAX_BYTES
 const desktopPetMaxBytes = 32 * 1024 * 1024
+
+func (d Deps) handleDesktopPetSound(w http.ResponseWriter, r *http.Request) {
+	src, err := desktoppet.SoundPreview(chi.URLParam(r, "sound"))
+	if errors.Is(err, os.ErrNotExist) {
+		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "提示音不存在"})
+		return
+	}
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"src": src})
+}
+
+func (d Deps) handleDesktopPetCapabilities(w http.ResponseWriter, r *http.Request) {
+	configured := false
+	if d.Agent != nil {
+		if router := d.Agent.LLMRouter(); router != nil {
+			if config := router.ModelConfigFile(); config != nil {
+				names := config.ModelTaskConfig.FastModel.ModelList
+				configured = len(names) > 0
+				for _, name := range names {
+					if !replayModelExists(config, name) {
+						configured = false
+						break
+					}
+				}
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fast_model_configured": configured})
+}
+
+func (d Deps) handleDesktopPetRestart(w http.ResponseWriter, r *http.Request) {
+	if d.DesktopPet == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": "请先启用本机桌宠，再重载桌宠"})
+		return
+	}
+	if err := d.DesktopPet.Restart(r.Context()); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"detail": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"reloaded": true})
+}
 
 func (d Deps) handleDesktopPetSkins(w http.ResponseWriter, r *http.Request) {
 	if !d.authenticated(r) {
@@ -109,14 +155,13 @@ func (d Deps) handleDesktopPetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	todos, err := d.desktopPetTodoSummary()
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, err.Error())
-		return
+		todos = map[string]any{"pending": 0, "items": []any{}}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": status.Enabled, "supported": status.Supported, "running": status.Running,
 		"ready": status.Ready, "visible": status.Visible, "error": status.Error,
 		"skin_id": status.SkinID, "pid": status.PID, "thinking": status.Thinking, "bubble": status.Bubble,
-		"todos": todos,
+		"mode": status.Mode, "client_id": status.ClientID, "todos": todos,
 	})
 }
 

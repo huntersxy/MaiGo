@@ -3,6 +3,7 @@ package bootstrap
 import (
 	webuichat "MaiGo/internal/webui/routers/chat"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -619,6 +620,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			Enabled:          desktopPetEnv.Enabled,
 			ChatToolsEnabled: desktopPetEnv.ChatToolsEnabled,
 			SkinID:           desktopPetEnv.SkinID,
+			MessageSound:     desktopPetEnv.MessageSound,
 		},
 		desktopPetEnv.SpawnEnv,
 	)
@@ -780,6 +782,38 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		registerDormantAMemorixHost(nativePlan, instHolder, db, nativeStart.Factory)
 	}
 	personinfo.DefaultRegistry().SetMemory(memoryMgr)
+	desktopPetSvc.SetHistoryProvider(func(ctx context.Context, cursors map[string]int64) (map[string]any, error) {
+		sessionIDs, err := chatsession.NewManager(memoryMgr.GetDB()).ResolveSessionIDsByTarget(
+			ctx, internalchat.Platform, internalchat.OwnerUserID, "private")
+		if err != nil {
+			return nil, err
+		}
+		imageStore := imagesystem.NewGORMStore(memoryMgr.GetDB())
+		loadMedia := func(kind, hash string) (string, error) {
+			imageType := imagesystem.ImageTypeImage
+			if kind == "emoji" {
+				imageType = imagesystem.ImageTypeEmoji
+			}
+			record, err := imageStore.GetByHash(ctx, hash, imageType)
+			if err != nil {
+				return "", err
+			}
+			if record == nil || record.NoFileFlag {
+				return "", fmt.Errorf("未找到桌宠历史媒体: %s", hash)
+			}
+			path, err := imagesystem.ResolveStoredImagePath(instanceDir, record.FullPath)
+			if err != nil {
+				return "", err
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return "", err
+			}
+			mimeType := monitor.GuessMonitorMediaMimeType(data)
+			return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+		}
+		return desktoppet.LoadMonitorHistory(sessionIDs, cursors, loadMedia)
+	})
 	emojisystem.DefaultRegistry().SetMemory(memoryMgr)
 	wireReasoningPreviewSessionLookup(memoryMgr.GetDB())
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(startup.Context(), 30*time.Second)
@@ -1913,9 +1947,9 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			if payload["group_id"] != nil {
 				return
 			}
-			text, _ := payload["content"].(string)
+			messageID, _ := payload["message_id"].(string)
 			segments, _ := payload["segments"].([]map[string]any)
-			desktopPetSvc.NotifyReply(segments, text)
+			desktopPetSvc.NotifyReply(segments, messageID)
 		})
 		maiAgent.SetThinkingNotifier(func(_ string, _ int64) {
 			desktopPetSvc.NotifyThinking()

@@ -320,6 +320,9 @@ MaiBot Dashboard 市场列表为 **`GET /api/webui/plugins/marketplace`**（非 
 | GET | `/skins` | **done**（需鉴权；`desktoppet.ListSkins`，内置皮肤在首，非法包进 `errors`） |
 | GET | `/skins/{skin_id}` | **done**（需鉴权；资产内联为 data URI，校验失败 422） |
 | POST | `/skins` | **done**（需鉴权；请求体 32 MiB 上限 413，zip 校验/重复 ID 失败 422，成功返回规范化清单） |
+| GET | `/sounds/{sound}` | **done**（需鉴权；返回 WAV 的 data URI） |
+| GET | `/capabilities` | **done**（检查桌宠字幕所需的 fast_model） |
+| POST | `/restart` | **done**（需鉴权；仅重启启用的本机桌宠） |
 
 ## 推理过程 `/api/webui/reasoning-process`（对齐 `routers/reasoning_process.py`）
 

@@ -196,12 +196,15 @@ func Mount(r chi.Router, d Deps) {
 		api.Get("/schedules", d.requireAuthHandler(d.handleSchedules))
 		api.Route("/desktop-pet", func(pr chi.Router) {
 			pr.Use(d.requireAuthMiddleware)
+			pr.Get("/sounds/{sound}", d.handleDesktopPetSound)
+			pr.Get("/capabilities", d.handleDesktopPetCapabilities)
 			pr.Get("/skins", d.handleDesktopPetSkins)
 			pr.Get("/skins/{skin_id}", d.handleDesktopPetSkin)
 			pr.Post("/skins", d.handleDesktopPetInstall)
 			pr.Get("/status", d.handleDesktopPetStatus)
 			pr.Post("/visibility", d.handleDesktopPetVisibility)
 			pr.Post("/chat", d.handleDesktopPetChat)
+			pr.Post("/restart", d.handleDesktopPetRestart)
 			pr.Route("/remote", func(rr chi.Router) {
 				rr.Get("/ws", d.handleDesktopPetRemoteWS)
 				rr.Post("/chat/{request_id}", d.handleDesktopPetRemoteChat)

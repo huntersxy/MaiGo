@@ -29,6 +29,7 @@ type Config struct {
 	ChatToolsEnabled             bool
 	ShowCurrentTask              bool
 	SkinID                       string
+	MessageSound                 string
 	ProactiveWakeEnabled         bool
 	ProactiveWakeIntervalMinutes int
 	ScreenReadEnabled            bool
@@ -82,7 +83,8 @@ type Service struct {
 	buttonRevision uint64
 	buttonSyncing  bool
 
-	chatRelay ChatRelay
+	chatRelay       ChatRelay
+	historyProvider HistoryProvider
 
 	activeMode        string
 	remote            *RemotePeer
@@ -112,6 +114,9 @@ func NewService(cfg Config, spawn SpawnEnv) *Service {
 	settings := LoadDesktopPetSettings()
 	if cfg.SkinID == "" {
 		cfg.SkinID = settings.SkinID
+	}
+	if cfg.MessageSound == "" {
+		cfg.MessageSound = settings.MessageSound
 	}
 	if !cfg.ChatToolsEnabled {
 		cfg.ChatToolsEnabled = settings.ChatToolsEnabled
@@ -266,6 +271,15 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	if cfg.SkinID == "" {
 		cfg.SkinID = "builtin"
 	}
+	cfg.MessageSound = strings.TrimSpace(cfg.MessageSound)
+	if cfg.MessageSound == "soft" || cfg.MessageSound == "" {
+		cfg.MessageSound = "wood"
+	}
+	switch cfg.MessageSound {
+	case "wood", "bubbles", "bell", "water", "off":
+	default:
+		cfg.MessageSound = "wood"
+	}
 
 	s.mu.Lock()
 	running := s.cmd != nil && s.cmd.Process != nil && s.cmd.ProcessState == nil
@@ -349,6 +363,7 @@ func (s *Service) Reload(ctx context.Context) error {
 		ChatToolsEnabled:             settings.ChatToolsEnabled,
 		ShowCurrentTask:              settings.ShowCurrentTask,
 		SkinID:                       settings.SkinID,
+		MessageSound:                 settings.MessageSound,
 		ProactiveWakeEnabled:         settings.ProactiveWakeEnabled,
 		ProactiveWakeIntervalMinutes: settings.ProactiveWakeIntervalMinutes,
 		ScreenReadEnabled:            settings.ScreenReadEnabled,
@@ -357,6 +372,20 @@ func (s *Service) Reload(ctx context.Context) error {
 		ScreenChangeThreshold:        settings.ScreenChangeThreshold,
 		ExplorationEnabled:           settings.ExplorationEnabled,
 	})
+}
+
+func (s *Service) Restart(ctx context.Context) error {
+	s.mu.RLock()
+	enabled, mode := s.cfg.Enabled, s.cfg.Mode
+	windowCtx := s.ctx
+	s.mu.RUnlock()
+	if !enabled || mode != "local" {
+		return errors.New("请先启用本机桌宠，再重载桌宠")
+	}
+	if err := s.Stop(ctx); err != nil {
+		return err
+	}
+	return s.Start(windowCtx)
 }
 
 // Config 返回当前桌宠配置快照

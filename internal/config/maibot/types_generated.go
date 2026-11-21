@@ -454,6 +454,7 @@ type DesktopPetConfig struct {
 	ChatToolsEnabled             bool    `toml:"chat_tools_enabled,omitempty"`
 	ShowCurrentTask              bool    `toml:"show_current_task,omitempty"`
 	SkinId                       string  `toml:"skin_id,omitempty"`
+	MessageSound                 string  `toml:"message_sound,omitempty"`
 	ProactiveWakeEnabled         bool    `toml:"proactive_wake_enabled,omitempty"`
 	ProactiveWakeIntervalMinutes int     `toml:"proactive_wake_interval_minutes,omitempty"`
 	ScreenReadEnabled            bool    `toml:"screen_read_enabled,omitempty"`

@@ -20,6 +20,7 @@ type DesktopPetSettings struct {
 	ChatToolsEnabled             bool
 	ShowCurrentTask              bool
 	SkinID                       string
+	MessageSound                 string
 	ProactiveWakeEnabled         bool
 	ProactiveWakeIntervalMinutes int
 	ScreenReadEnabled            bool
@@ -32,7 +33,7 @@ type DesktopPetSettings struct {
 // DefaultDesktopPetSettings 返回 Python 侧默认值
 func DefaultDesktopPetSettings() DesktopPetSettings {
 	return DesktopPetSettings{
-		Mode: "local", SkinID: "builtin", ProactiveWakeIntervalMinutes: 30,
+		Mode: "local", SkinID: "builtin", MessageSound: "wood", ProactiveWakeIntervalMinutes: 30,
 		ScreenReadIntervalSeconds: 10, ScreenSampleIntervalSeconds: 2, ScreenChangeThreshold: 0.015,
 	}
 }
@@ -42,6 +43,15 @@ func (s DesktopPetSettings) Normalize() DesktopPetSettings {
 	s.SkinID = strings.TrimSpace(s.SkinID)
 	if s.SkinID == "" {
 		s.SkinID = "builtin"
+	}
+	s.MessageSound = strings.TrimSpace(s.MessageSound)
+	if s.MessageSound == "soft" {
+		s.MessageSound = "wood"
+	}
+	switch s.MessageSound {
+	case "wood", "bubbles", "bell", "water", "off":
+	default:
+		s.MessageSound = "wood"
 	}
 	if s.ProactiveWakeIntervalMinutes <= 0 {
 		s.ProactiveWakeIntervalMinutes = 30
@@ -87,6 +97,7 @@ func LoadDesktopPetSettings() DesktopPetSettings {
 				settings.ChatToolsEnabled = file.DesktopPet.ChatToolsEnabled
 				settings.ShowCurrentTask = file.DesktopPet.ShowCurrentTask
 				settings.SkinID = file.DesktopPet.SkinId
+				settings.MessageSound = file.DesktopPet.MessageSound
 				settings.Mode = file.DesktopPet.Mode
 				settings.ProactiveWakeEnabled = file.DesktopPet.ProactiveWakeEnabled
 				settings.ProactiveWakeIntervalMinutes = file.DesktopPet.ProactiveWakeIntervalMinutes

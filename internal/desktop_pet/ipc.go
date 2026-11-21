@@ -209,6 +209,23 @@ func (s *Service) handleEvent(ctx context.Context, event map[string]any) error {
 	case "todo_request":
 		go s.handleTodoRequest(ctx, event)
 		return nil
+	case "history":
+		s.mu.RLock()
+		stdin := s.stdin
+		s.mu.RUnlock()
+		if stdin != nil {
+			go s.publishHistory(ctx, event, func(_ context.Context, payload map[string]any) error {
+				encoded, err := sonic.Marshal(payload)
+				if err != nil {
+					return err
+				}
+				s.writeMu.Lock()
+				defer s.writeMu.Unlock()
+				_, err = stdin.Write(append(encoded, '\n'))
+				return err
+			})
+		}
+		return nil
 	case "ack":
 		s.deliverAck(event)
 		return nil
@@ -245,10 +262,16 @@ func (s *Service) sendEvent(ctx context.Context, payload map[string]any) error {
 	s.mu.Lock()
 	ready, closing := s.ready, s.closing
 	hasTransport := s.stdin != nil || s.remote != nil
+	startupTodo := payload["type"] == "todo_response" && s.stdin != nil && s.remote == nil
 	s.mu.Unlock()
-	if !ready || closing || !hasTransport {
+	if (!ready && !startupTodo) || closing || !hasTransport {
 		return errIPCNotReady
 	}
+	id, err := newCommandID()
+	if err != nil {
+		return err
+	}
+	payload["id"] = id
 	encoded, err := sonic.Marshal(payload)
 	if err != nil {
 		return err
