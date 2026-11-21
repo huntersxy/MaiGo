@@ -13,7 +13,7 @@ ARG PIP_INDEX_URL
 RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
         sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
     fi
-RUN pip install --no-cache-dir --no-deps --index-url "$PIP_INDEX_URL" --target /out maibot-dashboard==1.10.5
+RUN pip install --no-cache-dir --no-deps --index-url "$PIP_INDEX_URL" --target /out maibot-dashboard==1.10.6
 
 # 插件 Runner 复用 MaiBot 原版 Python 实现，只装 runner 真正需要的依赖
 # （maibot wheel 提供 src.plugin_runtime.runner，--no-deps 避免拉入 faiss/playwright 等）

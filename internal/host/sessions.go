@@ -20,17 +20,16 @@ import (
 )
 
 const (
-	sessionSeconds = 8 * 60 * 60
-	ticketSeconds  = 60
-	maxTickets     = 64
+	cookieMaxAgeSeconds = 7 * 24 * 60 * 60
+	ticketSeconds       = 60
+	maxTickets          = 64
 )
 
 type hostSession struct {
-	expiresAt time.Time
-	origin    string
+	origin string
 }
 
-// Sessions 登录会话；数据库只保存票号摘要与绝对过期时间
+// Sessions 登录会话；数据库只保存票号摘要与登录来源。
 type Sessions struct {
 	mu          sync.Mutex
 	CookieName  string
@@ -79,7 +78,7 @@ func (s *Sessions) load() error {
 		return err
 	}
 	defer db.Close()
-	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS sessions (digest TEXT PRIMARY KEY, expires_at REAL NOT NULL)"); err != nil {
+	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS sessions (digest TEXT PRIMARY KEY, origin TEXT)"); err != nil {
 		return &invalidSessionSchema{message: "登录会话库损坏"}
 	}
 	columns := map[string]bool{}
@@ -98,7 +97,7 @@ func (s *Sessions) load() error {
 		}
 	}
 	rows.Close()
-	if !columns["digest"] || !columns["expires_at"] {
+	if !columns["digest"] {
 		return &invalidSessionSchema{message: "登录会话表缺少必需列"}
 	}
 	if !columns["origin"] {
@@ -106,16 +105,40 @@ func (s *Sessions) load() error {
 			return &invalidSessionSchema{message: "登录会话表无法补齐 origin 列"}
 		}
 	}
+	if columns["expires_at"] {
+		transaction, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		rollback := func(err error) error {
+			_ = transaction.Rollback()
+			return err
+		}
+		if _, err := transaction.Exec("DELETE FROM sessions WHERE expires_at <= ?", float64(time.Now().UnixNano())/1e9); err != nil {
+			return rollback(err)
+		}
+		if _, err := transaction.Exec("ALTER TABLE sessions RENAME TO sessions_expiring"); err != nil {
+			return rollback(err)
+		}
+		if _, err := transaction.Exec("CREATE TABLE sessions (digest TEXT PRIMARY KEY, origin TEXT)"); err != nil {
+			return rollback(err)
+		}
+		if _, err := transaction.Exec("INSERT INTO sessions (digest, origin) SELECT digest, origin FROM sessions_expiring"); err != nil {
+			return rollback(err)
+		}
+		if _, err := transaction.Exec("DROP TABLE sessions_expiring"); err != nil {
+			return rollback(err)
+		}
+		if err := transaction.Commit(); err != nil {
+			return err
+		}
+	}
 	if s.credentials.TokenSource() == "temporary" {
 		if _, err := db.Exec("DELETE FROM sessions"); err != nil {
 			return err
 		}
 	}
-	now := float64(time.Now().UnixNano()) / 1e9
-	if _, err := db.Exec("DELETE FROM sessions WHERE expires_at <= ?", now); err != nil {
-		return err
-	}
-	loaded, err := db.Query("SELECT digest, expires_at, origin FROM sessions")
+	loaded, err := db.Query("SELECT digest, origin FROM sessions")
 	if err != nil {
 		return err
 	}
@@ -123,15 +146,11 @@ func (s *Sessions) load() error {
 	sessions := map[string]hostSession{}
 	for loaded.Next() {
 		var digest string
-		var expiresAt float64
 		var origin sql.NullString
-		if err := loaded.Scan(&digest, &expiresAt, &origin); err != nil {
+		if err := loaded.Scan(&digest, &origin); err != nil {
 			return err
 		}
-		sessions[digest] = hostSession{
-			expiresAt: time.Unix(0, int64(expiresAt*1e9)),
-			origin:    origin.String,
-		}
+		sessions[digest] = hostSession{origin: origin.String}
 	}
 	s.sessions = sessions
 	return loaded.Err()
@@ -201,28 +220,17 @@ func (s *Sessions) Exchange(ticket, origin string) (string, bool) {
 func (s *Sessions) CreateSession(origin string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now()
-	for key, record := range s.sessions {
-		if !record.expiresAt.After(now) {
-			delete(s.sessions, key)
-		}
-	}
 	session := randomURLSafe(32)
 	digest := s.digest(session)
-	expiresAt := now.Add(sessionSeconds * time.Second)
 	db, err := sql.Open("sqlite", s.path)
 	if err != nil {
 		return "", err
 	}
 	defer db.Close()
-	if _, err := db.Exec("DELETE FROM sessions WHERE expires_at <= ?", float64(now.UnixNano())/1e9); err != nil {
+	if _, err := db.Exec("INSERT INTO sessions (digest, origin) VALUES (?, ?)", digest, origin); err != nil {
 		return "", err
 	}
-	if _, err := db.Exec("INSERT INTO sessions (digest, expires_at, origin) VALUES (?, ?, ?)",
-		digest, float64(expiresAt.UnixNano())/1e9, origin); err != nil {
-		return "", err
-	}
-	s.sessions[digest] = hostSession{expiresAt: expiresAt, origin: origin}
+	s.sessions[digest] = hostSession{origin: origin}
 	return session, nil
 }
 
@@ -231,10 +239,7 @@ func (s *Sessions) active(session string) (hostSession, bool) {
 		return hostSession{}, false
 	}
 	record, exists := s.sessions[s.digest(session)]
-	if !exists || !record.expiresAt.After(time.Now()) {
-		return hostSession{}, false
-	}
-	return record, true
+	return record, exists
 }
 
 // LoginOrigin 会话首次登录来源
@@ -251,7 +256,7 @@ func (s *Sessions) LoginOrigin(session string) string {
 // SetCookie 写入会话 Cookie
 func (s *Sessions) SetCookie(w http.ResponseWriter, session string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: s.CookieName, Value: session, MaxAge: sessionSeconds,
+		Name: s.CookieName, Value: session, MaxAge: cookieMaxAgeSeconds,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Path: "/", Secure: s.secure,
 	})
 }
