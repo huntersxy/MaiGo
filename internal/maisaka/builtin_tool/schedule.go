@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	chatsession "MaiGo/internal/chat/session"
@@ -159,7 +158,7 @@ func scheduleTool(ctx context.Context, input *ScheduleInput) (*ScheduleOutput, e
 	}
 	for _, item := range items {
 		if due, ok := item["due_at"].(float64); ok {
-			item["due_at_local"] = time.Unix(0, int64(due*1e9)).In(time.Local).Format(time.RFC3339)
+			item["due_at_local"] = schedules.FormatLocalDueAt(due)
 		}
 	}
 	return &ScheduleOutput{Success: true, Result: result}, nil

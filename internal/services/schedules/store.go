@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -32,39 +31,9 @@ type TodoStore struct {
 	items []map[string]any
 }
 
-// NewTodoStore 加载已有待办并补齐字段；未获得回执的派发项回退为 pending
-func NewTodoStore(path string) *TodoStore {
-	store := &TodoStore{path: path}
-	if raw, err := os.ReadFile(path); err == nil {
-		raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
-		if unmarshalErr := json.Unmarshal(raw, &store.items); unmarshalErr != nil {
-			quarantineTodoFile(path)
-			store.items = nil
-		}
-	}
-	for _, item := range store.items {
-		setDefault(item, "session_id", "")
-		setDefault(item, "session_name", "主人私聊")
-		setDefault(item, "images", []any{})
-		setDefault(item, "condition_type", "natural")
-		setDefault(item, "condition", "")
-		setDefault(item, "kind", "user")
-		setDefault(item, "due_at", nil)
-		setDefault(item, "status", "pending")
-		if _, ok := item["revision"]; !ok {
-			item["revision"] = uuid.NewString()
-		}
-		if asString(item["status"]) == "dispatching" {
-			item["status"] = "pending"
-		}
-	}
-	return store
-}
-
-// quarantineTodoFile 保留损坏文件，并把正式路径释放给下一次写入
-func quarantineTodoFile(path string) {
-	backup := path + ".corrupt-" + uuid.NewString()
-	_ = os.Rename(path, backup)
+func newScheduleID() string {
+	id := uuid.New()
+	return hex.EncodeToString(id[:])
 }
 
 // List 返回未完成待办；includeCompleted 时包含已完成与已取消项
@@ -89,9 +58,9 @@ func (s *TodoStore) Add(text string, options map[string]any) (map[string]any, er
 		return nil, err
 	}
 	item := map[string]any{
-		"id": uuid.NewString(), "text": normalized, "created_at": float64(time.Now().UnixNano()) / 1e9,
+		"id": newScheduleID(), "text": normalized, "created_at": float64(time.Now().UnixNano()) / 1e9,
 		"kind": "user", "due_at": nil, "session_id": "", "session_name": "主人私聊", "images": []any{},
-		"status": "pending", "condition": "", "condition_type": "natural", "revision": uuid.NewString(),
+		"status": "pending", "condition": "", "condition_type": "natural", "revision": newScheduleID(),
 	}
 	item, err = s.applyTodoOptions(item, options)
 	if err != nil {
@@ -143,7 +112,7 @@ func (s *TodoStore) Update(todoID string, text *string, options map[string]any) 
 		if changed {
 			updated["updated_at"] = float64(time.Now().UnixNano()) / 1e9
 		}
-		updated["revision"] = uuid.NewString()
+		updated["revision"] = newScheduleID()
 		if asString(updated["status"]) == "dispatching" {
 			updated["status"] = "pending"
 		}
@@ -171,7 +140,7 @@ func (s *TodoStore) Done(todoID string) error {
 		completed := copyAnyMap(item)
 		completed["status"] = "completed"
 		completed["completed_at"] = float64(time.Now().UnixNano()) / 1e9
-		completed["revision"] = uuid.NewString()
+		completed["revision"] = newScheduleID()
 		items := append([]map[string]any(nil), s.items...)
 		items[index] = completed
 		return s.save(items)
@@ -212,7 +181,7 @@ func (s *TodoStore) Cancel(todoID string) error {
 		cancelled := copyAnyMap(item)
 		cancelled["status"] = "cancelled"
 		cancelled["cancelled_at"] = float64(time.Now().UnixNano()) / 1e9
-		cancelled["revision"] = uuid.NewString()
+		cancelled["revision"] = newScheduleID()
 		items := append([]map[string]any(nil), s.items...)
 		items[index] = cancelled
 		return s.save(items)
@@ -221,7 +190,7 @@ func (s *TodoStore) Cancel(todoID string) error {
 }
 
 // ClaimDue 持锁领取到期且无条件的待办；kind 非空时只领取对应类型
-func (s *TodoStore) ClaimDue(kind *string) []map[string]any {
+func (s *TodoStore) ClaimDue(kind *string) ([]map[string]any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := float64(time.Now().UnixNano()) / 1e9
@@ -243,9 +212,11 @@ func (s *TodoStore) ClaimDue(kind *string) []map[string]any {
 		items = append(items, item)
 	}
 	if len(due) > 0 {
-		_ = s.save(items)
+		if err := s.save(items); err != nil {
+			return nil, err
+		}
 	}
-	return due
+	return due, nil
 }
 
 // ClaimCondition 模型判断条件后原子领取；版本检查阻止旧上下文触发修改后的事项
@@ -283,12 +254,12 @@ func (s *TodoStore) ClaimCondition(todoID, revision, evidence string) (map[strin
 }
 
 // Finish 结算领取结果：失败保留原因，成功后标记 triggered
-func (s *TodoStore) Finish(todoID, revision, errorText string) {
+func (s *TodoStore) Finish(todoID, revision, errorText string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items := append([]map[string]any(nil), s.items...)
 	for index, item := range items {
-		if asString(item["id"]) != todoID || asString(item["revision"]) != revision {
+		if item["id"] != todoID || item["revision"] != revision || item["status"] != "dispatching" {
 			continue
 		}
 		updated := copyAnyMap(item)
@@ -300,21 +271,21 @@ func (s *TodoStore) Finish(todoID, revision, errorText string) {
 			updated["error"] = ""
 		}
 		items[index] = updated
+		return s.save(items)
 	}
-	_ = s.save(items)
+	return nil
 }
 
 // Image 读取已保存待办图片的 data URL
 func (s *TodoStore) Image(imageID string) (string, error) {
-	if len(imageID) != 64 {
+	return readImage(filepath.Join(filepath.Dir(s.path), "todo_images"), imageID)
+}
+
+func readImage(directory, imageID string) (string, error) {
+	if !imageIDPattern.MatchString(imageID) {
 		return "", fmt.Errorf("图片标识无效")
 	}
-	for _, char := range imageID {
-		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
-			return "", fmt.Errorf("图片标识无效")
-		}
-	}
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(s.path), "todo_images", imageID))
+	raw, err := os.ReadFile(filepath.Join(directory, imageID))
 	if err != nil {
 		return "", fmt.Errorf("图片不存在")
 	}
@@ -326,28 +297,14 @@ func (s *TodoStore) Image(imageID string) (string, error) {
 }
 
 func (s *TodoStore) save(items []map[string]any) error {
-	directory := filepath.Dir(s.path)
-	if err := os.MkdirAll(directory, 0o777); err != nil {
-		return err
+	if items == nil {
+		items = []map[string]any{}
 	}
 	raw, err := json.Marshal(items)
 	if err != nil {
 		return err
 	}
-	temporary := filepath.Join(directory, "."+filepath.Base(s.path)+"."+uuid.NewString()+".tmp")
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	_, writeErr := file.Write(raw)
-	syncErr := file.Sync()
-	closeErr := file.Close()
-	if writeErr != nil || syncErr != nil || closeErr != nil {
-		_ = os.Remove(temporary)
-		return errors.Join(writeErr, syncErr, closeErr)
-	}
-	if err := os.Rename(temporary, s.path); err != nil {
-		_ = os.Remove(temporary)
+	if err := writePrivateBytes(s.path, raw); err != nil {
 		return err
 	}
 	s.items = items
@@ -415,7 +372,7 @@ func (s *TodoStore) applyTodoOptions(item map[string]any, options map[string]any
 	}
 	if raw, exists := options["condition"]; exists {
 		condition, ok := raw.(string)
-		if !ok || len([]rune(condition)) > 500 {
+		if !ok || len([]rune(strings.TrimSpace(condition))) > 500 {
 			return nil, fmt.Errorf("触发条件必须是最多 500 字的文本，空字符串取消条件")
 		}
 		if strings.TrimSpace(condition) != asString(item["condition"]) {
@@ -485,7 +442,7 @@ func (s *TodoStore) applyTodoOptions(item map[string]any, options map[string]any
 // storeImage 保存 data URL 或校验已保存附件
 func (s *TodoStore) storeImage(source string) (string, error) {
 	if !strings.HasPrefix(source, "data:") {
-		if len(source) != 64 {
+		if !imageIDPattern.MatchString(source) {
 			return "", fmt.Errorf("图片格式无效")
 		}
 		if _, err := os.Stat(filepath.Join(filepath.Dir(s.path), "todo_images", source)); err != nil {
@@ -518,15 +475,13 @@ func (s *TodoStore) storeImage(source string) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	imageID := hex.EncodeToString(sum[:])
-	folder := filepath.Join(filepath.Dir(s.path), "todo_images")
-	if err := os.MkdirAll(folder, 0o777); err != nil {
-		return "", err
-	}
-	path := filepath.Join(folder, imageID)
+	path := filepath.Join(filepath.Dir(s.path), "todo_images", imageID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.WriteFile(path, raw, 0o666); err != nil {
+		if err := writePrivateBytes(path, raw); err != nil {
 			return "", err
 		}
+	} else if err != nil {
+		return "", err
 	}
 	return imageID, nil
 }
@@ -563,16 +518,15 @@ func parseTodoDueAt(text string) (float64, error) {
 	layouts := []string{time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02 15:04:05"}
 	for _, layout := range layouts {
 		if parsed, err := time.ParseInLocation(layout, strings.TrimSpace(text), time.Local); err == nil {
-			return float64(parsed.UnixNano()) / 1e9, nil
+			return float64(parsed.Unix()) + float64(parsed.Nanosecond())/1e9, nil
 		}
 	}
 	return 0, fmt.Errorf("invalid due_at")
 }
 
-func setDefault(item map[string]any, key string, value any) {
-	if _, ok := item[key]; !ok {
-		item[key] = value
-	}
+func FormatLocalDueAt(due float64) string {
+	seconds, fraction := math.Modf(due)
+	return time.Unix(int64(seconds), int64(fraction*1e9)).In(time.Local).Format(time.RFC3339Nano)
 }
 
 func copyAnyMap(source map[string]any) map[string]any {

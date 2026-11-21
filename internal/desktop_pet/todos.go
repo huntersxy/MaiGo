@@ -1,21 +1,9 @@
 package desktoppet
 
-// 桌宠事项与聊天日程共用主程序存储，对齐 desktop_pet/todos.py。
-
 import (
 	"encoding/json"
 	"fmt"
-
-	"MaiGo/internal/services/schedules"
 )
-
-// TodoStore 桌宠事项存储
-type TodoStore = schedules.TodoStore
-
-// NewTodoStore 加载既有事项与附件路径
-func NewTodoStore(path string) *TodoStore {
-	return schedules.NewTodoStore(path)
-}
 
 // 以下数值转换供桌宠事件与探索结果读取 JSON 值
 func asString(value any) string {

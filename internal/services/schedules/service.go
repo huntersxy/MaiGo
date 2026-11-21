@@ -1,97 +1,76 @@
 package schedules
 
-// 独立于桌宠窗口的单次日程调度，向真实聊天流投递内部任务，对齐 services/schedules/service.py。
-
 import (
 	"context"
 	"errors"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
-
-	"MaiGo/internal/common/database"
 )
 
-// Hooks 宿主运行时依赖
 type Hooks struct {
-	// OwnerCheck 判断会话是否为主人内部聊天
-	OwnerCheck func(ctx context.Context, sessionID string) bool
-	// DesktopReady 桌宠窗口是否可接收用户提醒
-	DesktopReady func() bool
-	// DesktopReminder 在桌宠窗口显示用户提醒
+	OwnerCheck      func(ctx context.Context, sessionID string) bool
+	OwnerSession    func(ctx context.Context) (string, error)
+	SessionName     func(ctx context.Context, sessionID string) (string, error)
+	DesktopReady    func() bool
 	DesktopReminder func(ctx context.Context, text string) error
-	// Dispatch 向真实聊天流投递 Bot 日程
-	Dispatch func(ctx context.Context, item map[string]any) error
-	// RefreshDesktop 通知桌宠刷新待办列表
-	RefreshDesktop func()
+	Dispatch        func(ctx context.Context, item map[string]any) error
+	RefreshDesktop  func()
 }
 
-// Service 日程服务
 type Service struct {
-	mu      sync.Mutex
-	path    string
-	store   *TodoStore
-	hooks   Hooks
-	cancel  context.CancelFunc
-	worker  chan struct{}
-	started bool
+	mu     sync.Mutex
+	repo   *Repository
+	hooks  Hooks
+	cancel context.CancelFunc
+	worker chan struct{}
 }
 
 var defaultService = &Service{}
 
-// Default 返回进程内日程服务
 func Default() *Service { return defaultService }
 
-// Start 加载存储并启动调度协程
-func (s *Service) Start(ctx context.Context, path string, hooks Hooks) error {
+func (s *Service) Start(ctx context.Context, directory, legacyPath string, hooks Hooks) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.store == nil {
-		if strings.TrimSpace(path) == "" {
-			path = filepath.Join(memory.InstanceRoot(), "data", "plugins", "sengokucola.desktop-pet", "todos.json")
-		}
-		s.path = path
-		s.store = NewTodoStore(path)
-	}
-	if s.hooks.OwnerCheck == nil {
-		s.hooks = hooks
-	}
-	if s.started {
+	if s.worker != nil {
 		return nil
 	}
+	repository, err := openRepository(ctx, directory, legacyPath, hooks.OwnerSession)
+	if err != nil {
+		return err
+	}
 	workerCtx, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
+	s.repo, s.hooks, s.cancel = repository, hooks, cancel
 	s.worker = make(chan struct{})
-	s.started = true
 	go s.run(workerCtx, s.worker)
 	return nil
 }
 
-// Stop 停止调度并等待在途命令结束
 func (s *Service) Stop() {
 	s.mu.Lock()
-	cancel := s.cancel
 	worker := s.worker
-	s.cancel = nil
-	s.worker = nil
-	s.started = false
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if worker == nil {
+		return
 	}
-	if worker != nil {
-		<-worker
+	<-worker
+	s.mu.Lock()
+	if s.worker == worker {
+		s.worker, s.cancel, s.repo = nil, nil, nil
+		s.hooks = Hooks{}
 	}
+	s.mu.Unlock()
 }
 
-// Started 日程服务是否已启动
 func (s *Service) Started() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.started
+	return s.worker != nil
 }
 
 func (s *Service) IsOwner(ctx context.Context, sessionID string) bool {
@@ -105,142 +84,120 @@ func (s *Service) run(ctx context.Context, done chan struct{}) {
 	defer close(done)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for {
+	for ctx.Err() == nil {
+		if err := s.Tick(ctx); err != nil && ctx.Err() == nil {
+			zap.L().Error("日程调度检查失败", zap.Error(err))
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.Tick(ctx); err != nil {
-				zap.L().Error("日程调度检查失败", zap.Error(err))
-			}
 		}
 	}
 }
 
-// Command 执行日程命令；sessionID 非空时限制在当前聊天可见范围
 func (s *Service) Command(ctx context.Context, command map[string]any, sessionID string) (map[string]any, error) {
+	action := asString(command["action"])
 	s.mu.Lock()
-	store := s.store
-	hooks := s.hooks
-	s.mu.Unlock()
-	if store == nil {
+	if s.repo == nil {
+		s.mu.Unlock()
 		return nil, errors.New("日程服务尚未启动")
 	}
-	result, err := s.execute(ctx, store, hooks, command, sessionID)
-	if err != nil {
-		return nil, err
+	if sessionID != "" && !allowedAction(ctx, s.hooks, sessionID, action) {
+		s.mu.Unlock()
+		return nil, errors.New("不支持的日程操作")
 	}
-	action := asString(command["action"])
-	if action != "list" && action != "image" && action != "claim_due" {
-		if hooks.RefreshDesktop != nil {
-			hooks.RefreshDesktop()
-		}
+	result, err := s.repo.execute(ctx, command, sessionID, s.hooks)
+	refresh := s.hooks.RefreshDesktop
+	s.mu.Unlock()
+	if err == nil && refresh != nil && action != "list" && action != "image" && action != "claim_due" {
+		refresh()
 	}
-	return result, nil
+	return result, err
 }
 
-func (s *Service) execute(ctx context.Context, store *TodoStore, hooks Hooks, command map[string]any, sessionID string) (map[string]any, error) {
-	if sessionID != "" {
-		owner := hooks.OwnerCheck != nil && hooks.OwnerCheck(ctx, sessionID)
-		belongs := func(item map[string]any) bool {
-			return asString(item["session_id"]) == sessionID || (owner && asString(item["session_id"]) == "")
-		}
-		action := asString(command["action"])
-		if action == "list" {
-			includeCompleted, _ := command["include_completed"].(bool)
-			items := make([]map[string]any, 0)
-			for _, item := range store.List(includeCompleted) {
-				if belongs(item) {
-					items = append(items, item)
-				}
-			}
-			return map[string]any{"items": items}, nil
-		}
-		switch action {
-		case "add", "update", "cancel", "complete":
-		case "delete", "claim_condition", "finish":
-			if !owner {
-				return nil, errors.New("不支持的日程操作")
-			}
-		default:
-			return nil, errors.New("不支持的日程操作")
-		}
-		if action != "add" {
-			todoID := asString(command["todo_id"])
-			found := false
-			for _, item := range store.List(true) {
-				if asString(item["id"]) == todoID && belongs(item) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil, errors.New("当前聊天中不存在此日程，请先查询真实 ID")
-			}
-		}
-		options, _ := command["options"].(map[string]any)
-		if action == "add" || action == "update" {
-			target := sessionID
-			if raw, exists := options["session_id"]; exists {
-				target = asString(raw)
-			}
-			if target != sessionID {
-				return nil, errors.New("不能修改日程所属聊天")
-			}
-		}
+func allowedAction(ctx context.Context, hooks Hooks, sessionID, action string) bool {
+	switch action {
+	case "list", "add", "update", "complete", "cancel", "claim_due":
+		return true
+	case "delete", "claim_condition", "finish":
+		return hooks.OwnerCheck != nil && hooks.OwnerCheck(ctx, sessionID)
+	default:
+		return false
 	}
-	return ExecuteTodo(store, command)
 }
 
-// Tick 领取到期事项并逐个投递
 func (s *Service) Tick(ctx context.Context) error {
 	s.mu.Lock()
-	store := s.store
-	hooks := s.hooks
-	s.mu.Unlock()
-	if store == nil {
+	if s.repo == nil {
+		s.mu.Unlock()
 		return errors.New("日程服务尚未启动")
 	}
+	sessions := s.repo.sessionIDs()
+	ready := s.hooks.DesktopReady
+	s.mu.Unlock()
 	command := map[string]any{"action": "claim_due"}
-	desktopReady := hooks.DesktopReady != nil && hooks.DesktopReady()
-	if !desktopReady {
+	if ready == nil || !ready() {
 		command["kind"] = "bot"
 	}
-	result, err := s.Command(ctx, command, "")
-	if err != nil {
-		return err
-	}
-	items, _ := result["items"].([]map[string]any)
-	for _, item := range items {
-		itemID := asString(item["id"])
-		revision := asString(item["revision"])
-		if asString(item["kind"]) == "user" {
-			if hooks.DesktopReminder == nil {
-				s.finish(itemID, revision, "桌宠提醒通道未接线")
-				continue
+	for _, sessionID := range sessions {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		claimed, err := s.Command(ctx, command, sessionID)
+		if err != nil {
+			return err
+		}
+		for _, item := range claimed["items"].([]map[string]any) {
+			if err := s.dispatchClaimed(ctx, item); err != nil {
+				zap.L().Error("日程触发失败", zap.String("id", asString(item["id"])), zap.Error(err))
 			}
-			if err := hooks.DesktopReminder(ctx, asString(item["text"])); err != nil {
-				s.finish(itemID, revision, err.Error())
-				continue
-			}
-			s.finish(itemID, revision, "")
-			continue
 		}
-		if hooks.Dispatch == nil {
-			s.finish(itemID, revision, "日程投递通道未接线")
-			continue
-		}
-		if err := hooks.Dispatch(ctx, item); err != nil {
-			zap.L().Error("日程触发失败", zap.String("id", itemID), zap.Error(err))
-			s.finish(itemID, revision, err.Error())
-			continue
-		}
-		s.finish(itemID, revision, "")
 	}
 	return nil
 }
 
-// TriggerCondition 模型判断条件成立后领取并立即投递
+func (s *Service) dispatchClaimed(ctx context.Context, claimed map[string]any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	if s.repo == nil {
+		s.mu.Unlock()
+		return errors.New("日程服务尚未启动")
+	}
+	store, item, err := s.repo.find(asString(claimed["session_id"]), asString(claimed["id"]))
+	if err != nil || item["revision"] != claimed["revision"] || item["status"] != "dispatching" {
+		s.mu.Unlock()
+		return errors.New("待办已修改或删除，本次触发取消")
+	}
+	dispatchErr := s.dispatch(ctx, item)
+	errorText := ""
+	if dispatchErr != nil {
+		errorText = dispatchErr.Error()
+	}
+	finishErr := store.Finish(asString(item["id"]), asString(item["revision"]), errorText)
+	refresh := s.hooks.RefreshDesktop
+	s.mu.Unlock()
+	if refresh != nil && finishErr == nil {
+		refresh()
+	}
+	return errors.Join(dispatchErr, finishErr)
+}
+
+func (s *Service) dispatch(ctx context.Context, item map[string]any) error {
+	if item["kind"] == "user" {
+		if s.hooks.DesktopReminder == nil {
+			return errors.New("桌宠提醒通道未接线")
+		}
+		return s.hooks.DesktopReminder(ctx, asString(item["text"]))
+	}
+	if s.hooks.Dispatch == nil {
+		return errors.New("日程投递通道未接线")
+	}
+	return s.hooks.Dispatch(ctx, item)
+}
+
 func (s *Service) TriggerCondition(ctx context.Context, sessionID, todoID, revision, evidence string) (map[string]any, error) {
 	if !s.IsOwner(ctx, sessionID) {
 		return nil, errors.New("条件待办仅限主人内部聊天")
@@ -248,86 +205,32 @@ func (s *Service) TriggerCondition(ctx context.Context, sessionID, todoID, revis
 	return s.triggerCondition(ctx, sessionID, todoID, revision, evidence, false)
 }
 
-// TriggerConditionForApp 桌面应用条件已由设备侧确认后领取并投递
 func (s *Service) TriggerConditionForApp(ctx context.Context, todoID, revision, evidence string) (map[string]any, error) {
 	return s.triggerCondition(ctx, "", todoID, revision, evidence, true)
 }
 
 func (s *Service) triggerCondition(ctx context.Context, sessionID, todoID, revision, evidence string, appEvidence bool) (map[string]any, error) {
 	s.mu.Lock()
-	store := s.store
-	hooks := s.hooks
-	s.mu.Unlock()
-	if store == nil {
+	if s.repo == nil {
+		s.mu.Unlock()
 		return nil, errors.New("日程服务尚未启动")
 	}
-	snapshot, err := s.execute(ctx, store, hooks, map[string]any{"action": "list"}, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	var original map[string]any
-	for _, item := range snapshot["items"].([]map[string]any) {
-		if asString(item["id"]) == todoID {
-			original = item
-			break
-		}
-	}
-	if original == nil || asString(original["revision"]) != revision {
+	store, original, err := s.repo.find(sessionID, todoID)
+	if err != nil || original["revision"] != revision {
+		s.mu.Unlock()
 		return nil, errors.New("待办已修改或删除，请重新查询")
 	}
-	if asString(original["condition_type"]) == "app" && !appEvidence {
+	if original["condition_type"] == "app" && !appEvidence {
+		s.mu.Unlock()
 		return nil, errors.New("应用条件需要桌面进程检测，不能由模型直接触发")
 	}
-	item, err := store.ClaimCondition(todoID, revision, evidence)
+	claimed, err := store.ClaimCondition(todoID, revision, evidence)
+	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	current := store.List(false)
-	found := false
-	for _, entry := range current {
-		if asString(entry["id"]) == todoID && asString(entry["revision"]) == revision {
-			found = true
-			break
-		}
+	if err := s.dispatchClaimed(ctx, claimed); err != nil {
+		return nil, err
 	}
-	if !found {
-		return nil, errors.New("待办已修改或删除，本次触发取消")
-	}
-	var dispatchErr error
-	if asString(item["kind"]) == "user" {
-		if hooks.DesktopReminder == nil {
-			dispatchErr = errors.New("桌宠提醒通道未接线")
-		} else {
-			dispatchErr = hooks.DesktopReminder(ctx, asString(item["text"]))
-		}
-	} else {
-		if hooks.Dispatch == nil {
-			dispatchErr = errors.New("日程投递通道未接线")
-		} else {
-			dispatchErr = hooks.Dispatch(ctx, item)
-		}
-	}
-	if dispatchErr != nil {
-		store.Finish(todoID, revision, dispatchErr.Error())
-		return nil, dispatchErr
-	}
-	store.Finish(todoID, revision, "")
-	return map[string]any{"id": todoID, "status": "triggered", "evidence": item["evidence"]}, nil
-}
-
-func (s *Service) finish(todoID, revision, errorText string) {
-	_, _ = s.Command(context.Background(), map[string]any{
-		"action": "finish", "todo_id": todoID, "revision": revision, "error": errorText,
-	}, "")
-}
-
-// ListItems 返回未完成事项副本，供每轮待办上下文重建
-func (s *Service) ListItems() []map[string]any {
-	s.mu.Lock()
-	store := s.store
-	s.mu.Unlock()
-	if store == nil {
-		return nil
-	}
-	return store.List(false)
+	return map[string]any{"id": todoID, "status": "triggered", "evidence": claimed["evidence"]}, nil
 }

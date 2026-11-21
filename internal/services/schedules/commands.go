@@ -60,7 +60,8 @@ func ExecuteTodo(store *TodoStore, command map[string]any) (map[string]any, erro
 			value := asString(raw)
 			kind = &value
 		}
-		return map[string]any{"items": store.ClaimDue(kind)}, nil
+		items, err := store.ClaimDue(kind)
+		return map[string]any{"items": items}, err
 	case "claim_condition":
 		item, err := store.ClaimCondition(
 			asString(command["todo_id"]), asString(command["revision"]), asString(command["evidence"]),
@@ -70,8 +71,8 @@ func ExecuteTodo(store *TodoStore, command map[string]any) (map[string]any, erro
 		}
 		return map[string]any{"item": item}, nil
 	case "finish":
-		store.Finish(asString(command["todo_id"]), asString(command["revision"]), asString(command["error"]))
-		return map[string]any{}, nil
+		err := store.Finish(asString(command["todo_id"]), asString(command["revision"]), asString(command["error"]))
+		return map[string]any{}, err
 	default:
 		return nil, fmt.Errorf("未知待办操作")
 	}

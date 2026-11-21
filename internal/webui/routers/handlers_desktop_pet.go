@@ -5,11 +5,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
 	"MaiGo/internal/desktop_pet"
+	"MaiGo/internal/services/schedules"
 
 	"github.com/bytedance/sonic"
 	"github.com/go-chi/chi/v5"
@@ -81,9 +81,11 @@ func (d Deps) desktopPetRoot() string {
 }
 
 // desktopPetTodoSummary 读取未完成待办，只读不写
-func (d Deps) desktopPetTodoSummary() map[string]any {
-	path := filepath.Join(d.desktopPetRoot(), "data", "plugins", "sengokucola.desktop-pet", "todos.json")
-	items := desktoppet.NewTodoStore(path).List(false)
+func (d Deps) desktopPetTodoSummary() (map[string]any, error) {
+	items, err := schedules.ReadScheduleItems(schedules.Directory(d.desktopPetRoot()), "", false)
+	if err != nil {
+		return nil, err
+	}
 	preview := make([]map[string]any, 0, len(items))
 	for index, item := range items {
 		if index >= 20 {
@@ -93,7 +95,7 @@ func (d Deps) desktopPetTodoSummary() map[string]any {
 			"id": item["id"], "text": item["text"], "due_at": item["due_at"],
 		})
 	}
-	return map[string]any{"pending": len(items), "items": preview}
+	return map[string]any{"pending": len(items), "items": preview}, nil
 }
 
 func (d Deps) handleDesktopPetStatus(w http.ResponseWriter, r *http.Request) {
@@ -105,11 +107,16 @@ func (d Deps) handleDesktopPetStatus(w http.ResponseWriter, r *http.Request) {
 	if d.DesktopPet != nil {
 		status = d.DesktopPet.Status()
 	}
+	todos, err := d.desktopPetTodoSummary()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": status.Enabled, "supported": status.Supported, "running": status.Running,
 		"ready": status.Ready, "visible": status.Visible, "error": status.Error,
 		"skin_id": status.SkinID, "pid": status.PID, "thinking": status.Thinking, "bubble": status.Bubble,
-		"todos": d.desktopPetTodoSummary(),
+		"todos": todos,
 	})
 }
 
