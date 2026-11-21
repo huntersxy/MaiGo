@@ -143,6 +143,84 @@ func (d Deps) handleChatPersons(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"success": true, "persons": persons, "total": len(persons)})
 }
 
+func (d Deps) handleChatTargets(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	targetType := params.Get("target_type")
+	if targetType != "group" && targetType != "user" {
+		writeChatFailure(w, http.StatusUnprocessableEntity, "target_type 必须为 group 或 user")
+		return
+	}
+	search := params.Get("search")
+	if len([]rune(search)) > 200 {
+		writeChatFailure(w, http.StatusUnprocessableEntity, "search 不能超过 200 字")
+		return
+	}
+	platform := params.Get("platform")
+	limit := 50
+	if params.Has("limit") {
+		value, err := strconv.Atoi(params.Get("limit"))
+		if err != nil || value < 1 || value > 100 {
+			writeChatFailure(w, http.StatusUnprocessableEntity, "limit 必须为 1 到 100 的整数")
+			return
+		}
+		limit = value
+	}
+	if d.Memory == nil {
+		writeChatFailure(w, http.StatusServiceUnavailable, "记忆管理器未初始化")
+		return
+	}
+	type targetRow struct {
+		Platform string
+		TargetID string
+		Name     string
+	}
+	var rows []targetRow
+	db := d.Memory.GetDB().WithContext(r.Context())
+	if targetType == "group" {
+		query := db.Table("chat_sessions").Select("platform, group_id AS target_id, MAX(group_name) AS name").
+			Where("group_id IS NOT NULL AND group_id <> ''")
+		if platform != "" {
+			query = query.Where("platform = ?", platform)
+		}
+		if search != "" {
+			pattern := "%" + search + "%"
+			query = query.Where("group_name LIKE ? OR group_id LIKE ?", pattern, pattern)
+		}
+		if err := query.Group("platform, group_id").Order("platform, group_id").Limit(limit).Scan(&rows).Error; err != nil {
+			writeChatFailure(w, http.StatusInternalServerError, "搜索群目标失败: "+err.Error())
+			return
+		}
+	} else {
+		query := db.Model(&personinfo.PersonInfo{}).
+			Joins("JOIN individuals ON individuals.individual_id = person_info.individual_id")
+		if platform != "" {
+			query = query.Where("person_info.platform = ?", platform)
+		}
+		if search != "" {
+			pattern := "%" + search + "%"
+			query = query.Where("person_info.person_name LIKE ? OR individuals.display_name LIKE ? OR person_info.user_nickname LIKE ? OR person_info.user_id LIKE ?",
+				pattern, pattern, pattern, pattern)
+		}
+		if err := query.Select("person_info.platform, person_info.user_id AS target_id, MAX(person_info.user_nickname) AS name").
+			Group("person_info.platform, person_info.user_id").Order("person_info.platform, person_info.user_id").
+			Limit(limit).Scan(&rows).Error; err != nil {
+			writeChatFailure(w, http.StatusInternalServerError, "搜索用户目标失败: "+err.Error())
+			return
+		}
+	}
+	targets := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		name := row.Name
+		if name == "" {
+			name = row.TargetID
+		}
+		targets = append(targets, map[string]any{
+			"platform": row.Platform, "type": targetType, "id": row.TargetID, "name": name,
+		})
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"success": true, "targets": targets})
+}
+
 func (d Deps) handleChatInfo(w http.ResponseWriter, r *http.Request) {
 	botName := ""
 	var botQQ any

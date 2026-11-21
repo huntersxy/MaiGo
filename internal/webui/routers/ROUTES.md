@@ -116,6 +116,7 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 | GET | `/history` | **done**（`chat_history_db.go` 从 DB 读，`group_id` 取虚拟群频道；对齐 Python） |
 | DELETE | `/history` | **done**（按会话解析后删 `message_logs`，对齐 Python `service.clear_history`） |
 | GET | `/platforms` | **done**（`person_info` 平台计数） |
+| GET | `/targets` | **done**（按群名、群号或 Individual 用户资料搜索配置目标） |
 | GET | `/persons` | **done**（平台必填，ILIKE 搜索，last_known_time 倒序） |
 | GET | `/sessions` | **done**（聊天流列表、显示名、消息/表达/黑话计数） |
 | POST | `/sessions/adapter-status` | **done**（无运行中适配器时返回 `adapter_unavailable` 放行） |

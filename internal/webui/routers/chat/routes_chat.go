@@ -11,6 +11,7 @@ func mountChatRoutes(cr chi.Router, d Deps) {
 	cr.Get("/history", d.handleChatHistory)
 	cr.Delete("/history", d.handleChatClearHistory)
 	cr.Get("/platforms", d.handleChatPlatforms)
+	cr.Get("/targets", d.handleChatTargets)
 	cr.Get("/persons", d.handleChatPersons)
 	cr.Get("/info", d.handleChatInfo)
 
