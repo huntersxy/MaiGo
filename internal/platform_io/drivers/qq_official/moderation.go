@@ -33,6 +33,7 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 	defer a.sendMu.Unlock()
 	a.mu.Lock()
 	client, mapping := a.client, a.mapping
+	union := a.union
 	ready := a.runtime.Ready()
 	a.mu.Unlock()
 	if !ready || client == nil {
@@ -41,15 +42,32 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 	group := strings.TrimSpace(target.GroupID)
 	groupOpenID := strings.TrimSpace(target.GroupOpenID)
 	if group != "" {
-		groupOpenID = firstNonEmpty(groupOpenID, mapping.reverse("group")[group], group)
+		var err error
+		groupOpenID, err = mapping.resolveGroup(group, groupOpenID)
+		if err != nil {
+			return nil, err
+		}
 		group = firstNonEmpty(mapping.Group[groupOpenID], group)
 	}
 	users, _ := a.groupUserMapping(mapping, groupOpenID)
+	app := strings.TrimSpace(a.settings.QQOfficial.AppID)
 	user := strings.TrimSpace(target.UserID)
-	userOpenID := firstNonEmpty(strings.TrimSpace(target.UserOpenID), users.reverse("user")[user], user)
+	userOpenID := strings.TrimSpace(target.UserOpenID)
+	if userOpenID == "" {
+		userOpenID, _ = union.resolveUser(app, groupOpenID, user, users.User)
+	}
 	user = firstNonEmpty(users.User[userOpenID], user)
 	if isDecimal(userOpenID) {
 		userOpenID = ""
+	}
+	protectedIDs := []string{userOpenID}
+	if a.mappingEnabled.Load() {
+		protectedIDs = append(protectedIDs, user, target.UserID)
+		for _, row := range union.Bindings {
+			if row.AppID == app && row.GroupOpenID == groupOpenID && row.OpenID == userOpenID {
+				protectedIDs = append(protectedIDs, row.UnionOpenID, row.QQID)
+			}
+		}
 	}
 	groupPath := "/v2/groups/" + url.PathEscape(groupOpenID)
 	display := firstNonEmpty(target.UserName, user)
@@ -71,7 +89,7 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 		op, expiry := "del", ""
 		content := fmt.Sprintf("已解除 %s 的禁言。", display)
 		if duration > 0 {
-			if moderationContains(settings.AdminUsers, user, userOpenID) {
+			if moderationContains(settings.AdminUsers, "user", protectedIDs...) {
 				return nil, fmt.Errorf("用户 %s 在禁言保护名单中，无法被禁言", display)
 			}
 			duration = max(settings.MinDuration, min(duration, settings.MaxDuration))
@@ -99,7 +117,7 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 		if !allowedModerationGroup(settings.AllowedGroups, group, groupOpenID) {
 			return nil, fmt.Errorf("群 %s 不在踢人白名单内", group)
 		}
-		if moderationContains(settings.AdminUsers, user, userOpenID, target.UserID) {
+		if moderationContains(settings.AdminUsers, "user", protectedIDs...) {
 			return nil, fmt.Errorf("用户 %s 在踢人保护名单中，无法被移除", user)
 		}
 		if userOpenID == a.runtime.AccountID() || user == a.runtime.RouteAccountID() {
@@ -126,7 +144,14 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 		path, scope, openID := groupPath, "群 "+group, groupOpenID
 		if group == "" {
 			peer := strings.TrimSpace(target.TargetID)
-			openID = firstNonEmpty(strings.TrimSpace(target.UserOpenID), mapping.reverse("user")[peer], peer)
+			openID = strings.TrimSpace(target.UserOpenID)
+			if openID == "" {
+				var err error
+				openID, err = union.resolveUser(app, "", peer, mapping.User)
+				if err != nil {
+					return nil, err
+				}
+			}
 			path, scope = "/v2/users/"+url.PathEscape(openID), "单聊"
 		} else if !allowedModerationGroup(a.settings.Recall.AllowedGroups, group, groupOpenID) {
 			return nil, fmt.Errorf("群 %s 不在撤回白名单内", group)
@@ -149,13 +174,12 @@ func (a *Adapter) Moderate(ctx context.Context, operation string, target Moderat
 	}
 }
 
-func allowedModerationGroup(allowed []string, group, openID string) bool {
-	return !slices.ContainsFunc(allowed, func(value string) bool { return strings.TrimSpace(value) != "" }) || moderationContains(allowed, group, openID)
+func allowedModerationGroup(allowed []ConfigTarget, group, openID string) bool {
+	return len(allowed) == 0 || moderationContains(allowed, "group", group, openID)
 }
 
-func moderationContains(values []string, targets ...string) bool {
-	return slices.ContainsFunc(values, func(value string) bool {
-		trimmed := strings.TrimSpace(value)
-		return trimmed != "" && slices.Contains(targets, trimmed)
+func moderationContains(values []ConfigTarget, kind string, targets ...string) bool {
+	return slices.ContainsFunc(values, func(value ConfigTarget) bool {
+		return value.Platform == PlatformQQ && value.Type == kind && value.ID != "" && slices.Contains(targets, value.ID)
 	})
 }

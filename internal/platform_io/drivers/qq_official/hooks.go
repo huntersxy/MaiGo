@@ -33,6 +33,8 @@ type HostHooks struct {
 	ReportGatewayState func(ctx context.Context, state *RuntimeState) error
 	RegisterDriver     func(ctx context.Context, adapter platformio.Adapter) error
 	DataDir            func() string
+	InstanceRoot       func() string
+	ConfigPath         func() (string, error)
 	ResolveFile        platformio.PluginFileResolver
 }
 

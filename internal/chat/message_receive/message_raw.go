@@ -26,9 +26,14 @@ func BuildRawContent(msg *onebot.ConversationMessage, mediaRefs []media.Ref) []b
 			if target == "" {
 				target = strconv.FormatInt(part.AtUserID, 10)
 			}
+			nickname := part.AtNickname
+			if nickname == "" && part.AtCardname == "" {
+				nickname = msg.AtNames[part.AtUserID]
+			}
 			seq.Components = append(seq.Components, messagecomponent.AtComponent{
 				TargetUserID: target,
-				Nickname:     stringOrNil(msg.AtNames[part.AtUserID]),
+				Nickname:     stringOrNil(nickname),
+				Cardname:     stringOrNil(part.AtCardname),
 			})
 		case "reply":
 			if reply := msg.Reply; reply != nil {

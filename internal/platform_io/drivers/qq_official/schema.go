@@ -49,12 +49,17 @@ func ConfigSchemaMap() map[string]any {
 		"silent_user_sync": platformio.NativeSchemaField("silent_user_sync", "boolean", qq["silent_user_sync"], platformio.NativeFieldOpts{
 			Label:       "静默同步群成员身份",
 			Description: "在已绑定群中与 SnowLuma 静默匹配 QQ 号、昵称和群名片；需填写关联QQ号，三条不同正文一致后生效",
+			Order:       2,
+		}),
+		"enable_mapping": platformio.NativeSchemaField("enable_mapping", "boolean", qq["enable_mapping"], platformio.NativeFieldOpts{
+			Label:       "启用 QQ 号映射",
+			Description: "开启后使用已关联的 QQ 号；关闭时聊天身份保留原始 OpenID",
 			Order:       1,
 		}),
 		"snowluma_identity_only": platformio.NativeSchemaField("snowluma_identity_only", "boolean", qq["snowluma_identity_only"], platformio.NativeFieldOpts{
 			Label:       "SL 仅作身份查询（默认关闭）",
 			Description: "官方连接就绪时持续续期，让关联 SL/NapCat 账号仅采集身份，暂停其消息和通知入站投递并撤销出站路由，避免双重发送；15 秒未续期自动恢复收发",
-			Order:       2,
+			Order:       3,
 		}),
 	}
 	muteFields := map[string]any{
@@ -62,16 +67,8 @@ func ConfigSchemaMap() map[string]any {
 			Description: "启用 set_mute 禁言设置工具；时长为 0 解除禁言，正整数施加禁言",
 			Order:       0,
 		}),
-		"allowed_groups": platformio.NativeSchemaField("allowed_groups", "array", mute["allowed_groups"], platformio.NativeFieldOpts{
-			Description: "允许使用禁言与解除禁言的群（统一群号或 group_openid）；留空不限制",
-			ItemType:    "string",
-			Order:       1,
-		}),
-		"admin_users": platformio.NativeSchemaField("admin_users", "array", mute["admin_users"], platformio.NativeFieldOpts{
-			Description: "禁言保护名单（统一 QQ 号或 OpenID），名单内用户不会被禁言",
-			ItemType:    "string",
-			Order:       2,
-		}),
+		"allowed_groups": targetListField("allowed_groups", "group", "允许群", "搜索并选择群；留空不限制", mute["allowed_groups"], 1),
+		"admin_users":    targetListField("admin_users", "user", "保护用户", "搜索并选择不允许被操作的用户", mute["admin_users"], 2),
 		"min_duration": platformio.NativeSchemaField("min_duration", "integer", mute["min_duration"], platformio.NativeFieldOpts{
 			Description: "最短禁言时长（秒）",
 			Min:         1,
@@ -89,27 +86,15 @@ func ConfigSchemaMap() map[string]any {
 			Description: "启用 recall_message 撤回工具，默认开启，关闭时不向模型提供该工具",
 			Order:       0,
 		}),
-		"allowed_groups": platformio.NativeSchemaField("allowed_groups", "array", recall["allowed_groups"], platformio.NativeFieldOpts{
-			Description: "允许使用撤回的群（统一群号或 group_openid）；留空不限制，单聊不受此限制",
-			ItemType:    "string",
-			Order:       1,
-		}),
+		"allowed_groups": targetListField("allowed_groups", "group", "允许群", "搜索并选择群；留空不限制", recall["allowed_groups"], 1),
 	}
 	kickFields := map[string]any{
 		"enabled": platformio.NativeSchemaField("enabled", "boolean", kick["enabled"], platformio.NativeFieldOpts{
 			Description: "启用 kick_member 踢人工具；需要 QQ 官方移除群成员接口权限",
 			Order:       0,
 		}),
-		"allowed_groups": platformio.NativeSchemaField("allowed_groups", "array", kick["allowed_groups"], platformio.NativeFieldOpts{
-			Description: "允许使用踢人工具的群（统一群号或 group_openid）；留空不限制",
-			ItemType:    "string",
-			Order:       1,
-		}),
-		"admin_users": platformio.NativeSchemaField("admin_users", "array", kick["admin_users"], platformio.NativeFieldOpts{
-			Description: "踢人保护名单（统一 QQ 号或 OpenID），名单内用户不会被移除",
-			ItemType:    "string",
-			Order:       2,
-		}),
+		"allowed_groups": targetListField("allowed_groups", "group", "允许群", "搜索并选择群；留空不限制", kick["allowed_groups"], 1),
+		"admin_users":    targetListField("admin_users", "user", "保护用户", "搜索并选择不允许被操作的用户", kick["admin_users"], 2),
 	}
 	filterFields := map[string]any{
 		"ignore_other_bots": platformio.NativeSchemaField("ignore_other_bots", "boolean", filterSec["ignore_other_bots"], platformio.NativeFieldOpts{
@@ -150,4 +135,17 @@ func ConfigSchemaMap() map[string]any {
 		"description": "直连 QQ 开放平台官方 API，支持群聊与单聊的文本、@、图片、表情、语音收发及视频、文件发送，提供禁言、解除禁言、撤回及可选踢人工具。",
 		"author":      "MaiBot Team",
 	}, sections)
+}
+
+func targetListField(name, kind, label, hint string, defaults any, order int) map[string]any {
+	field := platformio.NativeSchemaField(name, "array", defaults, platformio.NativeFieldOpts{
+		Label: label, Hint: hint, Widget: "target", ItemType: "object", Order: order,
+	})
+	field["item_fields"] = map[string]any{
+		"platform": platformio.NativeSchemaField("platform", "string", PlatformQQ, platformio.NativeFieldOpts{}),
+		"type":     platformio.NativeSchemaField("type", "string", kind, platformio.NativeFieldOpts{}),
+		"id":       platformio.NativeSchemaField("id", "string", "", platformio.NativeFieldOpts{Required: true}),
+		"name":     platformio.NativeSchemaField("name", "string", "", platformio.NativeFieldOpts{}),
+	}
+	return field
 }

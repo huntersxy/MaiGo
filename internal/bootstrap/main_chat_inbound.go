@@ -186,7 +186,14 @@ func chatInboundRawMessage(msg *onebot.ConversationMessage) *messagecomponent.Me
 			if target == "" {
 				sequence.Text("@")
 			} else {
-				sequence.At(target)
+				at := messagecomponent.AtComponent{TargetUserID: target}
+				if part.AtNickname != "" {
+					at.Nickname = &part.AtNickname
+				}
+				if part.AtCardname != "" {
+					at.Cardname = &part.AtCardname
+				}
+				sequence.Components = append(sequence.Components, at)
 			}
 		case "image":
 			sequence.Text(chatImageLabel(msg, part.Index))

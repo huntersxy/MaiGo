@@ -27,10 +27,14 @@ func (h *Host) buildQQOfficialHostHooks() *qq_official.HostHooks {
 		resolver = port.ResolvePluginFileURL
 	}
 	return &qq_official.HostHooks{
-		Inbound:     inbound,
-		APIs:        h.APIRegistry(),
-		ResolveFile: resolver,
-		InvokeAPI:   qqOfficialAPIInvoker{host: h},
+		Inbound:      inbound,
+		APIs:         h.APIRegistry(),
+		ResolveFile:  resolver,
+		InvokeAPI:    qqOfficialAPIInvoker{host: h},
+		InstanceRoot: ResolveInstanceRoot,
+		ConfigPath: func() (string, error) {
+			return h.ResolveNativePluginConfigPath(qq_official.PluginID)
+		},
 		ReportGatewayState: func(ctx context.Context, state *qq_official.RuntimeState) error {
 			return h.reportQQOfficialGatewayState(ctx, state)
 		},

@@ -12,7 +12,7 @@ const (
 	PluginID               = "Mai-with-u.qq-adapter"
 	GatewayName            = "qq_official_gateway"
 	DirectoryName          = "qq_official_adapter"
-	SupportedConfigVersion = "0.4.16"
+	SupportedConfigVersion = "0.5.3"
 	PlatformQQ             = "qq"
 	RouteTypeDuplex        = "duplex"
 	ProtocolOfficial       = "qq_official"
@@ -33,6 +33,7 @@ type QQOfficialOptions struct {
 	AppSecret            string
 	APIBaseURL           string
 	UnifiedAccountID     string
+	EnableMapping        bool
 	SilentUserSync       bool
 	SnowlumaIdentityOnly bool
 }
@@ -48,11 +49,18 @@ type AdvancedOptions struct {
 	ReconnectDelaySec float64
 }
 
+type ConfigTarget struct {
+	Platform string
+	Type     string
+	ID       string
+	Name     string
+}
+
 // MuteOptions 对齐 [mute]
 type MuteOptions struct {
 	Enabled       bool
-	AllowedGroups []string
-	AdminUsers    []string
+	AllowedGroups []ConfigTarget
+	AdminUsers    []ConfigTarget
 	MinDuration   int
 	MaxDuration   int
 }
@@ -60,14 +68,14 @@ type MuteOptions struct {
 // RecallOptions 对齐 [recall]
 type RecallOptions struct {
 	Enabled       bool
-	AllowedGroups []string
+	AllowedGroups []ConfigTarget
 }
 
 // KickOptions 对齐 [kick]
 type KickOptions struct {
 	Enabled       bool
-	AllowedGroups []string
-	AdminUsers    []string
+	AllowedGroups []ConfigTarget
+	AdminUsers    []ConfigTarget
 }
 
 // Settings 完整配置
@@ -81,7 +89,7 @@ type Settings struct {
 	Advanced   AdvancedOptions
 }
 
-// DefaultSettings 返回 schema 默认值（enabled=false, config_version=0.4.16）
+// DefaultSettings 返回原生配置默认值。
 func DefaultSettings() Settings {
 	return Settings{
 		Plugin: PluginOptions{
@@ -98,19 +106,19 @@ func DefaultSettings() Settings {
 		},
 		Mute: MuteOptions{
 			Enabled:       true,
-			AllowedGroups: []string{},
-			AdminUsers:    []string{},
+			AllowedGroups: []ConfigTarget{},
+			AdminUsers:    []ConfigTarget{},
 			MinDuration:   60,
 			MaxDuration:   2592000,
 		},
 		Recall: RecallOptions{
 			Enabled:       true,
-			AllowedGroups: []string{},
+			AllowedGroups: []ConfigTarget{},
 		},
 		Kick: KickOptions{
 			Enabled:       false,
-			AllowedGroups: []string{},
-			AdminUsers:    []string{},
+			AllowedGroups: []ConfigTarget{},
+			AdminUsers:    []ConfigTarget{},
 		},
 		Filter: FilterOptions{
 			IgnoreOtherBots: true,
@@ -139,24 +147,25 @@ func SettingsToMap(s Settings) map[string]any {
 			"app_secret":             s.QQOfficial.AppSecret,
 			"api_base_url":           s.QQOfficial.APIBaseURL,
 			"unified_account_id":     s.QQOfficial.UnifiedAccountID,
+			"enable_mapping":         s.QQOfficial.EnableMapping,
 			"silent_user_sync":       s.QQOfficial.SilentUserSync,
 			"snowluma_identity_only": s.QQOfficial.SnowlumaIdentityOnly,
 		},
 		"mute": map[string]any{
 			"enabled":        s.Mute.Enabled,
-			"allowed_groups": append([]string{}, s.Mute.AllowedGroups...),
-			"admin_users":    append([]string{}, s.Mute.AdminUsers...),
+			"allowed_groups": configTargetMaps(s.Mute.AllowedGroups),
+			"admin_users":    configTargetMaps(s.Mute.AdminUsers),
 			"min_duration":   s.Mute.MinDuration,
 			"max_duration":   s.Mute.MaxDuration,
 		},
 		"recall": map[string]any{
 			"enabled":        s.Recall.Enabled,
-			"allowed_groups": append([]string{}, s.Recall.AllowedGroups...),
+			"allowed_groups": configTargetMaps(s.Recall.AllowedGroups),
 		},
 		"kick": map[string]any{
 			"enabled":        s.Kick.Enabled,
-			"allowed_groups": append([]string{}, s.Kick.AllowedGroups...),
-			"admin_users":    append([]string{}, s.Kick.AdminUsers...),
+			"allowed_groups": configTargetMaps(s.Kick.AllowedGroups),
+			"admin_users":    configTargetMaps(s.Kick.AdminUsers),
 		},
 		"filter": map[string]any{
 			"ignore_other_bots": s.Filter.IgnoreOtherBots,
@@ -181,19 +190,48 @@ func ParseSettings(config map[string]any) (Settings, error) {
 	settings.QQOfficial = QQOfficialOptions{
 		AppID: qq["app_id"].(string), AppSecret: qq["app_secret"].(string), APIBaseURL: qq["api_base_url"].(string),
 		UnifiedAccountID: qq["unified_account_id"].(string), SilentUserSync: qq["silent_user_sync"].(bool),
+		EnableMapping:        qq["enable_mapping"].(bool),
 		SnowlumaIdentityOnly: qq["snowluma_identity_only"].(bool),
 	}
 	mute, recall, kick := normalized["mute"], normalized["recall"], normalized["kick"]
 	settings.Mute = MuteOptions{
-		Enabled: mute["enabled"].(bool), AllowedGroups: mute["allowed_groups"].([]string), AdminUsers: mute["admin_users"].([]string),
+		Enabled:     mute["enabled"].(bool),
 		MinDuration: mute["min_duration"].(int), MaxDuration: mute["max_duration"].(int),
 	}
-	settings.Recall = RecallOptions{Enabled: recall["enabled"].(bool), AllowedGroups: recall["allowed_groups"].([]string)}
-	settings.Kick = KickOptions{Enabled: kick["enabled"].(bool), AllowedGroups: kick["allowed_groups"].([]string), AdminUsers: kick["admin_users"].([]string)}
+	settings.Recall.Enabled = recall["enabled"].(bool)
+	settings.Kick.Enabled = kick["enabled"].(bool)
+	for _, list := range []struct {
+		kind   string
+		rows   []map[string]any
+		target *[]ConfigTarget
+	}{
+		{"group", mute["allowed_groups"].([]map[string]any), &settings.Mute.AllowedGroups},
+		{"user", mute["admin_users"].([]map[string]any), &settings.Mute.AdminUsers},
+		{"group", recall["allowed_groups"].([]map[string]any), &settings.Recall.AllowedGroups},
+		{"group", kick["allowed_groups"].([]map[string]any), &settings.Kick.AllowedGroups},
+		{"user", kick["admin_users"].([]map[string]any), &settings.Kick.AdminUsers},
+	} {
+		*list.target = make([]ConfigTarget, 0, len(list.rows))
+		for _, row := range list.rows {
+			entry := ConfigTarget{Platform: asString(row["platform"]), Type: asString(row["type"]), ID: asString(row["id"]), Name: asString(row["name"])}
+			if entry.Platform != PlatformQQ || entry.Type != list.kind || strings.TrimSpace(entry.ID) == "" {
+				return Settings{}, fmt.Errorf("目标必须是有效的 QQ %s 身份", list.kind)
+			}
+			*list.target = append(*list.target, entry)
+		}
+	}
 	settings.Filter.IgnoreOtherBots = normalized["filter"]["ignore_other_bots"].(bool)
 	settings.Advanced = AdvancedOptions{ShowDebugInfo: normalized["advanced"]["show_debug_info"].(bool),
 		ReconnectDelaySec: normalized["advanced"]["reconnect_delay_sec"].(float64)}
 	return settings, nil
+}
+
+func configTargetMaps(targets []ConfigTarget) []map[string]any {
+	entries := make([]map[string]any, 0, len(targets))
+	for _, target := range targets {
+		entries = append(entries, map[string]any{"platform": target.Platform, "type": target.Type, "id": target.ID, "name": target.Name})
+	}
+	return entries
 }
 
 func asMap(v any) (map[string]any, bool) {

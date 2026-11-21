@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,25 +20,27 @@ import (
 // Adapter 进程内 QQ 官方适配器
 type Adapter struct {
 	platformio.BaseAdapter
-	mu         sync.Mutex
-	lifecycle  sync.Mutex
-	desc       platformio.DriverDescriptor
-	settings   Settings
-	runtime    *RuntimeState
-	hostHooks  *HostHooks
-	client     *Client
-	transport  *Transport
-	identity   *IdentityBridge
-	syncIDs    *identitySync
-	started    bool
-	dialed     bool
-	cancel     context.CancelFunc
-	sendMu     sync.Mutex
-	references messageReferences
-	mapping    idMapping
-	groupNames map[string]groupNameEntry
-	profileMu  sync.Mutex
-	botProfile botAvatarEntry
+	mu             sync.Mutex
+	lifecycle      sync.Mutex
+	desc           platformio.DriverDescriptor
+	settings       Settings
+	runtime        *RuntimeState
+	hostHooks      *HostHooks
+	client         *Client
+	transport      *Transport
+	identity       *IdentityBridge
+	syncIDs        *identitySync
+	started        bool
+	dialed         bool
+	cancel         context.CancelFunc
+	sendMu         sync.Mutex
+	references     messageReferences
+	mapping        idMapping
+	union          unionIdentities
+	mappingEnabled atomic.Bool
+	groupNames     map[string]groupNameEntry
+	profileMu      sync.Mutex
+	botProfile     botAvatarEntry
 }
 
 // NewAdapter 构造适配器；enabled=false 时 Start 不拨号
@@ -69,6 +72,7 @@ func NewAdapter(settings Settings, hooks *HostHooks) *Adapter {
 		references:  messageReferences{proactiveSequence: rand.IntN(10000)},
 	}
 	adapter.identity.syncOnce = adapter.syncIdentities
+	adapter.mappingEnabled.Store(settings.QQOfficial.EnableMapping)
 	return adapter
 }
 
@@ -89,6 +93,10 @@ func (a *Adapter) Start(ctx context.Context) error {
 	}
 	a.lifecycle.Lock()
 	defer a.lifecycle.Unlock()
+	return a.startLocked(ctx)
+}
+
+func (a *Adapter) startLocked(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.started {
@@ -97,16 +105,25 @@ func (a *Adapter) Start(ctx context.Context) error {
 	if !a.settings.Plugin.Enabled {
 		return nil
 	}
-	mapping, err := loadIDMapping(resolveDataDir(a.hostHooks))
+	directory := resolveDataDir(a.hostHooks)
+	if err := recoverBindingDelete(directory); err != nil {
+		return err
+	}
+	mapping, err := loadIDMapping(directory)
 	if err != nil {
 		return err
 	}
-	syncIDs, err := loadIdentitySync(resolveDataDir(a.hostHooks))
+	syncIDs, err := loadIdentitySync(directory)
+	if err != nil {
+		return err
+	}
+	union, err := loadUnionIdentities(directory)
 	if err != nil {
 		return err
 	}
 	a.syncIDs = syncIDs
 	a.mapping = mapping
+	a.union = union
 	a.groupNames = make(map[string]groupNameEntry)
 	if a.hostHooks != nil && a.hostHooks.APIs != nil {
 		a.registerAPIs(a.hostHooks.APIs)
@@ -148,6 +165,10 @@ func (a *Adapter) Stop(ctx context.Context) error {
 	}
 	a.lifecycle.Lock()
 	defer a.lifecycle.Unlock()
+	return a.stopLocked(ctx)
+}
+
+func (a *Adapter) stopLocked(ctx context.Context) error {
 	a.runtime.MarkNotReady()
 	a.mu.Lock()
 	cancel, transport := a.cancel, a.transport
@@ -203,6 +224,7 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		routeAccount = a.runtime.RouteAccountID()
 	}
 	mapping := a.mapping
+	union := a.union
 	a.mu.Unlock()
 	if client == nil || !ready {
 		receipt.Status = platformio.DeliveryStatusFailed
@@ -219,21 +241,31 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Error = "出站消息的路由身份与 QQ 官方网关不一致"
 		return receipt, fmt.Errorf("%s", receipt.Error)
 	}
-	if outbound.ChatType == platformio.ChatTypeGroup || outbound.MessageInfo.GroupInfo != nil {
-		group := outbound.TargetID
-		if outbound.MessageInfo.GroupInfo != nil {
-			group = firstNonEmpty(group, outbound.MessageInfo.GroupInfo.GroupID)
-		}
-		mapping, _ = a.groupUserMapping(mapping, firstNonEmpty(mapping.reverse("group")[group], group))
+	scene, target := outboundSceneTarget(outbound)
+	config := outbound.MessageInfo.AdditionalConfig
+	var openID string
+	var err error
+	app := strings.TrimSpace(a.settings.QQOfficial.AppID)
+	groupOpenID := ""
+	if scene == "group" {
+		openID, err = mapping.resolveGroup(target, asString(config["qq_official_group_openid"]))
+		groupOpenID = openID
+	} else if openID = strings.TrimSpace(asString(config["qq_official_user_openid"])); openID == "" {
+		openID, err = union.resolveUser(app, "", target, mapping.User)
 	}
-	scene, target, parts, quote, err := encodeOutbound(ctx, outbound, mapping)
 	if err != nil {
 		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
 		return receipt, err
 	}
-	routeTarget := target
-	openID := firstNonEmpty(mapping.reverse(scene)[target], target)
-	scope := messageScope{account: a.runtime.AccountID(), scene: scene, target: routeTarget}
+	legacy, _ := a.groupUserMapping(mapping, groupOpenID)
+	parts, quote, err := encodeOutbound(ctx, outbound, func(user string) (string, error) {
+		return union.resolveUser(app, groupOpenID, user, legacy.User)
+	})
+	if err != nil {
+		receipt.Status, receipt.Error = platformio.DeliveryStatusFailed, err.Error()
+		return receipt, err
+	}
+	scope := messageScope{account: a.runtime.AccountID(), scene: scene, target: openID}
 	basePath := "/v2/users/" + url.PathEscape(openID)
 	if scene == "group" {
 		basePath = "/v2/groups/" + url.PathEscape(openID)
@@ -319,7 +351,9 @@ func (a *Adapter) Settings() Settings {
 	if a == nil {
 		return DefaultSettings()
 	}
-	return a.settings
+	settings := a.settings
+	settings.QQOfficial.EnableMapping = a.mappingEnabled.Load()
+	return settings
 }
 
 func (a *Adapter) onReady(ctx context.Context, accountID, botName, sessionID string) error {
@@ -405,37 +439,45 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 	var picture, emoji bool
 	var groupName string
 	var groupOpenID string
-	if client != nil {
-		if isGroupEvent(event) {
-			groupOpenID = strings.TrimSpace(asString(data["group_openid"]))
-			groupName = strings.TrimSpace(asString(data["group_name"]))
-			if groupName == "" && groupOpenID != "" {
-				groupName = a.fetchGroupName(ctx, client, groupOpenID)
-			}
+	if isGroupEvent(event) {
+		groupOpenID = strings.TrimSpace(asString(data["group_openid"]))
+		groupName = strings.TrimSpace(asString(data["group_name"]))
+		if client != nil && groupName == "" && groupOpenID != "" {
+			groupName = a.fetchGroupName(ctx, client, groupOpenID)
 		}
+	}
+	if client != nil {
 		attachmentSegments, attachmentLabels, picture, emoji = client.inboundAttachments(ctx, data)
 	}
-	mapping, profiles := a.groupUserMapping(mapping, groupOpenID)
-	message, scene, target, err := decodeMessage(event, data, accountID, botName, unified, groupName, attachmentSegments, attachmentLabels, mapping, picture, emoji)
+	legacy, profiles := a.groupUserMapping(mapping, groupOpenID)
+	effective := legacy
+	if !a.mappingEnabled.Load() {
+		effective.User = nil
+	}
+	message, scene, _, err := decodeMessage(event, data, accountID, botName, unified, groupName, attachmentSegments, attachmentLabels, effective, picture, emoji)
 	if err != nil {
 		zap.L().Info("忽略 QQ 官方消息", zap.Error(err))
 		return nil
 	}
+	info, _ := asMap(message["message_info"])
+	config, _ := asMap(info["additional_config"])
+	author, _ := asMap(data["author"])
+	openid := asString(config["qq_official_user_openid"])
+	if err := a.observeUnionIdentity(groupOpenID, openid, author, legacy.User[openid], mapping.User[openid] != ""); err != nil {
+		zap.L().Warn("QQ 官方消息身份错误，未投递", zap.Error(err))
+		return nil
+	}
 	if binding := mapping.Group[groupOpenID]; a.settings.QQOfficial.SilentUserSync && groupOpenID != "" && isDecimal(unified) && isDecimal(binding) {
-		info, _ := asMap(message["message_info"])
-		config, _ := asMap(info["additional_config"])
-		openid := asString(config["qq_official_user_openid"])
 		scope := identityScope{strings.TrimSpace(a.settings.QQOfficial.AppID), unified, groupOpenID, binding, openid}
 		syncIDs.observe(scope, message)
 		profile, exists := profiles[openid]
 		userInfo, _ := asMap(info["user_info"])
-		if exists && !profile.Conflict && userInfo["user_id"] == profile.UserID {
-			if profile.Nickname != "" {
+		if exists && !profile.Conflict && (mapping.User[openid] == "" || mapping.User[openid] == profile.UserID) {
+			if profile.Nickname != "" && strings.TrimSpace(asString(author["username"])) == "" {
 				userInfo["user_nickname"] = profile.Nickname
 			}
-			userInfo["user_cardname"] = nil
-			if profile.Cardname != "" {
-				userInfo["user_cardname"] = profile.Cardname
+			if _, exists := author["member_nickname"]; !exists {
+				userInfo["user_cardname"] = nilIfEmpty(profile.Cardname)
 			}
 		}
 	}
@@ -444,7 +486,7 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 		sink = a.hostHooks.Inbound
 	}
 	message["is_picture"], message["is_emoji"] = picture, emoji
-	key := scopedMessage{messageScope{account: accountID, scene: scene, target: target}, asString(message["message_id"])}
+	key := scopedMessage{messageScope{account: accountID, scene: scene, target: firstNonEmpty(groupOpenID, openid)}, asString(message["message_id"])}
 	stamp, _ := strconv.ParseFloat(asString(message["timestamp"]), 64)
 	idx, replyIdx := extractMessageSceneFields(data)
 	quotedID, inserted := a.references.recordInbound(key, time.UnixMicro(int64(stamp*1e6)), idx, replyIdx)

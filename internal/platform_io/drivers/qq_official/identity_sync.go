@@ -113,10 +113,6 @@ func (s *identitySync) prune(now time.Time) {
 	})
 	maps.DeleteFunc(s.candidates, func(_ identityScope, row identityCandidate) bool { return now.Sub(row.created) >= identityEvidenceTTL })
 	maps.DeleteFunc(s.used, func(_ string, used time.Time) bool { return now.Sub(used) >= identityObservationTTL })
-	wall := identitySeconds(now)
-	maps.DeleteFunc(s.profiles, func(_ identityScope, row identityProfile) bool {
-		return wall-row.Updated >= identityProfileTTL.Seconds()
-	})
 }
 
 func (s *identitySync) observe(scope identityScope, message map[string]any) {
@@ -351,8 +347,9 @@ func (s *identitySync) profilesInGroup(app, account, openID, binding string) map
 	defer s.mu.Unlock()
 	s.prune(time.Now())
 	result := make(map[string]identityProfile)
+	now := identitySeconds(time.Now())
 	for scope, row := range s.profiles {
-		if scope[0] == app && scope[1] == account && scope[2] == openID && scope[3] == binding {
+		if scope[0] == app && scope[1] == account && scope[2] == openID && scope[3] == binding && now-row.Updated < identityProfileTTL.Seconds() {
 			row.Conflict = row.Conflict || s.candidates[scope].conflict
 			result[scope[4]] = row
 		}

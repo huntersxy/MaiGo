@@ -65,7 +65,7 @@ func saveIdentityFile(path string, encoded []byte) error {
 	}
 	defer os.Remove(file.Name())
 	_, writeErr := file.Write(encoded)
-	if err := errors.Join(writeErr, file.Close()); err != nil {
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
 		return err
 	}
 	return os.Rename(file.Name(), path)
@@ -81,6 +81,11 @@ func (a *Adapter) registerAPIs(binder LocalAPIBinder) {
 	register("webui_group_mappings", "查看已有的 QQ 群 OpenID 与群号映射", a.webuiGroupMappings)
 	register("webui_mappings", "查看 QQ 群和用户的 OpenID 绑定", a.webuiMappings)
 	register("webui_mapping_avatar", "获取已绑定群或用户的头像", a.webuiMappingAvatar)
+	register("webui_identity_mode", "查询当前用户身份模式", a.webuiIdentityMode)
+	register("webui_set_mapping_mode", "切换 QQ 号映射模式", a.webuiSetMappingMode)
+	register("webui_mapping_migrations", "查询 QQ 号迁回 OpenID 的进度", a.webuiMappingMigrations)
+	register("webui_finish_mapping", "完成迁移并关闭 QQ 号映射", a.webuiFinishMapping)
+	register("webui_delete_bindings", "删除群或用户绑定及相关静默关联", a.webuiDeleteBindings)
 }
 
 type mappingPair struct{ openID, id string }
@@ -110,6 +115,7 @@ func (a *Adapter) webuiGroupMappings(context.Context, string, string, map[string
 func (a *Adapter) webuiMappings(context.Context, string, string, map[string]any) (any, error) {
 	a.mu.Lock()
 	mapping := a.mapping
+	union := a.union
 	a.mu.Unlock()
 	rows := func(kind string, entries map[string]string) []map[string]any {
 		out := make([]map[string]any, 0, len(entries))
@@ -156,7 +162,33 @@ func (a *Adapter) webuiMappings(context.Context, string, string, map[string]any)
 		}
 		return false
 	})
-	return map[string]any{"group": rows("group", mapping.Group), "user": users}, nil
+	app := strings.TrimSpace(a.settings.QQOfficial.AppID)
+	represented := map[[2]string]bool{}
+	for _, user := range users {
+		targets := map[string]bool{}
+		for _, row := range union.Bindings {
+			if row.AppID == app && row.OpenID == user["openid"] && (user["group_openid"] == "" || row.GroupOpenID == user["group_openid"]) {
+				targets[row.UnionOpenID] = true
+			}
+		}
+		user["union_openid"] = ""
+		if len(targets) == 1 {
+			for target := range targets {
+				user["union_openid"] = target
+				represented[[2]string{asString(user["openid"]), target}] = true
+			}
+		}
+	}
+	for _, row := range union.Bindings {
+		if row.AppID == app && !represented[[2]string{row.OpenID, row.UnionOpenID}] {
+			users = append(users, map[string]any{
+				"openid": row.OpenID, "id": firstNonEmpty(row.QQID, "—"), "source": "union", "union_openid": row.UnionOpenID,
+				"nickname": "", "cardname": "", "group_id": mapping.Group[row.GroupOpenID], "group_openid": row.GroupOpenID,
+				"conflict": false, "status": "官方身份关联",
+			})
+		}
+	}
+	return map[string]any{"group": rows("group", mapping.Group), "user": users, "mapping_enabled": a.mappingEnabled.Load()}, nil
 }
 
 func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[string]any) (any, error) {
@@ -165,12 +197,13 @@ func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[
 	if value, ok := args["source"]; ok {
 		source, _ = value.(string)
 	}
-	if (kind != "group" && kind != "user") || (source != "manual" && source != "auto") {
+	if (kind != "group" && kind != "user") || (source != "manual" && source != "auto" && source != "union") || (kind == "group" && source != "manual") {
 		return nil, fmt.Errorf("映射类型或来源无效")
 	}
 	openID, _ := args["openid"].(string)
 	a.mu.Lock()
 	mapping := a.mapping
+	union := a.union
 	a.mu.Unlock()
 	var target string
 	switch {
@@ -181,6 +214,15 @@ func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[
 	case source == "auto" && kind == "user":
 		group, _ := args["group_openid"].(string)
 		target = a.profileGroup(mapping, group)[openID].UserID
+	case source == "union" && kind == "user":
+		group, _ := args["group_openid"].(string)
+		app := strings.TrimSpace(a.settings.QQOfficial.AppID)
+		for _, row := range union.Bindings {
+			if row.AppID == app && row.GroupOpenID == group && row.OpenID == openID {
+				target = row.UnionOpenID
+				break
+			}
+		}
 	}
 	if target == "" {
 		return nil, fmt.Errorf("群或用户映射不存在")
@@ -315,11 +357,11 @@ func (a *Adapter) AssignIdentity(ctx context.Context, kind string, message map[s
 		}
 		result = "已将" + subject + "的 ID 绑定为 " + value + "。后续消息按该 ID 归属；会话身份改变时使用另一聊天流，旧记录不会自动迁移。"
 	}
-	scene, rawTarget, previousTarget := "private", sender, asString(config["platform_io_target_user_id"])
+	scene, rawTarget := "private", sender
 	if group != "" {
-		scene, rawTarget, previousTarget = "group", group, asString(config["platform_io_target_group_id"])
+		scene, rawTarget = "group", group
 	}
-	key := scopedMessage{messageScope{account: a.runtime.AccountID(), scene: scene, target: firstNonEmpty(previousTarget, rawTarget)}, asString(message["message_id"])}
+	key := scopedMessage{messageScope{account: a.runtime.AccountID(), scene: scene, target: rawTarget}, asString(message["message_id"])}
 	passive := a.references.claimPassive(key)
 	if passive == nil {
 		return false, result, fmt.Errorf("绑定命令的回复凭证已过期或耗尽，无法发送回执")
@@ -330,19 +372,24 @@ func (a *Adapter) AssignIdentity(ctx context.Context, kind string, message map[s
 	return problem == "", result, nil
 }
 
-func (m idMapping) reverse(scene string) map[string]string {
-	entries := m.User
-	if scene == "group" {
-		entries = m.Group
+func (m idMapping) resolveGroup(group, explicit string) (string, error) {
+	if explicit = strings.TrimSpace(explicit); explicit != "" {
+		return explicit, nil
 	}
-	keys := make([]string, 0, len(entries))
-	for key := range entries {
-		keys = append(keys, key)
+	var resolved string
+	for openID, id := range m.Group {
+		if id == group {
+			if resolved != "" {
+				return "", fmt.Errorf("群 %s 对应多个 OpenID", group)
+			}
+			resolved = openID
+		}
 	}
-	sort.Strings(keys)
-	out := make(map[string]string, len(entries))
-	for _, key := range keys {
-		out[entries[key]] = key
+	if resolved != "" {
+		return resolved, nil
 	}
-	return out
+	if group == "" || isDecimal(group) {
+		return "", fmt.Errorf("群 %s 缺少 OpenID", group)
+	}
+	return group, nil
 }

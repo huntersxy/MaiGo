@@ -6,8 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"strings"
-	"unicode"
 
 	"MaiGo/internal/platform_io"
 )
@@ -23,7 +23,7 @@ type outboundPart struct {
 	size     int
 }
 
-func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnvelope, mapping idMapping) (string, string, []outboundPart, string, error) {
+func outboundSceneTarget(outbound platformio.OutboundMessageEnvelope) (string, string) {
 	info := outbound.MessageInfo
 	config := info.AdditionalConfig
 	group := ""
@@ -35,10 +35,10 @@ func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnve
 	if group != "" || outbound.ChatType == platformio.ChatTypeGroup {
 		scene = "group"
 	}
-	if target == "" {
-		return "", "", nil, "", fmt.Errorf("出站消息缺少目标 OpenID")
-	}
-	reverseUsers := mapping.reverse("private")
+	return scene, target
+}
+
+func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnvelope, resolveUser func(string) (string, error)) ([]outboundPart, string, error) {
 	parts := make([]outboundPart, 0)
 	var text strings.Builder
 	markdown := false
@@ -66,9 +66,9 @@ func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnve
 		case platformio.SegmentAt:
 			id := firstNonEmpty(seg.AtUserID, asString(data["target_user_id"]), seg.Extra["target_user_id"])
 			name := firstNonEmpty(asString(data["target_user_cardname"]), seg.Extra["target_user_cardname"], seg.Extra["cardname"], seg.Extra["card"], asString(data["target_user_nickname"]), seg.Extra["target_user_nickname"], seg.Extra["nickname"], seg.Extra["name"], seg.Text)
-			id = firstNonEmpty(reverseUsers[id], id)
-			if id != "" && strings.IndexFunc(id, func(r rune) bool { return !unicode.IsDigit(r) }) >= 0 {
-				text.WriteString(fmt.Sprintf(`<qqbot-at-user id="%s" /> `, id))
+			openid, err := resolveUser(id)
+			if err == nil && openid != "" {
+				text.WriteString(fmt.Sprintf(`<qqbot-at-user id="%s" /> `, html.EscapeString(openid)))
 				markdown = true
 			} else if name != "" {
 				text.WriteString("@" + name + " ")
@@ -79,19 +79,19 @@ func encodeOutbound(ctx context.Context, outbound platformio.OutboundMessageEnve
 		case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice, platformio.SegmentRecord, platformio.SegmentFile, platformio.SegmentVideo:
 			part, err := encodeMedia(ctx, seg, data)
 			if err != nil {
-				return "", "", nil, "", err
+				return nil, "", err
 			}
 			flush()
 			parts = append(parts, part)
 		default:
-			return "", "", nil, "", fmt.Errorf("出站暂不支持 %s 消息段", seg.Kind)
+			return nil, "", fmt.Errorf("出站暂不支持 %s 消息段", seg.Kind)
 		}
 	}
 	flush()
 	if len(parts) == 0 {
-		return "", "", nil, "", fmt.Errorf("出站消息为空")
+		return nil, "", fmt.Errorf("出站消息为空")
 	}
-	return scene, target, parts, quote, nil
+	return parts, quote, nil
 }
 
 func encodeMedia(ctx context.Context, seg platformio.Segment, data map[string]any) (outboundPart, error) {

@@ -19,6 +19,8 @@ type MessagePart struct {
 	Text             string
 	AtUserID         int64
 	ExternalAtUserID string // 非 QQ 平台 @ 的原始字符串 ID
+	AtNickname       string
+	AtCardname       string
 	Index            int
 	Count            int
 	Forward          *messagecomponent.ForwardNodeComponent

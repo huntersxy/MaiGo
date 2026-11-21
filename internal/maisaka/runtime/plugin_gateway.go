@@ -111,7 +111,14 @@ func DecodeExternalPluginMessage(message map[string]any) (*onebot.ConversationMe
 		}
 	}
 	additional := map[string]any{}
+	groupName, groupCard := "", ""
 	if info, ok := message["message_info"].(map[string]any); ok {
+		if user, ok := info["user_info"].(map[string]any); ok {
+			groupCard = pluginGatewayDataString(user, "user_cardname")
+		}
+		if group, ok := info["group_info"].(map[string]any); ok {
+			groupName = pluginGatewayDataString(group, "group_name")
+		}
 		if cfg, ok := info["additional_config"].(map[string]any); ok {
 			for key, value := range cfg {
 				additional[key] = value
@@ -133,6 +140,8 @@ func DecodeExternalPluginMessage(message map[string]any) (*onebot.ConversationMe
 		ExternalTargetID:  externalTarget,
 		ExternalUserID:    externalUser,
 		Nickname:          nickname,
+		GroupCard:         groupCard,
+		GroupName:         groupName,
 		Content:           content,
 		FinalContent:      content,
 		MessageParts:      parts,
@@ -233,11 +242,15 @@ func pluginGatewayParts(message map[string]any) (
 			if part.AtUserID != 0 {
 				atList = append(atList, part.AtUserID)
 				externalAtList = append(externalAtList, external)
-				name := pluginGatewayDataString(data, "target_user_nickname", "nickname", "name")
+				part.AtNickname = pluginGatewayDataString(data, "target_user_nickname", "nickname", "name")
+				part.AtCardname = pluginGatewayDataString(data, "target_user_cardname")
+				name := part.AtCardname
 				if name == "" {
-					name = external
+					name = part.AtNickname
 				}
-				atNames[part.AtUserID] = name
+				if name != "" {
+					atNames[part.AtUserID] = name
+				}
 			}
 		case "reply":
 			part.Kind = "reply"

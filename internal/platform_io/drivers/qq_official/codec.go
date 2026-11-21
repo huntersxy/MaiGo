@@ -82,6 +82,18 @@ func decodeMessage(event string, payload map[string]any, accountID, botName, uni
 		additional["platform_io_target_user_id"] = firstNonEmpty(mapping.User[userID], userID)
 	}
 	additional["qq_official_user_openid"] = userID
+	for _, field := range []string{"id", "username", "avatar", "bot", "union_openid", "member_role", "member_nickname"} {
+		if value, exists := author[field]; exists && (isGroup || (field != "member_role" && field != "member_nickname")) {
+			additional["qq_official_author_"+field] = value
+		}
+	}
+	if isGroup {
+		for _, field := range []string{"union_group_openid", "mentions"} {
+			if value, exists := payload[field]; exists {
+				additional["qq_official_"+field] = value
+			}
+		}
+	}
 	userID = firstNonEmpty(mapping.User[userID], userID)
 	if isGroup {
 		groupID = firstNonEmpty(mapping.Group[groupID], groupID)
@@ -123,20 +135,16 @@ func decodeMessage(event string, payload map[string]any, accountID, botName, uni
 	if err != nil {
 		return nil, "", "", err
 	}
-	nickname := strings.TrimSpace(asString(author["nickname"]))
-	if nickname == "" {
-		nickname = strings.TrimSpace(asString(author["nick"]))
-	}
-	if nickname == "" {
-		nickname = strings.TrimSpace(asString(author["username"]))
-	}
-	if nickname == "" {
-		nickname = userID
+	nickname := firstNonEmpty(asString(author["username"]), asString(author["nickname"]), asString(author["nick"]), userID)
+	var card any
+	if isGroup {
+		card = nilIfEmpty(strings.TrimSpace(asString(author["member_nickname"])))
 	}
 	messageInfo := map[string]any{
 		"user_info": map[string]any{
 			"user_id":       userID,
 			"user_nickname": nickname,
+			"user_cardname": card,
 		},
 		"additional_config": additional,
 	}
@@ -339,6 +347,7 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 		botUserID = accountID
 	}
 	displayNames := map[string]string{}
+	cardNames := map[string]string{}
 	mentions, _ := payload["mentions"].([]any)
 	for _, raw := range mentions {
 		mention, ok := asMap(raw)
@@ -361,6 +370,9 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 		}
 		if mentionID != "" && name != "" {
 			displayNames[mentionID] = name
+		}
+		if mentionID != "" {
+			cardNames[mentionID] = strings.TrimSpace(asString(mention["member_nickname"]))
 		}
 	}
 	type piece struct {
@@ -391,17 +403,15 @@ func rewriteMentionTokens(content, accountID, botName string, payload map[string
 			})
 		} else {
 			name := displayNames[mentionID]
-			label := "@" + mentionID
-			if name != "" {
-				label = "@" + name
-			}
+			card := cardNames[mentionID]
+			label := "@" + firstNonEmpty(card, name, mentionID)
 			pieces = append(pieces, piece{
 				seg: map[string]any{
 					"type": "at",
 					"data": map[string]any{
 						"target_user_id":       firstNonEmpty(userMap[mentionID], mentionID),
 						"target_user_nickname": nilIfEmpty(name),
-						"target_user_cardname": nil,
+						"target_user_cardname": nilIfEmpty(card),
 					},
 				},
 				label: label,
