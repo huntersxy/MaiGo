@@ -29,8 +29,8 @@ type summaryRow struct {
 	OutputTokens        int64
 	CacheHitTokens      int64
 	CacheMissTokens     int64
-	ChatCacheHitTokens  int64
-	ChatCacheMissTokens int64
+	CoreCacheHitTokens  int64
+	CoreCacheMissTokens int64
 	AvgResponseTime     float64
 }
 
@@ -70,9 +70,9 @@ func GetStatisticsSummary(ctx context.Context, db *gorm.DB, start, end time.Time
 	summary.CacheHitTokens = row.CacheHitTokens
 	summary.CacheMissTokens = row.CacheMissTokens
 	summary.CacheHitRate = calculateCacheHitRate(row.CacheHitTokens, row.CacheMissTokens)
-	summary.ChatCacheHitTokens = row.ChatCacheHitTokens
-	summary.ChatCacheMissTokens = row.ChatCacheMissTokens
-	summary.ChatCacheHitRate = calculateCacheHitRate(row.ChatCacheHitTokens, row.ChatCacheMissTokens)
+	summary.CoreCacheHitTokens = row.CoreCacheHitTokens
+	summary.CoreCacheMissTokens = row.CoreCacheMissTokens
+	summary.CoreCacheHitRate = calculateCacheHitRate(row.CoreCacheHitTokens, row.CoreCacheMissTokens)
 	summary.AvgResponseTime = row.AvgResponseTime
 	if err := applySummaryActivity(ctx, db, start, end, &summary); err != nil {
 		return summary, err
@@ -116,8 +116,8 @@ func querySummaryRow(ctx context.Context, db *gorm.DB, start, end time.Time) (su
 		COALESCE(SUM(completion_tokens), 0) AS output_tokens,
 		COALESCE(SUM(` + hitSQL + `), 0) AS cache_hit_tokens,
 		COALESCE(SUM(` + missSQL + `), 0) AS cache_miss_tokens,
-		COALESCE(SUM(CASE WHEN task_name IN ('replyer', 'planner') THEN ` + hitSQL + ` ELSE 0 END), 0) AS chat_cache_hit_tokens,
-		COALESCE(SUM(CASE WHEN task_name IN ('replyer', 'planner') THEN ` + missSQL + ` ELSE 0 END), 0) AS chat_cache_miss_tokens,
+		COALESCE(SUM(CASE WHEN task_name = 'planner' THEN ` + hitSQL + ` ELSE 0 END), 0) AS core_cache_hit_tokens,
+		COALESCE(SUM(CASE WHEN task_name = 'planner' THEN ` + missSQL + ` ELSE 0 END), 0) AS core_cache_miss_tokens,
 		COALESCE(AVG(time_cost), 0) AS avg_response_time
 	FROM llm_usage WHERE ` + where
 	if err := db.WithContext(ctx).Raw(query, args...).Scan(&row).Error; err != nil {

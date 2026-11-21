@@ -9,7 +9,7 @@ import (
 
 const (
 	dashboardCacheKey     = "webui_dashboard_statistics_cache"
-	dashboardCacheVersion = 6
+	dashboardCacheVersion = 7
 	dashboardCacheMaxAge  = 20 * time.Minute
 )
 

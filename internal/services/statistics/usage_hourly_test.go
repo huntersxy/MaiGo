@@ -189,8 +189,8 @@ func TestDashboardUsageAggregates(t *testing.T) {
 	if summary.TotalRequests != 3 || summary.TotalTokens != 165 || summary.TotalCost != 1.5 || summary.AvgResponseTime != 5.0/3 {
 		t.Fatalf("摘要口径不符合预期: %+v", summary)
 	}
-	if summary.ChatCacheHitTokens != 30 || summary.ChatCacheMissTokens != 70 {
-		t.Fatalf("聊天任务缓存 token 不符合预期: %+v", summary)
+	if summary.CoreCacheHitTokens != 0 || summary.CoreCacheMissTokens != 0 {
+		t.Fatalf("核心任务缓存 token 不符合预期: %+v", summary)
 	}
 	models := modelStatisticsFromUsage(items)
 	if len(models) != 2 || models[0].ModelName != "model-b" || models[0].RequestCount != 2 {

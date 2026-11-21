@@ -190,6 +190,7 @@ func Mount(r chi.Router, d Deps) {
 		})
 		// Python 的 /news 无尾斜杠
 		api.Get("/news", d.requireAuthHandler(d.handleNewsGet))
+		api.Get("/schedules", d.requireAuthHandler(d.handleSchedules))
 		api.Route("/desktop-pet", func(pr chi.Router) {
 			pr.Use(d.requireAuthMiddleware)
 			pr.Get("/skins", d.handleDesktopPetSkins)

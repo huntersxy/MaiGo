@@ -14,9 +14,9 @@ type StatisticsSummary struct {
 	CacheHitTokens      int64    `json:"cache_hit_tokens"`
 	CacheMissTokens     int64    `json:"cache_miss_tokens"`
 	CacheHitRate        *float64 `json:"cache_hit_rate"`
-	ChatCacheHitTokens  int64    `json:"chat_cache_hit_tokens"`
-	ChatCacheMissTokens int64    `json:"chat_cache_miss_tokens"`
-	ChatCacheHitRate    *float64 `json:"chat_cache_hit_rate"`
+	CoreCacheHitTokens  int64    `json:"core_cache_hit_tokens"`
+	CoreCacheMissTokens int64    `json:"core_cache_miss_tokens"`
+	CoreCacheHitRate    *float64 `json:"core_cache_hit_rate"`
 	OnlineTime          float64  `json:"online_time"`
 	TotalMessages       int64    `json:"total_messages"`
 	TotalReplies        int64    `json:"total_replies"`

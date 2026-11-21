@@ -12,7 +12,7 @@ import (
 )
 
 func summaryFromUsageItems(ctx context.Context, db *gorm.DB, start, end time.Time, items []UsageEntry) (StatisticsSummary, error) {
-	var requests, inputTokens, outputTokens, hitTokens, missTokens, chatHit, chatMiss int64
+	var requests, inputTokens, outputTokens, hitTokens, missTokens, coreHit, coreMiss int64
 	cost := 0.0
 	responseCount, responseSum := int64(0), 0.0
 	for _, item := range items {
@@ -24,9 +24,9 @@ func summaryFromUsageItems(ctx context.Context, db *gorm.DB, start, end time.Tim
 		cost += item.Metrics.Cost
 		responseCount += item.Metrics.ResponseTimeCount
 		responseSum += item.Metrics.ResponseTimeSum
-		if item.Key.TaskName == "replyer" || item.Key.TaskName == "planner" {
-			chatHit += item.Metrics.CacheHitTokens
-			chatMiss += item.Metrics.CacheMissTokens
+		if item.Key.TaskName == "planner" {
+			coreHit += item.Metrics.CacheHitTokens
+			coreMiss += item.Metrics.CacheMissTokens
 		}
 	}
 	summary := StatisticsSummary{
@@ -38,9 +38,9 @@ func summaryFromUsageItems(ctx context.Context, db *gorm.DB, start, end time.Tim
 		CacheHitTokens:      hitTokens,
 		CacheMissTokens:     missTokens,
 		CacheHitRate:        calculateCacheHitRate(hitTokens, missTokens),
-		ChatCacheHitTokens:  chatHit,
-		ChatCacheMissTokens: chatMiss,
-		ChatCacheHitRate:    calculateCacheHitRate(chatHit, chatMiss),
+		CoreCacheHitTokens:  coreHit,
+		CoreCacheMissTokens: coreMiss,
+		CoreCacheHitRate:    calculateCacheHitRate(coreHit, coreMiss),
 	}
 	if responseCount > 0 {
 		summary.AvgResponseTime = responseSum / float64(responseCount)

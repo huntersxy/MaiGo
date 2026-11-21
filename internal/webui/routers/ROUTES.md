@@ -94,6 +94,7 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 | GET/POST/PATCH/DELETE | `/model/versions`、`/model/versions/{version_id}`、`.../activate` | **done**（副本目录 `config/versions/model` + manifest） |
 | GET/PUT/DELETE | `/prompts`、`/prompts/{language}/{filename}`、`/default`、`/versions/*` | **done**（版本目录 `data/custom_prompts`，占位符校验） |
 | GET | `/prompt-blocks/{language}` | **done**（与回复生成共用的群聊／私聊指导语） |
+| GET | `/api/webui/schedules` | **done**（只读聚合真实会话日程，支持 `include_completed`） |
 | GET | `/maisaka-prompt-preview` | **done**（限 `logs/maisaka_prompt` 的 html/json/txt） |
 | GET/POST | `/adapter-config/path`、`/adapter-config` | **done**（允许根校验、TOML 语法校验） |
 | GET | `/schema/bot`、`/schema/model`、`/schema/section/{section_name}` | **done**（嵌入 `config_schema.json`，缺失配置节返回 404） |
