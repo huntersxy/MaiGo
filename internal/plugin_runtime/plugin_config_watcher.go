@@ -54,8 +54,8 @@ func StartPluginConfigWatcher(ctx context.Context, opts PluginConfigWatcherOptio
 		return
 	}
 	opts.applyDefaults()
+	observed := snapshotPluginConfigs(opts.PluginDirs())
 	go func() {
-		committed := snapshotPluginConfigs(opts.PluginDirs())
 		pending := map[string]time.Time{}
 		lastCallback := map[string]time.Time{}
 		ticker := time.NewTicker(opts.PollInterval)
@@ -68,16 +68,16 @@ func StartPluginConfigWatcher(ctx context.Context, opts PluginConfigWatcherOptio
 				current := snapshotPluginConfigs(opts.PluginDirs())
 				now := time.Now()
 				for pluginID, snap := range current {
-					previous, existed := committed[pluginID]
-					if existed && previous == snap {
-						continue
-					}
-					// 变更仍在沉降时不断顺延该插件的防抖窗口
-					if deadline, waiting := pending[pluginID]; !waiting || now.After(deadline) {
+					if previous, existed := observed[pluginID]; !existed || previous != snap {
 						pending[pluginID] = now.Add(opts.Debounce)
+					}
+				}
+				for pluginID, deadline := range pending {
+					if _, exists := current[pluginID]; !exists {
+						delete(pending, pluginID)
 						continue
 					}
-					if now.Sub(lastCallback[pluginID]) < opts.MinInterval {
+					if now.Before(deadline) || now.Sub(lastCallback[pluginID]) < opts.MinInterval {
 						continue
 					}
 					delete(pending, pluginID)
@@ -86,13 +86,13 @@ func StartPluginConfigWatcher(ctx context.Context, opts PluginConfigWatcherOptio
 					opts.OnConfigChanged(ctx, pluginID)
 				}
 				// 插件被移除时清理其待处理状态
-				for pluginID := range committed {
+				for pluginID := range observed {
 					if _, exists := current[pluginID]; !exists {
 						delete(pending, pluginID)
 						delete(lastCallback, pluginID)
 					}
 				}
-				committed = current
+				observed = current
 			}
 		}
 	}()
