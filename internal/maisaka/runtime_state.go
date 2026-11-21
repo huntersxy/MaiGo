@@ -614,20 +614,6 @@ func (r *Runtime) ToolSearchTailLoading() bool {
 	return r.toolSearchTailLoading
 }
 
-// SetLightweightPrivate 设置当前轮次是否使用轻量私聊模式
-func (r *Runtime) SetLightweightPrivate(enabled bool) {
-	r.mu.Lock()
-	r.lightweightPrivate = enabled
-	r.mu.Unlock()
-}
-
-// LightweightPrivate 当前轮次是否使用轻量私聊模式
-func (r *Runtime) LightweightPrivate() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.lightweightPrivate
-}
-
 // UpdateDeferredToolSpecs 刷新当前会话的 deferred tools 池，并清理失效的已发现工具
 func (r *Runtime) UpdateDeferredToolSpecs(specs []ToolSpec) {
 	next := map[string]ToolSpec{}

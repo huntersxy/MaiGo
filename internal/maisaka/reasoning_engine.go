@@ -68,10 +68,9 @@ type TurnStartContext struct {
 type ReasoningEngine struct {
 	runtime *Runtime
 
-	lastReasoningContent   string
-	activeLogicalTurnID    string
-	turnPassiveReplyer     *bool
-	turnLightweightPrivate bool
+	lastReasoningContent string
+	activeLogicalTurnID  string
+	turnPassiveReplyer   *bool
 }
 
 // NewReasoningEngine 创建推理引擎
@@ -168,20 +167,15 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 	triggerMessage := startContext.TriggerMessage
 
 	runtime.setRunning(true)
-	e.turnLightweightPrivate = runtime.LightweightPrivate()
-	passiveReplyer := runtime.opts.PassiveReplyer || e.turnLightweightPrivate
+	passiveReplyer := runtime.opts.PassiveReplyer
 	e.turnPassiveReplyer = &passiveReplyer
 	if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok {
 		chatLoop.PassiveReplyerOverride = &passiveReplyer
-		lightweight := e.turnLightweightPrivate
-		chatLoop.LightweightPrivateOverride = &lightweight
 	}
 	defer func() {
 		e.turnPassiveReplyer = nil
-		e.turnLightweightPrivate = false
 		if chatLoop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok {
 			chatLoop.PassiveReplyerOverride = nil
-			chatLoop.LightweightPrivateOverride = nil
 		}
 		e.activeLogicalTurnID = ""
 		if runtime.AgentState() == turn_trigger.StateRunning {
@@ -642,15 +636,6 @@ func (e *ReasoningEngine) buildActionToolDefinitions(ctx context.Context) ([]Too
 	deferredSpecs := make([]ToolSpec, 0, len(tools))
 	passiveReplyer := e.PassiveReplyerEnabled()
 	for _, spec := range tools {
-		if e.turnLightweightPrivate {
-			if spec.Provider != BuiltinProviderName || spec.Name == "read_tool_result" {
-				// 扩展工具按需发现；原始结果回查供联网工具返回 result_id 后继续读取。
-				deferredSpecs = append(deferredSpecs, spec)
-			} else if IsLightweightTool(spec.Name) {
-				visibleBuiltin = append(visibleBuiltin, spec)
-			}
-			continue
-		}
 		if spec.Provider == BuiltinProviderName {
 			if !IsBuiltinToolInActionStage(spec, passiveReplyer) {
 				continue
@@ -684,9 +669,6 @@ func (e *ReasoningEngine) buildActionToolDefinitions(ctx context.Context) ([]Too
 	runtime.SetCurrentActionTools(activeSpecs)
 
 	definitions := visibleBuiltin
-	if e.turnLightweightPrivate {
-		definitions = BuildLightweightToolSpecs(visibleBuiltin)
-	}
 	if !runtime.ToolSearchTailLoading() {
 		definitions = append(append([]ToolSpec(nil), definitions...), discoveredSpecs...)
 	}
@@ -697,9 +679,6 @@ func (e *ReasoningEngine) buildPlannerInjectedUserMessages(ctx context.Context, 
 	injected := make([]string, 0, 6)
 	if deferredNotice != "" {
 		injected = append(injected, deferredNotice)
-	}
-	if e.turnLightweightPrivate {
-		return injected
 	}
 	if hook := e.runtime.opts.PlannerExtraInjections; hook != nil {
 		for _, extra := range hook(ctx, trigger, source) {
@@ -968,16 +947,10 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 				Success:  false,
 				Message:  "被动式 replyer 不调用 reply；决定发言时请直接输出回复指导，不要调用工具。",
 			}
-		} else if e.turnLightweightPrivate && isUnexpandedTool {
-			result = ToolExecutionResult{
-				ToolName: call.Name,
-				Success:  false,
-				Message:  "轻量模式未提供该工具；请使用当前可用工具或输出回复指导。",
-			}
 		} else if runtime.opts.Tools != nil {
 			result = e.invokeTool(traceCtx, invocation)
 		}
-		if isUnexpandedTool && !result.Success && (!e.turnLightweightPrivate || runtime.HasDeferredToolSpec(call.Name)) {
+		if isUnexpandedTool && !result.Success {
 			result = appendDeferredToolParameterHint(result)
 		}
 		duration := time.Since(started).Milliseconds()
@@ -993,7 +966,7 @@ func (e *ReasoningEngine) handleToolCalls(ctx context.Context, toolCalls []ToolC
 		condensed := ""
 		rawContent := result.Content
 		alreadyPreviewed, _ := result.Metadata["web_result_preview"].(bool)
-		if !e.turnLightweightPrivate && runtime.ShouldCondense(call.Name, rawContent, result.Success, alreadyPreviewed) {
+		if runtime.ShouldCondense(call.Name, rawContent, result.Success, alreadyPreviewed) {
 			runtime.UpdateStageStatus("工具结果整理 · "+call.Name, fmt.Sprintf("原始结果 %d 字", len([]rune(rawContent))))
 			condensed = CondenseToolResult(ctx, runtime, call, rawContent, latestThought)
 		}

@@ -33,22 +33,6 @@ func ValidateBotConfig(cfg BotConfigFile) error {
 	if err := validateAttentionDrift(cfg.Experimental.PrivateAttentionDrift); err != nil {
 		return fmt.Errorf("experimental.private_attention_drift: %w", err)
 	}
-	if err := validateLightweightPrivateChats(cfg.Experimental.LightweightPrivateChats); err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateLightweightPrivateChats(targets []TargetItem) error {
-	for index, target := range targets {
-		ruleType := strings.TrimSpace(target.RuleType)
-		if ruleType == "" {
-			continue
-		}
-		if ruleType != "group" && ruleType != "private" {
-			return fmt.Errorf("experimental.lightweight_private_chats[%d].rule_type 仅允许 group 或 private", index)
-		}
-	}
 	return nil
 }
 

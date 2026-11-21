@@ -95,7 +95,7 @@ const maisakaToolSpecsJSON = `
       "properties": {
         "after_reply": {
           "default": "wait",
-          "description": "回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断。wait 会取消同批后续工具。",
+          "description": "回复发送成功后的行为：continue 继续思考和调用工具；wait（默认）暂停，未填 wait_seconds 则结束本轮，填写 wait_seconds 则定时再判断。",
           "enum": [
             "continue",
             "wait"

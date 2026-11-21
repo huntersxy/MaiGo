@@ -72,7 +72,7 @@ func (s *ChatLoopService) CompleteMissingPlannerAction(
 	if s == nil || s.JudgeClient == nil {
 		return nil, nil
 	}
-	if s.ChatPromptName() != "maisaka_chat" && s.ChatPromptName() != "maisaka_chat_focus" {
+	if !s.FocusMode && s.PassiveReplyer() {
 		return nil, nil
 	}
 	content := strings.TrimSpace(response.Content)

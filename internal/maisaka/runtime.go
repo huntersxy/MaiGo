@@ -304,7 +304,6 @@ type Runtime struct {
 	discoveredToolNames    map[string]struct{}
 	deferredToolSpecs      map[string]ToolSpec
 	toolSearchTailLoading  bool
-	lightweightPrivate     bool
 
 	minExtractionInterval        float64
 	lastExpressionExtractionTime float64
@@ -767,11 +766,8 @@ func (r *Runtime) PassiveReplyerActive() bool {
 	if r == nil {
 		return false
 	}
-	if r.engine == nil {
+	if r.engine == nil || r.engine.turnPassiveReplyer == nil {
 		return r.opts.PassiveReplyer
-	}
-	if r.engine.turnPassiveReplyer == nil {
-		return r.opts.PassiveReplyer || r.LightweightPrivate()
 	}
 	return r.engine.PassiveReplyerEnabled()
 }

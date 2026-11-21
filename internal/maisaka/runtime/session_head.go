@@ -51,9 +51,7 @@ func (a *Agent) assembleMessages(ctx context.Context, session *Session) ([]*sche
 			transcriptIDByMessage[message] = transcriptIDs[i]
 		}
 	}
-	if !a.isLightweightPrivateSession(session.kind, session.targetID) {
-		messages = a.refreshJargonReference(ctx, session, messages)
-	}
+	messages = a.refreshJargonReference(ctx, session, messages)
 	messages = a.refreshExpressionHabits(ctx, session, messages)
 	messages = a.refreshFocusContext(ctx, session, messages)
 	transcriptIDs = make([]uint, 0, len(messages))

@@ -164,7 +164,6 @@ var botConfigConstraints = []configConstraint{
 	{Path: "emoji.cache_cleanup.emoji_file_retention_days", Kind: "int", Ge: num(1.0)},
 	{Path: "emoji.cache_cleanup.no_file_record_retention_days", Kind: "int", Ge: num(1.0)},
 	{Path: "emoji.max_emoji_size_mb", Kind: "float", Ge: num(0.0)},
-	{Path: "experimental.lightweight_private_chats[].rule_type", Kind: "string", Enum: []string{"group", "private"}},
 	{Path: "experimental.super_creative_language", Kind: "string", Enum: []string{"ja-JP", "ru-RU", "fr-FR", "zh-classical"}},
 	{Path: "expression.expression_groups[].targets[].rule_type", Kind: "string", Enum: []string{"group", "private"}},
 	{Path: "expression.expression_vector_candidate_pool_size", Kind: "int", Ge: num(1.0), Le: num(50.0)},

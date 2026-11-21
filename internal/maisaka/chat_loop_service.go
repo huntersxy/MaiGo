@@ -135,8 +135,6 @@ type ChatLoopService struct {
 	snapshotMu sync.Mutex
 	// PassiveReplyerOverride 单轮内固定的被动回复实验模式
 	PassiveReplyerOverride *bool
-	// LightweightPrivateOverride 单轮内固定的轻量私聊模式
-	LightweightPrivateOverride *bool
 	// FocusMode 使用 Focus 共享组提示词模板
 	FocusMode bool
 	// AttentionDriftBlock 注意力漂移提示词块，由宿主按配置渲染
@@ -219,24 +217,19 @@ func ResolveModelTaskName(requestKind, defaultTask string) string {
 
 // ChatPromptName 选择当前聊天使用的 Planner 模板
 func (s *ChatLoopService) ChatPromptName() string {
-	if s.LightweightPrivate() {
-		return "maisaka_chat_lightweight"
-	}
 	if s.FocusMode {
 		return "maisaka_chat_focus"
+	}
+	if !s.IsGroupChat {
+		if s.PassiveReplyer() {
+			return "maisaka_chat_private_passive"
+		}
+		return "maisaka_chat_private"
 	}
 	if s.PassiveReplyer() {
 		return "maisaka_chat_passive"
 	}
 	return "maisaka_chat"
-}
-
-// LightweightPrivate 本轮是否使用轻量私聊模式
-func (s *ChatLoopService) LightweightPrivate() bool {
-	if s.LightweightPrivateOverride != nil {
-		return *s.LightweightPrivateOverride
-	}
-	return false
 }
 
 // PassiveReplyer 本轮是否使用被动回复器
@@ -276,20 +269,22 @@ func (s *ChatLoopService) renderLocalized(name string, vars map[string]string) s
 
 // BuildPromptTemplateContext 构造 Maisaka prompt 模板的公共渲染参数
 func (s *ChatLoopService) BuildPromptTemplateContext(toolsSection, botNicknameNotice string) map[string]string {
+	attention := s.buildGroupChatAttentionBlock()
 	return map[string]string{
-		"bot_name":                   s.localizedText("bot_name"),
-		"bot_alias_notice":           s.BotAliasNotice,
-		"bot_nickname_notice":        prefixNicknameNotice(botNicknameNotice),
-		"personality":                s.Personality,
-		"file_tools_section":         toolsSection,
-		"tools_section":              toolsSection,
-		"behavior_style":             s.BehaviorStylePrompt(),
-		"group_chat_attention":       s.buildGroupChatAttentionBlock(),
-		"group_chat_attention_block": s.buildGroupChatAttentionBlock(),
-		"query_memory_rule":          s.buildQueryMemoryRule(),
-		"subagent_rule":              s.buildSubagentRule(),
-		"planner_idle_focus_rule":    s.buildPlannerIdleFocusRule(),
-		"idle_focus_rule":            s.buildPlannerIdleFocusRule(),
+		"bot_name":                     s.localizedText("bot_name"),
+		"bot_alias_notice":             s.BotAliasNotice,
+		"bot_nickname_notice":          prefixNicknameNotice(botNicknameNotice),
+		"personality":                  s.Personality,
+		"file_tools_section":           toolsSection,
+		"tools_section":                toolsSection,
+		"behavior_style":               s.BehaviorStylePrompt(),
+		"group_chat_attention":         attention,
+		"group_chat_attention_block":   attention,
+		"private_chat_attention_block": attention,
+		"query_memory_rule":            s.buildQueryMemoryRule(),
+		"subagent_rule":                s.buildSubagentRule(),
+		"planner_idle_focus_rule":      s.buildPlannerIdleFocusRule(),
+		"idle_focus_rule":              s.buildPlannerIdleFocusRule(),
 	}
 }
 
@@ -374,13 +369,12 @@ func (s *ChatLoopService) BuildBotNicknameNotice(history []ContextMessage) strin
 // BuildPlannerFinalUserReminder 构造每轮 Planner 请求末尾的一次性 user 提醒
 func (s *ChatLoopService) BuildPlannerFinalUserReminder() string {
 	promptName := s.ChatPromptName()
-	if promptName == "maisaka_chat_lightweight" {
-		return ""
-	}
 	instruction := map[string]string{
-		"maisaka_chat":         "planner_turn_action",
-		"maisaka_chat_passive": "planner_turn_passive",
-		"maisaka_chat_focus":   "planner_turn_focus",
+		"maisaka_chat":                 "planner_turn_action",
+		"maisaka_chat_private":         "planner_turn_action",
+		"maisaka_chat_passive":         "planner_turn_passive",
+		"maisaka_chat_private_passive": "planner_turn_passive",
+		"maisaka_chat_focus":           "planner_turn_focus",
 	}[promptName]
 	if text := s.renderLocalized(instruction, map[string]string{"bot_name": s.localizedText("bot_name")}); text != "" {
 		return text
@@ -388,7 +382,7 @@ func (s *ChatLoopService) BuildPlannerFinalUserReminder() string {
 	if promptName == "maisaka_chat_focus" {
 		return fmt.Sprintf(FocusPlannerFinalUserReminderTemplate, s.localizedText("bot_name"))
 	}
-	if promptName == "maisaka_chat_passive" {
+	if s.PassiveReplyer() {
 		if text := PassivePlannerFinalUserReminders[s.Locale]; text != "" {
 			return text
 		}

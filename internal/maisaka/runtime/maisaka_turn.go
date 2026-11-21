@@ -109,17 +109,12 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 	if runtime == nil || runtime.Engine() == nil || generation == nil || generation.model == nil {
 		return false
 	}
-	lightweight := a.isLightweightPrivateSession(kind, targetID)
-	if lightweight {
-		// 轻量私聊优先于 Focus，不进入共享上下文。
-		a.detachFocusSession(ctx, session, runtime)
-	} else if a.routeFocusMessage(ctx, kind, targetID, session, runtime) {
+	if a.routeFocusMessage(ctx, kind, targetID, session, runtime) {
 		return true
 	}
 	session.mu.Lock()
 	session.maisakaFocusGroup = nil
 	session.mu.Unlock()
-	runtime.SetLightweightPrivate(lightweight)
 	if a.maisakaBackgroundLoop.Load() {
 		if loop := a.ensureMaisakaTurnLoop(session); loop != nil {
 			jobGeneration := generation
@@ -203,7 +198,6 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 	if len(history) == 0 {
 		return false
 	}
-	runtime.SetLightweightPrivate(a.isLightweightPrivateSession(kind, targetID))
 	promptSource := a.newMaisakaPromptSource()
 	plannerModel := generation.plannerModel
 	plannerName := generation.plannerModelName
