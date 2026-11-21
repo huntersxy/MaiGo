@@ -49,7 +49,7 @@ func (a *Agent) HandleSentPersonFact(ctx context.Context, botMsg *onebot.Convers
 	if a == nil || botMsg == nil || a.memory == nil {
 		return nil
 	}
-	if !a.personFactWritebackEnabled() || !personinfo.PersonLLMEnabled() {
+	if !a.personFactWritebackEnabled() {
 		return nil
 	}
 	ex := personinfo.DefaultRegistry().FactExtractorFromRegistry()

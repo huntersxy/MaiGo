@@ -48,15 +48,14 @@ type ProfileClassification struct {
 
 // ProfileClassifier 心理画像分类器
 type ProfileClassifier struct {
-	Router  *llm.Router
-	Enabled bool
+	Router *llm.Router
 }
 
 // Classify 优先 LLM 分类，失败回退规则
 func (c *ProfileClassifier) Classify(ctx context.Context, input ProfileClassificationInput) ProfileClassification {
 	fallback := classifyProfileEvidenceRuleBased(input)
 	result := ProfileClassification{Buckets: fallback}
-	if c == nil || c.Router == nil || !c.Enabled && !PersonLLMEnabled() {
+	if c == nil || c.Router == nil {
 		return result
 	}
 	candidates := buildProfileClassificationCandidates(input)
@@ -78,26 +77,17 @@ func (c *ProfileClassifier) Classify(ctx context.Context, input ProfileClassific
 	return result
 }
 
+// generate 用 fast_model 任务分类，空配置由 Router 回退 utils
 func (c *ProfileClassifier) generate(ctx context.Context, prompt string) (string, error) {
-	tasks := []llm.TaskName{llm.TaskMemory, llm.TaskUtils, llm.TaskLearner}
-	var lastErr error
-	for _, task := range tasks {
-		_, client, err := c.Router.NewClientForTask(ctx, task)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		msg, err := client.Generate(ctx, []*schema.AgenticMessage{schema.UserAgenticMessage(prompt)})
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		return agenticPlainText(msg), nil
+	_, client, err := c.Router.NewClientForTask(ctx, llm.TaskFastModel)
+	if err != nil {
+		return "", err
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("personinfo: 没有可用的画像分类模型")
+	msg, err := client.Generate(ctx, []*schema.AgenticMessage{schema.UserAgenticMessage(prompt)})
+	if err != nil {
+		return "", err
 	}
-	return "", lastErr
+	return agenticPlainText(msg), nil
 }
 
 func classifyProfileEvidenceRuleBased(input ProfileClassificationInput) map[string][]string {
@@ -352,6 +342,6 @@ func (r *Registry) ClassifyProfileEvidence(ctx context.Context, input ProfileCla
 	r.mu.RLock()
 	router := r.factRouter
 	r.mu.RUnlock()
-	classifier := &ProfileClassifier{Router: router, Enabled: PersonLLMEnabled()}
+	classifier := &ProfileClassifier{Router: router}
 	return classifier.Classify(ctx, input)
 }

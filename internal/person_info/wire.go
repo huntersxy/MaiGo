@@ -2,7 +2,7 @@ package personinfo
 
 import "MaiGo/internal/llm_models"
 
-// SetFactRouter 注入人物事实 LLM 提取 Router（MAIBOT_PERSON_LLM=1）
+// SetFactRouter 注入人物事实 LLM 提取 Router
 func (r *Registry) SetFactRouter(router *llm.Router) {
 	r.mu.Lock()
 	r.factRouter = router

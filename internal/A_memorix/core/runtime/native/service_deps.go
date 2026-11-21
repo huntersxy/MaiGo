@@ -83,6 +83,37 @@ func (r *Runtime) ingestDeps() services.IngestDeps {
 		},
 		Initialize: func(ctx context.Context) error { return r.kernel.Initialize(ctx) },
 		Metadata:   func() *storage.Store { return r.metadataStore },
+		// 正文为空或 generate_from_chat 时由摘要服务生成；初始化后重新取服务表，
+		// 避免拿到装配期尚未接入摘要导入器的实例
+		Summarize: func(ctx context.Context, params map[string]any) (map[string]any, error) {
+			if err := r.kernel.Initialize(ctx); err != nil {
+				return nil, err
+			}
+			service := r.kernel.Services().Summary
+			if service == nil {
+				return nil, fmt.Errorf("聊天摘要生成服务未初始化")
+			}
+			summaryParams := memruntime.SummarizeChatStreamParams{
+				ContextLength: memruntime.OptionalInt(params["context_length"]),
+			}
+			if value, exists := params["chat_id"]; exists && value != nil {
+				summaryParams.ChatID = memruntime.PyStr(value)
+			}
+			// ingest_summary 传入的是 *float64，其余调用方给原始数值
+			if value, ok := params["time_end"].(*float64); ok {
+				summaryParams.TimeEnd = value
+			} else {
+				summaryParams.TimeEnd = memruntime.OptionalFloat(params["time_end"])
+			}
+			if value, exists := params["include_personality"]; exists && value != nil {
+				include := memruntime.PyTruthy(value)
+				summaryParams.IncludePersonality = &include
+			}
+			if metadata, ok := params["metadata"].(map[string]any); ok {
+				summaryParams.Metadata = metadata
+			}
+			return service.SummarizeChatStream(ctx, summaryParams)
+		},
 		// Episode 物化：后台循环按来源重建，缺这三项会每轮报 generation_hash 为空
 		GenerationSignature: r.episodeGenerationSignature,
 		GenerationHash:      r.episodeGenerationHash,

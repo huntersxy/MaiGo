@@ -24,9 +24,9 @@ type ExtractedFact struct {
 	EvidenceQuote     string
 }
 
-// ExtractFactsFromReply 从用户证据与机器人回复中提取稳定事实；MAIBOT_PERSON_LLM 关闭时返回 nil
+// ExtractFactsFromReply 从用户证据与机器人回复中提取稳定事实
 func (ex *FactExtractor) ExtractFactsFromReply(ctx context.Context, personName, replyText, userEvidenceText string) ([]ExtractedFact, error) {
-	if ex == nil || ex.Router == nil || !PersonLLMEnabled() {
+	if ex == nil || ex.Router == nil {
 		return nil, nil
 	}
 	personName = strings.TrimSpace(personName)
@@ -70,10 +70,7 @@ func buildPersonFactExtractPrompt(personName, replyText, userEvidenceText string
 }
 
 func (ex *FactExtractor) generate(ctx context.Context, userBody string) (string, error) {
-	_, client, err := ex.Router.NewClientForTask(ctx, llm.TaskLearner)
-	if err != nil {
-		_, client, err = ex.Router.NewClientForTask(ctx, llm.TaskUtils)
-	}
+	_, client, err := ex.Router.NewClientForTask(ctx, llm.TaskUtils)
 	if err != nil {
 		return "", err
 	}
