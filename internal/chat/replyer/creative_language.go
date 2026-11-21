@@ -163,18 +163,8 @@ func expressionIntentGuidance(locale string, intent map[string]any) string {
 		templates = expressionIntentTemplates["zh-CN"]
 	}
 	var text strings.Builder
-	for _, key := range []string{"avoid", "reply_act", "focus", "tone"} {
+	for _, key := range []string{"reply_act", "focus", "tone"} {
 		value := strings.TrimSpace(stringValue(intent[key]))
-		if key == "avoid" {
-			values, _ := intent[key].([]any)
-			clauses := make([]string, 0, len(values))
-			for _, entry := range values {
-				if clause := strings.TrimSpace(stringValue(entry)); clause != "" {
-					clauses = append(clauses, clause)
-				}
-			}
-			value = strings.Join(clauses, "、")
-		}
 		if value != "" {
 			text.WriteString(strings.ReplaceAll(templates[key], "{value}", value))
 		}
