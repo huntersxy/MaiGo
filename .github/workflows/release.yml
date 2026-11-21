@@ -83,6 +83,8 @@ jobs:
 
           cp dist/maigo "$stage/maigo"
           cp -a dist/rlottie-licenses "$stage/rlottie-licenses"
+          mkdir -p "$stage/plugin-licenses/chinese_typo"
+          cp plugins/built_in/chinese_typo/{pinyin_tone3.LICENSE,typo_words.LICENSE,typo_words.NOTICE} "$stage/plugin-licenses/chinese_typo/"
           echo "$version" > "$stage/VERSION"
           echo "${GITHUB_SHA}" > "$stage/COMMIT"
 

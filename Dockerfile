@@ -70,6 +70,7 @@ RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
 WORKDIR /app
 COPY --chown=maibot:maibot --from=build /out/maigo /app/maigo
 COPY --from=build /usr/local/share/licenses/rlottie /usr/share/licenses/rlottie
+COPY plugins/built_in/chinese_typo/*.LICENSE plugins/built_in/chinese_typo/*.NOTICE /usr/share/licenses/maigo/chinese_typo/
 COPY --chown=maibot:maibot --from=dashboard /out/maibot_dashboard/dist /app/dashboard/dist
 # Python Runner 独立 venv；MAIBOT_PLUGIN_SPAWN=1 时直接用它拉起原版 runner_main
 COPY --chown=maibot:maibot --from=plugin-runtime /runner /app/plugin-runtime

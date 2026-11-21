@@ -8,6 +8,7 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 
 	"MaiGo/internal/platform_io"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // HasEnabledNonNativePythonPlugins 扫描插件目录：存在启用中的非原生社区插件则需保留 Runner
@@ -38,7 +39,7 @@ func (h *Host) HasEnabledNonNativePythonPlugins() bool {
 			if !ok {
 				continue
 			}
-			if IsNativeAdapter(pluginID) || platformio.DefaultNativeRuntime().IsRegistered(pluginID) {
+			if pluginID == chinesetypo.PluginID || IsNativeAdapter(pluginID) || platformio.DefaultNativeRuntime().IsRegistered(pluginID) {
 				continue
 			}
 			configPath := ResolvePluginConfigPath(pluginPath)

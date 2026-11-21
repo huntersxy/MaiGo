@@ -11,6 +11,7 @@ import (
 
 	"MaiGo/internal/plugin_runtime/capabilities"
 	"MaiGo/internal/plugin_runtime/protocol"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 func decodePayload[T any](payload map[string]any) (T, error) {
@@ -150,6 +151,9 @@ func (s *RPCServer) handleRegisterPlugin(ctx context.Context, env protocol.Envel
 	if pluginID == "" {
 		return env.MakeErrorResponse(string(protocol.ErrorCodeBadPayload), "plugin_id 不能为空", nil)
 	}
+	if pluginID == chinesetypo.PluginID {
+		return env.MakeErrorResponse(string(protocol.ErrorCodeMethodNotAllowed), "麦麦小工具由进程内 Go 插件管理", nil)
+	}
 	buttons, err := NormalizeDesktopPetButtons(reg.DesktopPetButtons, reg.ConfigError)
 	if err != nil {
 		return env.MakeErrorResponse(string(protocol.ErrorCodeBadPayload), err.Error(), map[string]any{
@@ -236,6 +240,9 @@ func (s *RPCServer) handleUnregisterPlugin(env protocol.Envelope) protocol.Envel
 	pluginID := strings.TrimSpace(req.PluginID)
 	if pluginID == "" {
 		return env.MakeErrorResponse(string(protocol.ErrorCodeBadPayload), "plugin_id 不能为空", nil)
+	}
+	if pluginID == chinesetypo.PluginID {
+		return env.MakeErrorResponse(string(protocol.ErrorCodeMethodNotAllowed), "麦麦小工具由进程内 Go 插件管理", nil)
 	}
 	removedAPIs := 0
 	if registry := s.host.APIRegistry(); registry != nil {

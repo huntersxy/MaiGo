@@ -10,6 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	pluginruntime "MaiGo/internal/plugin_runtime"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // pluginConfigSnapshot 汇总运行时 inspect 结果，字段对齐 InspectPluginConfigResultPayload
@@ -246,27 +247,27 @@ func (d Deps) handlePluginConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + err.Error()})
 		return
 	}
-if err := writePluginConfigText(paths.configPath, string(encoded)); err != nil {
-			writePluginRouteFailure(w, err)
+	if err := writePluginConfigText(paths.configPath, string(encoded)); err != nil {
+		writePluginRouteFailure(w, err)
+		return
+	}
+	runtimeStatus := "stopped"
+	if d.PluginHost != nil {
+		status, syncErr := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID)
+		if syncErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + syncErr.Error()})
 			return
 		}
-		runtimeStatus := "stopped"
-		if d.PluginHost != nil {
-			status, syncErr := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID)
-			if syncErr != nil {
-				httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{"detail": "服务器错误: " + syncErr.Error()})
-				return
-			}
-			runtimeStatus = status
-		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"success":        true,
-			"message":        "配置已保存",
-			"runtime_status": runtimeStatus,
-			"note":           pluginConfigStatusNote(runtimeStatus),
-			"config":         configData,
-		})
+		runtimeStatus = status
 	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"success":        true,
+		"message":        "配置已保存",
+		"runtime_status": runtimeStatus,
+		"note":           pluginConfigStatusNote(runtimeStatus),
+		"config":         configData,
+	})
+}
 
 // handlePluginConfigReset 对齐 POST /plugins/config/{plugin_id}/reset
 func (d Deps) handlePluginConfigReset(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +286,12 @@ func (d Deps) handlePluginConfigReset(w http.ResponseWriter, r *http.Request) {
 		writePluginRouteFailure(w, err)
 		return
 	}
+	if pluginID == chinesetypo.PluginID && d.PluginHost != nil {
+		if _, err := d.PluginHost.ApplyPluginConfig(r.Context(), pluginID); err != nil {
+			writePluginRouteFailure(w, err)
+			return
+		}
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"message": "配置已重置，运行时将自动刷新为默认配置",
@@ -300,21 +307,23 @@ func (d Deps) handlePluginConfigToggle(w http.ResponseWriter, r *http.Request) {
 		writePluginRouteFailure(w, err)
 		return
 	}
-rawConfig, err := readPluginConfigText(paths.configPath)
-		if err != nil {
-			writePluginRouteFailure(w, err)
-			return
-		}
-		var currentEnabled bool
-		if pluginruntime.IsNativeAdapter(pluginID) {
-			currentEnabled, err = readNativePluginEnabledValue(rawConfig)
-		} else {
-			currentEnabled, err = readPluginEnabledValue(rawConfig)
-		}
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
-			return
-		}
+	rawConfig, err := readPluginConfigText(paths.configPath)
+	if err != nil {
+		writePluginRouteFailure(w, err)
+		return
+	}
+	var currentEnabled bool
+	if pluginID == chinesetypo.PluginID {
+		currentEnabled, err = readBuiltinTypoEnabled(rawConfig)
+	} else if pluginruntime.IsNativeAdapter(pluginID) {
+		currentEnabled, err = readNativePluginEnabledValue(rawConfig)
+	} else {
+		currentEnabled, err = readPluginEnabledValue(rawConfig)
+	}
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
+		return
+	}
 	newEnabled := !currentEnabled
 	if err := writePluginConfigText(paths.configPath, setPluginEnabledText(rawConfig, newEnabled)); err != nil {
 		writePluginRouteFailure(w, err)

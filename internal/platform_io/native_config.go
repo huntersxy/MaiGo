@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,7 +67,16 @@ func normalizeNativeField(value any, field map[string]any) (any, error) {
 			return s, nil
 		}
 		return nil, fmt.Errorf("必须为字符串")
+	case "select":
+		choices, _ := field["choices"].([]any)
+		if text, ok := value.(string); ok && slices.Contains(choices, any(text)) {
+			return text, nil
+		}
+		return nil, fmt.Errorf("必须为以下选项之一：%v", choices)
 	case "array":
+		if field["item_type"] == "object" {
+			return normalizeNativeObjectArray(value, field["item_fields"].(map[string]any))
+		}
 		switch values := value.(type) {
 		case []string:
 			return append([]string{}, values...), nil
@@ -102,6 +112,43 @@ func normalizeNativeField(value any, field map[string]any) (any, error) {
 		return number, nil
 	}
 	return nil, fmt.Errorf("未知的配置字段类型")
+}
+
+func normalizeNativeObjectArray(value any, fields map[string]any) ([]map[string]any, error) {
+	var entries []map[string]any
+	switch input := value.(type) {
+	case []map[string]any:
+		entries = input
+	case []any:
+		entries = make([]map[string]any, len(input))
+		for i, item := range input {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("第 %d 项必须为对象", i+1)
+			}
+			entries[i] = entry
+		}
+	default:
+		return nil, fmt.Errorf("必须为列表")
+	}
+	out := make([]map[string]any, len(entries))
+	for i, entry := range entries {
+		item := make(map[string]any, len(fields))
+		for name, rawField := range fields {
+			field := rawField.(map[string]any)
+			value, present := entry[name]
+			if !present {
+				value = field["default"]
+			}
+			v, err := normalizeNativeField(value, field)
+			if err != nil {
+				return nil, fmt.Errorf("第 %d 项.%s: %w", i+1, name, err)
+			}
+			item[name] = v
+		}
+		out[i] = item
+	}
+	return out, nil
 }
 
 // ParseNativeConfigBool 对齐 SDK Pydantic bool 字段的转换。

@@ -44,10 +44,11 @@ var (
 // mu 保护 freq/total/logTotal：词典是进程级共享对象，用户词典加载会写入，
 // 而分词在多个请求 goroutine 上并发读，Python 靠 GIL 保证一致，Go 必须显式加锁。
 type Dictionary struct {
-	mu       sync.RWMutex
-	freq     map[string]float64
-	total    float64
-	logTotal float64
+	mu            sync.RWMutex
+	freq          map[string]float64
+	baseOverrides map[string]float64
+	total         float64
+	logTotal      float64
 }
 
 // NewDictionary 从 jieba dict.txt 结构（每行 词语 频次 [词性]）加载词典
@@ -145,6 +146,12 @@ func (d *Dictionary) AddWord(word string, freq *float64) error {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.baseOverrides == nil {
+		d.baseOverrides = make(map[string]float64)
+	}
+	if _, replaced := d.baseOverrides[word]; !replaced {
+		d.baseOverrides[word] = d.freq[word]
+	}
 
 	value := 0.0
 	if freq != nil {

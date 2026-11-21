@@ -1,0 +1,597 @@
+{
+  "plugin_id": "builtin.chinese-typo",
+  "plugin_info": {
+    "name": "麦麦小工具",
+    "version": "1.0.0",
+    "description": "麦麦的一些小巧思拟人化功能",
+    "author": "MaiBot团队"
+  },
+  "sections": {
+    "plugin": {
+      "name": "plugin",
+      "title": "插件",
+      "description": "",
+      "icon": null,
+      "collapsed": false,
+      "order": 0,
+      "fields": {
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true,
+          "description": "启用麦麦小工具",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "enabled",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 0,
+          "input_type": null,
+          "ui_type": "switch",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null
+        },
+        "config_version": {
+          "name": "config_version",
+          "type": "string",
+          "default": "1.0.0",
+          "description": "插件配置版本",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "config_version",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 1,
+          "input_type": null,
+          "ui_type": "text",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null
+        }
+      }
+    },
+    "typo": {
+      "name": "typo",
+      "title": "错别字生成",
+      "description": "设置错别字生成方式、概率和纠正消息。",
+      "icon": null,
+      "collapsed": false,
+      "order": 0,
+      "fields": {
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true,
+          "description": "关闭后回复不会再生成错别字。",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "启用错别字生成",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 0,
+          "input_type": null,
+          "ui_type": "switch",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "启用错别字生成"
+            },
+            "en_US": {
+              "label": "Enable typo generation"
+            },
+            "ja_JP": {
+              "label": "誤字生成を有効化"
+            }
+          }
+        },
+        "mode": {
+          "name": "mode",
+          "type": "select",
+          "default": "rule",
+          "description": "规则模式按拼音和字频生成错字，词库模式只使用内置的易混词对。",
+          "required": false,
+          "choices": [
+            "rule",
+            "dictionary"
+          ],
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "错别字生成模式",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 1,
+          "input_type": null,
+          "ui_type": "select",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "错别字生成模式",
+              "choice:rule": "规则模式",
+              "choice:dictionary": "词库模式"
+            },
+            "en_US": {
+              "label": "Typo generation mode",
+              "choice:rule": "Rule mode",
+              "choice:dictionary": "Dictionary mode"
+            },
+            "ja_JP": {
+              "label": "誤字生成モード",
+              "choice:rule": "ルールモード",
+              "choice:dictionary": "辞書モード"
+            }
+          }
+        },
+        "dictionary_probability": {
+          "name": "dictionary_probability",
+          "type": "number",
+          "default": 0.1,
+          "description": "仅词库模式使用。命中词库时，每次回复最多替换一处。",
+          "required": false,
+          "choices": null,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "pattern": null,
+          "max_length": null,
+          "label": "词库模式每次回复的错字概率",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 2,
+          "input_type": null,
+          "ui_type": "slider",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "词库模式每次回复的错字概率"
+            },
+            "en_US": {
+              "label": "Dictionary typo chance per reply"
+            },
+            "ja_JP": {
+              "label": "辞書モードの返信ごとの誤字確率"
+            }
+          }
+        },
+        "enable_correction_quote": {
+          "name": "enable_correction_quote",
+          "type": "boolean",
+          "default": true,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "错别字纠正时引用原消息",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 3,
+          "input_type": null,
+          "ui_type": "switch",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "错别字纠正时引用原消息"
+            },
+            "en_US": {
+              "label": "Quote typo message when correcting"
+            },
+            "ja_JP": {
+              "label": "誤字訂正時に元メッセージを引用"
+            }
+          }
+        },
+        "correction_quote_probability": {
+          "name": "correction_quote_probability",
+          "type": "number",
+          "default": 1.0,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "pattern": null,
+          "max_length": null,
+          "label": "错别字纠正引用概率",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 4,
+          "input_type": null,
+          "ui_type": "slider",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "错别字纠正引用概率"
+            },
+            "en_US": {
+              "label": "Typo correction quote chance"
+            },
+            "ja_JP": {
+              "label": "誤字訂正の引用確率"
+            }
+          }
+        },
+        "error_rate": {
+          "name": "error_rate",
+          "type": "number",
+          "default": 0.01,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "pattern": null,
+          "max_length": null,
+          "label": "单字错字概率",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 5,
+          "input_type": null,
+          "ui_type": "slider",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "单字错字概率"
+            },
+            "en_US": {
+              "label": "Single-character typo chance"
+            },
+            "ja_JP": {
+              "label": "単字誤字確率"
+            }
+          }
+        },
+        "min_freq": {
+          "name": "min_freq",
+          "type": "integer",
+          "default": 9,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "最小字频",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 6,
+          "input_type": null,
+          "ui_type": "input",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "最小字频"
+            },
+            "en_US": {
+              "label": "Minimum character frequency"
+            },
+            "ja_JP": {
+              "label": "最小文字頻度"
+            }
+          }
+        },
+        "tone_error_rate": {
+          "name": "tone_error_rate",
+          "type": "number",
+          "default": 0.1,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.1,
+          "pattern": null,
+          "max_length": null,
+          "label": "声调错字概率",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 7,
+          "input_type": null,
+          "ui_type": "slider",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "声调错字概率"
+            },
+            "en_US": {
+              "label": "Tone typo chance"
+            },
+            "ja_JP": {
+              "label": "声調誤字確率"
+            }
+          }
+        },
+        "word_replace_rate": {
+          "name": "word_replace_rate",
+          "type": "number",
+          "default": 0.006,
+          "description": "",
+          "required": false,
+          "choices": null,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.001,
+          "pattern": null,
+          "max_length": null,
+          "label": "整词替换概率",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 8,
+          "input_type": null,
+          "ui_type": "slider",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "整词替换概率"
+            },
+            "en_US": {
+              "label": "Word replacement chance"
+            },
+            "ja_JP": {
+              "label": "単語置換確率"
+            }
+          }
+        }
+      }
+    },
+    "keyword_reaction": {
+      "name": "keyword_reaction",
+      "title": "关键词反应",
+      "description": "最新消息命中规则时，给麦麦追加固定的反应提示。",
+      "icon": null,
+      "collapsed": false,
+      "order": 0,
+      "fields": {
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "default": true,
+          "description": "关闭后不再匹配关键词规则。",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "启用关键词反应",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 0,
+          "input_type": null,
+          "ui_type": "switch",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": null,
+          "item_fields": null,
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "启用关键词反应"
+            },
+            "en_US": {
+              "label": "Enable keyword reactions"
+            },
+            "ja_JP": {
+              "label": "キーワード反応を有効化"
+            }
+          }
+        },
+        "rules": {
+          "name": "rules",
+          "type": "array",
+          "default": [],
+          "description": "命中后追加到回复要求里的提示规则，按顺序匹配，可同时命中多条。",
+          "required": false,
+          "choices": null,
+          "min": null,
+          "max": null,
+          "step": null,
+          "pattern": null,
+          "max_length": null,
+          "label": "规则",
+          "placeholder": null,
+          "hint": null,
+          "icon": null,
+          "hidden": false,
+          "disabled": false,
+          "order": 1,
+          "input_type": null,
+          "ui_type": "list",
+          "rows": 3,
+          "group": null,
+          "depends_on": null,
+          "depends_value": null,
+          "item_type": "object",
+          "item_fields": {
+            "keywords": {
+              "type": "array",
+              "label": "关键词",
+              "placeholder": "",
+              "default": []
+            },
+            "regex": {
+              "type": "array",
+              "label": "正则表达式",
+              "placeholder": "",
+              "default": []
+            },
+            "reaction": {
+              "type": "string",
+              "label": "反应提示",
+              "placeholder": "",
+              "default": ""
+            }
+          },
+          "min_items": null,
+          "max_items": null,
+          "example": null,
+          "i18n": {
+            "zh_CN": {
+              "label": "规则"
+            },
+            "en_US": {
+              "label": "Rules"
+            },
+            "ja_JP": {
+              "label": "ルール"
+            }
+          }
+        }
+      }
+    }
+  },
+  "layout": {
+    "type": "auto",
+    "tabs": []
+  }
+}

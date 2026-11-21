@@ -51,6 +51,10 @@ func normalizeComponentType(raw string) (string, error) {
 // 语义对齐 component_registry.register_plugin_components：先校验全部声明，任一不合法则整体失败且不改动
 // 既有订阅；全部通过后整体替换该插件的 Hook 订阅、事件处理器与通用组件索引（重复注册不会残留旧条目）。
 func (h *Host) ApplyPluginComponents(rec PluginRecord, comps []protocol.ComponentDeclaration) (int, error) {
+	return h.applyPluginComponents(rec, comps, nil)
+}
+
+func (h *Host) applyPluginComponents(rec PluginRecord, comps []protocol.ComponentDeclaration, handlers map[string]hooks.HandlerFunc) (int, error) {
 	if h == nil || h.hooks == nil || h.components == nil {
 		return 0, fmt.Errorf("Host 未初始化")
 	}
@@ -69,6 +73,9 @@ func (h *Host) ApplyPluginComponents(rec PluginRecord, comps []protocol.Componen
 	subs, err := h.buildHookSubscriptions(rec, normalized)
 	if err != nil {
 		return 0, err
+	}
+	for i := range subs {
+		subs[i].Handler = handlers[subs[i].HandlerName]
 	}
 	events, err := h.buildEventHandlers(rec, normalized)
 	if err != nil {

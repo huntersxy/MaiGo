@@ -3,10 +3,12 @@ package host
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"MaiGo/internal/plugin_runtime/protocol"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // pluginBatchTimeoutMS 批量插件操作超时；MaiBot 使用 max(runner_spawn_timeout*1000, 10000)
@@ -61,6 +63,27 @@ func (h *Host) ReloadPlugins(ctx context.Context, pluginIDs []string, reason str
 		h.applyPluginRecoveryResult(reloaded)
 		h.rememberReloadStatuses(reloaded)
 		return reloaded, nil
+	}
+	if index := slices.Index(ids, chinesetypo.PluginID); index >= 0 {
+		native, err := h.ReloadPlugins(ctx, []string{chinesetypo.PluginID}, reason, nil)
+		if err != nil {
+			return ReloadPluginsResult{}, err
+		}
+		remaining := slices.Delete(slices.Clone(ids), index, index+1)
+		others, err := h.ReloadPlugins(ctx, remaining, reason, externalAvailablePlugins)
+		if err != nil {
+			others.FailedPlugins = make(map[string]string, len(remaining))
+			for _, id := range remaining {
+				others.FailedPlugins[id] = err.Error()
+			}
+		}
+		return ReloadPluginsResult{
+			Success: native.Success && others.Success, RequestedPluginIDs: ids,
+			ReloadedPlugins: append(native.ReloadedPlugins, others.ReloadedPlugins...), UnloadedPlugins: others.UnloadedPlugins,
+			InactivePlugins:           append(native.InactivePlugins, others.InactivePlugins...),
+			ExplicitlyDisabledPlugins: append(native.ExplicitlyDisabledPlugins, others.ExplicitlyDisabledPlugins...),
+			FailedPlugins:             mergeBlockedReasons(native.FailedPlugins, others.FailedPlugins),
+		}, nil
 	}
 
 	resp, err := h.sendRunnerPayloadRequest(ctx, protocol.MethodPluginReloadBatch, ids, reason, externalAvailablePlugins, pluginBatchTimeoutMS)
@@ -130,6 +153,27 @@ func (h *Host) RecoverPlugins(ctx context.Context, pluginIDs []string, reason st
 // UnloadPlugins 批量卸载插件，对齐 supervisor.unload_plugins。
 func (h *Host) UnloadPlugins(ctx context.Context, pluginIDs []string, reason string) (UnloadPluginsResult, error) {
 	ids := normalizePluginIDs(pluginIDs)
+	if index := slices.Index(ids, chinesetypo.PluginID); index >= 0 {
+		h.pluginFileUpdateMu.Lock()
+		h.stopBuiltinTypoLocked()
+		h.pluginFileUpdateMu.Unlock()
+		native := UnloadPluginsResult{Success: true, RequestedPluginIDs: ids, UnloadedPlugins: []string{chinesetypo.PluginID}, FailedPlugins: map[string]string{}}
+		if len(ids) > 1 {
+			remaining := slices.Delete(slices.Clone(ids), index, index+1)
+			others, err := h.UnloadPlugins(ctx, remaining, reason)
+			if err != nil {
+				for _, id := range remaining {
+					native.FailedPlugins[id] = err.Error()
+				}
+			}
+			native.Success = others.Success
+			native.UnloadedPlugins = append(native.UnloadedPlugins, others.UnloadedPlugins...)
+			for id, failure := range others.FailedPlugins {
+				native.FailedPlugins[id] = failure
+			}
+		}
+		return native, nil
+	}
 	if strings.TrimSpace(reason) == "" {
 		reason = "manual"
 	}

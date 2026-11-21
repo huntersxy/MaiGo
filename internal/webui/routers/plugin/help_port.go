@@ -5,7 +5,6 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -99,26 +98,27 @@ func (d Deps) aiSearchInstalledPlugins(ctx context.Context) (map[string]any, err
 		statuses = d.PluginHost.PluginLoadStatuses()
 		failures = d.PluginHost.PluginLoadFailureReasons()
 	}
+	seen := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {
 		if strings.HasPrefix(candidate.name, ".") || strings.HasPrefix(candidate.name, "__") || candidate.name == "data" {
 			continue
 		}
-		pluginPath := candidate.path
-		manifest, err := pluginmarket.LoadManifestJSON(filepath.Join(pluginPath, "_manifest.json"))
+		manifest, err := candidate.loadManifest()
 		if err != nil || manifest == nil {
 			continue
 		}
-id := strings.TrimSpace(stringFromAny(manifest["id"]))
-			if id == "" {
-				continue
-			}
-			var enabled bool
-			if pluginruntime.IsNativeAdapter(id) {
-				enabled, _ = readNativePluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
-			} else {
-				enabled, _ = readPluginEnabled(pluginruntime.ResolvePluginConfigPath(pluginPath))
-			}
-			status := statuses[id]
+		id := strings.TrimSpace(stringFromAny(manifest["id"]))
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		var enabled bool
+		if pluginruntime.IsNativeAdapter(id) {
+			enabled, _ = readNativePluginEnabled(d.pluginCandidateConfigPath(candidate, id))
+		} else {
+			enabled, _ = readPluginEnabled(d.pluginCandidateConfigPath(candidate, id))
+		}
+		status := statuses[id]
 		if status == "" && d.PluginHost == nil {
 			status = "success"
 		}

@@ -7,6 +7,7 @@ import (
 
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_runtime/protocol"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // ApplyRunnerReady 记录 runner.ready 上报的装载状态，并结算使用时长
@@ -118,7 +119,9 @@ func (h *Host) LoadedPluginVersions() map[string]string {
 	}
 	out := make(map[string]string, len(h.plugins))
 	for pluginID, rec := range h.plugins {
-		if _, ok := loaded[pluginID]; ok && rec.ConfigError == "" {
+		_, runnerLoaded := loaded[pluginID]
+		nativeLoaded := pluginID == chinesetypo.PluginID && h.chineseTypo.Load() != nil
+		if (runnerLoaded || nativeLoaded) && rec.ConfigError == "" {
 			out[pluginID] = rec.PluginVersion
 		}
 	}
@@ -333,7 +336,7 @@ func (h *Host) pluginLoadStatusesLocked() map[string]string {
 				statuses[pluginID] = status
 				continue
 			}
-			if platformio.DefaultNativeRuntime().IsStarted(pluginID) {
+			if (pluginID == chinesetypo.PluginID && h.chineseTypo.Load() != nil) || platformio.DefaultNativeRuntime().IsStarted(pluginID) {
 				statuses[pluginID] = "success"
 				continue
 			}
