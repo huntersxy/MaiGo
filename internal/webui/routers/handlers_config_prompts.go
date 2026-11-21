@@ -2,19 +2,22 @@ package webuiapi
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"MaiGo/internal/chat/replyer"
 	"MaiGo/internal/prompt"
 
 	"github.com/bytedance/sonic"
+	"github.com/google/uuid"
 )
 
 type promptUpdateRequest struct {
@@ -30,7 +33,7 @@ func (d Deps) handleConfigPromptBlocks(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	resourcePath, err := resolvePromptResourcePath(d.promptResource(), language, "reply_group_system")
+	_, resourcePath, err := d.resolveDefaultPrompt(language, "reply_group_system")
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -48,44 +51,155 @@ func (d Deps) handleConfigPromptBlocks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reply_guidance": replyer.ReplyGuidance(language, isGroup)})
 }
 
-// handleConfigPromptsList 对应 GET /api/webui/config/prompts
-func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
-	root := d.promptResource()
-	entries, err := fs.ReadDir(root, ".")
+func defaultPromptRelativePath(resourcePath string) (string, error) {
+	relative, err := filepath.Localize(resourcePath)
+	if err != nil || relative == "." || !strings.HasSuffix(relative, ".prompt") {
+		return "", errors.New("无效的默认 Prompt 路径")
+	}
+	return relative, nil
+}
+
+func (d Deps) readDefaultPrompt(resource fs.FS, resourcePath string) ([]byte, fs.FileInfo, error) {
+	relative, err := defaultPromptRelativePath(resourcePath)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "列出 Prompt 文件失败: " + err.Error()})
+		return nil, nil, err
+	}
+	root, err := os.OpenRoot(prompt.DefaultPromptsRoot(d.desktopPetRoot()))
+	if err == nil {
+		defer root.Close()
+		if info, err := root.Stat(relative); err == nil {
+			content, readErr := root.ReadFile(relative)
+			return content, info, readErr
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, err
+	}
+	content, err := fs.ReadFile(resource, resourcePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := fs.Stat(resource, resourcePath)
+	return content, info, err
+}
+
+func (d Deps) handleConfigPromptDefaultUpdate(w http.ResponseWriter, r *http.Request) {
+	payload, status, err := d.loadPromptFile(chiURLParam(r, "language"), chiURLParam(r, "filename"))
+	if err != nil {
+		writeJSON(w, status, map[string]any{"detail": err.Error()})
 		return
 	}
-	languageDirs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			languageDirs = append(languageDirs, entry.Name())
-		}
+	var request struct {
+		Content *string `json:"content"`
 	}
-	sort.Strings(languageDirs)
-	customRoot, _ := d.customPromptsRoot()
-	languages := make([]string, 0, len(languageDirs))
-	files := make(map[string]any, len(languageDirs))
-	for _, language := range languageDirs {
-		promptFiles, err := walkPromptFiles(root, language)
+	if err := sonic.Unmarshal(readBody(r), &request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
+		return
+	}
+	if request.Content == nil {
+		writeValidationError(w, "缺少 content")
+		return
+	}
+	content := *request.Content
+	validation := buildPromptValidation(payload.defaultText, content)
+	if !validation.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": validation.Message})
+		return
+	}
+	if err := d.writeDefaultPrompt(payload.path, content); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "保存默认 Prompt 文件失败: "+err.Error())
+		return
+	}
+	payload.defaultText = content
+	payload.effective = content
+	payload.customized = false
+	response, err := d.promptFileResponse(payload, "")
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (d Deps) writeDefaultPrompt(resourcePath, content string) error {
+	relative, err := defaultPromptRelativePath(resourcePath)
+	if err != nil {
+		return err
+	}
+	rootDir := prompt.DefaultPromptsRoot(d.desktopPetRoot())
+	if err := os.MkdirAll(rootDir, 0o755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	directory := filepath.Dir(relative)
+	if err := root.MkdirAll(directory, 0o755); err != nil {
+		return err
+	}
+	temp := filepath.Join(directory, fmt.Sprintf(".prompt-%s.tmp", uuid.NewString()))
+	file, err := root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(temp)
+	_, writeErr := file.WriteString(content)
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		return err
+	}
+	return root.Rename(temp, relative)
+}
+
+// handleConfigPromptsList 对应 GET /api/webui/config/prompts
+func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
+	type resourcePrompt struct {
+		promptFileEntry
+		resource fs.FS
+	}
+	byLanguage := map[string]map[string]resourcePrompt{}
+	for _, resource := range d.promptResources() {
+		entries, err := fs.ReadDir(resource, ".")
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "列出 Prompt 文件失败: " + err.Error()})
 			return
 		}
+		for _, entry := range entries {
+			language := entry.Name()
+			locale, err := prompt.NormalizeLocale(language)
+			if !entry.IsDir() || err != nil || locale != language {
+				continue
+			}
+			promptFiles, err := walkPromptFiles(resource, language)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "列出 Prompt 文件失败: " + err.Error()})
+				return
+			}
+			if byLanguage[language] == nil {
+				byLanguage[language] = map[string]resourcePrompt{}
+			}
+			for _, file := range promptFiles {
+				byLanguage[language][path.Base(file.Path)] = resourcePrompt{file, resource}
+			}
+		}
+	}
+	languages := slices.Sorted(maps.Keys(byLanguage))
+	customRoot, _ := d.customPromptsRoot()
+	files := make(map[string]any, len(languages))
+	for _, language := range languages {
+		promptFiles := byLanguage[language]
 		infos := make([]any, 0, len(promptFiles))
-		for _, file := range promptFiles {
-			name := path.Base(file.Path)
+		for _, name := range slices.Sorted(maps.Keys(promptFiles)) {
+			file := promptFiles[name]
 			defaultPath := file.Path
 			customPath, err := safePromptPath(customRoot, language, name)
 			if err != nil {
 				continue
 			}
 			customized := pathExists(customPath)
-			stat, err := fs.Stat(root, defaultPath)
-			if err != nil {
-				continue
-			}
-			defaultContent, err := fs.ReadFile(root, defaultPath)
+			defaultContent, stat, err := d.readDefaultPrompt(file.resource, defaultPath)
 			if err != nil {
 				continue
 			}
@@ -99,7 +213,7 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				versions = nil
 			}
-			meta := prompt.ReadTemplateMetadata(root, defaultPath)
+			meta := prompt.ReadTemplateMetadata(file.resource, defaultPath)
 			kind := "main"
 			if isInstructionPromptCategory(file.Category) {
 				kind = "instruction"
@@ -118,7 +232,6 @@ func (d Deps) handleConfigPromptsList(w http.ResponseWriter, r *http.Request) {
 				"validation": buildPromptValidation(string(defaultContent), string(effectiveContent)),
 			})
 		}
-		languages = append(languages, language)
 		files[language] = infos
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "languages": languages, "files": files})
@@ -151,15 +264,14 @@ func (d Deps) loadPromptFile(language, filename string) (*promptFilePayload, int
 	}
 	customRoot, _ := d.customPromptsRoot()
 	builtinName := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt"))
-	resource := d.promptResource()
-	resourcePath, err := resolvePromptResourcePath(resource, strings.TrimSpace(language), builtinName)
+	resource, resourcePath, err := d.resolveDefaultPrompt(language, builtinName)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 	if resourcePath == "" {
 		return nil, http.StatusNotFound, errors.New("Prompt 文件不存在")
 	}
-	defaultRaw, err := fs.ReadFile(resource, resourcePath)
+	defaultRaw, _, err := d.readDefaultPrompt(resource, resourcePath)
 	if err != nil {
 		return nil, http.StatusNotFound, errors.New("Prompt 文件不存在")
 	}
@@ -249,7 +361,7 @@ func (d Deps) handleConfigPromptVersions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	builtinName := prompt.CanonicalPromptName(strings.TrimSuffix(strings.TrimSpace(filename), ".prompt"))
-	resourcePath, err := resolvePromptResourcePath(d.promptResource(), strings.TrimSpace(language), builtinName)
+	_, resourcePath, err := d.resolveDefaultPrompt(language, builtinName)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": err.Error()})
 		return
@@ -345,8 +457,9 @@ func (d Deps) handleConfigPromptVersionActivate(w http.ResponseWriter, r *http.R
 		writeJSON(w, status, map[string]any{"detail": err.Error()})
 		return
 	}
-	if _, err := ensurePromptParametersMatch(d.promptResource(), payload.path, content); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
+	validation := buildPromptValidation(payload.defaultText, content)
+	if !validation.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": validation.Message})
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(payload.customPath), 0o755); err != nil {
@@ -472,8 +585,9 @@ func (d Deps) handleConfigPromptUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请求体不是合法 JSON: " + err.Error()})
 		return
 	}
-	if _, err := ensurePromptParametersMatch(d.promptResource(), payload.path, request.Content); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": err.Error()})
+	validation := buildPromptValidation(payload.defaultText, request.Content)
+	if !validation.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": validation.Message})
 		return
 	}
 	versionID := ""

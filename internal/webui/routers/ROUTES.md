@@ -92,7 +92,7 @@ Python 的 `@router.get("")` / `@router.post("")` 生成的是无尾斜杠路径
 | GET/POST | `/bot/raw` | **done**（bot_config.toml 原文读写；非法 TOML 400） |
 | POST | `/bot/section/{section_name}`、`/model/section/{section_name}` | **done**（节合并/替换） |
 | GET/POST/PATCH/DELETE | `/model/versions`、`/model/versions/{version_id}`、`.../activate` | **done**（副本目录 `config/versions/model` + manifest） |
-| GET/PUT/DELETE | `/prompts`、`/prompts/{language}/{filename}`、`/default`、`/versions/*` | **done**（版本目录 `data/custom_prompts`，占位符校验） |
+| GET/PUT/DELETE | `/prompts`、`/prompts/{language}/{filename}`、`/default`、`/versions/*` | **done**（自定义版本在 `data/custom_prompts`，默认模板覆盖在 `data/prompts`，占位符校验） |
 | GET | `/prompt-blocks/{language}` | **done**（与回复生成共用的群聊／私聊指导语） |
 | GET | `/api/webui/schedules` | **done**（只读聚合真实会话日程，支持 `include_completed`） |
 | GET | `/maisaka-prompt-preview` | **done**（限 `logs/maisaka_prompt` 的 html/json/txt） |

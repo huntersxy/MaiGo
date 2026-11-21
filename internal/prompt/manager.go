@@ -22,6 +22,9 @@ type Manager struct {
 	byLocale           map[string]map[string]string
 	byLocaleCategory   map[string]map[string]string
 	byLocaleMeta       map[string]map[string]PromptMetadata
+	builtinOverride    map[string]map[string]string
+	builtinCategory    map[string]map[string]string
+	builtinMeta        map[string]map[string]PromptMetadata
 	customByLocale     map[string]map[string]string
 	customMetaByLocale map[string]map[string]PromptMetadata
 	legacyCustom       map[string]string
@@ -56,7 +59,7 @@ func NewManager() (*Manager, error) {
 		contextFunctions:  make(map[string]ContextFunc),
 		promptSaveLocales: make(map[string]string),
 	}
-	m.merged = mergeLocaleLayers(m.byLocale, m.locale)
+	m.merged = mergeWithCustom(m.byLocale, m.builtinOverride, nil, nil, m.locale)
 	return m, nil
 }
 
@@ -69,7 +72,7 @@ func (m *Manager) SetLocale(locale string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.locale = normalized
-	m.merged = mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, normalized)
+	m.merged = mergeWithCustom(m.byLocale, m.builtinOverride, m.customByLocale, m.legacyCustom, normalized)
 	m.applyRegisteredLocked()
 	return nil
 }
@@ -120,7 +123,7 @@ func (m *Manager) RenderLocale(locale, name string, vars map[string]string) (str
 	}
 	m.ensureFresh()
 	m.mu.RLock()
-	merged := mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, normalized)
+	merged := mergeWithCustom(m.byLocale, m.builtinOverride, m.customByLocale, m.legacyCustom, normalized)
 	for promptName, registered := range m.prompts {
 		merged[promptName] = registered.Template()
 	}
@@ -136,7 +139,7 @@ func (m *Manager) RenderLocaleTransform(locale, name string, vars map[string]str
 	}
 	m.ensureFresh()
 	m.mu.RLock()
-	merged := mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, normalized)
+	merged := mergeWithCustom(m.byLocale, m.builtinOverride, m.customByLocale, m.legacyCustom, normalized)
 	for promptName, registered := range m.prompts {
 		merged[promptName] = registered.Template()
 	}

@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -29,15 +30,22 @@ func (d Deps) promptsRoot() (string, bool) {
 	return filepath.Join(filepath.Clean(dir), "prompts"), true
 }
 
-// promptResource 返回内置 Prompt 只读资源树
-//
-// 部署目录带 prompts/ 时按 resource_path 语义读磁盘，否则回退到编译期内嵌模板；
-// 实例目录缺失时仍能列出与编辑默认 Prompt，与 Python 的包内资源一致。
-func (d Deps) promptResource() fs.FS {
+func (d Deps) promptResources() []fs.FS {
+	resources := []fs.FS{prompt.EmbeddedFiles()}
 	if root, ok := d.promptsRoot(); ok && pathExists(root) {
-		return os.DirFS(root)
+		resources = append(resources, os.DirFS(root))
 	}
-	return prompt.EmbeddedFiles()
+	return resources
+}
+
+func (d Deps) resolveDefaultPrompt(language, name string) (fs.FS, string, error) {
+	for _, resource := range slices.Backward(d.promptResources()) {
+		found, err := resolvePromptResourcePath(resource, strings.TrimSpace(language), name)
+		if err != nil || found != "" {
+			return resource, found, err
+		}
+	}
+	return nil, "", nil
 }
 
 // customPromptsRoot 返回用户覆盖目录 data/custom_prompts
@@ -112,10 +120,10 @@ func resolvePromptResourcePath(resource fs.FS, language, name string) (string, e
 func safePromptSegment(language, filename string) error {
 	normalizedLanguage := strings.TrimSpace(language)
 	normalizedFilename := strings.TrimSpace(filename)
-	if normalizedLanguage == "" || strings.ContainsAny(normalizedLanguage, "/\\") || strings.Contains(normalizedLanguage, "..") {
+	if !filepath.IsLocal(normalizedLanguage) || normalizedLanguage == "." || strings.ContainsAny(normalizedLanguage, "/\\:") || strings.Contains(normalizedLanguage, "..") {
 		return fmt.Errorf("无效的 Prompt 语言目录")
 	}
-	if !strings.HasSuffix(normalizedFilename, ".prompt") || strings.ContainsAny(normalizedFilename, "/\\") || strings.Contains(normalizedFilename, "..") {
+	if !filepath.IsLocal(normalizedFilename) || !strings.HasSuffix(normalizedFilename, ".prompt") || strings.ContainsAny(normalizedFilename, "/\\:") || strings.Contains(normalizedFilename, "..") {
 		return fmt.Errorf("无效的 Prompt 文件名")
 	}
 	return nil
@@ -479,18 +487,6 @@ func buildPromptValidation(defaultContent, customContent string) promptValidatio
 		Valid: false, MissingPlaceholders: missing, ExtraPlaceholders: extra,
 		Message: "自定义 Prompt 参数必须与默认 Prompt 完全一致，" + strings.Join(parts, "；"),
 	}
-}
-
-func ensurePromptParametersMatch(resource fs.FS, resourcePath, customContent string) (promptValidationResult, error) {
-	raw, err := fs.ReadFile(resource, resourcePath)
-	if err != nil {
-		return promptValidationResult{}, err
-	}
-	validation := buildPromptValidation(string(raw), customContent)
-	if !validation.Valid {
-		return validation, fmt.Errorf("%s", validation.Message)
-	}
-	return validation, nil
 }
 
 func pathExists(path string) bool {

@@ -2,10 +2,12 @@ package prompt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,7 +16,8 @@ import (
 
 const (
 	// CustomPromptsDataSubdir 相对 MaiBot 实例根目录，对齐 data/custom_prompts
-	CustomPromptsDataSubdir = "data/custom_prompts"
+	CustomPromptsDataSubdir  = "data/custom_prompts"
+	DefaultPromptsDataSubdir = "data/prompts"
 )
 
 var safePromptNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
@@ -22,6 +25,10 @@ var safePromptNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 // CustomPromptsRoot 返回实例目录下的 custom_prompts 根路径
 func CustomPromptsRoot(instanceRoot string) string {
 	return filepath.Join(filepath.Clean(instanceRoot), filepath.FromSlash(CustomPromptsDataSubdir))
+}
+
+func DefaultPromptsRoot(instanceRoot string) string {
+	return filepath.Join(filepath.Clean(instanceRoot), filepath.FromSlash(DefaultPromptsDataSubdir))
 }
 
 // LoadFromDir 从 custom_prompts 目录加载覆盖层（可选；目录不存在则清空覆盖）
@@ -35,6 +42,11 @@ func (m *Manager) LoadFromDir(customRoot string) error {
 	if err != nil {
 		return err
 	}
+	builtin, builtinCategories, builtinMeta, builtinSnap, err := scanDefaultPromptLayers(customRoot)
+	if err != nil {
+		return err
+	}
+	snap = mergeModSnaps(snap, builtinSnap)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -42,12 +54,51 @@ func (m *Manager) LoadFromDir(customRoot string) error {
 	m.customMetaByLocale = newMeta
 	m.legacyCustom = newLegacy
 	m.legacyMeta = newLegacyMeta
+	m.builtinOverride = builtin
+	m.builtinCategory = builtinCategories
+	m.builtinMeta = builtinMeta
 	m.customRoot = filepath.Clean(customRoot)
 	m.customSnap = snap
-	m.merged = mergeWithCustom(m.byLocale, m.customByLocale, m.legacyCustom, m.locale)
+	m.merged = mergeWithCustom(m.byLocale, m.builtinOverride, m.customByLocale, m.legacyCustom, m.locale)
 	m.applyRegisteredLocked()
 	m.bumpCacheRevisionLocked()
 	return nil
+}
+
+func defaultPromptDirectories(customRoot string) []string {
+	root := filepath.Clean(customRoot)
+	if filepath.Base(root) != "custom_prompts" || filepath.Base(filepath.Dir(root)) != "data" {
+		return nil
+	}
+	instance := filepath.Dir(filepath.Dir(root))
+	return []string{filepath.Join(instance, "prompts"), DefaultPromptsRoot(instance)}
+}
+
+func scanDefaultPromptLayers(customRoot string) (map[string]map[string]string, map[string]map[string]string, map[string]map[string]PromptMetadata, modSnap, error) {
+	builtin := map[string]map[string]string{}
+	categories := map[string]map[string]string{}
+	metadata := map[string]map[string]PromptMetadata{}
+	var snapshot modSnap
+	for _, directory := range defaultPromptDirectories(customRoot) {
+		layer, category, meta, snap, err := scanBuiltinPromptsDir(directory)
+		if err != nil {
+			return nil, nil, nil, modSnap{}, err
+		}
+		snapshot = mergeModSnaps(snapshot, snap)
+		for locale, entries := range layer {
+			if builtin[locale] == nil {
+				builtin[locale], categories[locale], metadata[locale] = map[string]string{}, map[string]string{}, map[string]PromptMetadata{}
+			}
+			for name, value := range entries {
+				builtin[locale][name] = value
+				categories[locale][name] = category[locale][name]
+				if data := meta[locale][name]; data != (PromptMetadata{}) {
+					metadata[locale][name] = data
+				}
+			}
+		}
+	}
+	return builtin, categories, metadata, snapshot, nil
 }
 
 func scanCustomPromptsDir(customRoot string) (map[string]map[string]string, map[string]map[string]PromptMetadata, map[string]string, map[string]PromptMetadata, modSnap, error) {
@@ -110,7 +161,7 @@ func scanCustomPromptsDir(customRoot string) (map[string]map[string]string, map[
 		})
 	}
 
-	snap, snapErr := dirModSnap(root)
+	snap, snapErr := scanDirectoryModSnap(root)
 	if snapErr != nil {
 		return nil, nil, nil, nil, modSnap{}, snapErr
 	}
@@ -125,6 +176,9 @@ func readPromptFilesInDir(dir string) (map[string]string, map[string]PromptMetad
 			return walkErr
 		}
 		if entry.IsDir() {
+			if filePath != dir && entry.Name() == ".versions" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		name := entry.Name()
@@ -173,34 +227,82 @@ func readPromptFilesInDir(dir string) (map[string]string, map[string]PromptMetad
 	return out, meta, nil
 }
 
+func scanBuiltinPromptsDir(root string) (map[string]map[string]string, map[string]map[string]string, map[string]map[string]PromptMetadata, modSnap, error) {
+	root = filepath.Clean(root)
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, nil, modSnap{}, nil
+	}
+	if err != nil {
+		return nil, nil, nil, modSnap{}, err
+	}
+	byLocale := map[string]map[string]string{}
+	categories := map[string]map[string]string{}
+	metadata := map[string]map[string]PromptMetadata{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		locale, err := NormalizeLocale(entry.Name())
+		if err != nil || locale != entry.Name() {
+			continue
+		}
+		layer, layerMeta, err := readPromptFilesInDir(filepath.Join(root, locale))
+		if err != nil {
+			return nil, nil, nil, modSnap{}, err
+		}
+		byLocale[locale], categories[locale], metadata[locale] = map[string]string{}, map[string]string{}, map[string]PromptMetadata{}
+		for key, content := range layer {
+			name, category := splitTemplateKey(key)
+			if _, exists := byLocale[locale][name]; exists {
+				return nil, nil, nil, modSnap{}, fmt.Errorf("locale %q 下默认 Prompt 名称重复: %s", locale, name)
+			}
+			byLocale[locale][name] = content
+			categories[locale][name] = category
+			metadata[locale][name] = layerMeta[key]
+		}
+	}
+	snap, err := scanDirectoryModSnap(root)
+	return byLocale, categories, metadata, snap, err
+}
+
+func mergeModSnaps(left, right modSnap) modSnap {
+	if right.latest.After(left.latest) {
+		left.latest = right.latest
+	}
+	left.files += right.files
+	left.version += right.version
+	return left
+}
+
 func safePromptName(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
 	}
-	return safePromptNamePattern.MatchString(name)
+	return filepath.IsLocal(name) && safePromptNamePattern.MatchString(name)
 }
 
 func mergeWithCustom(
 	byLocale map[string]map[string]string,
+	builtinOverride map[string]map[string]string,
 	customByLocale map[string]map[string]string,
 	legacyCustom map[string]string,
 	locale string,
 ) map[string]string {
-	merged := mergeLocaleLayers(byLocale, locale)
-	if layer := customByLocale[DefaultLocale]; len(layer) > 0 {
-		for name, tpl := range layer {
+	merged := make(map[string]string)
+	for _, candidate := range slices.Backward(LocaleFallbacks(locale)) {
+		for name, tpl := range byLocale[candidate] {
 			merged[name] = tpl
 		}
-	}
-	if locale != DefaultLocale {
-		if layer := customByLocale[locale]; len(layer) > 0 {
-			for name, tpl := range layer {
-				merged[name] = tpl
-			}
+		for name, tpl := range builtinOverride[candidate] {
+			merged[name] = tpl
 		}
-	}
-	for name, tpl := range legacyCustom {
-		merged[name] = tpl
+		for name, tpl := range legacyCustom {
+			merged[name] = tpl
+		}
+		for name, tpl := range customByLocale[candidate] {
+			merged[name] = tpl
+		}
 	}
 	return merged
 }
@@ -281,28 +383,46 @@ func StartCustomOverlayWatcher(ctx context.Context, customRoot string, mgr *Mana
 }
 
 type modSnap struct {
-	latest time.Time
-	files  int
+	latest  time.Time
+	files   int
+	version int64
 }
 
 func dirModSnap(root string) (modSnap, error) {
-	info, err := os.Stat(root)
+	snap, err := scanDirectoryModSnap(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return modSnap{}, nil
+		return snap, err
+	}
+	for _, directory := range defaultPromptDirectories(root) {
+		builtin, err := scanDirectoryModSnap(directory)
+		if err != nil {
+			return snap, err
 		}
+		snap = mergeModSnaps(snap, builtin)
+	}
+	return snap, nil
+}
+
+func scanDirectoryModSnap(root string) (modSnap, error) {
+	info, err := os.Stat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return modSnap{}, nil
+	}
+	if err != nil {
 		return modSnap{}, err
 	}
 	if !info.IsDir() {
 		return modSnap{}, fmt.Errorf("不是目录")
 	}
 	var snap modSnap
-	// 遍历失败不应静默：返回已收集快照并记录告警
 	if walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if d.IsDir() {
+			if path != root && d.Name() == ".versions" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !isOverlayMetadataFile(d.Name()) && !strings.HasSuffix(d.Name(), ".prompt") {
@@ -313,13 +433,13 @@ func dirModSnap(root string) (modSnap, error) {
 			return statErr
 		}
 		snap.files++
+		snap.version += fi.ModTime().UnixNano() + fi.Size()
 		if fi.ModTime().After(snap.latest) {
 			snap.latest = fi.ModTime()
 		}
 		return nil
 	}); walkErr != nil {
-		zap.L().Warn("扫描 custom_prompts 目录失败，返回已收集快照",
-			zap.String("root", root), zap.Error(walkErr))
+		return snap, walkErr
 	}
 	return snap, nil
 }

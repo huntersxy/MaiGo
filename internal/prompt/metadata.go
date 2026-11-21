@@ -162,6 +162,16 @@ func (m *Manager) ListTemplates(locale string, includeCustom bool) []TemplateInf
 
 	seen := make(map[string]TemplateInfo)
 	for _, layerLocale := range LocaleFallbacks(requested) {
+		for name := range m.builtinOverride[layerLocale] {
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			category := m.builtinCategory[layerLocale][name]
+			seen[name] = TemplateInfo{
+				Name: name, Category: category, Locale: layerLocale,
+				Path: embeddedPromptPath(layerLocale, category, name), Metadata: m.builtinMeta[layerLocale][name],
+			}
+		}
 		for name := range m.byLocale[layerLocale] {
 			if _, exists := seen[name]; exists {
 				continue
@@ -252,6 +262,11 @@ func (m *Manager) GetMetadata(name, locale string) PromptMetadata {
 		if meta, ok := m.legacyMeta[name]; ok {
 			return coercePromptMetadata(meta)
 		}
+		if layer := m.builtinMeta[layerLocale]; layer != nil {
+			if meta, ok := layer[name]; ok {
+				return coercePromptMetadata(meta)
+			}
+		}
 		if layer := m.byLocaleMeta[layerLocale]; layer != nil {
 			if meta, ok := layer[name]; ok {
 				return coercePromptMetadata(meta)
@@ -311,6 +326,15 @@ func (m *Manager) ResolveTemplate(name, locale, category string, includeCustom b
 				return ResolvedTemplate{
 					Name: normalizedName, Path: "custom_prompts/" + normalizedName + ".prompt",
 					Template: tpl, Customized: true,
+				}, nil
+			}
+		}
+		if layer := m.builtinOverride[candidateLocale]; layer != nil {
+			if tpl, ok := layer[normalizedName]; ok {
+				category := m.builtinCategory[candidateLocale][normalizedName]
+				return ResolvedTemplate{
+					Name: normalizedName, Category: category, Locale: candidateLocale,
+					Path: embeddedPromptPath(candidateLocale, category, normalizedName), Template: tpl,
 				}, nil
 			}
 		}

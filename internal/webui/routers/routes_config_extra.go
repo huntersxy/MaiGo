@@ -27,6 +27,7 @@ func mountConfigRoutes(cr chi.Router, d Deps) {
 	cr.Get("/prompt-blocks/{language}", d.handleConfigPromptBlocks)
 	cr.Get("/prompts/{language}/{filename}", d.handleConfigPromptGet)
 	cr.Get("/prompts/{language}/{filename}/default", d.handleConfigPromptDefault)
+	cr.Put("/prompts/{language}/{filename}/default", d.handleConfigPromptDefaultUpdate)
 	cr.Get("/prompts/{language}/{filename}/versions", d.handleConfigPromptVersions)
 	cr.Get("/prompts/{language}/{filename}/versions/{version_id}", d.handleConfigPromptVersionGet)
 	cr.Post("/prompts/{language}/{filename}/versions/{version_id}/activate", d.handleConfigPromptVersionActivate)
