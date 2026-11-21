@@ -46,7 +46,7 @@ func (r *LLMRunner) Run(ctx context.Context, request Request, emit Emit) (Respon
 	if router == nil {
 		return Response{}, &UnavailableError{Message: "AI 搜索服务未接线：LLM 路由器为空"}
 	}
-	route, client, err := router.NewClientForTask(ctx, llm.TaskUtils)
+	route, client, err := router.NewClientForTask(ctx, llm.TaskPlanner)
 	if err != nil {
 		return Response{}, &UnavailableError{Message: "AI 搜索模型不可用: " + err.Error()}
 	}

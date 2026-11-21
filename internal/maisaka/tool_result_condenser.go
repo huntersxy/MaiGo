@@ -97,7 +97,7 @@ func CondenseToolResult(ctx context.Context, runtime *Runtime, toolCall ToolCall
 		ContextMessageLimit:  1,
 		SystemPrompt:         ToolResultCondenserSystemPrompt,
 		ExtraMessages:        []ContextMessage{taskMessage},
-		ModelTaskName:        "utils",
+		ModelTaskName:        "fast_model",
 		ToolDefinitions:      []ToolSpec{},
 		IncludeParentContext: false,
 	})

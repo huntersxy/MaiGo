@@ -66,8 +66,6 @@ func taskConfigByName(mtc maibot.ModelTaskConfig, task TaskName) (maibot.TaskCon
 		return mtc.Learner, nil
 	case TaskFastModel:
 		return mtc.FastModel, nil
-	case TaskEmoji:
-		return mtc.Emoji, nil
 	case TaskVLM:
 		return mtc.Vlm, nil
 	case TaskVoice:

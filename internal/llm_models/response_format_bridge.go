@@ -62,7 +62,6 @@ const (
 	TaskUtils          = contract.TaskUtils
 	TaskLearner        = contract.TaskLearner
 	TaskFastModel      = contract.TaskFastModel
-	TaskEmoji          = contract.TaskEmoji
 	TaskVLM            = contract.TaskVLM
 	TaskVoice          = contract.TaskVoice
 	TaskEmbedding      = contract.TaskEmbedding

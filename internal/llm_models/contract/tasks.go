@@ -16,7 +16,6 @@ const (
 	TaskUtils          TaskName = "utils"
 	TaskLearner        TaskName = "learner"
 	TaskFastModel      TaskName = "fast_model"
-	TaskEmoji          TaskName = "emoji"
 	TaskVLM            TaskName = "vlm"
 	TaskVoice          TaskName = "voice"
 	TaskEmbedding      TaskName = "embedding"
@@ -32,7 +31,6 @@ func AllTaskNames() []TaskName {
 		TaskUtils,
 		TaskLearner,
 		TaskFastModel,
-		TaskEmoji,
 		TaskVLM,
 		TaskVoice,
 		TaskEmbedding,

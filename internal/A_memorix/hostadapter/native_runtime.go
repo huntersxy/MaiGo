@@ -324,8 +324,6 @@ func (g *NativeLLMGateway) GeneratePinned(
 		config.Utils.ModelList = []string{modelName}
 	case "learner":
 		config.Learner.ModelList = []string{modelName}
-	case "emoji":
-		config.Emoji.ModelList = []string{modelName}
 	default:
 		return utils.TextGenerationResult{Success: false, Error: "不支持的固定模型任务: " + taskName}, fmt.Errorf("不支持的固定模型任务: %s", taskName)
 	}
@@ -410,7 +408,6 @@ func TextGenerationTasksFromModelConfig(file *maibotcfg.ModelConfigFile) map[str
 	add("utils", file.ModelTaskConfig.Utils)
 	add("learner", file.ModelTaskConfig.Learner)
 	add("fast_model", file.ModelTaskConfig.FastModel)
-	add("emoji", file.ModelTaskConfig.Emoji)
 	return utils.GetTextGenerationModelTasks(tasks, false)
 }
 

@@ -720,7 +720,6 @@ type ModelTaskConfig struct {
 	Utils          TaskConfig          `toml:"utils,omitempty"`
 	Learner        TaskConfig          `toml:"learner,omitempty"`
 	FastModel      TaskConfig          `toml:"fast_model,omitempty"`
-	Emoji          TaskConfig          `toml:"emoji,omitempty"`
 	Vlm            TaskConfig          `toml:"vlm,omitempty"`
 	Voice          TaskConfig          `toml:"voice,omitempty"`
 	Embedding      TaskConfig          `toml:"embedding,omitempty"`

@@ -54,7 +54,6 @@ func replayTaskEntries(config *maibotcfg.ModelConfigFile) []replayTaskEntry {
 		{llm.TaskUtils, tasks.Utils.ModelList},
 		{llm.TaskLearner, tasks.Learner.ModelList},
 		{llm.TaskFastModel, tasks.FastModel.ModelList},
-		{llm.TaskEmoji, tasks.Emoji.ModelList},
 		{llm.TaskVLM, tasks.Vlm.ModelList},
 		{llm.TaskVoice, tasks.Voice.ModelList},
 		{llm.TaskEmbedding, tasks.Embedding.ModelList},

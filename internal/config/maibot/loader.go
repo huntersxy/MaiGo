@@ -15,7 +15,7 @@ import (
 // 见 MaiBot src/config/config.py CONFIG_VERSION / MODEL_CONFIG_VERSION
 const (
 	BotConfigTargetVersion   = "8.16.27"
-	ModelConfigTargetVersion = "1.17.26"
+	ModelConfigTargetVersion = "1.17.27"
 )
 
 const (
@@ -528,7 +528,6 @@ func applyModelPresence(file *ModelConfigFile, raw []byte) {
 		{"utils", &file.ModelTaskConfig.Utils},
 		{"learner", &file.ModelTaskConfig.Learner},
 		{"fast_model", &file.ModelTaskConfig.FastModel},
-		{"emoji", &file.ModelTaskConfig.Emoji},
 		{"vlm", &file.ModelTaskConfig.Vlm},
 		{"voice", &file.ModelTaskConfig.Voice},
 		{"embedding", &file.ModelTaskConfig.Embedding},

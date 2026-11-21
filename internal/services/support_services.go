@@ -133,6 +133,9 @@ func (r *ServiceTaskResolver) ResolveTaskName(taskName string) (string, error) {
 		return "", errors.New("没有可用的模型配置")
 	}
 	target := strings.TrimSpace(taskName)
+	if target == "emoji" {
+		target = "planner"
+	}
 	if target == "" {
 		return r.Tasks[0].Name, nil
 	}

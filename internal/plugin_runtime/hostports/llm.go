@@ -50,7 +50,7 @@ func resolvePluginRoute(req pluginruntime.PluginLLMRequest) (pluginLLMRoute, err
 	route := pluginLLMRoute{task: llm.TaskUtils}
 	if req.TaskNameProvided {
 		if taskName != "" {
-			task, err := llm.NormalizeTaskName(taskName)
+			task, err := normalizePluginTaskName(taskName)
 			if err != nil {
 				return pluginLLMRoute{}, fmt.Errorf("未找到名为 %q 的模型配置: %w", taskName, err)
 			}
@@ -64,13 +64,20 @@ func resolvePluginRoute(req pluginruntime.PluginLLMRequest) (pluginLLMRoute, err
 		return route, nil
 	}
 	if modelAlias != "" {
-		if task, err := llm.NormalizeTaskName(modelAlias); err == nil {
+		if task, err := normalizePluginTaskName(modelAlias); err == nil {
 			route.task = task
 			return route, nil
 		}
 		route.modelName = modelAlias
 	}
 	return route, nil
+}
+
+func normalizePluginTaskName(name string) (llm.TaskName, error) {
+	if name == "emoji" {
+		return llm.TaskPlanner, nil
+	}
+	return llm.NormalizeTaskName(name)
 }
 
 // Generate 执行一次插件 LLM 生成

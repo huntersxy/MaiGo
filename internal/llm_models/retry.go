@@ -404,7 +404,6 @@ var defaultTaskHardTimeout = map[TaskName]float64{
 	TaskPlanner:        180,
 	TaskLearner:        120,
 	TaskFastModel:      120,
-	TaskEmoji:          120,
 	TaskVLM:            240,
 	TaskVoice:          120,
 	TaskEmbedding:      60,

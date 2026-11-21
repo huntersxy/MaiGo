@@ -15,7 +15,6 @@ var taskAssignmentSources = []struct {
 	{"utils", func(mtc maibot.ModelTaskConfig) []string { return mtc.Utils.ModelList }},
 	{"learner", func(mtc maibot.ModelTaskConfig) []string { return mtc.Learner.ModelList }},
 	{"fast_model", func(mtc maibot.ModelTaskConfig) []string { return mtc.FastModel.ModelList }},
-	{"emoji", func(mtc maibot.ModelTaskConfig) []string { return mtc.Emoji.ModelList }},
 	{"vlm", func(mtc maibot.ModelTaskConfig) []string { return mtc.Vlm.ModelList }},
 	{"voice", func(mtc maibot.ModelTaskConfig) []string { return mtc.Voice.ModelList }},
 	{"embedding", func(mtc maibot.ModelTaskConfig) []string { return mtc.Embedding.ModelList }},

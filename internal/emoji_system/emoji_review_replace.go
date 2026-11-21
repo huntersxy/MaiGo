@@ -176,7 +176,7 @@ func (r *Registry) chooseReplacement(ctx context.Context, description string, op
 	return &selected, nil
 }
 
-// generateEmojiTaskText 优先使用 emoji 任务，未配置时回退 planner，对齐 Python
+// generateEmojiTaskText 由 planner 根据表情包文字描述进行替换决策。
 func generateEmojiTaskText(ctx context.Context, router *llm.Router, prompts *prompt.Manager, promptName string, vars map[string]string) (string, error) {
 	if router == nil {
 		return "", errVLMUnavailable
@@ -184,10 +184,7 @@ func generateEmojiTaskText(ctx context.Context, router *llm.Router, prompts *pro
 	if prompts == nil {
 		return "", errPromptUnavailable
 	}
-	task := llm.TaskEmoji
-	if !router.HasTaskModels(task) {
-		task = llm.TaskPlanner
-	}
+	task := llm.TaskPlanner
 	if !router.HasTaskModels(task) {
 		return "", errEmojiTaskNotConfigured
 	}
@@ -205,6 +202,7 @@ func generateEmojiTaskText(ctx context.Context, router *llm.Router, prompts *pro
 			schema.NewContentBlock(&schema.UserInputText{Text: promptText}),
 		},
 	}
+	ctx = llm.WithModelUsageMetadata(ctx, string(task), "emoji", "")
 	out, err := client.Generate(ctx, []*schema.AgenticMessage{msg})
 	if err != nil {
 		return "", fmt.Errorf("emojisystem: 表情包替换决策生成失败: %w", err)

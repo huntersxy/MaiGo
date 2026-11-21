@@ -95,11 +95,6 @@ max_tokens = 8192
 temperature = 0.3
 hard_timeout = 120.0
 
-[model_task_config.emoji]
-model_list = []
-max_tokens = 8192
-hard_timeout = 120.0
-
 [model_task_config.vlm]
 model_list = []
 max_tokens = 8192

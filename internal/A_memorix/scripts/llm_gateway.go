@@ -273,7 +273,6 @@ func scriptTextTasks(file *maibotcfg.ModelConfigFile) map[string]utils.TextGener
 	add("utils", file.ModelTaskConfig.Utils)
 	add("learner", file.ModelTaskConfig.Learner)
 	add("fast_model", file.ModelTaskConfig.FastModel)
-	add("emoji", file.ModelTaskConfig.Emoji)
 	return utils.GetTextGenerationModelTasks(tasks, false)
 }
 
