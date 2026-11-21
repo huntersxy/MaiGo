@@ -12,13 +12,11 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 
 	"MaiGo/internal/config/maibot"
-	"MaiGo/internal/plugin_runtime/runner"
 )
 
 // MigrateBuiltinKeywordReactionConfig 把旧主配置关键词反应写入内置插件；已有配置不覆盖
-func MigrateBuiltinKeywordReactionConfig(projectRoot string, legacy *maibot.KeywordReactionConfig) error {
-	builtinRoot := runner.DefaultBuiltinPluginDir(projectRoot)
-	if strings.TrimSpace(builtinRoot) == "" || legacy == nil {
+func MigrateBuiltinKeywordReactionConfig(legacy *maibot.KeywordReactionConfig) error {
+	if legacy == nil {
 		return nil
 	}
 	rules := make([]any, 0, len(legacy.KeywordRules)+len(legacy.RegexRules))
@@ -84,9 +82,8 @@ func nonEmptyStrings(values []string) []string {
 }
 
 // MigrateBuiltinTypoConfig 首次迁移保留现有插件配置，并允许主配置写入失败后安全重试
-func MigrateBuiltinTypoConfig(projectRoot string, legacy *maibot.ChineseTypoConfig, presentKeys map[string]struct{}) error {
-	builtinRoot := runner.DefaultBuiltinPluginDir(projectRoot)
-	if strings.TrimSpace(builtinRoot) == "" || legacy == nil {
+func MigrateBuiltinTypoConfig(legacy *maibot.ChineseTypoConfig, presentKeys map[string]struct{}) error {
+	if legacy == nil {
 		return nil
 	}
 	target := filepath.Join(ResolveInstanceRoot(), "config", "builtin_plugins", "chinese_typo", "config.toml")

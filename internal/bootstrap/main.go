@@ -50,6 +50,7 @@ import (
 	"MaiGo/internal/plugin_market"
 	"MaiGo/internal/plugin_runtime"
 	"MaiGo/internal/plugin_runtime/hostports"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 	"MaiGo/internal/prompt"
 	"MaiGo/internal/services/html_render"
 	memorywriteback "MaiGo/internal/services/memory_writeback"
@@ -1481,20 +1482,50 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			return chatRelay.RelayPluginChatMessage(ctx, pluginID, content, payloadImages)
 		})
 	}
-	if pluginSpawnCfg.Enabled {
-		// 对齐 config.py：旧 chinese_typo 设置在写回主配置前迁入内置插件
-		if instHolder != nil {
-			if instanceCfg := instHolder.Config(); instanceCfg != nil {
-				if err := pluginruntime.MigrateBuiltinTypoConfig(pluginSpawnCfg.ProjectRoot, instanceCfg.Bot.LegacyChineseTypo, instanceCfg.Bot.LoadMeta.ChineseTypoKeys); err != nil {
-					zap.L().Error("错字配置迁移到内置插件失败", zap.Error(err))
-					return 1
-				}
-				if err := pluginruntime.MigrateBuiltinKeywordReactionConfig(pluginSpawnCfg.ProjectRoot, &instanceCfg.Bot.KeywordReaction); err != nil {
-					zap.L().Error("关键词反应配置迁移到内置插件失败", zap.Error(err))
-					return 1
-				}
+	// 对齐 config.py：旧 chinese_typo 设置在写回主配置前迁入内置插件
+	if instHolder != nil {
+		if instanceCfg := instHolder.Config(); instanceCfg != nil {
+			if err := pluginruntime.MigrateBuiltinTypoConfig(instanceCfg.Bot.LegacyChineseTypo, instanceCfg.Bot.LoadMeta.ChineseTypoKeys); err != nil {
+				zap.L().Error("错字配置迁移到内置插件失败", zap.Error(err))
+				return 1
+			}
+			if err := pluginruntime.MigrateBuiltinKeywordReactionConfig(&instanceCfg.Bot.KeywordReaction); err != nil {
+				zap.L().Error("关键词反应配置迁移到内置插件失败", zap.Error(err))
+				return 1
 			}
 		}
+	}
+	if _, err := pluginHost.ApplyPluginConfig(context.Background(), chinesetypo.PluginID); err != nil {
+		zap.L().Warn("麦麦小工具启动失败", zap.Error(err))
+		pluginHost.RememberNativeLoadStatus(chinesetypo.PluginID, "failed")
+	}
+	nativeWatchCtx, cancelNativeWatch := context.WithCancel(context.Background())
+	startup.AddCleanup("停止原生插件配置监听", func(context.Context) error {
+		cancelNativeWatch()
+		return nil
+	})
+	pluginruntime.StartNativePluginConfigWatcher(nativeWatchCtx, pluginruntime.NativePluginConfigWatcherOptions{
+		ConfigPaths: func() map[string]string {
+			out := map[string]string{}
+			if path, err := pluginHost.ResolveNativePluginConfigPath(chinesetypo.PluginID); err == nil {
+				out[chinesetypo.PluginID] = path
+			}
+			for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
+				if path, err := pluginHost.ResolveNativePluginConfigPath(pluginID); err == nil {
+					out[pluginID] = path
+				}
+			}
+			return out
+		},
+		OnConfigChanged: func(ctx context.Context, pluginID string) {
+			if _, err := pluginHost.ApplyPluginConfig(ctx, pluginID); err != nil {
+				zap.L().Warn("原生插件配置变更同步失败",
+					zap.String("plugin_id", pluginID), zap.Error(err))
+			}
+		},
+	})
+
+	if pluginSpawnCfg.Enabled {
 // 对齐 integration.py：索引和加载前先把旧版官方适配器迁入内置配置布局。
 			// 单个适配器迁移失败只隔离对应插件，其余插件继续启动。
 			adapterMigrationErrors := map[string]string{}
@@ -1573,28 +1604,6 @@ pluginHost.EnsureNativeMessageGateways()
 			if repairedNative := pluginHost.RepairNativeVersionlessPluginConfigs(context.Background()); len(repairedNative) > 0 {
 				zap.L().Info("原生适配器配置已按默认配置重建", zap.Strings("plugin_ids", repairedNative))
 			}
-			nativeWatchCtx, cancelNativeWatch := context.WithCancel(context.Background())
-			startup.AddCleanup("停止原生适配器配置监听", func(context.Context) error {
-				cancelNativeWatch()
-				return nil
-			})
-			pluginruntime.StartNativePluginConfigWatcher(nativeWatchCtx, pluginruntime.NativePluginConfigWatcherOptions{
-				ConfigPaths: func() map[string]string {
-					out := map[string]string{}
-					for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
-						if path, err := pluginHost.ResolveNativePluginConfigPath(pluginID); err == nil {
-							out[pluginID] = path
-						}
-					}
-					return out
-				},
-				OnConfigChanged: func(ctx context.Context, pluginID string) {
-					if _, err := pluginHost.ApplyPluginConfig(ctx, pluginID); err != nil {
-						zap.L().Warn("原生适配器配置变更同步失败",
-							zap.String("plugin_id", pluginID), zap.Error(err))
-					}
-				},
-			})
 
 			startRunner := pluginHost.HasEnabledNonNativePythonPlugins()
 			if !startRunner {

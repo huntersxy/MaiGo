@@ -13,6 +13,7 @@ import (
 	"MaiGo/internal/plugin_market"
 	pluginruntime "MaiGo/internal/plugin_runtime"
 	"MaiGo/internal/plugin_runtime/circuitbreaker"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // handlePluginInstalled 对齐 GET /plugins/installed
@@ -47,11 +48,7 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		pluginPath := candidate.path
-		manifestPath := filepath.Join(pluginPath, "_manifest.json")
-		if _, statErr := os.Stat(manifestPath); statErr != nil {
-			continue
-		}
-		manifest, loadErr := pluginmarket.LoadManifestJSON(manifestPath)
+		manifest, loadErr := candidate.loadManifest()
 		if loadErr != nil || manifest == nil {
 			continue
 		}
@@ -70,21 +67,27 @@ func (d Deps) handlePluginInstalled(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[pluginID] = struct{}{}
 
-enabled := true
-			configError := ""
-			configPath := pluginruntime.ResolvePluginConfigPath(pluginPath)
-			var enabledValue bool
-			var enabledErr error
-			if pluginruntime.IsNativeAdapter(pluginID) {
-				enabledValue, enabledErr = readNativePluginEnabled(configPath)
-			} else {
-				enabledValue, enabledErr = readPluginEnabled(configPath)
+		enabled := true
+		configError := ""
+		configPath := d.pluginCandidateConfigPath(candidate, pluginID)
+		var enabledValue bool
+		var enabledErr error
+		if pluginID == chinesetypo.PluginID {
+			raw, err := readPluginConfigText(configPath)
+			enabledErr = err
+			if err == nil {
+				enabledValue, enabledErr = readBuiltinTypoEnabled(raw)
 			}
-			if enabledErr != nil {
-				configError = "读取插件 " + pluginID + " 启用配置失败：" + enabledErr.Error()
-			} else {
-				enabled = enabledValue
-			}
+		} else if pluginruntime.IsNativeAdapter(pluginID) {
+			enabledValue, enabledErr = readNativePluginEnabled(configPath)
+		} else {
+			enabledValue, enabledErr = readPluginEnabled(configPath)
+		}
+		if enabledErr != nil {
+			configError = "读取插件 " + pluginID + " 启用配置失败：" + enabledErr.Error()
+		} else {
+			enabled = enabledValue
+		}
 		record, registered := records[pluginID]
 		loadStatus := "not_loaded"
 		loadError := ""
@@ -204,9 +207,24 @@ func (d Deps) handlePluginMarketplaceReviewIdentity(w http.ResponseWriter, r *ht
 }
 
 type pluginCandidate struct {
-	name    string
-	path    string
-	builtin bool
+	name     string
+	path     string
+	builtin  bool
+	manifest map[string]any
+}
+
+func (c pluginCandidate) loadManifest() (map[string]any, error) {
+	if c.manifest != nil {
+		return c.manifest, nil
+	}
+	return pluginmarket.LoadManifestJSON(filepath.Join(c.path, "_manifest.json"))
+}
+
+func (d Deps) pluginCandidateConfigPath(candidate pluginCandidate, id string) string {
+	if id == chinesetypo.PluginID {
+		return d.builtinTypoConfigPath()
+	}
+	return pluginruntime.ResolvePluginConfigPath(candidate.path)
 }
 
 // pluginCandidates 返回第三方与内置插件目录
@@ -219,7 +237,11 @@ func (d Deps) pluginCandidates() ([]pluginCandidate, error) {
 	if err != nil {
 		return nil, err
 	}
-	candidates := make([]pluginCandidate, 0, len(entries))
+	path := pluginruntime.FindBuiltinPluginPath(chinesetypo.PluginID)
+	if path == "" {
+		path = filepath.Dir(d.builtinTypoConfigPath())
+	}
+	candidates := []pluginCandidate{{name: chinesetypo.Directory, path: path, builtin: true, manifest: chinesetypo.Manifest()}}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			candidates = append(candidates, pluginCandidate{name: entry.Name(), path: filepath.Join(root, entry.Name())})
@@ -234,7 +256,7 @@ func (d Deps) pluginCandidates() ([]pluginCandidate, error) {
 		return nil, err
 	}
 	for _, entry := range builtinEntries {
-		if entry.IsDir() {
+		if entry.IsDir() && entry.Name() != chinesetypo.Directory {
 			candidates = append(candidates, pluginCandidate{name: entry.Name(), path: filepath.Join(builtinRoot, entry.Name()), builtin: true})
 		}
 	}

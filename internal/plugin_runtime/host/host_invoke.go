@@ -13,6 +13,7 @@ import (
 	"MaiGo/internal/platform_io/drivers/telegram"
 	"MaiGo/internal/platform_io/drivers/weixin_clawbot"
 	"MaiGo/internal/plugin_runtime/protocol"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // Host→Runner 调用方法名，对齐 MaiBot supervisor.py 的 send_request 调用
@@ -78,26 +79,26 @@ func (h *Host) InvokeAPI(ctx context.Context, pluginID, componentName string, ar
 				if args == nil {
 					args = map[string]any{}
 				}
-result, err := handler(ctx, pluginID, componentName, args)
-					if err != nil {
-						return protocol.Envelope{
-							MessageType: protocol.MessageTypeResponse,
-							PluginID:    pluginID,
-							Method:      methodPluginInvokeAPI,
-							Error: map[string]any{
-								"message": err.Error(),
-							},
-						}, nil
-					}
+				result, err := handler(ctx, pluginID, componentName, args)
+				if err != nil {
 					return protocol.Envelope{
 						MessageType: protocol.MessageTypeResponse,
 						PluginID:    pluginID,
 						Method:      methodPluginInvokeAPI,
-						Payload: map[string]any{
-							"success": true,
-							"result":  result,
+						Error: map[string]any{
+							"message": err.Error(),
 						},
 					}, nil
+				}
+				return protocol.Envelope{
+					MessageType: protocol.MessageTypeResponse,
+					PluginID:    pluginID,
+					Method:      methodPluginInvokeAPI,
+					Payload: map[string]any{
+						"success": true,
+						"result":  result,
+					},
+				}, nil
 			}
 		}
 	}
@@ -127,6 +128,9 @@ func (h *Host) InvokeLLMProvider(ctx context.Context, pluginID, clientType, oper
 
 // ReloadPlugin 按插件 ID 触发精确重载，对齐 supervisor.reload_plugin
 func (h *Host) ReloadPlugin(ctx context.Context, pluginID, reason string, externalAvailablePlugins map[string]string) (ReloadPluginResult, error) {
+	if strings.TrimSpace(pluginID) == chinesetypo.PluginID {
+		return h.reloadBuiltinTypo()
+	}
 	rpc := h.activeRPCServer()
 	if rpc == nil {
 		return ReloadPluginResult{}, fmt.Errorf("Runner 未连接")
@@ -163,6 +167,19 @@ func (h *Host) ReloadPlugin(ctx context.Context, pluginID, reason string, extern
 
 // NotifyPluginConfigUpdated 向 Runner 推送插件配置更新，对齐 supervisor.notify_plugin_config_updated
 func (h *Host) NotifyPluginConfigUpdated(ctx context.Context, pluginID string, configData map[string]any, configVersion, configScope string) (bool, error) {
+	if strings.TrimSpace(pluginID) == chinesetypo.PluginID {
+		if configScope != "" && configScope != "self" {
+			return false, nil
+		}
+		h.pluginFileUpdateMu.Lock()
+		defer h.pluginFileUpdateMu.Unlock()
+		snapshot, settings, err := h.inspectBuiltinTypo(configData, true)
+		if err != nil {
+			return false, err
+		}
+		status, err := h.activateBuiltinTypo(snapshot, settings)
+		return err == nil && (status == "success" || status == "inactive"), err
+	}
 	rpc := h.activeRPCServer()
 	if rpc == nil {
 		return false, fmt.Errorf("Runner 未连接")
@@ -197,6 +214,10 @@ func (h *Host) NotifyPluginConfigUpdated(ctx context.Context, pluginID string, c
 // ValidatePluginConfig 请求 Runner 使用插件自身配置模型校验配置；原生适配器本地规范化
 func (h *Host) ValidatePluginConfig(ctx context.Context, pluginID string, configData map[string]any) (map[string]any, error) {
 	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == chinesetypo.PluginID {
+		_, normalized, err := chinesetypo.ParseConfig(configData)
+		return normalized, err
+	}
 	if IsNativeAdapter(pluginID) {
 		return validateNativePluginConfig(pluginID, configData)
 	}
@@ -263,6 +284,12 @@ func validateNativePluginConfig(pluginID string, configData map[string]any) (map
 // ConfigWidgets 读取配置页控件或执行声明的按钮，不写入配置
 func (h *Host) ConfigWidgets(ctx context.Context, pluginID, actionID string) (map[string]any, error) {
 	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == chinesetypo.PluginID {
+		if strings.TrimSpace(actionID) != "" {
+			return nil, fmt.Errorf("未知配置页操作: %s", actionID)
+		}
+		return map[string]any{"widgets": []any{}, "values": map[string]any{}}, nil
+	}
 	if IsNativeAdapter(pluginID) {
 		return h.nativeConfigWidgets(ctx, pluginID, actionID)
 	}
@@ -290,6 +317,10 @@ func (h *Host) ConfigWidgets(ctx context.Context, pluginID, actionID string) (ma
 // InspectPluginConfig 请求 Runner 解析插件配置元数据；原生适配器走本地读盘
 func (h *Host) InspectPluginConfig(ctx context.Context, pluginID string, configData map[string]any, useProvidedConfig bool) (InspectPluginConfigResult, error) {
 	pluginID = strings.TrimSpace(pluginID)
+	if pluginID == chinesetypo.PluginID {
+		result, _, err := h.inspectBuiltinTypo(configData, useProvidedConfig)
+		return result, err
+	}
 	if IsNativeAdapter(pluginID) {
 		return h.inspectNativePluginConfig(pluginID, configData, useProvidedConfig)
 	}
@@ -328,7 +359,7 @@ func (h *Host) InspectPluginConfig(ctx context.Context, pluginID string, configD
 func (h *Host) inspectNativePluginConfig(pluginID string, configData map[string]any, useProvidedConfig bool) (InspectPluginConfigResult, error) {
 	defaultConfig := map[string]any{
 		"plugin": map[string]any{
-			"enabled":         false,
+			"enabled":        false,
 			"config_version": "1.0.0",
 		},
 	}

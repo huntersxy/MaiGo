@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // hostComponentAdmin 基于 Host 的插件管理端口，供 component.* 能力在未注入外部端口时使用
@@ -88,6 +90,8 @@ func (a *hostComponentAdmin) UpdatePluginConfig(ctx context.Context, pluginID, k
 	}
 	if normalized, validateErr := a.host.ValidatePluginConfig(ctx, pluginID, configData); validateErr == nil && normalized != nil {
 		configData = normalized
+	} else if pluginID == chinesetypo.PluginID && validateErr != nil {
+		return nil, validateErr
 	}
 	encoded, err := toml.Marshal(configData)
 	if err != nil {
@@ -123,6 +127,9 @@ func (a *hostComponentAdmin) UpdatePluginConfig(ctx context.Context, pluginID, k
 
 // pluginConfigPath 按 Runner 插件目录定位 <plugin_dir>/<plugin_id>/config.toml
 func (h *Host) pluginConfigPath(pluginID string) (string, error) {
+	if pluginID == chinesetypo.PluginID {
+		return h.builtinTypoConfigPath(), nil
+	}
 	h.mu.RLock()
 	var dirs []string
 	for _, state := range h.runners {

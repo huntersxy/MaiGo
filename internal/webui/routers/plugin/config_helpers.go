@@ -12,8 +12,10 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_market"
 	"MaiGo/internal/plugin_runtime"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // resolvePluginConfigPaths 校验插件 ID 并定位插件目录与 config.toml
@@ -21,6 +23,11 @@ func (d Deps) resolvePluginConfigPaths(pluginID string) (struct{ pluginPath, con
 	var paths struct{ pluginPath, configPath string }
 	if err := pluginmarket.ValidatePluginID(pluginID); err != nil {
 		return paths, err
+	}
+	if pluginID == chinesetypo.PluginID {
+		paths.configPath = d.builtinTypoConfigPath()
+		paths.pluginPath = filepath.Dir(paths.configPath)
+		return paths, nil
 	}
 	pluginPath, err := d.findManagedPluginPath(pluginID)
 	if err != nil {
@@ -32,6 +39,15 @@ func (d Deps) resolvePluginConfigPaths(pluginID string) (struct{ pluginPath, con
 	paths.pluginPath = pluginPath
 	paths.configPath = pluginruntime.ResolvePluginConfigPath(pluginPath)
 	return paths, nil
+}
+
+func (d Deps) builtinTypoConfigPath() string {
+	if d.PluginHost != nil {
+		if path, err := d.PluginHost.ResolveNativePluginConfigPath(chinesetypo.PluginID); err == nil {
+			return path
+		}
+	}
+	return filepath.Join(d.InstanceDir, "config", "builtin_plugins", chinesetypo.Directory, "config.toml")
 }
 
 // findManagedPluginPath 先查第三方安装，再查内置插件
@@ -143,7 +159,27 @@ func writePluginConfigText(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	file, err := os.CreateTemp(filepath.Dir(path), ".plugin-config-*.toml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.WriteString(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }
 
 // backupPluginConfigFile 对齐 support.backup_file：config_back/{name}.{action}.{timestamp}
@@ -190,6 +226,18 @@ func readPluginEnabledValue(raw string) (bool, error) {
 		return true, nil
 	}
 	return coerceEnabledValue(value), nil
+}
+
+func readBuiltinTypoEnabled(raw string) (bool, error) {
+	var document map[string]any
+	if err := toml.Unmarshal([]byte(raw), &document); err != nil {
+		return true, err
+	}
+	section, _ := document["plugin"].(map[string]any)
+	if enabled, ok := section["enabled"]; ok {
+		return platformio.ParseNativeConfigBool(enabled)
+	}
+	return true, nil
 }
 
 func readNativePluginEnabledValue(raw string) (bool, error) {

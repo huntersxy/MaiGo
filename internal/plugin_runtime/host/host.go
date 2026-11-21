@@ -17,6 +17,7 @@ import (
 	"MaiGo/internal/platform_io/drivers/qq_official"
 	"MaiGo/internal/plugin_runtime/hooks"
 	"MaiGo/internal/plugin_runtime/protocol"
+	chinesetypo "MaiGo/plugins/built_in/chinese_typo"
 )
 
 // CapabilityHandler Host 侧能力实现，对齐 capability_service.CapabilityImpl 签名
@@ -44,6 +45,7 @@ type PluginRecord struct {
 
 // Host 插件运行时 Host 骨架，对齐 PluginRunnerSupervisor + CapabilityService 的子集
 type Host struct {
+	chineseTypo         atomic.Pointer[chinesetypo.Runtime]
 	mu                  sync.RWMutex
 	capabilities        map[string]CapabilityHandler
 	nativeMessageLookup func(context.Context, string, string) (*database.MessageLog, error)
@@ -225,6 +227,7 @@ func NewHost() *Host {
 	host.toolRegistry = tooling.NewToolRegistry()
 	host.toolRegistry.RegisterProvider(newPluginToolProvider(host))
 	host.installPluginManagementCommand()
+	host.SetNativeInProcessReason(chinesetypo.PluginID, "已由进程内 Go 插件承接")
 	setDefaultHost(host)
 	return host
 }
