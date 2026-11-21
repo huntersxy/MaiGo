@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"time"
 
@@ -15,14 +16,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// PlannerActionJudgeTimeout 动作判断器最长请求时间
-const PlannerActionJudgeTimeout = 10 * time.Second
-
 // PlannerActionJudgeSource 动作判断器补全的工具调用来源标记
 const PlannerActionJudgeSource = "action_judge"
 
-// defaultPlannerActionJudgePrompt prompt 目录平铺名暂时缺失时的兜底
-const defaultPlannerActionJudgePrompt = `根据 recent_chat 和 planner_text 选择 reply 或 wait。只输出包含 action 和 arguments 的 JSON 对象；参数必须符合给出的工具声明。`
+const defaultPlannerActionJudgePrompt = `根据 recent_chat 和 planner_text，必须且只能调用一次 reply 或 wait 工具。不要输出动作 JSON、解释或回复正文。`
 
 // PlannerActionJudgment 判断结果和独立请求开销
 type PlannerActionJudgment struct {
@@ -38,7 +35,10 @@ func BuildRecentChatContext(chatHistory []ContextMessage) []map[string]string {
 		if !isSessionBackedHistoryMessage(message) || message.MetadataBool("is_notify") {
 			continue
 		}
-		text := strings.TrimSpace(message.Content)
+		text := strings.TrimSpace(message.VisibleText)
+		if text == "" {
+			text = strings.TrimSpace(message.Content)
+		}
 		if text == "" && len(message.Images) > 0 {
 			text = imagePlaceholderText(message.Images)
 		}
@@ -100,10 +100,6 @@ func (s *ChatLoopService) CompleteMissingPlannerAction(
 	payload := map[string]any{
 		"recent_chat":  BuildRecentChatContext(chatHistory),
 		"planner_text": content,
-		"tools": []map[string]any{
-			{"name": replySpec.Name, "description": replySpec.Description, "parameters": replySpec.Parameters},
-			{"name": waitSpec.Name, "description": waitSpec.Description, "parameters": waitSpec.Parameters},
-		},
 	}
 	if len(routes) > 0 {
 		payload["reply_sessions"] = routes
@@ -120,6 +116,9 @@ func (s *ChatLoopService) CompleteMissingPlannerAction(
 	if systemPrompt == "" {
 		systemPrompt = defaultPlannerActionJudgePrompt
 	}
+	if len(routes) > 0 {
+		systemPrompt += "\n" + s.localizedText("planner_action_judge_focus")
+	}
 	items := []ContextItem{
 		{Role: RoleSystem, Text: systemPrompt},
 		{Role: RoleUser, Text: string(payloadText)},
@@ -128,38 +127,40 @@ func (s *ChatLoopService) CompleteMissingPlannerAction(
 	if logicalTurnID == "" {
 		logicalTurnID = strings.ReplaceAll(uuid.NewString(), "-", "")
 	}
+	cold := float32(0)
 	request := ChatRequest{
-		RequestKind:   "planner_action_judge",
+		RequestKind:   "maisaka.planner_action_judge",
 		ModelTaskName: "fast_model",
 		Items:         items,
+		Tools:         []ToolSpec{replySpec, waitSpec},
+		Temperature:   &cold,
 		InterruptFlag: s.InterruptFlag,
 		SessionID:     s.SessionID,
 		LogicalTurnID: logicalTurnID,
 	}
-	judgeCtx, cancel := context.WithTimeout(ctx, PlannerActionJudgeTimeout)
-	defer cancel()
 	started := time.Now()
-	result, err := s.JudgeClient.Chat(judgeCtx, request)
+	result, err := s.JudgeClient.Chat(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("Planner 动作判断请求失败: %w", err)
 	}
 	durationMS := math.Round(float64(time.Since(started).Microseconds())/10) / 100
-	decision := strings.TrimSpace(result.Content)
-	if len(result.ToolCalls) > 0 || len(result.NativeToolCalls) > 0 {
-		return nil, fmt.Errorf("Planner 动作判断器应只返回 JSON 对象，不应调用工具")
+	if len(result.ToolCalls) != 1 || len(result.NativeToolCalls) != 0 {
+		return nil, fmt.Errorf("Planner 动作判断器必须返回且仅返回一个 reply 或 wait 工具调用")
 	}
-	parsed := map[string]any{}
-	if err := json.Unmarshal([]byte(decision), &parsed); err != nil {
-		return nil, fmt.Errorf("Planner 动作判断器返回了无效 JSON：%q", decision)
+	selected := result.ToolCalls[0]
+	action, arguments := selected.Name, selected.Arguments
+	if action != "reply" && action != "wait" {
+		return nil, fmt.Errorf("Planner 动作判断器返回了无效工具：%q", action)
 	}
-	action, _ := parsed["action"].(string)
-	arguments, ok := parsed["arguments"].(map[string]any)
-	if len(parsed) != 2 || !ok || (action != "reply" && action != "wait") {
-		return nil, fmt.Errorf("Planner 动作判断器返回了无效选项：%q", decision)
+	if arguments == nil {
+		arguments = map[string]any{}
 	}
 	spec := waitSpec
 	if action == "reply" {
 		spec = replySpec
+	}
+	if target, _ := arguments["session_id"].(string); len(routes) > 0 && !containsString(routes, target) {
+		return nil, fmt.Errorf("Planner 动作判断器返回了不可用的会话：%q", target)
 	}
 	if err := validatePlannerActionArguments(arguments, spec.Parameters); err != nil {
 		return nil, fmt.Errorf("Planner 动作判断器的 %s 参数不符合工具声明: %w", action, err)
@@ -187,7 +188,7 @@ func (s *ChatLoopService) CompleteMissingPlannerAction(
 }
 
 func validatePlannerActionArguments(arguments, parameters map[string]any) error {
-	if len(tooling.FilterToolArguments(arguments, parameters)) != len(arguments) {
+	if !reflect.DeepEqual(tooling.FilterToolArguments(arguments, parameters), arguments) {
 		return fmt.Errorf("包含未声明的参数")
 	}
 	encoded, err := json.Marshal(parameters)

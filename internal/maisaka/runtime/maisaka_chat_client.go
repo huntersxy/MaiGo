@@ -61,7 +61,10 @@ func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatReques
 	if len(messages) == 0 {
 		return maisaka.ChatResponse{}, fmt.Errorf("Maisaka ChatClient 请求没有可发送的消息")
 	}
-	options := make([]model.Option, 0, 1)
+	options := make([]model.Option, 0, 2)
+	if request.Temperature != nil {
+		options = append(options, model.WithTemperature(*request.Temperature))
+	}
 	if len(request.Tools) > 0 {
 		toolInfos, err := maisakaToolInfos(request.Tools)
 		if err != nil {

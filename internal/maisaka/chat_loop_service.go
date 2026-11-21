@@ -64,6 +64,7 @@ type ChatRequest struct {
 	SystemPrompt  string
 	Items         []ContextItem
 	Tools         []ToolSpec
+	Temperature   *float32
 	// ResponseFormat 结构化输出格式，nil/空字符串表示自然文本
 	ResponseFormat any
 	// InterruptFlag 可打断标记，关闭表示请求被打断
