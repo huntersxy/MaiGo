@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strings"
-	"time"
 )
 
 var errPromptLoaderMissing = fmt.Errorf("replyer prompt 加载器未接线")
