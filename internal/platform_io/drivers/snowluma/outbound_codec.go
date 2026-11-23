@@ -1,12 +1,15 @@
 package snowluma
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
 	"MaiGo/internal/platform_io"
 )
 
 // EncodeOutboundSegments 将出站封装转为 OneBot message 段列表
-func EncodeOutboundSegments(outbound platformio.OutboundMessageEnvelope, profile ClientProfile) []map[string]any {
-	_ = profile
+func EncodeOutboundSegments(ctx context.Context, outbound platformio.OutboundMessageEnvelope) ([]map[string]any, error) {
 	segments := make([]map[string]any, 0, len(outbound.Segments)+1)
 	for _, segment := range outbound.Segments {
 		switch segment.Kind {
@@ -37,14 +40,26 @@ func EncodeOutboundSegments(outbound platformio.OutboundMessageEnvelope, profile
 				"type": "at",
 				"data": map[string]any{"qq": qq},
 			})
-		case platformio.SegmentImage:
-			file := firstNonEmpty(segment.URL, segmentExtra(segment, "file"))
-			if file == "" {
-				continue
+		case platformio.SegmentImage, platformio.SegmentEmoji:
+			encoded := strings.TrimSpace(segmentExtra(segment, "binary_data_base64"))
+			if encoded == "" {
+				binary, err := platformio.SegmentMediaBase64(ctx, segment)
+				if err != nil {
+					return nil, fmt.Errorf("编码 OneBot 图片段失败: %w", err)
+				}
+				encoded = binary
+			}
+			if encoded == "" {
+				return nil, fmt.Errorf("OneBot 图片段内容为空")
+			}
+			data := map[string]any{"file": "base64://" + encoded, "sub_type": 0}
+			if segment.Kind == platformio.SegmentEmoji || segmentExtra(segment, "sub_type") == "1" {
+				data["sub_type"] = 1
+				data["summary"] = "[动画表情]"
 			}
 			segments = append(segments, map[string]any{
 				"type": "image",
-				"data": map[string]any{"file": file},
+				"data": data,
 			})
 		case platformio.SegmentVoice, platformio.SegmentRecord:
 			file := firstNonEmpty(segment.URL, segmentExtra(segment, "file"))
@@ -74,7 +89,7 @@ func EncodeOutboundSegments(outbound platformio.OutboundMessageEnvelope, profile
 			"data": map[string]any{"text": outbound.PlainText},
 		})
 	}
-	return segments
+	return segments, nil
 }
 
 func segmentExtra(segment platformio.Segment, key string) string {

@@ -13,7 +13,10 @@ func TestEncodeOutboundSegmentsKeepsReplySegment(t *testing.T) {
 			{Kind: platformio.SegmentText, Text: "你怎么知道我天天看这个"},
 		},
 	}
-	segments := EncodeOutboundSegments(outbound, ClientProfile{})
+	segments, err := EncodeOutboundSegments(t.Context(), outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(segments) != 2 {
 		t.Fatalf("段数 = %d, 期望 2: %+v", len(segments), segments)
 	}
@@ -36,7 +39,10 @@ func TestEncodeOutboundSegmentsReplyWithoutIDIsDropped(t *testing.T) {
 			{Kind: platformio.SegmentText, Text: "正文"},
 		},
 	}
-	segments := EncodeOutboundSegments(outbound, ClientProfile{})
+	segments, err := EncodeOutboundSegments(t.Context(), outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(segments) != 1 || segments[0]["type"] != "text" {
 		t.Fatalf("无 id 的引用段应被丢弃，实际: %+v", segments)
 	}

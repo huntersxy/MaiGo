@@ -97,8 +97,9 @@ type ReplyInput struct {
 
 // ReplyOutput reply 工具的输出，字段对齐 Python reply 的 content 与 structured_content
 type ReplyOutput struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
+	Success               bool   `json:"success"`
+	Message               string `json:"message,omitempty"`
+	EmojiAttachmentStatus string `json:"emoji_attachment_status,omitempty"`
 	// Content 本次实际发送的正文
 	Content string `json:"content,omitempty"`
 	// ReplyTo 本次回复引用的目标消息 ID
@@ -336,9 +337,13 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			sendErr = tc.SendEmojiAttachment(WithReplyAnchor(ctx, replyTo), tc.TargetID, *emojiAttachment)
 		}
 		if sendErr != nil {
+			out.EmojiAttachmentStatus = "send_failed"
 			out.Message = fmt.Sprintf("正文已发送，表情发送失败：%v", sendErr)
+		} else {
+			out.EmojiAttachmentStatus = "sent"
 		}
 	} else if emojiResolveErr != nil {
+		out.EmojiAttachmentStatus = "resolution_failed"
 		out.Message = fmt.Sprintf("正文已发送，表情解析失败：%v", emojiResolveErr)
 	}
 	out.AfterReply = afterReply

@@ -23,18 +23,18 @@ type HostHooks struct {
 // Adapter 进程内 SnowLuma/OneBot 适配器
 type Adapter struct {
 	platformio.BaseAdapter
-	mu         sync.Mutex
-	desc       platformio.DriverDescriptor
-	settings   Settings
-	runtime    *RuntimeState
-	profile    *ProfileState
-	transport  *Transport
-	actions    *ActionService
-	query      *QueryService
-	router     *Router
-	hostHooks  *HostHooks
-	started    bool
-	cancel     context.CancelFunc
+	mu        sync.Mutex
+	desc      platformio.DriverDescriptor
+	settings  Settings
+	runtime   *RuntimeState
+	profile   *ProfileState
+	transport *Transport
+	actions   *ActionService
+	query     *QueryService
+	router    *Router
+	hostHooks *HostHooks
+	started   bool
+	cancel    context.CancelFunc
 }
 
 // NewAdapter 构造适配器；enabled=false 时 Start 不拨号
@@ -154,7 +154,12 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		return receipt, nil
 	}
 	profile := a.profile.Profile()
-	segments := EncodeOutboundSegments(outbound, profile)
+	segments, err := EncodeOutboundSegments(ctx, outbound)
+	if err != nil {
+		receipt.Status = platformio.DeliveryStatusFailed
+		receipt.Error = err.Error()
+		return receipt, err
+	}
 	if len(segments) == 0 {
 		receipt.Status = platformio.DeliveryStatusFailed
 		receipt.Error = "消息内容为空"
@@ -167,7 +172,7 @@ func (a *Adapter) Send(ctx context.Context, outbound platformio.OutboundMessageE
 		receipt.Error = err.Error()
 		return receipt, err
 	}
-	if status := asString(resp["status"]); status != "" && status != "ok" {
+	if asString(resp["status"]) != "ok" || asInt(resp["retcode"], 0) != 0 {
 		receipt.Status = platformio.DeliveryStatusFailed
 		receipt.Error = asString(resp["message"])
 		if receipt.Error == "" {

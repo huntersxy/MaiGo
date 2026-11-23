@@ -285,6 +285,14 @@ func convertReplyResult(ctx context.Context, output map[string]any) StructuredTo
 	if targetUserName != "" {
 		receipt = "\"" + botName + "\"已生成并向\"" + targetUserName + "\"发送了回复\"" + replyText + "\""
 	}
+	switch maisakaStringValue(output["emoji_attachment_status"]) {
+	case "sent":
+		receipt += "。表情包已发送。"
+	case "resolution_failed":
+		receipt += "。表情包解析失败，未发送。"
+	case "send_failed":
+		receipt += "。表情包发送失败。"
+	}
 	structured := map[string]any{
 		"msg_id":              msgID,
 		"set_quote":           setQuote,
@@ -307,6 +315,9 @@ func convertReplyResult(ctx context.Context, output map[string]any) StructuredTo
 // 与 :655-670 的 sent_message_ids/send_results/quote_probability/reply_supplement/reply_extensions
 func maisakaReplyMetadata(output map[string]any) map[string]any {
 	metadata := map[string]any{}
+	if status := maisakaStringValue(output["emoji_attachment_status"]); status != "" {
+		metadata["emoji_attachment_status"] = status
+	}
 	if value := maisakaStringValue(output["after_reply"]); value != "" {
 		metadata["after_reply"] = value
 	}
