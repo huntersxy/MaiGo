@@ -112,11 +112,15 @@ func (s *IngestService) ingestPersonFact(
 		messageIDs = append(messageIDs, token)
 	}
 	sort.Strings(messageIDs)
+	var observedAt any
+	if params.Timestamp != nil {
+		observedAt = *params.Timestamp
+	}
 	source := map[string]any{
 		"platform":    asString(metadata["platform"]),
 		"chat_id":     params.ChatID,
 		"message_ids": messageIDs,
-		"observed_at": params.Timestamp,
+		"observed_at": observedAt,
 	}
 	obsID, err := utils.ObservationID(asString(source["platform"]), asString(source["chat_id"]), messageIDs, "")
 	if err != nil {
