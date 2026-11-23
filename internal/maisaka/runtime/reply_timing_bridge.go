@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"strings"
@@ -84,17 +85,44 @@ func (a *Agent) privateDebounceMode() debounce.Mode {
 }
 
 func (a *Agent) gateFrequency(groupID int64) float64 {
-	if bot := a.instanceBotConfig(); bot != nil {
-		return maibotcfg.GroupTalkFrequencyFromBot(*bot, groupID)
-	}
-	return a.gateFrequencyFromRuntime(groupID)
+	return a.conversationReplyFrequency(a.ctx, memory.ConversationKindGroup, groupID)
 }
 
 func (a *Agent) privateReplyFrequency(targetID int64) float64 {
-	if bot := a.instanceBotConfig(); bot != nil {
-		return maibotcfg.PrivateTalkFrequencyFromBot(*bot, targetID)
+	return a.conversationReplyFrequency(a.ctx, memory.ConversationKindPrivate, targetID)
+}
+
+func (a *Agent) conversationReplyFrequency(ctx context.Context, kind string, targetID int64) float64 {
+	isGroup := kind == memory.ConversationKindGroup
+	bot := a.instanceBotConfig()
+	if bot == nil {
+		if isGroup {
+			return a.gateFrequencyFromRuntime(targetID)
+		}
+		return 1
 	}
-	return 1
+	platform, itemID := a.replyTimingTarget(ctx, kind, targetID)
+	if isGroup {
+		return maibotcfg.GroupTalkFrequency(bot.Chat.ReplyTiming, platform, itemID)
+	}
+	return maibotcfg.PrivateTalkFrequency(bot.Chat.ReplyTiming, platform, itemID)
+}
+
+func (a *Agent) replyTimingTarget(ctx context.Context, kind string, targetID int64) (string, string) {
+	index := a.sessionIndex()
+	if sessionID, ok := index.chatSessionID(kind, targetID); ok && a.chatSessions != nil {
+		if record, err := a.chatSessions.GetExistingBySessionID(ctx, sessionID); err == nil {
+			return record.Platform, record.TargetID()
+		}
+	}
+	platform := a.conversationPlatform(kind, targetID)
+	if groupKey := a.conversationGroupKey(kind, targetID); groupKey != "" {
+		return platform, groupKey
+	}
+	if route, ok := index.route(kind, targetID); ok && route.TargetID != "" {
+		return platform, route.TargetID
+	}
+	return platform, strconv.FormatInt(targetID, 10)
 }
 
 func (a *Agent) hasStrongInteraction(pending []*sessionUser) bool {

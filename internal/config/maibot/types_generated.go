@@ -403,7 +403,7 @@ type ChatReplyTimingConfig struct {
 	MessageDebounceMode        string                  `toml:"message_debounce_mode,omitempty"`
 	PrivateMessageDebounceMode string                  `toml:"private_message_debounce_mode,omitempty"`
 	PlannerMessageSteering     bool                    `toml:"planner_message_steering,omitempty"`
-	TalkValue                  float64                 `toml:"talk_value,omitempty"`
+	TalkValue                  float64                 `toml:"talk_value"`
 	PrivateReplyPaused         bool                    `toml:"private_reply_paused,omitempty"`
 	PrivateReplyPauseRules     []PrivateReplyPauseRule `toml:"private_reply_pause_rules,omitempty"`
 	MentionedBotReply          bool                    `toml:"mentioned_bot_reply,omitempty"`
@@ -777,7 +777,7 @@ type PluginRuntimeRenderConfig struct {
 type PrivateReplyPauseRule struct {
 	Platform string `toml:"platform,omitempty"`
 	ItemId   string `toml:"item_id,omitempty"`
-	Paused   bool   `toml:"paused,omitempty"`
+	Paused   *bool  `toml:"paused,omitempty"`
 }
 
 type ResponsePostProcessConfig struct {
@@ -797,12 +797,12 @@ type ResponseSplitterConfig struct {
 }
 
 type TalkRulesItem struct {
-	Enabled  *bool   `toml:"enabled,omitempty"`
-	Platform string  `toml:"platform,omitempty"`
-	ItemId   string  `toml:"item_id,omitempty"`
-	RuleType string  `toml:"rule_type,omitempty"`
-	Time     string  `toml:"time,omitempty"`
-	Value    float64 `toml:"value,omitempty"`
+	Enabled  *bool    `toml:"enabled,omitempty"`
+	Platform string   `toml:"platform,omitempty"`
+	ItemId   string   `toml:"item_id,omitempty"`
+	RuleType string   `toml:"rule_type,omitempty"`
+	Time     string   `toml:"time,omitempty"`
+	Value    *float64 `toml:"value,omitempty"`
 }
 
 // RuleEnabled 未显式关闭时规则生效

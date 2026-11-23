@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"MaiGo/internal/chat/session"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 func (d Deps) loadChatConfigForWrite(w http.ResponseWriter) (map[string]any, string, bool) {
@@ -58,7 +59,7 @@ func normalizeChatTalkTime(value string) (string, error) {
 	if normalized == "" || normalized == "*" {
 		return normalized, nil
 	}
-	if _, _, ok := parseChatTimeRange(normalized); !ok {
+	if _, _, ok := maibotcfg.ParseTalkTimeRange(normalized); !ok {
 		return "", fmt.Errorf("时间段格式应为 HH:MM-HH:MM、* 或留空")
 	}
 	return normalized, nil
@@ -119,7 +120,7 @@ func chatTalkRuleConfig(rule map[string]any) map[string]any {
 	}
 	return map[string]any{
 		"platform": platform, "item_id": itemID, "rule_type": ruleType,
-		"time": chatConfigString(rule["time"]), "value": chatConfigFloat(rule["value"], 0),
+		"time": chatConfigString(rule["time"]), "value": chatConfigFloat(rule["value"], maibotcfg.DefaultTalkRuleValue),
 		"enabled": chatConfigBool(rule["enabled"], true),
 	}
 }
@@ -139,25 +140,22 @@ func (d Deps) handleChatUpdateTalkFrequency(w http.ResponseWriter, r *http.Reque
 		writeChatFailure(w, http.StatusBadRequest, "私聊不再使用回复频率，请使用暂停回复开关")
 		return
 	}
-	var body struct {
+	body := struct {
 		PreviousTime *string  `json:"previous_time"`
 		Time         string   `json:"time"`
 		Value        *float64 `json:"value"`
 		Enabled      *bool    `json:"enabled"`
 		ActiveGroup  *string  `json:"active_group"`
-	}
+	}{Time: "*"}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeChatFailure(w, http.StatusUnprocessableEntity, "请求格式错误")
 		return
 	}
-	value := 0.0
-	if body.Value != nil {
-		value = *body.Value
-	}
-	if value < 0 || value > 1 {
+	if body.Value == nil || *body.Value < 0 || *body.Value > 1 {
 		writeChatFailure(w, http.StatusUnprocessableEntity, "value 必须在 0 到 1 之间")
 		return
 	}
+	value := *body.Value
 	normalizedTime, err := normalizeChatTalkTime(body.Time)
 	if err != nil {
 		writeChatFailure(w, http.StatusBadRequest, err.Error())

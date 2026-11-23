@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"MaiGo/internal/chat/session"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // chatConfigDoc 读取实例 bot_config.toml；缺失时返回空文档，详情回落默认值
@@ -180,75 +181,6 @@ func chatTargetConfigDetail(rule map[string]any) map[string]any {
 	}
 }
 
-// parseChatTimeRange 解析 HH:MM-HH:MM 为分钟区间
-func parseChatTimeRange(value string) (int, int, bool) {
-	parts := strings.Split(value, "-")
-	if len(parts) != 2 {
-		return 0, 0, false
-	}
-	parse := func(raw string) (int, bool) {
-		clock := strings.Split(strings.TrimSpace(raw), ":")
-		if len(clock) != 2 {
-			return 0, false
-		}
-		hour, errHour := strconv.Atoi(strings.TrimSpace(clock[0]))
-		minute, errMinute := strconv.Atoi(strings.TrimSpace(clock[1]))
-		if errHour != nil || errMinute != nil {
-			return 0, false
-		}
-		return hour*60 + minute, true
-	}
-	start, okStart := parse(parts[0])
-	end, okEnd := parse(parts[1])
-	if !okStart || !okEnd {
-		return 0, 0, false
-	}
-	return start, end, true
-}
-
-func chatTimePriority(ruleTime string, nowMin int) (int, bool) {
-	ruleTime = strings.TrimSpace(ruleTime)
-	if ruleTime == "" {
-		return 1, true
-	}
-	if ruleTime == "*" {
-		return 3, true
-	}
-	start, end, ok := parseChatTimeRange(ruleTime)
-	if !ok {
-		return 0, false
-	}
-	if start <= end {
-		return 2, nowMin >= start && nowMin <= end
-	}
-	return 2, nowMin >= start || nowMin <= end
-}
-
-func chatTalkTargetPriority(rule map[string]any, rec *chatsession.Record) (int, bool) {
-	platform, itemID, ruleType := chatRuleTargets(rule)
-	if ruleType != "group" || !rec.IsGroup() {
-		return 0, false
-	}
-	if platform == "" && itemID == "" {
-		return 1, true
-	}
-	wildcard := platform == "*" || itemID == "*"
-	streamPlatform := strings.TrimSpace(rec.Platform)
-	streamTarget := chatTargetID(rec)
-	platformMatches := platform == "" || platform == "*" || platform == streamPlatform
-	itemMatches := itemID == "" || itemID == "*" || itemID == streamTarget
-	if !platformMatches || !itemMatches {
-		return 0, false
-	}
-	if platform != "" && itemID != "" && !wildcard {
-		return 5, true
-	}
-	if wildcard {
-		return 4, true
-	}
-	return 3, true
-}
-
 func formatChatFrequency(value float64) string {
 	if value < 0 {
 		value = 0
@@ -257,25 +189,30 @@ func formatChatFrequency(value float64) string {
 }
 
 func chatTalkRuleDetail(rule map[string]any, rec *chatsession.Record, nowMin int) (map[string]any, bool) {
-	targetPriority, ok := chatTalkTargetPriority(rule, rec)
-	if !ok {
+	platform, itemID, ruleType := chatRuleTargets(rule)
+	target := maibotcfg.TalkRulesItem{Platform: platform, ItemId: itemID, RuleType: ruleType}
+	targetPriority := maibotcfg.GroupTalkRuleTargetPriority(target, strings.TrimSpace(rec.Platform), chatTargetID(rec))
+	if targetPriority == 0 {
 		return nil, false
 	}
-	platform, itemID, ruleType := chatRuleTargets(rule)
 	ruleTime := chatConfigString(rule["time"])
-	timePriority, active := chatTimePriority(ruleTime, nowMin)
-	value := chatConfigFloat(rule["value"], 0)
+	timePriority := maibotcfg.TalkRuleTimePriority(ruleTime, nowMin)
+	var activePriority any
+	if timePriority > 0 {
+		activePriority = timePriority
+	}
+	value := chatConfigFloat(rule["value"], maibotcfg.DefaultTalkRuleValue)
 	return map[string]any{
 		"platform":          platform,
 		"item_id":           itemID,
-		"type":              ruleType,
+		"type":              target.ChatType(),
 		"time":              ruleTime,
 		"value":             value,
 		"enabled":           chatConfigBool(rule["enabled"], true),
 		"value_label":       formatChatFrequency(value),
 		"target_priority":   targetPriority,
-		"time_priority":     timePriority,
-		"time_active":       active,
+		"time_priority":     activePriority,
+		"time_active":       timePriority > 0,
 		"is_effective":      false,
 		"is_default_target": platform == "" && itemID == "",
 	}, true
@@ -322,7 +259,7 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 			if priority[0] > selectedPriority[0] || (priority[0] == selectedPriority[0] && priority[1] > selectedPriority[1]) {
 				selectedPriority = priority
 				selectedIndex = len(details)
-				selectedValue = chatConfigFloat(rule["value"], baseValue)
+				selectedValue = detail["value"].(float64)
 			}
 		}
 		details = append(details, detail)
@@ -341,7 +278,9 @@ func chatTalkDetails(doc map[string]any, rec *chatsession.Record) map[string]any
 		if leftTarget != rightTarget {
 			return leftTarget > rightTarget
 		}
-		return left["time_priority"].(int) > right["time_priority"].(int)
+		leftTime, _ := left["time_priority"].(int)
+		rightTime, _ := right["time_priority"].(int)
+		return leftTime > rightTime
 	})
 	return map[string]any{
 		"base_value": baseValue, "base_value_label": formatChatFrequency(baseValue),
@@ -356,7 +295,7 @@ func chatPrivateReplyPauseRule(doc map[string]any, rec *chatsession.Record) map[
 	platform := strings.TrimSpace(rec.Platform)
 	itemID := chatTargetID(rec)
 	for _, rule := range rules {
-		if chatConfigString(rule["platform"]) == platform && chatConfigString(rule["item_id"]) == itemID {
+		if rule["platform"] == platform && rule["item_id"] == itemID {
 			return rule
 		}
 	}
@@ -367,7 +306,7 @@ func chatPrivateReplyPaused(doc map[string]any, rec *chatsession.Record) bool {
 	replyTiming := chatConfigTable(chatConfigTable(doc, "chat"), "reply_timing")
 	globalPaused := chatConfigBool(replyTiming["private_reply_paused"], false)
 	if rule := chatPrivateReplyPauseRule(doc, rec); rule != nil {
-		return chatConfigBool(rule["paused"], globalPaused)
+		return chatConfigBool(rule["paused"], true)
 	}
 	return globalPaused
 }

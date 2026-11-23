@@ -132,7 +132,7 @@ func validateChatConfig(cfg ChatConfig) error {
 	}
 	for groupIndex, group := range groups.Groups {
 		for index, rule := range group.Rules {
-			if strings.TrimSpace(rule.RuleType) != "group" {
+			if rule.ChatType() != "group" {
 				continue
 			}
 			platformGlobal := strings.TrimSpace(rule.Platform) == "" || strings.TrimSpace(rule.Platform) == "*"

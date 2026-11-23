@@ -101,6 +101,11 @@ func (a *Agent) persistConversationMessage(ctx context.Context, msg *onebot.Conv
 	if platform == "" {
 		platform = platformio.PlatformQQ
 	}
+	var replyFrequency *float64
+	if msg.MessageID != 0 && msg.UserID != a.SelfID() {
+		frequency := a.conversationReplyFrequency(ctx, msg.ConversationKind, msg.TargetID)
+		replyFrequency = &frequency
+	}
 	var log *memory.MessageLog
 	created := false
 	err := a.memory.GetDB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -123,7 +128,8 @@ func (a *Agent) persistConversationMessage(ctx context.Context, msg *onebot.Conv
 			IsEmoji: messageIsEmoji(msg), IsPicture: messageIsPicture(msg),
 			IsCommand: messageIsCommand(msg), IsNotify: msg.IsNotify,
 			Timestamp: msg.Time, MediaRefs: mediaRefs,
-			Platform: platform, SessionID: sessionID,
+			ReplyFrequency: replyFrequency,
+			Platform:       platform, SessionID: sessionID,
 			ExternalMessageID: msg.ExternalMessageID,
 			ExternalTargetID:  msg.ExternalTargetID,
 			ExternalUserID:    msg.ExternalUserID,
@@ -137,15 +143,6 @@ func (a *Agent) persistConversationMessage(ctx context.Context, msg *onebot.Conv
 		if !msg.ReceivedAt.IsZero() {
 			receivedAt := msg.ReceivedAt
 			log.ReceivedAt = &receivedAt
-		}
-		// 对齐 MaiBot fill_reply_frequency_if_available：入库前记录当前会话生效回复频率，
-		// 自身消息不补造
-		if msg.UserID != a.SelfID() {
-			frequency := a.privateReplyFrequency(msg.TargetID)
-			if msg.ConversationKind == memory.ConversationKindGroup {
-				frequency = a.gateFrequency(msg.TargetID)
-			}
-			log.ReplyFrequency = &frequency
 		}
 		if msg.Reply != nil && msg.Reply.MessageID != 0 {
 			replyTo := msg.Reply.MessageID

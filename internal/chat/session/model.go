@@ -26,3 +26,13 @@ func (Record) TableName() string { return "chat_sessions" }
 func (r Record) IsGroup() bool {
 	return r.GroupID != nil && strings.TrimSpace(*r.GroupID) != ""
 }
+
+func (r Record) TargetID() string {
+	if r.IsGroup() {
+		return strings.TrimSpace(*r.GroupID)
+	}
+	if r.UserID != nil {
+		return strings.TrimSpace(*r.UserID)
+	}
+	return ""
+}

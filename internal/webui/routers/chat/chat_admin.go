@@ -53,13 +53,7 @@ func (d Deps) ChatDB() *gorm.DB {
 }
 
 func chatTargetID(rec *chatsession.Record) string {
-	if rec.GroupID != nil && strings.TrimSpace(*rec.GroupID) != "" {
-		return strings.TrimSpace(*rec.GroupID)
-	}
-	if rec.UserID != nil {
-		return strings.TrimSpace(*rec.UserID)
-	}
-	return ""
+	return rec.TargetID()
 }
 
 func chatTypeOf(rec *chatsession.Record) string {

@@ -97,7 +97,7 @@ func mergeMediaFromVisual(cfg *config.RuntimeConfig, visual VisualConfig) {
 func talkRulesForRuntime(rules []TalkRulesItem, platform string) []config.TimeRuleConfig {
 	out := make([]config.TimeRuleConfig, 0, len(rules))
 	for _, rule := range rules {
-		if !rule.RuleEnabled() || strings.TrimSpace(rule.RuleType) != "group" {
+		if !rule.RuleEnabled() || rule.ChatType() != "group" {
 			continue
 		}
 		rulePlatform := strings.TrimSpace(rule.Platform)
@@ -108,23 +108,24 @@ func talkRulesForRuntime(rules []TalkRulesItem, platform string) []config.TimeRu
 		if timeRange == "" || timeRange == "*" {
 			continue
 		}
+		groupID, ok := parseTalkRuleGroupID(rule.ItemId)
+		if !ok {
+			continue
+		}
 		out = append(out, config.TimeRuleConfig{
 			TimeRange: timeRange,
-			GroupID:   parseTalkRuleGroupID(rule.ItemId),
-			TalkValue: rule.Value,
+			GroupID:   groupID,
+			TalkValue: rule.Frequency(),
 		})
 	}
 	return out
 }
 
-func parseTalkRuleGroupID(itemID string) int64 {
+func parseTalkRuleGroupID(itemID string) (int64, bool) {
 	itemID = strings.TrimSpace(itemID)
 	if itemID == "" || itemID == "*" {
-		return 0
+		return 0, true
 	}
 	gid, err := strconv.ParseInt(itemID, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return gid
+	return gid, err == nil && gid > 0
 }

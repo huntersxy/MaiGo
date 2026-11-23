@@ -6,8 +6,8 @@ func TestUpgradeGroupTalkValueRules(t *testing.T) {
 	disabled := false
 	bot := BotConfigFile{}
 	bot.Chat.ReplyTiming.TalkValueRules = []TalkRulesItem{
-		{Platform: "qq", ItemId: "1", RuleType: "group", Time: "20:00-22:00", Value: 0.8},
-		{Platform: "qq", ItemId: "2", RuleType: "group", Time: "*", Value: 0.3, Enabled: &disabled},
+		{Platform: "qq", ItemId: "1", RuleType: "group", Time: "20:00-22:00", Value: new(0.8)},
+		{Platform: "qq", ItemId: "2", RuleType: "group", Time: "*", Value: new(0.3), Enabled: &disabled},
 	}
 	reasons := upgradeGroupTalkValueRules(&bot)
 	if len(reasons) != 1 {
@@ -32,14 +32,14 @@ func TestGroupTalkFrequencyUsesActiveGroup(t *testing.T) {
 	rt.TalkRuleGroups = TalkRuleGroups{
 		ActiveGroup: "夜间",
 		Groups: []TalkRuleGroup{
-			{Name: "默认", Rules: []TalkRulesItem{{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: 0.9}}},
+			{Name: "默认", Rules: []TalkRulesItem{{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: new(0.9)}}},
 			{Name: "夜间", Rules: []TalkRulesItem{
-				{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: 0.2, Enabled: &enabled},
-				{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: 0.01, Enabled: &disabled},
+				{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: new(0.2), Enabled: &enabled},
+				{Platform: "qq", ItemId: "1", RuleType: "group", Time: "*", Value: new(0.01), Enabled: &disabled},
 			}},
 		},
 	}
-	if got := GroupTalkFrequency(rt, "qq", 1); got != 0.2 {
+	if got := GroupTalkFrequency(rt, "qq", "1"); got != 0.2 {
 		t.Fatalf("频率 = %v, 期望 0.2", got)
 	}
 }

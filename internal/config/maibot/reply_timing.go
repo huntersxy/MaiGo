@@ -57,93 +57,67 @@ func (rt *ChatReplyTimingConfig) EnsureTalkRuleGroups() {
 	}
 }
 
+const DefaultTalkRuleValue = 0.5
+
+func (rule TalkRulesItem) Frequency() float64 {
+	if rule.Value == nil {
+		return DefaultTalkRuleValue
+	}
+	return *rule.Value
+}
+
+func (rule TalkRulesItem) ChatType() string {
+	if rule.RuleType == "" {
+		return "group"
+	}
+	return rule.RuleType
+}
+
 // GroupTalkFrequency 群聊 talk_value，含时段规则（对齐 ChatConfigUtils.get_talk_value 群聊分支）
-func GroupTalkFrequency(rt ChatReplyTimingConfig, platform string, groupID int64) float64 {
+func GroupTalkFrequency(rt ChatReplyTimingConfig, platform, groupID string) float64 {
 	rt.EnsureTalkRuleGroups()
-	base := rt.TalkValue
-	rules := rt.TalkRuleGroups.ActiveRules()
-	if len(rules) == 0 {
-		return base
+	now := time.Now()
+	nowMin := now.Hour()*60 + now.Minute()
+	selectedPriority := 0
+	value := rt.TalkValue
+	for _, rule := range rt.TalkRuleGroups.ActiveRules() {
+		if !rule.RuleEnabled() {
+			continue
+		}
+		targetPriority := GroupTalkRuleTargetPriority(rule, platform, groupID)
+		if targetPriority == 0 {
+			continue
+		}
+		timePriority := TalkRuleTimePriority(rule.Time, nowMin)
+		priority := targetPriority*10 + timePriority
+		if timePriority > 0 && priority > selectedPriority {
+			selectedPriority = priority
+			value = rule.Frequency()
+		}
 	}
-	nowMin := time.Now().Hour()*60 + time.Now().Minute()
-	groupStr := strconv.FormatInt(groupID, 10)
-	if matched, ok := selectTalkRuleValue(rules, platform, groupStr, true, nowMin); ok {
-		return matched
-	}
-	return base
+	return value
 }
 
 // PrivateTalkFrequency 私聊频率；暂停时为 0（静默消费）
-func PrivateTalkFrequency(rt ChatReplyTimingConfig, platform string, userID int64) float64 {
+func PrivateTalkFrequency(rt ChatReplyTimingConfig, platform, userID string) float64 {
 	if privateReplyPaused(rt, platform, userID) {
 		return 0
 	}
 	return 1
 }
 
-func privateReplyPaused(rt ChatReplyTimingConfig, platform string, userID int64) bool {
-	userStr := strconv.FormatInt(userID, 10)
+func privateReplyPaused(rt ChatReplyTimingConfig, platform, userID string) bool {
 	for _, rule := range rt.PrivateReplyPauseRules {
 		// 对齐 Python find_private_reply_pause_rule：仅精确 platform+user_id，无通配
-		if strings.TrimSpace(rule.Platform) == platform && strings.TrimSpace(rule.ItemId) == userStr {
-			return rule.Paused
+		if rule.Platform == platform && rule.ItemId == userID {
+			return rule.Paused == nil || *rule.Paused
 		}
 	}
 	return rt.PrivateReplyPaused
 }
 
-// GroupTalkFrequencyFromBot 从实例 bot 配置读取群聊频率
-func GroupTalkFrequencyFromBot(bot BotConfigFile, groupID int64) float64 {
-	return GroupTalkFrequency(bot.Chat.ReplyTiming, strings.TrimSpace(bot.Bot.Platform), groupID)
-}
-
-// PrivateTalkFrequencyFromBot 从实例 bot 配置读取私聊频率
-func PrivateTalkFrequencyFromBot(bot BotConfigFile, userID int64) float64 {
-	return PrivateTalkFrequency(bot.Chat.ReplyTiming, strings.TrimSpace(bot.Bot.Platform), userID)
-}
-
-func selectTalkRuleValue(rules []TalkRulesItem, platform, itemID string, isGroup bool, nowMin int) (float64, bool) {
-	selectedPriority := 0
-	var selectedValue float64
-	found := false
-	for _, rule := range rules {
-		if !rule.RuleEnabled() {
-			continue
-		}
-		ruleType := strings.TrimSpace(rule.RuleType)
-		if isGroup && ruleType != "group" {
-			continue
-		}
-		if !isGroup && ruleType != "private" {
-			continue
-		}
-		targetPriority := talkRuleTargetPriority(rule, platform, itemID, isGroup)
-		if targetPriority == 0 {
-			continue
-		}
-		timePriority := talkRuleTimePriority(rule.Time, nowMin)
-		if timePriority == 0 {
-			continue
-		}
-		priority := targetPriority*10 + timePriority
-		if !found || priority > selectedPriority {
-			selectedPriority = priority
-			selectedValue = rule.Value
-			found = true
-		}
-	}
-	return selectedValue, found
-}
-
-func talkRuleTargetPriority(rule TalkRulesItem, platform, itemID string, isGroup bool) int {
-	ruleType := strings.TrimSpace(rule.RuleType)
-	if ruleType == "group" && !isGroup {
-		return 0
-	}
-	if ruleType == "private" && isGroup {
-		return 0
-	}
-	if ruleType != "group" && ruleType != "private" {
+func GroupTalkRuleTargetPriority(rule TalkRulesItem, platform, itemID string) int {
+	if rule.ChatType() != "group" || itemID == "" {
 		return 0
 	}
 	rulePlatform := strings.TrimSpace(rule.Platform)
@@ -165,7 +139,7 @@ func talkRuleTargetPriority(rule TalkRulesItem, platform, itemID string, isGroup
 	return 3
 }
 
-func talkRuleTimePriority(ruleTime string, nowMin int) int {
+func TalkRuleTimePriority(ruleTime string, nowMin int) int {
 	ruleTime = strings.TrimSpace(ruleTime)
 	if ruleTime == "" {
 		return 1
@@ -173,7 +147,7 @@ func talkRuleTimePriority(ruleTime string, nowMin int) int {
 	if ruleTime == "*" {
 		return 3
 	}
-	start, end, ok := parseTalkTimeRange(ruleTime)
+	start, end, ok := ParseTalkTimeRange(ruleTime)
 	if !ok {
 		return 0
 	}
@@ -189,7 +163,7 @@ func talkRuleTimePriority(ruleTime string, nowMin int) int {
 	return 0
 }
 
-func parseTalkTimeRange(value string) (int, int, bool) {
+func ParseTalkTimeRange(value string) (int, int, bool) {
 	parts := strings.Split(value, "-")
 	if len(parts) != 2 {
 		return 0, 0, false
@@ -211,11 +185,11 @@ func parseClockMinutes(value string) (int, bool) {
 	if len(parts) != 2 {
 		return 0, false
 	}
-	hour, err := strconv.Atoi(parts[0])
+	hour, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 	if err != nil {
 		return 0, false
 	}
-	min, err := strconv.Atoi(parts[1])
+	min, err := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err != nil {
 		return 0, false
 	}

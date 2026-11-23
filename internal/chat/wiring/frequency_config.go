@@ -1,7 +1,6 @@
 package chatwiring
 
 import (
-	"strconv"
 	"strings"
 
 	"MaiGo/internal/chat/message_receive"
@@ -21,16 +20,8 @@ func ConfigFrequencyFallback(timing *maibotcfg.ChatReplyTimingConfig) func(messa
 		}
 		platform := strings.TrimSpace(message.Platform)
 		if message.IsGroup() {
-			groupID := int64(0)
-			if value, err := strconv.ParseInt(strings.TrimSpace(message.MessageInfo.GroupInfo.GroupID), 10, 64); err == nil {
-				groupID = value
-			}
-			return maibotcfg.GroupTalkFrequency(config, platform, groupID), true
+			return maibotcfg.GroupTalkFrequency(config, platform, message.TargetID()), true
 		}
-		userID := int64(0)
-		if value, err := strconv.ParseInt(strings.TrimSpace(message.UserID()), 10, 64); err == nil {
-			userID = value
-		}
-		return maibotcfg.PrivateTalkFrequency(config, platform, userID), true
+		return maibotcfg.PrivateTalkFrequency(config, platform, message.TargetID()), true
 	}
 }
