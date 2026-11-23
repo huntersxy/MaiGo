@@ -50,8 +50,23 @@ func (d Deps) handleConfigModelGet(w http.ResponseWriter, r *http.Request) {
 		}
 		doc["_shared_catalog"] = map[string]any{"revision": maibotcfg.CatalogRevision(catalogPath)}
 	}
+	applyModelTaskListDefaults(doc)
 	doc["_warnings"] = modelConfigWarnings(doc)
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "config": doc})
+}
+
+func applyModelTaskListDefaults(doc map[string]any) {
+	tasks, _ := doc["model_task_config"].(map[string]any)
+	for _, name := range [...]string{
+		"web_search", "replyer", "planner", "memory", "utils", "learner", "fast_model", "vlm", "voice", "embedding", "image_embedding",
+	} {
+		task, _ := tasks[name].(map[string]any)
+		if task != nil {
+			if _, exists := task["model_list"]; !exists {
+				task["model_list"] = []string{}
+			}
+		}
+	}
 }
 
 // handleConfigBotUpdate 对应 POST /api/webui/config/bot

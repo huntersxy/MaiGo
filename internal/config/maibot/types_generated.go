@@ -707,17 +707,17 @@ type ModelPricePeriod struct {
 }
 
 type ModelTaskConfig struct {
-	WebSearch      WebSearchTaskConfig `toml:"web_search,omitempty"`
-	Replyer        TaskConfig          `toml:"replyer,omitempty"`
-	Planner        TaskConfig          `toml:"planner,omitempty"`
-	Memory         TaskConfig          `toml:"memory,omitempty"`
-	Utils          TaskConfig          `toml:"utils,omitempty"`
-	Learner        TaskConfig          `toml:"learner,omitempty"`
-	FastModel      TaskConfig          `toml:"fast_model,omitempty"`
-	Vlm            TaskConfig          `toml:"vlm,omitempty"`
-	Voice          TaskConfig          `toml:"voice,omitempty"`
-	Embedding      TaskConfig          `toml:"embedding,omitempty"`
-	ImageEmbedding TaskConfig          `toml:"image_embedding,omitempty"`
+	WebSearch      WebSearchTaskConfig `toml:"web_search"`
+	Replyer        TaskConfig          `toml:"replyer"`
+	Planner        TaskConfig          `toml:"planner"`
+	Memory         TaskConfig          `toml:"memory"`
+	Utils          TaskConfig          `toml:"utils"`
+	Learner        TaskConfig          `toml:"learner"`
+	FastModel      TaskConfig          `toml:"fast_model"`
+	Vlm            TaskConfig          `toml:"vlm"`
+	Voice          TaskConfig          `toml:"voice"`
+	Embedding      TaskConfig          `toml:"embedding"`
+	ImageEmbedding TaskConfig          `toml:"image_embedding"`
 }
 
 type PersonalityConfig struct {
@@ -827,7 +827,7 @@ type TargetItem struct {
 }
 
 type TaskConfig struct {
-	ModelList         []string `toml:"model_list,omitempty"`
+	ModelList         []string `toml:"model_list"`
 	MaxTokens         int      `toml:"max_tokens,omitempty"`
 	Temperature       float64  `toml:"temperature,omitempty"`
 	SelectionStrategy string   `toml:"selection_strategy,omitempty"`
@@ -866,7 +866,7 @@ type WebRuntimeConfig struct {
 }
 
 type WebSearchTaskConfig struct {
-	ModelList []string `toml:"model_list,omitempty"`
+	ModelList []string `toml:"model_list"`
 }
 
 type WebServiceConfig struct {
@@ -953,7 +953,7 @@ type BotConfigLoadMeta struct {
 type ModelConfigFile struct {
 	Web             WebConfig       `toml:"web,omitempty"`
 	Models          []ModelInfo     `toml:"models,omitempty"`
-	ModelTaskConfig ModelTaskConfig `toml:"model_task_config,omitempty"`
+	ModelTaskConfig ModelTaskConfig `toml:"model_task_config"`
 	ApiProviders    []APIProvider   `toml:"api_providers,omitempty"`
 
 	// LegacyModelTypeKeySet[i] 为 true 表示 models[i] 在 TOML 中显式含 model_type 键（加载时填充，不参与序列化）
