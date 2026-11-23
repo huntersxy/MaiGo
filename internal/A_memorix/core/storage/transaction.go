@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 )
 
@@ -101,6 +102,14 @@ func closeTop(tx *Tx, commit bool) error {
 		}
 		if _, err := view.exec(stmt); err != nil {
 			execErr = err
+			if commit {
+				if _, rollbackErr := view.exec("ROLLBACK"); rollbackErr != nil {
+					_ = view.session.Raw(func(any) error { return driver.ErrBadConn })
+					execErr = fmt.Errorf("%w（提交失败后的回滚失败：%v）", err, rollbackErr)
+				}
+			} else {
+				_ = view.session.Raw(func(any) error { return driver.ErrBadConn })
+			}
 		}
 		view.setInTx(false)
 	}

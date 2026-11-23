@@ -16,11 +16,16 @@ var vectorStateValues = map[string]struct{}{
 
 // SetRelationVectorState 更新关系向量状态
 func (s *Store) SetRelationVectorState(hashValue string, state string, errText *string, bumpRetry bool) (bool, error) {
+	return s.SetRelationVectorStateOn(nil, hashValue, state, errText, bumpRetry)
+}
+
+// SetRelationVectorStateOn 使用指定连接更新关系向量状态
+func (s *Store) SetRelationVectorStateOn(conn *Conn, hashValue string, state string, errText *string, bumpRetry bool) (bool, error) {
 	stateNorm := strings.ToLower(strings.TrimSpace(state))
 	if _, ok := vectorStateValues[stateNorm]; !ok {
 		return false, fmt.Errorf("无效 vector_state: %s", state)
 	}
-	c, err := s.ResolveConn(nil)
+	c, err := s.ResolveConn(conn)
 	if err != nil {
 		return false, err
 	}

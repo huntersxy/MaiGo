@@ -95,6 +95,8 @@ native_message_committer = false  # 已接入
 
 ## 贡献
 
+A_Memorix 的 SQLite 事务在 Go 中独占一条池连接。事务内调用其他存储方法时显式传递 `tx.Conn()`，嵌套事务在原连接上使用保存点；普通调用仍从池中取连接。这对应 Python 按线程复用事务连接的行为。
+
 欢迎任何形式的贡献！请遵循以下步骤：
 
 1. **Fork** 本仓库。

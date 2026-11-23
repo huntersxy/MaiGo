@@ -35,10 +35,12 @@ type RelationVectorRecord struct {
 // RelationMetadataStore 关系写入需要的元数据存储子集
 type RelationMetadataStore interface {
 	Transaction(immediate bool, fn func(tx *storage.Tx) error) error
-	AddRelation(subject, predicate, object string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) (string, error)
-	AddRelationsBatch(relations [][3]string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) ([]string, error)
+	AddRelationOn(conn *storage.Conn, subject, predicate, object string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) (string, error)
+	AddRelationsBatchOn(conn *storage.Conn, relations [][3]string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) ([]string, error)
 	GetRelationStatusBatch(hashes []string) (map[string]map[string]any, error)
+	GetRelationStatusBatchOn(conn *storage.Conn, hashes []string) (map[string]map[string]any, error)
 	SetRelationVectorState(hashValue, state string, errText *string, bumpRetry bool) (bool, error)
+	SetRelationVectorStateOn(conn *storage.Conn, hashValue, state string, errText *string, bumpRetry bool) (bool, error)
 }
 
 // RelationGraphStore 关系写入需要的图存储子集
@@ -166,7 +168,7 @@ func (s *RelationWriteService) EnsureRelationVectors(
 		errorText := "vector_channel_unavailable"
 		err := s.metadata.Transaction(true, func(tx *storage.Tx) error {
 			for _, record := range records {
-				if _, err := s.metadata.SetRelationVectorState(record.HashValue, "failed", &errorText, true); err != nil {
+				if _, err := s.metadata.SetRelationVectorStateOn(tx.Conn(), record.HashValue, "failed", &errorText, true); err != nil {
 					return err
 				}
 			}
@@ -228,7 +230,7 @@ func (s *RelationWriteService) EnsureRelationVectors(
 			if _, ok := restoredHashes[record.HashValue]; ok {
 				state = "ready"
 			}
-			if _, err := s.metadata.SetRelationVectorState(record.HashValue, state, nil, false); err != nil {
+			if _, err := s.metadata.SetRelationVectorStateOn(tx.Conn(), record.HashValue, state, nil, false); err != nil {
 				return err
 			}
 		}
@@ -276,10 +278,10 @@ func (s *RelationWriteService) EnsureRelationVectors(
 		for _, record := range pendingRecords {
 			if message, failed := failedErrors[record.HashValue]; failed {
 				errorText := message
-				if _, err := s.metadata.SetRelationVectorState(record.HashValue, "failed", &errorText, true); err != nil {
+				if _, err := s.metadata.SetRelationVectorStateOn(tx.Conn(), record.HashValue, "failed", &errorText, true); err != nil {
 					return err
 				}
-			} else if _, err := s.metadata.SetRelationVectorState(record.HashValue, "ready", nil, false); err != nil {
+			} else if _, err := s.metadata.SetRelationVectorStateOn(tx.Conn(), record.HashValue, "ready", nil, false); err != nil {
 				return err
 			}
 		}
@@ -411,12 +413,9 @@ func (s *RelationWriteService) UpsertRelationsWithVectors(
 
 	var relationHashes []string
 	err := s.metadata.Transaction(true, func(tx *storage.Tx) error {
-		hashes, err := s.metadata.AddRelationsBatch(normalized, nil, confidence, sourceParagraph, metadata)
-		if err != nil {
-			return err
-		}
-		relationHashes = hashes
-		return nil
+		var err error
+		relationHashes, err = s.metadata.AddRelationsBatchOn(tx.Conn(), normalized, nil, confidence, sourceParagraph, metadata)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -613,7 +612,7 @@ func (s *RelationWriteService) UpsertRelationWithVector(
 	}
 	var relationHash string
 	err := s.metadata.Transaction(true, func(tx *storage.Tx) error {
-		hashValue, err := s.metadata.AddRelation(subject, predicate, object, nil, confidence, sourceParagraph, metadata)
+		hashValue, err := s.metadata.AddRelationOn(tx.Conn(), subject, predicate, object, nil, confidence, sourceParagraph, metadata)
 		if err != nil {
 			return err
 		}
@@ -622,7 +621,7 @@ func (s *RelationWriteService) UpsertRelationWithVector(
 			return nil
 		}
 		return s.graph.BatchUpdate(func() error {
-			statuses, err := s.metadata.GetRelationStatusBatch([]string{hashValue})
+			statuses, err := s.metadata.GetRelationStatusBatchOn(tx.Conn(), []string{hashValue})
 			if err != nil {
 				return err
 			}

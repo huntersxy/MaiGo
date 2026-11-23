@@ -181,7 +181,7 @@ func (s *Store) AddEntity(name string, vectorIndex *int, sourceParagraph string,
 			return err
 		}
 		if strings.TrimSpace(sourceParagraph) != "" {
-			if _, err := s.LinkParagraphEntity(sourceParagraph, hashValue, 1); err != nil {
+			if _, err := s.linkParagraphEntity(tx.Conn(), sourceParagraph, hashValue, 1); err != nil {
 				return err
 			}
 		}
@@ -292,12 +292,17 @@ func (s *Store) ComputeRelationHash(subject string, predicate string, object str
 
 // AddRelation 添加关系，对齐 Python add_relation
 func (s *Store) AddRelation(subject string, predicate string, object string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) (string, error) {
+	return s.AddRelationOn(nil, subject, predicate, object, vectorIndex, confidence, sourceParagraph, metadata)
+}
+
+// AddRelationOn 在指定连接上添加关系
+func (s *Store) AddRelationOn(conn *Conn, subject string, predicate string, object string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) (string, error) {
 	hashValue, err := s.ComputeRelationHash(subject, predicate, object)
 	if err != nil {
 		return "", err
 	}
 	now := nowTimestamp()
-	err = s.Transaction(true, func(tx *Tx) error {
+	err = s.transactionOn(conn, true, func(tx *Tx) error {
 		result, err := tx.Exec(`INSERT OR IGNORE INTO relations
 			(hash, subject, predicate, object, vector_index, confidence, created_at, source_paragraph, metadata,
 			 retention_strength, retention_anchor_at, next_lifecycle_at, reinforcement_count, inactive_reason)
@@ -318,7 +323,7 @@ func (s *Store) AddRelation(subject string, predicate string, object string, vec
 			zap.L().Debug("关系已存在", zap.String("subject", subject), zap.String("predicate", predicate), zap.String("object", object))
 		}
 		if strings.TrimSpace(sourceParagraph) != "" {
-			if _, err := s.LinkParagraphRelation(sourceParagraph, hashValue); err != nil {
+			if _, err := s.linkParagraphRelation(tx.Conn(), sourceParagraph, hashValue); err != nil {
 				return err
 			}
 		}
@@ -332,8 +337,13 @@ func (s *Store) AddRelation(subject string, predicate string, object string, vec
 
 // AddRelationsBatch 在单个受管事务中批量添加关系，对齐 Python add_relations_batch
 func (s *Store) AddRelationsBatch(relations [][3]string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) ([]string, error) {
+	return s.AddRelationsBatchOn(nil, relations, vectorIndex, confidence, sourceParagraph, metadata)
+}
+
+// AddRelationsBatchOn 在指定连接上批量添加关系
+func (s *Store) AddRelationsBatchOn(conn *Conn, relations [][3]string, vectorIndex *int, confidence float64, sourceParagraph string, metadata map[string]any) ([]string, error) {
 	var hashes []string
-	err := s.Transaction(true, func(tx *Tx) error {
+	err := s.transactionOn(conn, true, func(tx *Tx) error {
 		inner, err := s.addRelationsBatch(tx, relations, vectorIndex, confidence, sourceParagraph, metadata)
 		hashes = inner
 		return err
@@ -415,8 +425,12 @@ func (s *Store) addRelationsBatch(tx *Tx, relations [][3]string, vectorIndex *in
 
 // LinkParagraphRelation 关联段落和关系（幂等），对齐 Python link_paragraph_relation
 func (s *Store) LinkParagraphRelation(paragraphHash string, relationHash string) (bool, error) {
+	return s.linkParagraphRelation(nil, paragraphHash, relationHash)
+}
+
+func (s *Store) linkParagraphRelation(conn *Conn, paragraphHash string, relationHash string) (bool, error) {
 	linked := false
-	err := s.Transaction(true, func(tx *Tx) error {
+	err := s.transactionOn(conn, true, func(tx *Tx) error {
 		result, err := tx.Exec("INSERT OR IGNORE INTO paragraph_relations (paragraph_hash, relation_hash) VALUES (?, ?)",
 			paragraphHash, relationHash)
 		if err != nil {
@@ -445,7 +459,11 @@ func (s *Store) LinkParagraphRelation(paragraphHash string, relationHash string)
 
 // LinkParagraphEntity 关联段落和实体（幂等），对齐 Python link_paragraph_entity
 func (s *Store) LinkParagraphEntity(paragraphHash string, entityHash string, mentionCount int) (bool, error) {
-	err := s.Transaction(true, func(tx *Tx) error {
+	return s.linkParagraphEntity(nil, paragraphHash, entityHash, mentionCount)
+}
+
+func (s *Store) linkParagraphEntity(conn *Conn, paragraphHash string, entityHash string, mentionCount int) (bool, error) {
+	err := s.transactionOn(conn, true, func(tx *Tx) error {
 		result, err := tx.Exec("INSERT OR IGNORE INTO paragraph_entities (paragraph_hash, entity_hash, mention_count) VALUES (?, ?, ?)",
 			paragraphHash, entityHash, mentionCount)
 		if err != nil {

@@ -181,6 +181,13 @@ func (s *Store) ResolveConn(c *Conn) (*Conn, error) {
 
 // Transaction 创建统一事务边界，异常时回滚、成功时提交
 func (s *Store) Transaction(immediate bool, fn func(tx *Tx) error) error {
+	return s.transactionOn(nil, immediate, fn)
+}
+
+func (s *Store) transactionOn(conn *Conn, immediate bool, fn func(tx *Tx) error) error {
+	if conn != nil {
+		return TransactionOn(conn, immediate, fn)
+	}
 	s.mu.Lock()
 	override := s.override
 	manager := s.manager

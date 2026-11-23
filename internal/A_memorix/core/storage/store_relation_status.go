@@ -18,12 +18,17 @@ const relationBackupColumns = "hash, subject, predicate, object, vector_index, c
 
 // GetRelationStatusBatch 批量读取关系生命周期状态
 func (s *Store) GetRelationStatusBatch(hashes []string) (map[string]map[string]any, error) {
+	return s.GetRelationStatusBatchOn(nil, hashes)
+}
+
+// GetRelationStatusBatchOn 使用指定连接读取关系状态
+func (s *Store) GetRelationStatusBatchOn(conn *Conn, hashes []string) (map[string]map[string]any, error) {
 	normalized := normalizeHashSequence(hashes)
 	result := make(map[string]map[string]any, len(normalized))
 	if len(normalized) == 0 {
 		return result, nil
 	}
-	c, err := s.ResolveConn(nil)
+	c, err := s.ResolveConn(conn)
 	if err != nil {
 		return nil, err
 	}
