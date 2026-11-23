@@ -20,6 +20,10 @@ import (
 )
 
 func (a *Agent) HandleMessage(parent context.Context, msg *onebot.ConversationMessage) {
+	a.processConversationMessage(parent, msg, false)
+}
+
+func (a *Agent) processConversationMessage(parent context.Context, msg *onebot.ConversationMessage, sentByAgent bool) {
 	if msg == nil {
 		return
 	}
@@ -72,7 +76,9 @@ func (a *Agent) HandleMessage(parent context.Context, msg *onebot.ConversationMe
 		return
 	}
 	finish(func() {
-		a.commitConversationMessage(ctx, msg, mediaRefs, forwards)
+		a.commitConversationMessage(ctx, commitItem{
+			msg: msg, media: mediaRefs, forwards: forwards, sentByAgent: sentByAgent,
+		})
 	})
 }
 

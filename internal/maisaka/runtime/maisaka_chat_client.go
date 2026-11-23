@@ -13,6 +13,7 @@ import (
 	"MaiGo/internal/llm_models"
 	modelclient "MaiGo/internal/llm_models/model_client"
 	"MaiGo/internal/maisaka"
+	"MaiGo/internal/maisaka/builtin_tool"
 	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/maisaka/display"
 	"MaiGo/internal/maisaka/focus"
@@ -619,6 +620,9 @@ func (a *Agent) generateReplyerTextResult(ctx context.Context, plannerContent st
 		reference = value
 	}
 	sessionID := replyer.SessionIDFromContext(target, history)
+	if tc := tools.GetToolContext(ctx); sessionID == "" && tc != nil {
+		sessionID = tc.SessionID
+	}
 	visualBridge := a.agentVisual()
 	replyerHistory := replyerHistoryMessages(history)
 	req := replyer.ReplyRequest{
@@ -637,11 +641,11 @@ func (a *Agent) generateReplyerTextResult(ctx context.Context, plannerContent st
 			return visualBridge.refreshReplyerVisualPlaceholders(refreshCtx, messages)
 		},
 	}
-	client := newReplyerAgenticClient(a, generation, "replyer", generation.model, generation.modelName)
+	client := newReplyerAgenticClient(a, "replyer", generation.model, generation.modelName)
 	generator := replyer.NewReplyGenerator(builder, client)
 	generator.Hooks = hostports.ReplyerHookInvoker{}
 	generator.Expressions = replyer.LearnersExpressionSelector{}
-	generator.LLMFactory = a.replyerLLMFactory(ctx, generation, client)
+	generator.LLMFactory = a.replyerLLMFactory(ctx, client)
 	success, result := generator.GenerateReplyWithContext(ctx, req)
 	if !success {
 		message := strings.TrimSpace(result.ErrorMessage)

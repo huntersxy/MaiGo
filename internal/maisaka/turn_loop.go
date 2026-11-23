@@ -13,9 +13,6 @@ import (
 type TurnJob func(ctx context.Context) error
 
 // TurnLoop 会话级独立后台 RunLoop，保证同一会话的思考轮次严格串行
-//
-// 设计目标：把每轮一次性执行的 RunTurnOnce 从入站事件处理路径移出，同时保留
-// 单轮同步回退能力。任务上下文由提交方持有，Stop 只停止调度，不强制取消正在执行的模型调用
 type TurnLoop struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -104,6 +101,35 @@ func (l *TurnLoop) Submit(ctx context.Context, job TurnJob) bool {
 	case l.queue <- job:
 		return true
 	}
+}
+
+// Run 等待已提交轮次结束，提交方在此期间继续持有会话执行权。
+func (l *TurnLoop) Run(ctx context.Context, job TurnJob) bool {
+	if ctx.Err() != nil || job == nil {
+		return false
+	}
+	done := make(chan struct{})
+	var execute sync.Once
+	if !l.Submit(ctx, func(context.Context) error {
+		var err error
+		execute.Do(func() {
+			defer close(done)
+			if ctx.Err() == nil && l.ctx.Err() == nil {
+				err = job(ctx)
+			}
+		})
+		return err
+	}) {
+		return false
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+		execute.Do(func() { close(done) })
+	case <-l.ctx.Done():
+		execute.Do(func() { close(done) })
+	}
+	return true
 }
 
 // Running 后台循环是否已启动且未停止

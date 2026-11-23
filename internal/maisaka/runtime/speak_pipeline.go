@@ -163,7 +163,7 @@ func (a *Agent) afterSpeakSegment(ctx context.Context, msg *replyer.OutboundMess
 		}
 	}
 	if msg.Storage {
-		a.HandleMessage(ctx, conversation)
+		a.processConversationMessage(ctx, conversation, true)
 	} else {
 		a.notifySentMessage(ctx, conversation)
 	}

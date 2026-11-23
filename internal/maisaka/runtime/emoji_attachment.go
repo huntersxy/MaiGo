@@ -116,7 +116,11 @@ func loadEmojiByHash(ctx context.Context, emojiHash string) (tools.EmojiAttachme
 	if emoji == nil {
 		return tools.EmojiAttachment{}, fmt.Errorf("表情包 %s 已不可用", emojiHash)
 	}
-	return *emojiAttachmentFrom(emoji), nil
+	attachment := emojiAttachmentFrom(emoji)
+	if info, err := os.Stat(attachment.Path); err != nil || !info.Mode().IsRegular() {
+		return tools.EmojiAttachment{}, fmt.Errorf("表情包 %s 的文件不可用", emojiHash)
+	}
+	return *attachment, nil
 }
 
 func (a *Agent) loadContextEmoji(ctx context.Context, session *Session, sourceID string, index int) (tools.EmojiAttachment, error) {
@@ -225,7 +229,24 @@ func emojiAttachmentFrom(emoji *emojisystem.Emoji) *tools.EmojiAttachment {
 	return &tools.EmojiAttachment{Hash: emoji.FileHash, Path: path, Content: content}
 }
 
-func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID int64, attachment tools.EmojiAttachment) error {
+func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID int64, attachment tools.EmojiAttachment) (err error) {
+	var messageID int64
+	defer func() {
+		fields := []zap.Field{
+			zap.String("conversation_kind", kind),
+			zap.Int64("target_id", targetID),
+			zap.Int64("reply_to", tools.ReplyAnchorFromContext(ctx)),
+			zap.String("emoji_hash", attachment.Hash),
+		}
+		if tc := tools.GetToolContext(ctx); tc != nil {
+			fields = append(fields, zap.String("session_id", tc.SessionID))
+		}
+		if err != nil {
+			zap.L().Warn("attach_emoji send=failed", append(fields, zap.Error(err))...)
+		} else {
+			zap.L().Info("attach_emoji send=sent", append(fields, zap.Int64("message_id", messageID))...)
+		}
+	}()
 	path := strings.TrimSpace(attachment.Path)
 	cleanup := false
 	if path == "" && len(attachment.Binary) > 0 {
@@ -251,7 +272,8 @@ func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID i
 	if cleanup {
 		defer os.Remove(path)
 	}
-	if _, _, err := a.sendConversationImage(ctx, kind, targetID, path, true, tools.ReplyAnchorFromContext(ctx)); err != nil {
+	messageID, _, err = a.sendConversationImage(ctx, kind, targetID, path, true, tools.ReplyAnchorFromContext(ctx))
+	if err != nil {
 		return err
 	}
 	if hash := strings.TrimSpace(attachment.Hash); hash != "" {

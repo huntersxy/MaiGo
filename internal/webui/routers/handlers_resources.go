@@ -17,12 +17,14 @@ func (d Deps) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	if !snap.StartTime.IsZero() {
 		startTime = formatSystemStartTime(snap.StartTime.Local())
 	}
+	inbound, outbound := stats.DefaultMessageCounters().Totals()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"running":        snap.Running,
 		"uptime":         snap.UptimeSec,
 		"version":        snap.Version,
 		"build_revision": version.Revision(),
 		"start_time":     startTime,
+		"messages":       map[string]int64{"inbound": inbound, "outbound": outbound},
 	})
 }
 

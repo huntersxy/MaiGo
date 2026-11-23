@@ -40,6 +40,9 @@ func (r *DualPathRetriever) collectDualGraphEvidence(queryEmbedding []float32, t
 	if err != nil {
 		return nil, err
 	}
+	if len(graphIDs) == 0 {
+		return nil, nil
+	}
 
 	parsedItems := make([]normalizedGraphItem, 0, len(graphIDs))
 	relationHashes := []string{}

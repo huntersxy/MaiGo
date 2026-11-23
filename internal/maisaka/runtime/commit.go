@@ -185,14 +185,14 @@ func saveMessageForwards(tx *gorm.DB, log *memory.MessageLog, drafts []messagere
 }
 
 // commitConversationMessage 群私消息、观察与重复事件共用持久化、撤回补偿及发布边界
-func (a *Agent) commitConversationMessage(parent context.Context, msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
+func (a *Agent) commitConversationMessage(parent context.Context, item commitItem) {
 	ctx, cancel := persistenceContextFrom(parent)
 	defer cancel()
-	sessionID := a.ensureChatSession(ctx, msg)
+	sessionID := a.ensureChatSession(ctx, item.msg)
 	// 迁移暂停期间等待在途消息，避免迁移快照后继续写入旧聊天流
 	if sessionID != "" && services.ChatMigrationGateInstance != nil {
 		if err := services.ChatMigrationGateInstance.Activity(ctx, sessionID, func() error {
-			a.commitConversationMessageLocked(ctx, msg, mediaRefs, forwards, sessionID)
+			a.commitConversationMessageLocked(ctx, item, sessionID)
 			return nil
 		}); err != nil {
 			zap.L().Warn("等待聊天迁移完成失败，丢弃入站消息",
@@ -200,10 +200,11 @@ func (a *Agent) commitConversationMessage(parent context.Context, msg *onebot.Co
 		}
 		return
 	}
-	a.commitConversationMessageLocked(ctx, msg, mediaRefs, forwards, sessionID)
+	a.commitConversationMessageLocked(ctx, item, sessionID)
 }
 
-func (a *Agent) commitConversationMessageLocked(ctx context.Context, msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft, sessionID string) {
+func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commitItem, sessionID string) {
+	msg := item.msg
 	replyErr := a.refreshReplyRecall(ctx, msg)
 	if replyErr != nil {
 		zap.L().Warn("核对引用撤回状态失败，省略引用原文", zap.String("conversation_kind", msg.ConversationKind), zap.Int64("target_id", msg.TargetID), zap.Int64("message_id", msg.MessageID), zap.Error(replyErr))
@@ -217,7 +218,7 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, msg *onebot
 				zap.Error(err))
 		}
 	}
-	log, created, err := a.persistConversationMessage(ctx, msg, mediaRefs, forwards, messagePlatform(msg), sessionID)
+	log, created, err := a.persistConversationMessage(ctx, msg, item.media, item.forwards, messagePlatform(msg), sessionID)
 	if errors.Is(err, memory.ErrConversationUnavailable) {
 		return
 	}
@@ -233,13 +234,17 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, msg *onebot
 		msg = a.applyPendingRecall(ctx, msg)
 	}
 	if !created {
+		// 适配器回显可能先落库，机器人本地发送仍负责通知记忆写回。
+		if item.sentByAgent && log != nil && msg.MessageID != 0 && msg.UserID == a.SelfID() {
+			a.notifySentMessage(ctx, msg)
+		}
 		return
 	}
 	// 引用缓存只由提交阶段写入，避免并行解析在撤回后写回旧值
 	if replyErr == nil && msg.Reply != nil && msg.Reply.MessageID != 0 {
 		a.replyCache.Set(replyCacheKey(msg.ConversationKind, msg.TargetID, msg.Reply.MessageID), *msg.Reply, ttlcache.DefaultTTL)
 	}
-	a.appendSessionMessage(ctx, msg, mediaRefs, log)
+	a.appendSessionMessage(ctx, msg, item.media, log)
 	if log != nil && sessionID != "" && log.SessionID == "" {
 		if err := a.memory.AttachMessageLogSessionID(ctx, log.ID, sessionID); err != nil {
 			zap.L().Warn("补写 mai_messages.session_id 失败", zap.Uint("log_id", log.ID), zap.String("session_id", sessionID), zap.Error(err))
@@ -251,7 +256,7 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, msg *onebot
 		a.observeExpressionInbound(ctx, msg)
 	}
 	if created && msg.MessageID != 0 && msg.UserID == a.SelfID() {
-		if !externalPlatformMessage(msg) {
+		if item.sentByAgent || !externalPlatformMessage(msg) {
 			a.notifySentMessage(ctx, msg)
 		}
 		return
@@ -266,6 +271,13 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, msg *onebot
 	} else {
 		a.scheduleGroupThink(msg.TargetID, msg.ReceivedAt)
 	}
+}
+
+type commitItem struct {
+	msg         *onebot.ConversationMessage
+	media       []media.Ref
+	forwards    []messagereceive.ForwardDraft
+	sentByAgent bool
 }
 
 // messageGroupFields 取消息所属群信息；WebUI 虚拟群优先使用原始 group_id
