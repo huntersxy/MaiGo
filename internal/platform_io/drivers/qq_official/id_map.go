@@ -101,11 +101,19 @@ func sortedMapping(mapping map[string]string) []mappingPair {
 	return items
 }
 
+func webUIList[Item any](items []Item) []any {
+	result := make([]any, len(items))
+	for index, item := range items {
+		result[index] = item
+	}
+	return result
+}
+
 func (a *Adapter) webuiGroupMappings(context.Context, string, string, map[string]any) (any, error) {
 	a.mu.Lock()
 	mapping := a.mapping.Group
 	a.mu.Unlock()
-	groups := make([]map[string]any, 0, len(mapping))
+	groups := make([]any, 0, len(mapping))
 	for _, row := range sortedMapping(mapping) {
 		groups = append(groups, map[string]any{"group_openid": row.openID, "group_id": row.id})
 	}
@@ -188,7 +196,7 @@ func (a *Adapter) webuiMappings(context.Context, string, string, map[string]any)
 			})
 		}
 	}
-	return map[string]any{"group": rows("group", mapping.Group), "user": users, "mapping_enabled": a.mappingEnabled.Load()}, nil
+	return map[string]any{"group": webUIList(rows("group", mapping.Group)), "user": webUIList(users), "mapping_enabled": a.mappingEnabled.Load()}, nil
 }
 
 func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[string]any) (any, error) {
@@ -233,7 +241,7 @@ func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[
 	}
 	resource := result.(map[string]any)
 	if resource["status"] != "available" {
-		return map[string]string{"image": "", "message": "该群或用户无法获取 QQ 头像"}, nil
+		return map[string]any{"image": "", "message": "该群或用户无法获取 QQ 头像"}, nil
 	}
 	address := strings.NewReplacer("/640", "/100", "s=640", "s=100").Replace(asString(resource["url"]))
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
@@ -263,7 +271,7 @@ func (a *Adapter) webuiMappingAvatar(ctx context.Context, _, _ string, args map[
 	if len(data) > limit {
 		return nil, fmt.Errorf("QQ 头像超过 256 KiB")
 	}
-	return map[string]string{"image": "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)}, nil
+	return map[string]any{"image": "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)}, nil
 }
 
 func (a *Adapter) AssignIdentity(ctx context.Context, kind string, message map[string]any) (bool, string, error) {

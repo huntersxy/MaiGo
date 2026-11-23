@@ -66,7 +66,7 @@ func (a *Adapter) webuiDeleteBindings(ctx context.Context, _, _ string, args map
 	if err := errors.Join(err, a.startLocked(context.WithoutCancel(ctx))); err != nil {
 		return nil, err
 	}
-	return map[string]int{"deleted": len(selected)}, nil
+	return map[string]any{"deleted": len(selected)}, nil
 }
 
 func (a *Adapter) deleteBindings(directory, kind string, selected map[string]bool) error {

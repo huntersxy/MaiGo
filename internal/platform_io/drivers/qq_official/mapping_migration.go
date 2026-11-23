@@ -17,15 +17,15 @@ import (
 )
 
 type mappingMigrationCandidate struct {
-	Source   string   `json:"source"`
-	Targets  []string `json:"targets"`
-	Target   string   `json:"target"`
-	Conflict bool     `json:"conflict"`
-	Status   string   `json:"status"`
+	Source   string
+	Targets  []string
+	Target   string
+	Conflict bool
+	Status   string
 }
 
 func (a *Adapter) webuiIdentityMode(context.Context, string, string, map[string]any) (any, error) {
-	return map[string]bool{"mapping_enabled": a.mappingEnabled.Load()}, nil
+	return map[string]any{"mapping_enabled": a.mappingEnabled.Load()}, nil
 }
 
 func (a *Adapter) webuiSetMappingMode(_ context.Context, _, _ string, args map[string]any) (any, error) {
@@ -40,7 +40,7 @@ func (a *Adapter) webuiSetMappingMode(_ context.Context, _, _ string, args map[s
 	if err := a.saveMappingMode(enabled); err != nil {
 		return nil, err
 	}
-	return map[string]bool{"mapping_enabled": enabled}, nil
+	return map[string]any{"mapping_enabled": enabled}, nil
 }
 
 func (a *Adapter) saveMappingMode(enabled bool) error {
@@ -67,7 +67,14 @@ func (a *Adapter) webuiMappingMigrations(ctx context.Context, _, _ string, _ map
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"enabled": a.mappingEnabled.Load(), "candidates": candidates}, nil
+	result := make([]any, 0, len(candidates))
+	for _, candidate := range candidates {
+		result = append(result, map[string]any{
+			"source": candidate.Source, "targets": webUIList(candidate.Targets), "target": candidate.Target,
+			"conflict": candidate.Conflict, "status": candidate.Status,
+		})
+	}
+	return map[string]any{"enabled": a.mappingEnabled.Load(), "candidates": result}, nil
 }
 
 func (a *Adapter) webuiFinishMapping(ctx context.Context, _, _ string, _ map[string]any) (any, error) {
@@ -87,7 +94,7 @@ func (a *Adapter) webuiFinishMapping(ctx context.Context, _, _ string, _ map[str
 	if err := a.saveMappingMode(false); err != nil {
 		return nil, err
 	}
-	return map[string]bool{"enabled": false}, nil
+	return map[string]any{"enabled": false}, nil
 }
 
 func (a *Adapter) mappingMigrationCandidates(ctx context.Context) ([]mappingMigrationCandidate, error) {

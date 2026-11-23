@@ -695,7 +695,7 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 		t.Fatalf("QQ binding did not preserve textual ID on disk: %s, %v", raw, err)
 	}
 	value, err := apis["webui_group_mappings"](ctx, "", "", nil)
-	if err != nil || !reflect.DeepEqual(value, map[string]any{"total": 1, "groups": []map[string]any{{"group_openid": "group", "group_id": "9007199254740997"}}}) {
+	if err != nil || !reflect.DeepEqual(value, map[string]any{"total": 1, "groups": []any{map[string]any{"group_openid": "group", "group_id": "9007199254740997"}}}) {
 		t.Fatalf("QQ binding WebUI status: %#v, %v", value, err)
 	}
 	stamp := time.Now()
@@ -713,11 +713,14 @@ func TestNativeAdapterQQOfficialAPI(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		users := result.(map[string]any)["user"].([]map[string]any)
-		if len(users) == 1 && users[0]["id"] == "4321" && users[0]["nickname"] == "对齐昵称" {
-			path := filepath.Join(dir, "auto_user_profiles.json")
-			if saved, readErr := os.ReadFile(path); readErr == nil && bytes.Contains(saved, []byte(`"user_id":"4321"`)) {
-				break
+		users := result.(map[string]any)["user"].([]any)
+		if len(users) == 1 {
+			user := users[0].(map[string]any)
+			if user["id"] == "4321" && user["nickname"] == "对齐昵称" {
+				path := filepath.Join(dir, "auto_user_profiles.json")
+				if saved, readErr := os.ReadFile(path); readErr == nil && bytes.Contains(saved, []byte(`"user_id":"4321"`)) {
+					break
+				}
 			}
 		}
 		select {
