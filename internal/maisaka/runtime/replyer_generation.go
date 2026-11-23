@@ -19,8 +19,7 @@ import (
 // replyerModelResolver 把 Agent 的模型路由适配为 replyer.ModelResolver
 type replyerModelResolver struct {
 	agent *Agent
-	// generation 供显式模型直选复用已缓存的 planner/utils 客户端
-	generation *Generation
+	task  llm.TaskName
 }
 
 // ResolveModel 按请求名解析模型；显式模型同样走路由层的重试与失败快照
@@ -29,30 +28,11 @@ func (r replyerModelResolver) ResolveModel(ctx context.Context, requested string
 	if requested == "" || r.agent == nil {
 		return replyer.ResolvedModel{}, fmt.Errorf("模型名不能为空")
 	}
-	// 对齐 Python _select_model(model_name=...)：显式模型名先命中当前 Generation 已缓存模型
-	if generation := r.generation; generation != nil {
-		switch requested {
-		case generation.plannerModelName:
-			if generation.plannerModel != nil {
-				return replyer.ResolvedModel{
-					Model: generation.plannerModel, Name: requested,
-					Info: r.agent.replyerModelInfo(requested),
-				}, nil
-			}
-		case generation.utilsModelName:
-			if generation.utilsModel != nil {
-				return replyer.ResolvedModel{
-					Model: generation.utilsModel, Name: requested,
-					Info: r.agent.replyerModelInfo(requested),
-				}, nil
-			}
-		}
-	}
 	router := r.agent.llmRouterSnapshot()
 	if router == nil {
 		return replyer.ResolvedModel{}, fmt.Errorf("%w: Replyer 指定模型 %q 无法选择", ErrModelRouterUnavailable, requested)
 	}
-	resolved, client, err := router.NewClientForTaskWithFailoverAndModel(ctx, llm.TaskReplyer, requested)
+	resolved, client, err := router.NewClientForTaskWithFailoverAndModel(ctx, r.task, requested)
 	if err != nil {
 		return replyer.ResolvedModel{}, err
 	}
@@ -95,12 +75,11 @@ func (r replyerModelResolver) ClientForTask(ctx context.Context, taskName string
 	if err != nil {
 		return nil, err
 	}
-	return replyer.NewAgenticLLMClient(r, taskName, client, modelName), nil
+	return newReplyerAgenticClient(r.agent, taskName, client, modelName), nil
 }
 
-// newReplyerAgenticClient 构造 replyer 客户端；generation 仅用于显式模型直选
-func newReplyerAgenticClient(a *Agent, generation *Generation, taskName string, active model.AgenticModel, modelName string) *replyer.AgenticLLMClient {
-	return replyer.NewAgenticLLMClient(replyerModelResolver{agent: a, generation: generation}, taskName, active, modelName)
+func newReplyerAgenticClient(a *Agent, taskName string, active model.AgenticModel, modelName string) *replyer.AgenticLLMClient {
+	return replyer.NewAgenticLLMClient(replyerModelResolver{agent: a, task: llm.TaskName(taskName)}, taskName, active, modelName)
 }
 
 // replyerModelInfo 从实例 model_config 读取模型视觉与 Provider 协议
@@ -185,7 +164,7 @@ func replyerConfigFloat(value any) *float64 {
 }
 
 // replyerLLMFactory 按 Hook 指定的 task 构造任务模型客户端；默认 replyer 直接复用主客户端
-func (a *Agent) replyerLLMFactory(ctx context.Context, generation *Generation, base replyer.LLMClient) replyer.LLMClientFactory {
+func (a *Agent) replyerLLMFactory(ctx context.Context, base replyer.LLMClient) replyer.LLMClientFactory {
 	return func(taskName, requestType, sessionID string) (replyer.LLMClient, error) {
 		name := strings.TrimSpace(taskName)
 		if name == "" || name == base.TaskName() {
@@ -195,6 +174,6 @@ func (a *Agent) replyerLLMFactory(ctx context.Context, generation *Generation, b
 		if err != nil {
 			return nil, fmt.Errorf("Replyer 任务模型 %q 不可用: %w", name, err)
 		}
-		return newReplyerAgenticClient(a, generation, name, client, modelName), nil
+		return newReplyerAgenticClient(a, name, client, modelName), nil
 	}
 }

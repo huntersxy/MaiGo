@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -64,10 +65,10 @@ func ModelConfigWarnings(file ModelConfigFile) []string {
 		providers[name] = struct{}{}
 		warnings = append(warnings, ProviderConfigurationErrors(name, p)...)
 	}
-	modelNames := make(map[string]struct{}, len(file.Models))
+	modelNames := make(map[string]ModelInfo, len(file.Models))
 	for _, m := range file.Models {
 		name := strings.TrimSpace(m.Name)
-		modelNames[name] = struct{}{}
+		modelNames[name] = m
 		providerName := strings.TrimSpace(m.ApiProvider)
 		if providerName == "" {
 			warnings = append(warnings, fmt.Sprintf("模型 %q 未配置 api_provider", name))
@@ -75,15 +76,25 @@ func ModelConfigWarnings(file ModelConfigFile) []string {
 			warnings = append(warnings, fmt.Sprintf("模型 %q 引用的 api_provider %q 未定义", name, providerName))
 		}
 	}
+	assigned := make(map[string]ModelInfo)
 	for _, entry := range taskModelListEntries(file.ModelTaskConfig) {
 		for _, raw := range entry.list {
 			modelName := strings.TrimSpace(raw)
 			if modelName == "" {
 				continue
 			}
-			if _, ok := modelNames[modelName]; !ok {
+			if model, ok := modelNames[modelName]; ok {
+				assigned[modelName] = model
+			} else {
 				warnings = append(warnings, fmt.Sprintf("model_task_config.%s.model_list 引用了未定义的模型 %q", entry.task, modelName))
 			}
+		}
+	}
+	for name, model := range assigned {
+		if model.PriceIn == 0 && model.PriceOut == 0 && model.CachePriceIn == 0 && !slices.ContainsFunc(model.PricePeriods, func(period ModelPricePeriod) bool {
+			return period.PriceIn > 0 || period.PriceOut > 0 || period.CachePriceIn > 0
+		}) {
+			warnings = append(warnings, fmt.Sprintf("任务使用的模型 %q 价格均为零，费用统计按 ¥0 计算。若供应商收费，请配置模型价格。", name))
 		}
 	}
 	if !taskHasModelList(file.ModelTaskConfig.Vlm.ModelList) {

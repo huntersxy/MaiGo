@@ -327,7 +327,8 @@ func (e *AgentReplyExecutor) ReplyFromContent(ctx context.Context, content strin
 		}
 		for _, attachment := range emojis {
 			if err := e.SendEmojiAttachment(ctx, attachment); err != nil {
-				return maisaka.ToolExecutionResult{Success: false, Message: fmt.Sprintf("发送补充表情失败: %v", err)}
+				result.Message = fmt.Sprintf("正文已发送，补充表情发送失败：%v", err)
+				return result
 			}
 		}
 		return maisaka.ToolExecutionResult{Success: true, Content: replyText, Message: "回复已发送"}

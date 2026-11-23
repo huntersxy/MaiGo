@@ -92,16 +92,17 @@ func applySummaryActivity(ctx context.Context, db *gorm.DB, start, end time.Time
 		summary.CostPerHour = summary.TotalCost / hours
 		summary.TokensPerHour = float64(summary.TotalTokens) / hours
 	}
-	// Python message_repository 排除 message_id = 'notice'；Go 的 NapCat 通知行 external_message_id 为 napcat-notice-*
-	if err := db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM mai_messages
-		WHERE COALESCE(received_at, timestamp) >= ? AND COALESCE(received_at, timestamp) <= ?`+noticeMessageFilterSQL, start, end).Scan(&summary.TotalMessages).Error; err != nil {
-		return fmt.Errorf("查询消息总数失败: %w", err)
+	where, args := statisticsRangeClause(db, "COALESCE(received_at, timestamp)", start, end)
+	var counts struct {
+		TotalMessages int64
+		TotalReplies  int64
 	}
-	if err := db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM mai_messages
-		WHERE COALESCE(received_at, timestamp) >= ? AND COALESCE(received_at, timestamp) <= ?
-			AND reply_to IS NOT NULL`+noticeMessageFilterSQL, start, end).Scan(&summary.TotalReplies).Error; err != nil {
-		return fmt.Errorf("查询回复总数失败: %w", err)
+	if err := db.WithContext(ctx).Raw(`SELECT COUNT(*) AS total_messages, COUNT(reply_to) AS total_replies
+		FROM mai_messages WHERE `+where+noticeMessageFilterSQL, args...).Scan(&counts).Error; err != nil {
+		return fmt.Errorf("查询消息与回复总数失败: %w", err)
 	}
+	summary.TotalMessages = counts.TotalMessages
+	summary.TotalReplies = counts.TotalReplies
 	return nil
 }
 

@@ -118,11 +118,11 @@ func (a *Agent) GenerateDocumentReply(ctx context.Context, streamID, reference, 
 		ReplyRequirements: requirements,
 	}
 
-	client := newReplyerAgenticClient(a, generation, "replyer", activeModel, activeModelName)
+	client := newReplyerAgenticClient(a, "replyer", activeModel, activeModelName)
 	generator := replyer.NewDocumentReplyGenerator(builder, client, resolvedModel)
 	generator.Hooks = hostports.ReplyerHookInvoker{}
 	generator.Expressions = replyer.LearnersExpressionSelector{}
-	generator.LLMFactory = a.replyerLLMFactory(ctx, generation, client)
+	generator.LLMFactory = a.replyerLLMFactory(ctx, client)
 	success, result := generator.GenerateReplyWithContext(ctx, req)
 	if !success {
 		message := strings.TrimSpace(result.ErrorMessage)

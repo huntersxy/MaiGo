@@ -250,7 +250,7 @@ func (s *ChatSummaryWritebackService) workerLoop(ctx context.Context) {
 			return
 		case event := <-s.queue:
 			if err := s.HandleMessage(ctx, event); err != nil {
-				zap.L().Warn("聊天摘要写回处理失败", zap.Error(err))
+				zap.L().Warn("聊天摘要写回处理失败", zap.String("session_id", event.SessionID), zap.Error(err))
 			}
 		}
 	}

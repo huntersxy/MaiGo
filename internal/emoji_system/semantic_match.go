@@ -132,7 +132,7 @@ func openEmojiSemanticIndex() (*sql.DB, error) {
 	return db, nil
 }
 
-func readEmojiSemanticIndex(configKey, space string, labelsOnly bool) (map[string][]float64, error) {
+func readEmojiSemanticIndex(configKey, space string) (map[string][]float64, error) {
 	path := emojiSemanticIndexPath()
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -146,7 +146,12 @@ func readEmojiSemanticIndex(configKey, space string, labelsOnly bool) (map[strin
 	}
 	defer db.Close()
 	query := `SELECT description, vector FROM vectors WHERE config = ? AND space = ?`
-	rows, err := db.Query(query, configKey, space)
+	args := []any{configKey, space}
+	if space == "" {
+		query = `SELECT DISTINCT description, '[]' FROM vectors WHERE config = ?`
+		args = []any{configKey}
+	}
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +162,7 @@ func readEmojiSemanticIndex(configKey, space string, labelsOnly bool) (map[strin
 		if err := rows.Scan(&label, &encoded); err != nil {
 			return nil, err
 		}
-		if labelsOnly {
+		if space == "" {
 			out[label] = nil
 			continue
 		}
@@ -170,8 +175,8 @@ func readEmojiSemanticIndex(configKey, space string, labelsOnly bool) (map[strin
 	return out, rows.Err()
 }
 
-func readEmojiSemanticIndexLabels(configKey, space string) (map[string]struct{}, error) {
-	values, err := readEmojiSemanticIndex(configKey, space, true)
+func readEmojiSemanticIndexLabels(axisKey string) (map[string]struct{}, error) {
+	values, err := readEmojiSemanticIndex(axisKey, "")
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +372,7 @@ func (r *Registry) indexEmoji(ctx context.Context, emoji *Emoji, configKey strin
 func (r *Registry) indexEmojiDescription(ctx context.Context, label, configKey, axis string) {
 	emojiSemanticIndexLock.Lock()
 	defer emojiSemanticIndexLock.Unlock()
-	space := emojiSemanticAxisKey(configKey, axis)
+	axisKey := emojiSemanticAxisKey(configKey, axis)
 	embedding, err := r.semanticEmbedding(ctx, "emoji.index", "")
 	if err != nil {
 		return
@@ -375,7 +380,7 @@ func (r *Registry) indexEmojiDescription(ctx context.Context, label, configKey, 
 	if semanticConfigKey(embedding.resolved) != configKey {
 		return
 	}
-	indexed, err := readEmojiSemanticIndexLabels(configKey, space)
+	indexed, err := readEmojiSemanticIndexLabels(axisKey)
 	if err != nil {
 		return
 	}
@@ -395,7 +400,7 @@ func (r *Registry) indexEmojiDescription(ctx context.Context, label, configKey, 
 		return
 	}
 	modelKey := semanticModelKey(embedding.resolved, result.Embedding, result.Model, result.ModelIdentifier, result.APIProvider)
-	if err := saveEmojiSemanticVector(configKey, label, modelKey, result.Embedding); err != nil {
+	if err := saveEmojiSemanticVector(axisKey, label, modelKey, result.Embedding); err != nil {
 		zap.L().Warn("表情包描述向量写入失败", zap.String("label", label), zap.Error(err))
 	}
 }
@@ -479,7 +484,7 @@ func BackfillEmojiIndex() {
 	indexed := map[string]map[string]struct{}{}
 	if configKey != "" {
 		for _, axis := range []string{"emotion", "content"} {
-			labels, err := readEmojiSemanticIndexLabels(configKey, emojiSemanticAxisKey(configKey, axis))
+			labels, err := readEmojiSemanticIndexLabels(emojiSemanticAxisKey(configKey, axis))
 			if err != nil {
 				return
 			}
@@ -571,7 +576,7 @@ func MatchEmojiDescription(ctx context.Context, emotion, sessionID, content stri
 	}
 	sort.Strings(axes)
 	for _, axis := range axes {
-		labels, err := readEmojiSemanticIndexLabels(configKey, emojiSemanticAxisKey(configKey, axis))
+		labels, err := readEmojiSemanticIndexLabels(emojiSemanticAxisKey(configKey, axis))
 		if err != nil {
 			return "", err
 		}
@@ -607,7 +612,7 @@ func MatchEmojiDescription(ctx context.Context, emotion, sessionID, content stri
 	for _, query := range results {
 		modelKey := semanticModelKey(embedding.resolved, query.result.Embedding, query.result.Model,
 			query.result.ModelIdentifier, query.result.APIProvider)
-		vectors, err := readEmojiSemanticIndex(configKey, modelKey, false)
+		vectors, err := readEmojiSemanticIndex(emojiSemanticAxisKey(configKey, query.axis), modelKey)
 		if err != nil {
 			return "", err
 		}
@@ -627,8 +632,12 @@ func MatchEmojiDescription(ctx context.Context, emotion, sessionID, content stri
 		if err != nil {
 			return "", err
 		}
-		for hash, score := range scores {
-			totals[hash] += score
+		for hash := range totals {
+			if score, ok := scores[hash]; ok {
+				totals[hash] += score
+			} else {
+				delete(totals, hash)
+			}
 		}
 	}
 	scores := make(map[string]float64, len(totals))

@@ -9,6 +9,7 @@ import (
 	"MaiGo/internal/llm_models"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 )
 
 // ModelResolver 宿主侧模型解析端口
@@ -81,16 +82,36 @@ func (c *AgenticLLMClient) GenerateResponseWithContext(ctx context.Context, fact
 	if err != nil {
 		return GenerationResult{}, err
 	}
-	requestItems, err := factory(ctx, &info)
-	if err != nil {
-		return GenerationResult{}, err
+	var started time.Time
+	var contextErr error
+	build := func(callCtx context.Context, selected string) ([]*schema.AgenticMessage, error) {
+		if selected != activeName {
+			activeName = selected
+			if c.resolver != nil {
+				info = c.resolver.ModelInfo(selected)
+			}
+		}
+		items, err := factory(callCtx, &info)
+		if err != nil {
+			contextErr = err
+			return nil, err
+		}
+		messages, err := ContextItemsToAgenticMessages(items)
+		contextErr = err
+		started = time.Now()
+		return messages, err
 	}
-	messages, err := ContextItemsToAgenticMessages(requestItems)
-	if err != nil {
-		return GenerationResult{}, err
+	var response *schema.AgenticMessage
+	if routed, ok := activeModel.(interface {
+		GenerateWithModelContext(context.Context, func(context.Context, string) ([]*schema.AgenticMessage, error), ...model.Option) (*schema.AgenticMessage, error)
+	}); ok {
+		response, err = routed.GenerateWithModelContext(ctx, build)
+	} else if messages, buildErr := build(ctx, activeName); buildErr == nil {
+		response, err = activeModel.Generate(ctx, messages)
 	}
-	started := time.Now()
-	response, err := activeModel.Generate(ctx, messages)
+	if contextErr != nil {
+		return GenerationResult{}, contextErr
+	}
 	if err != nil {
 		return GenerationResult{}, fmt.Errorf("Replyer 模型调用失败: %w", err)
 	}
@@ -140,7 +161,7 @@ func (c *AgenticLLMClient) GenerateResponseWithContext(ctx context.Context, fact
 // resolveModel 显式模型名优先，否则沿用当前任务模型
 func (c *AgenticLLMClient) resolveModel(ctx context.Context, requested string) (model.AgenticModel, string, ModelInfo, error) {
 	requested = strings.TrimSpace(requested)
-	if requested == "" || requested == c.modelName {
+	if requested == "" || (requested == c.modelName && c.resolver == nil) {
 		return c.model, c.modelName, c.info, nil
 	}
 	if c.resolver == nil {

@@ -60,6 +60,13 @@ func newFailoverModel(
 
 // Generate 依次尝试候选模型，直到得到完整响应
 func (m *failoverModel) Generate(ctx context.Context, input []*schema.AgenticMessage, opts ...model.Option) (*schema.AgenticMessage, error) {
+	return m.GenerateWithModelContext(ctx, func(context.Context, string) ([]*schema.AgenticMessage, error) {
+		return input, nil
+	}, opts...)
+}
+
+// GenerateWithModelContext 为实际尝试的模型生成请求上下文。
+func (m *failoverModel) GenerateWithModelContext(ctx context.Context, build func(context.Context, string) ([]*schema.AgenticMessage, error), opts ...model.Option) (*schema.AgenticMessage, error) {
 	ctx, _ = ensureSnapshotAttemptRecorder(ctx)
 	excluded := make(map[string]struct{})
 	var lastErr error
@@ -72,8 +79,13 @@ func (m *failoverModel) Generate(ctx context.Context, input []*schema.AgenticMes
 		}
 		lastModel = name
 		m.reserve(name)
+		input, err := build(ctx, name)
+		if err != nil {
+			m.release(name)
+			return nil, err
+		}
 		var message *schema.AgenticMessage
-		err := m.runner(name, input, opts...).run(ctx, func(runCtx context.Context) error {
+		err = m.runner(name, input, opts...).run(ctx, func(runCtx context.Context) error {
 			var callErr error
 			message, callErr = client.Generate(runCtx, input, opts...)
 			return callErr

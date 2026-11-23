@@ -257,7 +257,6 @@ func (s *VectorStore) Search(query []float32, k int, filterDeleted bool, allowed
 		return nil, nil, err
 	}
 	if len(s.entries) == 0 {
-		zap.L().Warn("Indices are empty. No data to search.")
 		return []string{}, []float64{}, nil
 	}
 	requestedK := max(1, k)

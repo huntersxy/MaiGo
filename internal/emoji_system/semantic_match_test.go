@@ -35,24 +35,29 @@ func TestEmojiSemanticIndexRoundTrip(t *testing.T) {
 	if !ok || len(loaded.ContentTags) != 2 || loaded.EmotionTags[0] != "自嘲" {
 		t.Fatalf("读取标签不符合预期: %+v ok=%v", loaded, ok)
 	}
-	configKey := "config"
-	space := emojiSemanticAxisKey(configKey, "content")
-	if err := saveEmojiSemanticVector(configKey, "猫、捂脸", space, []float64{1, 0}); err != nil {
+	axisKey := emojiSemanticAxisKey("config", "content")
+	const modelKey = "provider:model:2"
+	if err := saveEmojiSemanticVector(axisKey, "猫、捂脸", modelKey, []float64{1, 0}); err != nil {
 		t.Fatalf("写入向量失败: %v", err)
 	}
-	vectors, err := readEmojiSemanticIndex(configKey, space, false)
+	vectors, err := readEmojiSemanticIndex(axisKey, modelKey)
 	if err != nil {
 		t.Fatalf("读取向量失败: %v", err)
 	}
 	if len(vectors["猫、捂脸"]) != 2 || vectors["猫、捂脸"][0] != 1 {
 		t.Fatalf("向量内容不符合预期: %+v", vectors)
 	}
-	labels, err := readEmojiSemanticIndexLabels(configKey, space)
+	labels, err := readEmojiSemanticIndexLabels(axisKey)
 	if err != nil {
 		t.Fatalf("读取标签索引失败: %v", err)
 	}
 	if _, ok := labels["猫、捂脸"]; !ok {
 		t.Fatalf("标签索引缺少描述: %+v", labels)
+	}
+	for _, key := range [][2]string{{axisKey, "other-model"}, {emojiSemanticAxisKey("config", "emotion"), modelKey}} {
+		if vectors, err := readEmojiSemanticIndex(key[0], key[1]); err != nil || len(vectors) != 0 {
+			t.Fatalf("向量索引跨维度或模型分区泄漏: %+v, %v", vectors, err)
+		}
 	}
 }
 

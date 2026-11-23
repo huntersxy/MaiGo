@@ -118,27 +118,14 @@ func (a *Agent) runMaisakaTurn(ctx context.Context, kind string, targetID int64,
 	session.mu.Unlock()
 	if a.maisakaBackgroundLoop.Load() {
 		if loop := a.ensureMaisakaTurnLoop(session); loop != nil {
-			jobGeneration := generation
-			job := func(context.Context) error {
-				if jobGeneration != nil {
-					jobGeneration.wg.Add(1)
-					defer jobGeneration.wg.Done()
-				}
-				if a.stopping.Load() || a.ctx.Err() != nil {
-					return nil
-				}
-				jobCtx, cancel := a.persistenceContext()
-				defer cancel()
-				if jobGeneration != nil {
-					jobCtx = withGeneration(jobCtx, jobGeneration)
-				}
-				handled := a.executeMaisakaTurn(jobCtx, kind, targetID, session, messages, transcriptIDs)
-				if !handled {
-					return fmt.Errorf("Maisaka 后台轮次执行前置条件失效")
-				}
+			handled := true
+			if loop.Run(ctx, func(context.Context) error {
+				handled = a.executeMaisakaTurn(ctx, kind, targetID, session, messages, transcriptIDs)
 				return nil
+			}) {
+				return handled
 			}
-			if loop.Submit(ctx, job) {
+			if ctx.Err() != nil {
 				return true
 			}
 		}
@@ -386,10 +373,14 @@ func (a *Agent) persistMaisakaHistory(ctx context.Context, session *Session, his
 			if strings.TrimSpace(message.ToolCallID) == "" {
 				continue
 			}
-			payload, err := sonic.Marshal(&schema.AgenticMessage{
+			status := "succeeded"
+			if success, ok := message.Metadata["success"].(bool); ok && !success {
+				status = "failed"
+			}
+			msg := &schema.AgenticMessage{
 				Role: schema.AgenticRoleTypeUser,
 				Extra: map[string]any{
-					"source": "tool_result", "tool_status": "succeeded",
+					"source": "tool_result", "tool_status": status,
 				},
 				ContentBlocks: []*schema.ContentBlock{{
 					Type: schema.ContentBlockTypeFunctionToolResult,
@@ -402,14 +393,15 @@ func (a *Agent) persistMaisakaHistory(ctx context.Context, session *Session, his
 						}},
 					},
 				}},
-			})
+			}
+			payload, err := sonic.Marshal(msg)
 			if err != nil {
 				continue
 			}
 			entry := &memory.TranscriptEntry{
 				ConversationKind: session.kind, TargetID: session.targetID, EntryKind: "tool",
 				RunID: maisakaTranscriptRunID, ToolCallID: message.ToolCallID, ToolName: message.ToolName,
-				ToolStatus: "succeeded", Payload: payload,
+				ToolStatus: status, Payload: payload,
 			}
 			if err := session.memory.AppendTranscript(ctx, entry); err != nil {
 				zap.L().Warn("保存 Maisaka 工具结果失败", zap.Error(err))
@@ -417,19 +409,7 @@ func (a *Agent) persistMaisakaHistory(ctx context.Context, session *Session, his
 			}
 			ids = append(ids, entry.ID)
 			session.mu.Lock()
-			session.seen = append(session.seen, sessionEntry{msg: &schema.AgenticMessage{
-				Role: schema.AgenticRoleTypeUser,
-				ContentBlocks: []*schema.ContentBlock{{
-					Type: schema.ContentBlockTypeFunctionToolResult,
-					FunctionToolResult: &schema.FunctionToolResult{
-						CallID: message.ToolCallID, Name: message.ToolName,
-						Content: []*schema.FunctionToolResultContentBlock{{
-							Type: schema.FunctionToolResultContentBlockTypeText,
-							Text: &schema.UserInputText{Text: message.Content},
-						}},
-					},
-				}},
-			}, transcriptID: entry.ID})
+			session.seen = append(session.seen, sessionEntry{msg: msg, transcriptID: entry.ID})
 			session.mu.Unlock()
 		}
 	}

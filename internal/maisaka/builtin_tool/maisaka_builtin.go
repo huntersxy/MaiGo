@@ -204,6 +204,7 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		}, nil
 	}
 	var emojiAttachment *EmojiAttachment
+	var emojiResolveErr error
 	switch value := input.AttachEmoji.(type) {
 	case float64:
 		if value == 0 {
@@ -215,13 +216,19 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		}
 	}
 	if input.AttachEmoji != nil {
+		logger := zap.L().With(zap.Int64("reply_to", replyTo))
+		if tc != nil {
+			logger = logger.With(zap.String("session_id", tc.SessionID))
+		}
 		if tc == nil || tc.ResolveEmojiAttachment == nil {
-			zap.L().Warn("attach_emoji resolution=failed source=unknown error=resolver unavailable")
+			emojiResolveErr = fmt.Errorf("表情解析端口未接入")
+			logger.Warn("attach_emoji resolution=failed", zap.Error(emojiResolveErr))
 		} else if resolved, resolveErr := tc.ResolveEmojiAttachment(ctx, input.AttachEmoji); resolveErr != nil {
-			zap.L().Warn("attach_emoji resolution=failed", zap.Error(resolveErr))
+			emojiResolveErr = resolveErr
+			logger.Warn("attach_emoji resolution=failed", zap.Error(resolveErr))
 		} else {
 			emojiAttachment = &resolved
-			zap.L().Info("attach_emoji resolution=resolved")
+			logger.Info("attach_emoji resolution=resolved", zap.String("emoji_hash", resolved.Hash))
 		}
 	}
 	pictures, err := resolveReplyPictures(tc, input.AttachPic)
@@ -322,12 +329,17 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 		}
 	}
 	if emojiAttachment != nil {
+		var sendErr error
 		if tc == nil || tc.SendEmojiAttachment == nil {
-			return nil, fmt.Errorf("发送回复表情失败: 表情发送端口未接入")
+			sendErr = fmt.Errorf("表情发送端口未接入")
+		} else {
+			sendErr = tc.SendEmojiAttachment(WithReplyAnchor(ctx, replyTo), tc.TargetID, *emojiAttachment)
 		}
-		if err := tc.SendEmojiAttachment(WithReplyAnchor(ctx, replyTo), tc.TargetID, *emojiAttachment); err != nil {
-			return nil, fmt.Errorf("发送回复表情失败: %w", err)
+		if sendErr != nil {
+			out.Message = fmt.Sprintf("正文已发送，表情发送失败：%v", sendErr)
 		}
+	} else if emojiResolveErr != nil {
+		out.Message = fmt.Sprintf("正文已发送，表情解析失败：%v", emojiResolveErr)
 	}
 	out.AfterReply = afterReply
 	if afterReply == "wait" {
