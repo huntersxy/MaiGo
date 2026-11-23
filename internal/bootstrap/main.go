@@ -67,9 +67,6 @@ import (
 	"MaiGo/internal/manager/asynctask"
 	"MaiGo/internal/runtime"
 	"MaiGo/internal/runtime/execution"
-	"MaiGo/internal/runtime/execution/committer"
-	"MaiGo/internal/runtime/execution/policy"
-	chatscheduler "MaiGo/internal/runtime/execution/scheduler"
 	botservices "MaiGo/internal/services"
 	"MaiGo/internal/services/statistics"
 	"MaiGo/internal/web_search"
@@ -966,9 +963,23 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	}
 	cleanupCancel()
 	zap.L().Info("记忆系统已初始化")
+	executionSettings, err := execution.NewController(startup.Context(), config.InstanceRoot())
+	if err != nil {
+		zap.L().Error("执行配置加载失败", zap.Error(err))
+		return 1
+	}
+	startup.AddCleanup("关闭榫卯策略", executionSettings.Policies().Close)
+	executionStatus := executionSettings.Status()
+	if executionStatus.ConfigError != "" {
+		zap.L().Warn("执行配置无法加载，按默认引擎配置启动", zap.String("detail", executionStatus.ConfigError))
+	}
+	zap.L().Info("执行配置已加载",
+		zap.String("execution_mode", string(executionStatus.Effective.Mode)),
+		zap.Bool("native_mode_active", execution.NativeModeActive(executionStatus.Effective, executionStatus.Features)),
+		zap.Int("worker_pool_size", executionStatus.Effective.WorkerPoolSize))
 	if err := startup.RunStage("startup.agent", 5*time.Minute, func(context.Context) error {
 		var initErr error
-		maiAgent, initErr = maisaruntime.New(memoryMgr, modelStore, mcpStore)
+		maiAgent, initErr = maisaruntime.New(memoryMgr, modelStore, mcpStore, executionSettings.Policies())
 		return initErr
 	}); err != nil {
 		zap.L().Error("Agent 创建失败", zap.Error(err))
@@ -1318,57 +1329,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		zap.L().Error("消息接收配置校验失败", zap.Error(filterErr))
 		return 1
 	}
-	// 与 WebUI 设置页使用同一实例根目录，避免页面和启动读取不同的 runtime.toml。
-	executionDir := config.InstanceRoot()
-	executionProfile, executionErr := execution.LoadProfile(executionDir)
-	if executionErr != nil {
-		if errors.Is(executionErr, execution.ErrInvalidMode) {
-			zap.L().Error("执行模式配置无效，拒绝启动", zap.Error(executionErr))
-			return 1
-		}
-		// 文件损坏时仍要尊重 MAIBOT_EXECUTION_MODE，否则运维显式指定的模式会被静默丢弃。
-		zap.L().Warn("读取执行配置失败，按默认配置与环境变量继续启动", zap.Error(executionErr))
-		fallbackProfile, envErr := execution.ApplyEnvMode(execution.DefaultProfile())
-		if envErr != nil {
-			zap.L().Error("执行模式环境变量无效，拒绝启动", zap.Error(envErr))
-			return 1
-		}
-		executionProfile = fallbackProfile
-	}
-	featureToggles, featureErr := execution.LoadFeatureToggles(executionDir)
-	if featureErr != nil {
-		zap.L().Warn("读取功能开关失败，全部按关闭处理", zap.Error(featureErr))
-		featureToggles = execution.DefaultFeatureToggles()
-	}
-	nativeMode := executionProfile.Mode == execution.ModeNative
-	nativeSessionScheduler := nativeMode && execution.IsFeatureImplemented("native_session_scheduler") && featureToggles.NativeSessionScheduler
-	nativeMessageCommitter := nativeMode && execution.IsFeatureImplemented("native_message_committer") && featureToggles.NativeMessageCommitter
-	zap.L().Info("执行配置已加载",
-		zap.String("execution_mode", string(executionProfile.Mode)),
-		zap.Bool("native_session_scheduler", nativeSessionScheduler),
-		zap.Bool("native_message_committer", nativeMessageCommitter),
-		zap.Int("worker_pool_size", executionProfile.WorkerPoolSize),
-	)
-	executionPolicies := policy.NewRegistry()
-	if nativeSessionScheduler {
-		nativeScheduler := chatscheduler.New(context.Background(), chatscheduler.Options{
-			Workers: executionProfile.WorkerPoolSize,
-			OnError: func(sessionKey string, err error) {
-				zap.L().Error("原生会话任务失败", zap.String("session_id", sessionKey), zap.Error(err))
-			},
-		})
-		executionPolicies.SessionScheduler.Set(nativeSessionSchedulerAdapter{engine: nativeScheduler})
-		zap.L().Info("原生会话调度器已启动",
-			zap.String("execution_mode", string(execution.ModeNative)),
-			zap.Int("workers", nativeScheduler.Workers()),
-		)
-	}
-	if nativeMessageCommitter {
-		nativeCommitter := committer.NewNative()
-		executionPolicies.MessageCommitter.Set(nativeCommitter)
-		maiAgent.SetMessageCommitter(nativeCommitter)
-		zap.L().Info("原生动入站提交器已启动", zap.String("execution_mode", string(execution.ModeNative)))
-	}
 	chatPipeline := newChatRuntimePipelineWithOptions(context.Background(), chatPipelineOptions{
 		Agent:        maiAgent,
 		Images:       newChatImagePreprocessor(imageManager),
@@ -1432,8 +1392,9 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		LLMRouter:                maiAgent.LLMRouter(),
 		VoiceResolver:            newChatVoiceResolver(),
 		EnableVoiceTranscription: chatVoiceASREnabled(instHolder),
-		Policies:                 executionPolicies,
+		Policies:                 executionSettings.Policies(),
 	})
+	startup.AddCleanup("关闭聊天主链", chatPipeline.Close)
 
 	gatewayPort.SetInboundHandler(chatPipeline.HandlePluginMessage)
 
@@ -1471,20 +1432,16 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		})
 		wireACPAgentReload(instHolder, acpService, maiAgent)
 	}
-	chatRelay.SetDeliver(func(msg *onebot.ConversationMessage) error {
+	chatRelay.SetDeliver(func(ctx context.Context, msg *onebot.ConversationMessage) error {
 		if msg == nil {
 			return nil
 		}
 		submit := chatPipeline.SessionTaskSubmitter()
-		if submit == nil {
-			maiAgent.HandleInternalChatMessage(msg)
-			return nil
-		}
 		channelKey := internalchat.ConversationChannelKey(msg)
-		submitCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		submitCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := submit(submitCtx, channelKey, func(context.Context) error {
-			maiAgent.HandleInternalChatMessage(msg)
+		if err := submit(submitCtx, channelKey, func(runCtx context.Context) error {
+			maiAgent.HandleInternalChatMessage(runCtx, msg)
 			return nil
 		}); err != nil {
 			zap.L().Warn("插件聊天消息被原生会话调度拒绝",
@@ -1711,9 +1668,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		healthCancel()
 		return nil
 	})
-	startup.AddCleanup("关闭聊天主链", func(ctx context.Context) error {
-		return chatPipeline.Close(ctx)
-	})
 	platformIOMgr.SetPluginGatewayInvoker(func(ctx context.Context, pluginID, componentName string, args map[string]any, timeoutMS int64) (map[string]any, error) {
 		envelope, err := pluginHost.InvokeMessageGateway(ctx, pluginID, componentName, args, timeoutMS)
 		if err != nil {
@@ -1763,8 +1717,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 					zap.String("external_message_id", envelope.ExternalMessageID))
 				return nil
 			}
-			chatPipeline.Handle(ctx, msg)
-			return nil
+			return chatPipeline.Handle(ctx, msg)
 		}
 		zap.L().Warn("Platform IO 入站来自未识别的驱动，已跳过",
 			zap.String("driver_id", envelope.DriverID),
@@ -1970,7 +1923,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 	desktopPetChat := func(ctx context.Context, text string) (string, error) {
 		return chatRelay.RelayPluginChatMessage(ctx, "builtin.desktop_pet", text, nil)
 	}
-	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, desktopPetSvc, desktopPetChat, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService)
+	app := webapp.New(boot, memoryMgr, maiAgent, modelStore, mcpStore, fileService, newsSvc, htmlRenderSvc, chatHub, pluginHost, acpAgentService, desktopPetSvc, desktopPetChat, botAccountService, platformIOMgr.PluginAccountOnline, botAccountPairs, platformIOMgr, avatarService, executionSettings)
 	if maimMsgServer != nil {
 		var apiHandler http.HandlerFunc
 		if maimMsgCfg.APIEnabled {
@@ -1985,7 +1938,6 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			return nil
 		})
 	}
-	app.SetSessionSchedulerStats(chatPipeline.SessionSchedulerStats)
 	app.SetSessionTaskSubmitter(chatPipeline.SessionTaskSubmitter())
 	app.SetEnforcePublicOutboundProvider(func() bool {
 		if instHolder == nil || instHolder.Config() == nil {

@@ -2,168 +2,209 @@ package test
 
 import (
 	"context"
-	"sync"
+	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"MaiGo/internal/runtime/execution/policy"
 )
 
-type fakePolicyScheduler struct {
-	mu        sync.Mutex
-	submitted int
-	shutdown  int
-	stats     any
-}
+type trackedPolicy struct{ stopped atomic.Bool }
 
-func (f *fakePolicyScheduler) Submit(ctx context.Context, _ string, task policy.SessionTask) error {
-	f.mu.Lock()
-	f.submitted++
-	f.mu.Unlock()
-	if task == nil {
-		return nil
-	}
-	return task(ctx)
-}
-
-func (f *fakePolicyScheduler) Shutdown(context.Context) error {
-	f.mu.Lock()
-	f.shutdown++
-	f.mu.Unlock()
+func (implementation *trackedPolicy) Shutdown(context.Context) error {
+	implementation.stopped.Store(true)
 	return nil
 }
 
-func (f *fakePolicyScheduler) Stats() any {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.stats
-}
-
-type testPolicyComponent interface {
-	Name() string
-	Shutdown(context.Context) error
-}
-
-type fakePolicyComponent struct {
-	mu     sync.Mutex
-	closed bool
-}
-
-func (f *fakePolicyComponent) Name() string { return "fake" }
-
-func (f *fakePolicyComponent) Shutdown(context.Context) error {
-	f.mu.Lock()
-	f.closed = true
-	f.mu.Unlock()
-	return nil
-}
-
-func TestPolicySlotSetAndSwap(t *testing.T) {
-	slot := policy.NewSlot[policy.SessionScheduler](policy.DirectScheduler{})
-	current, ok := slot.Get()
-	if !ok || current == nil {
-		t.Fatal("expected initial scheduler")
-	}
-	if _, ok := current.(policy.DirectScheduler); !ok {
-		t.Fatalf("expected DirectScheduler, got %T", current)
-	}
-
-	replacement := &fakePolicyScheduler{}
-	old, ok := slot.Swap(replacement)
+func policySlot(t *testing.T, registry *policy.Registry, key policy.Key) *policy.Slot[*trackedPolicy] {
+	t.Helper()
+	slot, ok := policy.RegisterSlot[*trackedPolicy](registry, key)
 	if !ok {
-		t.Fatal("expected old value from Swap")
+		t.Fatal("could not register typed slot")
 	}
-	if _, ok := old.(policy.DirectScheduler); !ok {
-		t.Fatalf("expected old DirectScheduler, got %T", old)
-	}
-	current, ok = slot.Get()
-	if !ok || current != replacement {
-		t.Fatal("expected replacement scheduler")
+	return slot
+}
+
+func waitPolicyResult[T any](t *testing.T, result <-chan T) T {
+	t.Helper()
+	select {
+	case value := <-result:
+		return value
+	case <-time.After(3 * time.Second):
+		t.Fatal("policy operation timed out")
+		var zero T
+		return zero
 	}
 }
 
-func TestDirectSchedulerRunsInline(t *testing.T) {
-	called := false
-	err := (policy.DirectScheduler{}).Submit(context.Background(), "session", func(context.Context) error {
-		called = true
-		return nil
+func publishPolicy(t *testing.T, registry *policy.Registry, changes ...policy.Change) *policy.Snapshot {
+	t.Helper()
+	snapshot, err := registry.Update(t.Context(), func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+		return changes, nil, nil
 	})
 	if err != nil {
-		t.Fatalf("Submit failed: %v", err)
+		t.Fatal(err)
 	}
-	if !called {
-		t.Fatal("expected DirectScheduler to run the task inline")
+	return snapshot
+}
+
+func TestPolicyPublishesAllChangesTogetherAfterPersist(t *testing.T) {
+	registry := policy.NewRegistry()
+	first := policySlot(t, registry, policy.EventDispatcherKey)
+	second := policySlot(t, registry, policy.WriteCoordinatorKey)
+	oldFirst, oldSecond := &trackedPolicy{}, &trackedPolicy{}
+	newFirst, newSecond := &trackedPolicy{}, &trackedPolicy{}
+	previous := publishPolicy(t, registry, first.With(oldFirst), second.With(oldSecond))
+	insidePersist := make(chan struct{})
+	allowPersist := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		_, err := registry.Update(t.Context(), func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+			return []policy.Change{first.With(newFirst), second.With(newSecond)}, func() error {
+				close(insidePersist)
+				select {
+				case <-allowPersist:
+					return nil
+				case <-t.Context().Done():
+					return t.Context().Err()
+				}
+			}, nil
+		})
+		result <- err
+	}()
+	waitPolicyResult(t, insidePersist)
+	if registry.Snapshot() != previous || oldFirst.stopped.Load() || oldSecond.stopped.Load() {
+		t.Fatal("published or retired an implementation before persisting")
+	}
+	close(allowPersist)
+	if err := waitPolicyResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+	next := registry.Snapshot()
+	firstValue, _ := first.From(next)
+	secondValue, _ := second.From(next)
+	if firstValue != newFirst || secondValue != newSecond || !oldFirst.stopped.Load() || !oldSecond.stopped.Load() {
+		t.Fatal("expected one published snapshot and retired old implementations")
+	}
+	firstValue, _ = first.From(previous)
+	if firstValue != oldFirst {
+		t.Fatal("previous snapshot was mutated")
+	}
+	if err := registry.Close(t.Context()); err != nil || !newFirst.stopped.Load() || !newSecond.stopped.Load() {
+		t.Fatalf("failed to close current implementations: %v", err)
 	}
 }
 
-func TestRegistryDefaultsToDirectScheduler(t *testing.T) {
+func TestPolicyLocalSwitchKeepsUnchangedSlotInUse(t *testing.T) {
 	registry := policy.NewRegistry()
-	scheduler, ok := registry.SessionScheduler.Get()
-	if !ok || scheduler == nil {
-		t.Fatal("expected default scheduler")
+	first := policySlot(t, registry, policy.EventDispatcherKey)
+	second := policySlot(t, registry, policy.WriteCoordinatorKey)
+	oldFirst, oldSecond, candidate := &trackedPolicy{}, &trackedPolicy{}, &trackedPolicy{}
+	publishPolicy(t, registry, first.With(oldFirst), second.With(oldSecond))
+	_, _, release, err := second.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := scheduler.(policy.DirectScheduler); !ok {
-		t.Fatalf("expected DirectScheduler, got %T", scheduler)
-	}
-	if stats := registry.SessionSchedulerStats(); stats != nil {
-		t.Fatalf("expected nil compatibility stats, got %v", stats)
+	defer release()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	_, err = registry.Update(ctx, func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+		return []policy.Change{first.With(candidate)}, nil, nil
+	})
+	current, _ := second.Get()
+	if err != nil || current != oldSecond || oldSecond.stopped.Load() || !oldFirst.stopped.Load() {
+		t.Fatalf("unrelated slot was changed or waited on: %v", err)
 	}
 }
 
-func TestRegistryReplaceAndCloseScheduler(t *testing.T) {
+func TestPolicyDrainAllowsNestedOperationsAndBlocksNewOnes(t *testing.T) {
 	registry := policy.NewRegistry()
-	replacement := &fakePolicyScheduler{stats: "snapshot"}
-	old, ok := registry.SessionScheduler.Swap(replacement)
-	if !ok {
-		t.Fatal("expected old scheduler")
+	first := policySlot(t, registry, policy.EventDispatcherKey)
+	second := policySlot(t, registry, policy.WriteCoordinatorKey)
+	oldFirst, oldSecond, candidate := &trackedPolicy{}, &trackedPolicy{}, &trackedPolicy{}
+	publishPolicy(t, registry, first.With(oldFirst), second.With(oldSecond))
+	_, scoped, release, err := first.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := old.(policy.DirectScheduler); !ok {
-		t.Fatalf("expected old DirectScheduler, got %T", old)
+	defer release()
+	ready := make(chan struct{})
+	result := make(chan error, 1)
+	switchCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	go func() {
+		_, err := registry.Update(switchCtx, func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+			close(ready)
+			return []policy.Change{first.With(candidate)}, nil, nil
+		})
+		result <- err
+	}()
+	waitPolicyResult(t, ready)
+	probeCtx, stopProbe := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer stopProbe()
+	for {
+		_, _, releaseProbe, err := first.Acquire(probeCtx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		releaseProbe()
 	}
-
-	called := false
-	if err := registry.SessionSchedulerStats().(string); err != "snapshot" {
-		t.Fatalf("unexpected stats: %v", registry.SessionSchedulerStats())
+	_, nested, releaseSecond, err := second.Acquire(scoped)
+	if err != nil {
+		t.Fatal(err)
 	}
-	current, _ := registry.SessionScheduler.Get()
-	if err := current.Submit(context.Background(), "session", func(context.Context) error {
-		called = true
-		return nil
-	}); err != nil {
-		t.Fatalf("Submit failed: %v", err)
+	defer releaseSecond()
+	value, _, releaseChild, err := first.Acquire(nested)
+	if err != nil || value != oldFirst {
+		t.Fatalf("nested task did not inherit access to the draining implementation: %v", err)
 	}
-	if !called {
-		t.Fatal("expected replacement scheduler task to run")
+	defer releaseChild()
+	release()
+	if oldFirst.stopped.Load() {
+		t.Fatal("retired before nested task finished")
 	}
-
-	if err := registry.Close(context.Background()); err != nil {
-		t.Fatalf("Close failed: %v", err)
+	releaseChild()
+	if err := waitPolicyResult(t, result); err != nil {
+		t.Fatal(err)
 	}
-	if replacement.shutdown != 1 {
-		t.Fatalf("expected scheduler shutdown once, got %d", replacement.shutdown)
+	current, _, releaseNew, err := first.Acquire(scoped)
+	if err != nil || current != candidate {
+		t.Fatalf("a released context retained an old implementation: %v", err)
 	}
+	releaseNew()
 }
 
-func TestRegistryTypedComponentSlot(t *testing.T) {
+func TestPolicyTimeoutAndPersistFailureKeepOldImplementation(t *testing.T) {
 	registry := policy.NewRegistry()
-	slot, ok := policy.RegisterSlot[testPolicyComponent](registry, policy.EventDispatcherKey)
-	if !ok {
-		t.Fatal("expected empty placeholder to upgrade to typed slot")
+	slot := policySlot(t, registry, policy.EventDispatcherKey)
+	old, drainedCandidate, failedCandidate := &trackedPolicy{}, &trackedPolicy{}, &trackedPolicy{}
+	previous := publishPolicy(t, registry, slot.With(old))
+	_, _, release, err := slot.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
 	}
-	component := &fakePolicyComponent{}
-	slot.Set(component)
-	lookedUp, ok := policy.LookupSlot[testPolicyComponent](registry, policy.EventDispatcherKey)
-	if !ok {
-		t.Fatal("expected typed slot lookup")
+	defer release()
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	_, err = registry.Update(ctx, func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+		return []policy.Change{slot.With(drainedCandidate)}, func() error {
+			t.Error("persist called before the old implementation drained")
+			return nil
+		}, nil
+	})
+	if !errors.Is(err, context.DeadlineExceeded) || registry.Snapshot() != previous || old.stopped.Load() || !drainedCandidate.stopped.Load() {
+		t.Fatalf("unexpected timeout rollback: %v", err)
 	}
-	current, ok := lookedUp.Get()
-	if !ok || current != component {
-		t.Fatal("expected typed component")
-	}
-
-	if err := registry.Close(context.Background()); err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
-	if !component.closed {
-		t.Fatal("expected component shutdown")
+	release()
+	persistError := errors.New("disk write failed")
+	_, err = registry.Update(t.Context(), func(*policy.Snapshot) ([]policy.Change, func() error, error) {
+		return []policy.Change{slot.With(failedCandidate)}, func() error { return persistError }, nil
+	})
+	if !errors.Is(err, persistError) || registry.Snapshot() != previous || old.stopped.Load() || !failedCandidate.stopped.Load() {
+		t.Fatalf("unexpected write failure rollback: %v", err)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	messagereceive "MaiGo/internal/chat/message_receive"
@@ -20,33 +19,29 @@ import (
 	"go.uber.org/zap"
 )
 
-// MessageHandler 返回 OneBot 入站处理函数，供 main 用 Platform IO 链包装
-func (a *Agent) MessageHandler() func(*onebot.ConversationMessage) {
-	return a.onMessage
-}
-
-// onMessage 分流共享消息回调，群聊和私聊入口各自只处理本类会话
-func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
+func (a *Agent) HandleMessage(parent context.Context, msg *onebot.ConversationMessage) {
 	if msg == nil {
 		return
 	}
 	if msg.ConversationKind == "" {
 		msg.ConversationKind = memory.ConversationKindGroup
 	}
-	if msg.ArrivalSeq == 0 {
-		msg.ArrivalSeq = a.nextArrivalSeq(msg.ConversationKind, msg.TargetID)
+	ctx, cancel := persistenceContextFrom(parent)
+	defer cancel()
+	ctx, finish, err := a.reserveCommit(ctx, msg.ConversationKind, msg.TargetID, &msg.ArrivalSeq)
+	if err != nil {
+		zap.L().Warn("入站提交未接收消息", zap.Error(err))
+		return
 	}
+	defer finish(nil)
 	a.noteConversationPlatform(msg)
 	builtin_tool.NotifyDesktopPetUserMessage(msg.Platform, msg.UserID, msg.GroupKey != "")
 	a.applyConversationRouteIdentity(msg)
 	a.rememberExternalIdentities(msg)
-	ctx, cancel := a.persistenceContext()
-	defer cancel()
 	a.ensureExternalConversationTarget(ctx, msg)
 	var mediaRefs []media.Ref
 	var forwards []messagereceive.ForwardDraft
 	if msg.ParseFailed || msg.UserID <= 0 || !a.messageAllowed(ctx, msg) {
-		a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 		return
 	}
 	if msg.UserID != a.SelfID() {
@@ -57,7 +52,6 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 	}
 	if msg.MessageID == 0 {
 		if !a.onInteractionMessage(msg) {
-			a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 			return
 		}
 	} else {
@@ -68,54 +62,42 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 	var aborted bool
 	msg, aborted = a.emitReceiveHook(ctx, "chat.receive.before_process", msg)
 	if aborted {
-		a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 		return
 	}
 	msg, aborted = a.emitReceiveHook(ctx, "chat.receive.after_process", msg)
 	if aborted {
-		a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 		return
 	}
 	if a.handleCommand(ctx, msg, mediaRefs, forwards) {
-		a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 		return
 	}
-	if msg.ConversationKind == memory.ConversationKindPrivate {
-		a.onPrivateMessage(msg, mediaRefs, forwards)
-		return
-	}
-	a.onGroupMessage(msg, mediaRefs, forwards)
-}
-
-func (a *Agent) onGroupMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
-}
-
-// nextArrivalSeq 分配会话内单调递增的到达序号，作为提交定序的唯一来源
-func (a *Agent) nextArrivalSeq(kind string, targetID int64) uint64 {
-	counter, _ := a.arrivalSeq.LoadOrStore(recallScopeKey(kind, targetID), &atomic.Uint64{})
-	return counter.(*atomic.Uint64).Add(1)
+	finish(func() {
+		a.commitConversationMessage(ctx, msg, mediaRefs, forwards)
+	})
 }
 
 // onRecall 撤回事件入口：带到达序号进入提交策略，与会话内消息保持顺序
-func (a *Agent) onRecall(kind string, targetID, messageID int64, arrivalSeq uint64) {
+func (a *Agent) onRecall(parent context.Context, kind string, targetID, messageID int64, arrivalSeq uint64) {
 	if kind == "" {
 		kind = memory.ConversationKindGroup
 	}
 	if targetID <= 0 {
 		return
 	}
-	if arrivalSeq == 0 {
-		arrivalSeq = a.nextArrivalSeq(kind, targetID)
+	ctx, cancel := persistenceContextFrom(parent)
+	defer cancel()
+	ctx, finish, err := a.reserveCommit(ctx, kind, targetID, &arrivalSeq)
+	if err != nil {
+		zap.L().Warn("入站提交未接收撤回事件", zap.Error(err))
+		return
 	}
+	defer finish(nil)
 	if messageID == 0 {
-		// 无效撤回同样消费序号，避免定序实现等待永久缺口
-		a.SkipConversationEvent(kind, targetID, arrivalSeq)
 		return
 	}
 	// 撤回修正已有原文，不受会话拉黑、退群或数据库暂时不可用影响
 	recall := &recallCommit{kind: kind, targetID: targetID, messageID: messageID}
-	a.submitCommit(kind, targetID, arrivalSeq, commitItem{recall: recall})
+	finish(func() { a.commitRecall(ctx, recall) })
 }
 
 // onInteractionMessage 只构造戳一戳的展示内容，返回是否有效；缓冲和思考调度由提交策略统一处理

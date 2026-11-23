@@ -4,10 +4,6 @@
 // compatibility / native 两种执行策略，以及各项 Go 平台特有优化开关。
 // 所有配置存储在实例目录的 config/runtime.toml 中，与 Python 共享的
 // bot_config.toml 互不影响。
-//
-// 每个局部能力的具体实现由子包 policy 的 Slot/Registry 管理：启动装配时
-// 按配置把 compatibility 或 native 实现写入对应 Slot，业务代码只读取 Slot，
-// 不再直接判断 Mode。新增局部特调时只需注册/替换自己的 typed Slot。
 package execution
 
 // Mode 执行模式：兼容模式对齐 Python 行为，原生模式启用 Go 优化
@@ -30,10 +26,16 @@ func NativeModeActive(profile Profile, toggles FeatureToggles) bool {
 	if profile.Mode != ModeNative {
 		return false
 	}
-	if IsFeatureImplemented("native_session_scheduler") && toggles.NativeSessionScheduler {
-		return true
+	for _, feature := range toggles.ToInfoList() {
+		if feature.Implemented && feature.Enabled {
+			return true
+		}
 	}
-	return IsFeatureImplemented("native_message_committer") && toggles.NativeMessageCommitter
+	return false
+}
+
+func NativeFeatureActive(profile Profile, toggles FeatureToggles, key string) bool {
+	return profile.Mode == ModeNative && toggles.Enabled(key) && IsFeatureImplemented(key)
 }
 
 // validModes 用于校验用户输入

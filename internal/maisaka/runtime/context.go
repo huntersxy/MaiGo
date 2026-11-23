@@ -213,7 +213,7 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 			return a.buildGroupContext(targetID)
 		},
 		RecallCallback: func(messageID int64, arrivalSeq uint64) {
-			a.onRecall(kind, targetID, messageID, arrivalSeq)
+			a.onRecall(ctx, kind, targetID, messageID, arrivalSeq)
 		},
 		BeginWait: func(seconds int) error {
 			a.beginConversationWait(kind, targetID, seconds)

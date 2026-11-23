@@ -22,6 +22,7 @@ import (
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_market"
 	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/runtime/execution"
 	botservices "MaiGo/internal/services"
 	"MaiGo/internal/services/html_render"
 	"MaiGo/internal/services/news"
@@ -65,12 +66,12 @@ type App struct {
 	enforceMu             sync.RWMutex
 	enforcePublicOutbound func() bool
 
-	schedulerMu           sync.RWMutex
-	sessionSchedulerStats func() any
-	sessionTaskSubmitter  func(context.Context, string, func(context.Context) error) error
+	executionSettings    *execution.Controller
+	schedulerMu          sync.RWMutex
+	sessionTaskSubmitter func(context.Context, string, func(context.Context) error) error
 }
 
-func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, desktopPet webuiapi.DesktopPetControl, desktopPetChat func(context.Context, string) (string, error), botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService) *App {
+func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.Agent, models *modelprofiles.Store, mcpServers *mcp.Store, files *filesvc.Service, newsSvc *news.Service, htmlRenderSvc *htmlrender.Service, chatHub *internalchat.Hub, pluginHost *pluginruntime.Host, acpAgent webuiapi.AgentControlService, desktopPet webuiapi.DesktopPetControl, desktopPetChat func(context.Context, string) (string, error), botAccounts *botservices.BotAccountService, botOnline func(platform, accountID string) bool, botAccountPairs func(context.Context) ([][2]string, error), platformAdapters webuiapi.PlatformAdapterSource, avatar *platformio.AvatarService, executionSettings *execution.Controller) *App {
 	instanceDir := config.InstanceRoot()
 	securityConfig, err := loadAntiCrawlerConfig(instanceDir)
 	if err != nil {
@@ -83,27 +84,28 @@ func New(boot config.Bootstrap, memMgr *memory.Manager, maiAgent *maisaruntime.A
 	})
 	authManager.SetSecureCookie(securityConfig.secureCookie)
 	app := &App{
-		boot:             boot,
-		auth:             authManager,
-		antiCrawler:      newAntiCrawlerMiddleware(securityConfig, authManager),
-		memMgr:           memMgr,
-		maiAgent:         maiAgent,
-		modelStore:       models,
-		mcpStore:         mcpServers,
-		files:            files,
-		newsSvc:          newsSvc,
-		htmlRenderSvc:    htmlRenderSvc,
-		chatHub:          chatHub,
-		pluginMarket:     pluginmarket.NewService(),
-		pluginHost:       pluginHost,
-		acpAgent:         acpAgent,
-		desktopPet:       desktopPet,
-		desktopPetChat:   desktopPetChat,
-		botAccounts:      botAccounts,
-		botOnline:        botOnline,
-		botAccountPairs:  botAccountPairs,
-		platformAdapters: platformAdapters,
-		avatar:           avatar,
+		boot:              boot,
+		auth:              authManager,
+		antiCrawler:       newAntiCrawlerMiddleware(securityConfig, authManager),
+		memMgr:            memMgr,
+		maiAgent:          maiAgent,
+		modelStore:        models,
+		mcpStore:          mcpServers,
+		files:             files,
+		newsSvc:           newsSvc,
+		htmlRenderSvc:     htmlRenderSvc,
+		chatHub:           chatHub,
+		pluginMarket:      pluginmarket.NewService(),
+		pluginHost:        pluginHost,
+		acpAgent:          acpAgent,
+		desktopPet:        desktopPet,
+		desktopPetChat:    desktopPetChat,
+		botAccounts:       botAccounts,
+		botOnline:         botOnline,
+		botAccountPairs:   botAccountPairs,
+		platformAdapters:  platformAdapters,
+		avatar:            avatar,
+		executionSettings: executionSettings,
 	}
 	// 对齐 Python webui/app.py 的 TextGZipMiddleware：最外层包装，只压一次性文本响应
 	router := textGZipMiddleware(app.routes())
@@ -134,32 +136,7 @@ func (a *App) PluginMarket() *pluginmarket.Service {
 	return a.pluginMarket
 }
 
-// SetEnforcePublicOutboundProvider 注入动态出站公网校验开关，同时下发给插件市场
-// SetSessionSchedulerStats 注入原生会话调度器统计；必须在开始服务前调用。
-func (a *App) SetSessionSchedulerStats(provider func() any) {
-	if a == nil {
-		return
-	}
-	a.schedulerMu.Lock()
-	a.sessionSchedulerStats = provider
-	a.schedulerMu.Unlock()
-}
-
-// sessionSchedulerStatsSnapshot 在请求时读取最新 provider，避免装配顺序限制。
-func (a *App) sessionSchedulerStatsSnapshot() any {
-	if a == nil {
-		return nil
-	}
-	a.schedulerMu.RLock()
-	provider := a.sessionSchedulerStats
-	a.schedulerMu.RUnlock()
-	if provider == nil {
-		return nil
-	}
-	return provider()
-}
-
-// SetSessionTaskSubmitter 注入 WebUI 聊天到原生调度器的提交入口。
+// SetSessionTaskSubmitter 注入 WebUI 聊天的会话任务入口。
 func (a *App) SetSessionTaskSubmitter(submitter func(context.Context, string, func(context.Context) error) error) {
 	if a == nil {
 		return
@@ -179,6 +156,7 @@ func (a *App) sessionTaskSubmitterSnapshot() func(context.Context, string, func(
 	return submitter
 }
 
+// SetEnforcePublicOutboundProvider 注入动态出站公网校验开关，同时下发给插件市场
 func (a *App) SetEnforcePublicOutboundProvider(provider func() bool) {
 	a.enforceMu.Lock()
 	a.enforcePublicOutbound = provider
@@ -255,7 +233,7 @@ func (a *App) routes() http.Handler {
 		EnforcePublicOutbound: a.enforcePublicOutboundEnabled,
 		InstanceDir:           config.InstanceRoot(),
 		BuildVersion:          version.String(),
-		SessionSchedulerStats: a.sessionSchedulerStatsSnapshot,
+		ExecutionSettings:     a.executionSettings,
 		SessionTaskSubmitter:  a.sessionTaskSubmitterSnapshot,
 	})
 

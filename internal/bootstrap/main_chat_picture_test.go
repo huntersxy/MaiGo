@@ -65,7 +65,7 @@ func TestSnowLumaImageOnlyDispatchDoesNotWaitForVLM(t *testing.T) {
 	dispatched := make(chan *onebot.ConversationMessage, 1)
 	pipeline := &chatRuntimePipeline{
 		images:  newChatImagePreprocessor(images),
-		handler: func(msg *onebot.ConversationMessage) { dispatched <- msg },
+		handler: func(_ context.Context, msg *onebot.ConversationMessage) { dispatched <- msg },
 	}
 	gateway := hostports.NewGateway(nil, nil)
 	gateway.SetInboundHandler(pipeline.HandlePluginMessage)

@@ -11,7 +11,7 @@
 - `session_restore.go`：从 checkpoint、visible 行、pending input 和近期原文恢复。
 - `compaction.go`：同一主模型的受限压缩器和 `finishCompaction` 提交。
 - `run.go`：模型调用边界注入、可见序号、压缩触发和 provider 用量校准。
-- `commit.go` / `reorder.go`：到达序号提交、消息落库和自身消息处理。
+- `message.go` / `commit.go`：到达序号与提交位置登记、消息落库和自身消息处理。
 - `private.go`：好友私聊收发与单任务调度。
 - `recall.go`：撤回标记、待补偿和原消息不改写。
 - `command.go`：插件聊天命令匹配、权限判定、`plugin.invoke_command` 分发与命令 Hook。
@@ -46,3 +46,4 @@
 - 撤回只打标记，不改写 transcript 前缀；后续消息附撤回说明。
 - 自己发送的消息写入 `message_logs` 但不额外生成 transcript user 行，因为动作已由 assistant/tool 轨迹表达。
 - 插件命令在 `chat.receive.after_process` 之后、进入思考链之前处理；使用真实 `chat_sessions.session_id` 匹配，命中后按 `continue_process` 决定是否落库并跳过后续思考。
+- 入站处理在预处理前从榫卯提交槽位获取租约并登记位置；过滤、Hook 中止和命令截断也必须完成登记。不要在热切换时清零会话到达序号；提交器队列不使用该序号追赶旧实现。

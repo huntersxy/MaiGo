@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	maibotcfg "MaiGo/internal/config/maibot"
 	webuiutils "MaiGo/internal/webui/utils"
 
 	"github.com/pelletier/go-toml/v2"
@@ -25,6 +27,7 @@ var (
 	ErrInvalidWorkerPoolSize = errors.New("execution: invalid worker_pool_size")
 	ErrConfigRead            = errors.New("execution: runtime config read error")
 	ErrConfigParse           = errors.New("execution: runtime config parse error")
+	ErrConfigChanged         = errors.New("execution: runtime config changed outside the live settings API")
 )
 
 // runtimeSaveMu 串行化 config/runtime.toml 的读-改-写，避免并发保存互相覆盖。
@@ -47,15 +50,25 @@ func RuntimeTomlPath(instanceDir string) string {
 // 临时覆盖的值持久化到磁盘。文件不存在时返回默认值。
 func LoadRuntimeFile(instanceDir string) (Profile, FeatureToggles, error) {
 	path := RuntimeTomlPath(instanceDir)
-
-	raw, err := os.ReadFile(filepath.Clean(path))
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return DefaultProfile(), DefaultFeatureToggles(), nil
-	case err != nil:
-		return Profile{}, FeatureToggles{}, fmt.Errorf("%w: 读取 %s 失败: %v", ErrConfigRead, path, err)
+	raw, err := readRuntimeSource(path)
+	if err != nil {
+		return Profile{}, FeatureToggles{}, err
 	}
+	return parseRuntimeSource(path, raw)
+}
 
+func readRuntimeSource(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: 读取 %s 失败: %v", ErrConfigRead, path, err)
+	}
+	return raw, nil
+}
+
+func parseRuntimeSource(path string, raw []byte) (Profile, FeatureToggles, error) {
 	var doc runtimeDocument
 	if err := toml.Unmarshal(raw, &doc); err != nil {
 		return Profile{}, FeatureToggles{}, fmt.Errorf("%w: 解析 %s 失败: %v", ErrConfigParse, path, err)
@@ -86,7 +99,11 @@ func LoadRuntime(instanceDir string) (Profile, FeatureToggles, error) {
 
 // ApplyEnvMode 应用 MAIBOT_EXECUTION_MODE 覆盖并校验结果。
 func ApplyEnvMode(profile Profile) (Profile, error) {
-	if envMode := strings.TrimSpace(os.Getenv(EnvExecutionMode)); envMode != "" {
+	return applyEnvMode(profile, strings.TrimSpace(os.Getenv(EnvExecutionMode)))
+}
+
+func applyEnvMode(profile Profile, envMode string) (Profile, error) {
+	if envMode != "" {
 		profile.Mode = Mode(strings.ToLower(envMode))
 	}
 	if profile.Mode == "" {
@@ -129,35 +146,17 @@ func ValidateProfile(profile Profile) error {
 // UpdateRuntime 在 runtimeSaveMu 内完成读取-修改-写回。
 //
 // mutate 可以返回错误中止写入；文件中的未知节与未知 feature 键会保留。
-func UpdateRuntime(instanceDir string, mutate func(*Profile, *FeatureToggles) error) (Profile, FeatureToggles, error) {
+func UpdateRuntime(instanceDir string, mutate MutateSettings) (Profile, FeatureToggles, error) {
 	runtimeSaveMu.Lock()
 	defer runtimeSaveMu.Unlock()
-
-	profile, toggles, err := LoadRuntimeFile(instanceDir)
+	save, err := prepareRuntimeSave(instanceDir, false, mutate)
 	if err != nil {
 		return Profile{}, FeatureToggles{}, err
 	}
-	if mutate != nil {
-		if err := mutate(&profile, &toggles); err != nil {
-			return Profile{}, FeatureToggles{}, err
-		}
-	}
-	if err := ValidateProfile(profile); err != nil {
+	if err := save.write(); err != nil {
 		return Profile{}, FeatureToggles{}, err
 	}
-
-	path := RuntimeTomlPath(instanceDir)
-	doc, err := readRuntimeDocument(path)
-	if err != nil {
-		return Profile{}, FeatureToggles{}, err
-	}
-	doc["execution"] = executionSection(profile)
-	setFeatureSection(doc, toggles)
-
-	if err := webuiutils.WriteTOMLDocument(path, doc); err != nil {
-		return Profile{}, FeatureToggles{}, err
-	}
-	return profile, toggles, nil
+	return save.profile, save.toggles, nil
 }
 
 // SaveProfile 将执行配置写入 config/runtime.toml，保留注释、其他节与未知 feature 键。
@@ -186,56 +185,96 @@ func SaveAll(instanceDir string, next Profile, toggles FeatureToggles) error {
 func ResetAll(instanceDir string) error {
 	runtimeSaveMu.Lock()
 	defer runtimeSaveMu.Unlock()
-
-	path := RuntimeTomlPath(instanceDir)
-	doc, err := webuiutils.ReadTOMLDocument(path)
+	save, err := prepareRuntimeSave(instanceDir, true, nil)
 	if err != nil {
-		doc = make(map[string]any)
+		return err
 	}
-	if doc == nil {
-		doc = make(map[string]any)
-	}
-
-	doc["execution"] = executionSection(DefaultProfile())
-	setFeatureSection(doc, DefaultFeatureToggles())
-	return webuiutils.WriteTOMLDocument(path, doc)
+	return save.write()
 }
 
-// readRuntimeDocument 读取现有配置；文件不存在时返回空文档，其他读取/解析错误向上抛出。
-//
-// 不能把解析失败当成“文件不存在”，否则一次保存就会覆盖用户手写的配置和注释。
-func readRuntimeDocument(path string) (map[string]any, error) {
-	doc, err := webuiutils.ReadTOMLDocument(path)
-	if err == nil {
-		if doc == nil {
-			doc = make(map[string]any)
-		}
-		return doc, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return make(map[string]any), nil
-	}
-	return nil, fmt.Errorf("%w: 读取 %s 失败: %v", ErrConfigRead, path, err)
+type runtimeSave struct {
+	path    string
+	before  []byte
+	after   []byte
+	profile Profile
+	toggles FeatureToggles
 }
 
-// setFeatureSection 合并已知开关值，同时保留文件中的未知 feature 键。
-func setFeatureSection(doc map[string]any, toggles FeatureToggles) {
-	section := make(map[string]any)
-	if existing, ok := doc["features"].(map[string]any); ok {
-		for key, value := range existing {
-			section[key] = value
+func prepareRuntimeSave(instanceDir string, reset bool, mutate MutateSettings) (runtimeSave, error) {
+	path := RuntimeTomlPath(instanceDir)
+	raw, err := readRuntimeSource(path)
+	if err != nil {
+		return runtimeSave{}, err
+	}
+	profile, toggles := DefaultProfile(), DefaultFeatureToggles()
+	if !reset {
+		profile, toggles, err = parseRuntimeSource(path, raw)
+		if err != nil {
+			return runtimeSave{}, err
 		}
 	}
+	if mutate != nil {
+		if err := mutate(&profile, &toggles); err != nil {
+			return runtimeSave{}, err
+		}
+	}
+	if err := ValidateProfile(profile); err != nil {
+		return runtimeSave{}, err
+	}
+	doc := make(map[string]any)
+	parseErr := toml.Unmarshal(raw, &doc)
+	if parseErr != nil {
+		if !reset {
+			return runtimeSave{}, fmt.Errorf("%w: 解析 %s 失败: %v", ErrConfigParse, path, parseErr)
+		}
+		doc = make(map[string]any)
+	}
+	section := runtimeSection(doc, "execution")
+	section["mode"] = string(profile.Mode)
+	section["worker_pool_size"] = int64(profile.WorkerPoolSize)
+	features := runtimeSection(doc, "features")
 	for key, value := range toggles.toMap() {
-		section[key] = value
+		features[key] = value
 	}
-	doc["features"] = section
+	encoded, err := toml.Marshal(doc)
+	if err != nil {
+		return runtimeSave{}, err
+	}
+	if parseErr == nil && len(raw) > 0 {
+		encoded = maibotcfg.MergeTOMLPreservingComments(raw, encoded)
+		encodedProfile, encodedToggles, err := parseRuntimeSource(path, encoded)
+		if err != nil {
+			return runtimeSave{}, err
+		}
+		if encodedProfile != profile || encodedToggles != toggles {
+			return runtimeSave{}, fmt.Errorf("%w: 写回内容与目标配置不一致", ErrConfigParse)
+		}
+	}
+	return runtimeSave{path: path, before: raw, after: encoded, profile: profile, toggles: toggles}, nil
 }
 
-// executionSection 将 Profile 转成 TOML 的 [execution] 节。
-func executionSection(profile Profile) map[string]any {
-	return map[string]any{
-		"mode":             string(profile.Mode),
-		"worker_pool_size": int64(profile.WorkerPoolSize),
+func runtimeSection(doc map[string]any, key string) map[string]any {
+	section, _ := doc[key].(map[string]any)
+	if section == nil {
+		section = make(map[string]any)
+		doc[key] = section
 	}
+	return section
+}
+
+func (save runtimeSave) persist() error {
+	runtimeSaveMu.Lock()
+	defer runtimeSaveMu.Unlock()
+	return save.write()
+}
+
+func (save runtimeSave) write() error {
+	current, err := readRuntimeSource(save.path)
+	if err != nil {
+		return err
+	}
+	if (current == nil) != (save.before == nil) || !bytes.Equal(current, save.before) {
+		return ErrConfigChanged
+	}
+	return webuiutils.WriteFileAtomic(save.path, save.after, 0o644)
 }

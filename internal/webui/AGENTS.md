@@ -25,7 +25,7 @@
 
 - 不新增第二套 Go 侧后台页面；例外是 `/go` 开发者设置页，其他界面改动仍应改原版 Dashboard 或只补 API。
 - `/go` 的配置 API 固定为 `/api/webui/go/*`，必须挂在 `requireAuthMiddleware` 之后；不要再增加无鉴权的 `/go/api` 别名。
-- 原生执行模式是 `native` + 对应引擎开关的共同结果；阶段 2 的 `native_session_scheduler` 已接入聊天主链，其运行快照由 `GET /api/webui/go/settings` 的 `session_scheduler` 字段返回。
-- 局部实现的兼容/native 选择统一由 `internal/runtime/execution/policy` 的 `Slot` / `Registry` 在启动装配时完成；业务代码读取 Slot，不直接判断 mode。
+- 原生引擎只在生效模式为 `native` 且对应开关开启时使用；`GET /api/webui/go/settings` 分别报告文件配置与生效状态。切换全局模式不能改写局部开关。
+- 保存、单项开关、模式和重置均交由 `execution.Controller` 排空旧任务、持久化并发布；WebUI 不直接写 `runtime.toml`，不得把草稿或未发布的值显示为生效状态。
 - Go 测试统一放在仓库根目录 `test/`，不要与包内代码混放。
 - API 路由增删要同步 `routers/ROUTES.md`。

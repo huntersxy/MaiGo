@@ -51,8 +51,8 @@ type Agent struct {
 	llmRouter      *llm.Router
 	instanceMu     sync.RWMutex
 	instanceHolder *maibotcfg.InstanceHolder
-	committer      atomic.Pointer[committerHolder]
-	arrivalSeq     sync.Map // 会话键 -> *atomic.Uint64，入站到达序号
+	policies       *policy.Registry
+	arrivalSeq     sync.Map
 	sessions       *sessionStore
 	chatSessions   *chatsession.Manager
 	gates          *gateStore
@@ -117,7 +117,7 @@ type pendingThink struct {
 }
 
 // New 创建稳定 Agent；模型/MCP 在 generation 中延迟构建
-func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store) (*Agent, error) {
+func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store, policies *policy.Registry) (*Agent, error) {
 	if mem == nil {
 		return nil, fmt.Errorf("记忆系统未就绪")
 	}
@@ -132,6 +132,7 @@ func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store
 		modelStore:           models,
 		mcpStore:             mcpServers,
 		llmRouter:            llm.NewRouter(models, nil),
+		policies:             policies,
 		sessions:             newSessionStore(mem),
 		chatSessions:         chatsession.NewManager(mem.GetDB()),
 		gates:                newGateStore(),
@@ -145,7 +146,6 @@ func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store
 	cfg := config.Snapshot()
 	a.groupConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxGroupConcurrency, a.thinkGroup, a.afterGroupThink)
 	a.privateConcurrency = maisakautils.NewThinkConcurrency(a.ctx, cfg.Agent.MaxPrivateConcurrency, a.thinkPrivate, a.afterPrivateThink)
-	a.committer.Store(&committerHolder{instance: policy.InlineCommitter{}})
 	if enabled := strings.TrimSpace(os.Getenv("MAIBOT_MAISAKA_BACKGROUND_LOOP")); enabled != "" {
 		switch strings.ToLower(enabled) {
 		case "1", "true", "yes", "on":
@@ -160,28 +160,6 @@ func New(mem *memory.Manager, models *modelprofiles.Store, mcpServers *mcp.Store
 // SetPlatformIOManager 注入 Platform IO 管理器，供发言等出站优先走多适配器 SendMessage
 func (a *Agent) SetPlatformIOManager(mgr *platformio.Manager) {
 	a.platformIO = mgr
-}
-
-// SetMessageCommitter 装配入站提交策略；未设置时按 compatibility 就地执行
-func (a *Agent) SetMessageCommitter(committer policy.MessageCommitter) {
-	if committer == nil {
-		committer = policy.InlineCommitter{}
-	}
-	if old := a.committer.Swap(&committerHolder{instance: committer}); old != nil && old.instance != nil {
-		old.instance.Shutdown()
-	}
-}
-
-// messageCommitter 返回当前提交策略；未装配时符合 compatibility 语义
-func (a *Agent) messageCommitter() policy.MessageCommitter {
-	if holder := a.committer.Load(); holder != nil && holder.instance != nil {
-		return holder.instance
-	}
-	return policy.InlineCommitter{}
-}
-
-type committerHolder struct {
-	instance policy.MessageCommitter
 }
 
 // Start 启动回调与调度循环；没有模型时保持事件门关闭
@@ -226,11 +204,6 @@ func (a *Agent) shutdown() {
 	}
 	if a.privateConcurrency != nil {
 		a.privateConcurrency.Close()
-	}
-	if a.committer.Load() != nil {
-		if holder := a.committer.Swap(nil); holder != nil && holder.instance != nil {
-			holder.instance.Shutdown()
-		}
 	}
 	a.wg.Wait()
 	a.stopCaches()

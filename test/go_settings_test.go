@@ -2,6 +2,7 @@ package test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	maisaruntime "MaiGo/internal/runtime"
 	"MaiGo/internal/runtime/execution"
-	"MaiGo/internal/runtime/execution/scheduler"
 	auth "MaiGo/internal/webui/middleware"
 	webuiapi "MaiGo/internal/webui/routers"
 
@@ -29,6 +30,24 @@ func newTestDeps(instanceDir string) webuiapi.Deps {
 		InstanceDir: instanceDir,
 		AdminAuth:   authManager,
 	}
+}
+
+func liveGoSettings(t *testing.T, instanceDir string) webuiapi.Deps {
+	t.Helper()
+	deps := newTestDeps(instanceDir)
+	controller, err := execution.NewController(t.Context(), instanceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := controller.Policies().Close(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	deps.ExecutionSettings = controller
+	return deps
 }
 
 func setupTestRouter(deps webuiapi.Deps) chi.Router {
@@ -65,7 +84,7 @@ func TestGoDeveloperPage(t *testing.T) {
 			t.Fatalf("GET %s: expected text/html, got %s", path, contentType)
 		}
 		body := recorder.Body.String()
-		if !strings.Contains(body, "开发者设置") || !strings.Contains(body, "runtime.toml") {
+		if !strings.Contains(body, "榫卯") || !strings.Contains(body, "runtime.toml") {
 			t.Fatalf("GET %s: page is missing expected content", path)
 		}
 	}
@@ -96,12 +115,16 @@ type goSettingsPayload struct {
 	WorkerPoolSize        int    `json:"worker_pool_size"`
 	NativeModeImplemented bool   `json:"native_mode_implemented"`
 	NativeModeActive      bool   `json:"native_mode_active"`
+	ConfiguredMode        string `json:"configured_execution_mode"`
+	RequiresRestart       bool   `json:"requires_restart"`
+	ConfigError           string `json:"config_error"`
 	EnvExecutionMode      string `json:"env_execution_mode"`
 	Features              []struct {
 		Key         string `json:"key"`
 		Implemented bool   `json:"implemented"`
 		Phase       int    `json:"phase"`
 		Enabled     bool   `json:"enabled"`
+		Active      bool   `json:"active"`
 	} `json:"features"`
 	SessionScheduler *struct {
 		Workers      int `json:"workers"`
@@ -142,7 +165,8 @@ func decodeGoSettings(t *testing.T, recorder *httptest.ResponseRecorder) goSetti
 func TestGoSettingsLifecycle(t *testing.T) {
 	t.Setenv(execution.EnvExecutionMode, "")
 	instanceDir := t.TempDir()
-	router := setupTestRouter(newTestDeps(instanceDir))
+	deps := liveGoSettings(t, instanceDir)
+	router := setupTestRouter(deps)
 
 	// 1. 默认读取：兼容模式、全部关闭、全部未接入。
 	initial := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")))
@@ -238,12 +262,47 @@ func TestGoSettingsLifecycle(t *testing.T) {
 	if !saved.NativeModeActive {
 		t.Fatal("expected native_mode_active=true with native mode and scheduler enabled")
 	}
+	if saved.RequiresRestart || saved.SessionScheduler == nil || saved.SessionScheduler.Workers != 6 {
+		t.Fatalf("expected a live scheduler with 6 workers, got %+v", saved)
+	}
+
+	oldScheduler, _ := deps.ExecutionSettings.Policies().SessionScheduler.Get()
+	committerResponse := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/toggle/native_message_committer", `{"enabled":true}`))
+	if committerResponse.Code != http.StatusOK {
+		t.Fatalf("enable committer: %d: %s", committerResponse.Code, committerResponse.Body.String())
+	}
+	state := decodeGoSettings(t, committerResponse)
+	for _, feature := range state.Features {
+		if implementedFeatures[feature.Key] && (!feature.Enabled || !feature.Active) {
+			t.Fatalf("expected live feature, got %+v", feature)
+		}
+	}
+	currentScheduler, _ := deps.ExecutionSettings.Policies().SessionScheduler.Get()
+	if currentScheduler != oldScheduler {
+		t.Fatal("single-engine toggle replaced the scheduler")
+	}
+	modeResponse := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/mode", `{"mode":"compatibility"}`))
+	if modeResponse.Code != http.StatusOK {
+		t.Fatalf("switch mode: %d: %s", modeResponse.Code, modeResponse.Body.String())
+	}
+	modeState := decodeGoSettings(t, modeResponse)
+	if modeState.NativeModeActive || modeState.SessionScheduler != nil || modeState.RequiresRestart {
+		t.Fatalf("compatibility mode should be live immediately: %+v", modeState)
+	}
+	for _, feature := range modeState.Features {
+		if feature.Active || feature.Enabled != implementedFeatures[feature.Key] {
+			t.Fatalf("global mode changed the local setting or left it active: %+v", feature)
+		}
+	}
 
 	// 6. 非法模式与工作池大小被拒绝。
 	invalidRequests := []string{
 		`{"execution_mode":"turbo"}`,
 		`{"worker_pool_size":-1}`,
 		`{"worker_pool_size":1025}`,
+	}
+	if missingEnabled := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/toggle/native_message_committer", `{}`)); missingEnabled.Code != http.StatusBadRequest {
+		t.Fatalf("missing enabled field returned %d", missingEnabled.Code)
 	}
 	for _, body := range invalidRequests {
 		recorder := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", body))
@@ -276,10 +335,10 @@ func TestGoSettingsLifecycle(t *testing.T) {
 }
 
 func TestGoSettingsIncludesSchedulerStats(t *testing.T) {
-	deps := newTestDeps(t.TempDir())
-	deps.SessionSchedulerStats = func() any {
-		return scheduler.Stats{Workers: 4, RunningTasks: 2, QueuedTasks: 1}
-	}
+	t.Setenv(execution.EnvExecutionMode, "")
+	dir := t.TempDir()
+	writeRuntimeToml(t, dir, "[execution]\nmode = \"native\"\nworker_pool_size = 4\n[features]\nnative_session_scheduler = true\n")
+	deps := liveGoSettings(t, dir)
 	router := setupTestRouter(deps)
 
 	payload := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")))
@@ -287,15 +346,15 @@ func TestGoSettingsIncludesSchedulerStats(t *testing.T) {
 		t.Fatal("expected session_scheduler stats")
 	}
 	if payload.SessionScheduler.Workers != 4 ||
-		payload.SessionScheduler.RunningTasks != 2 ||
-		payload.SessionScheduler.QueuedTasks != 1 {
+		payload.SessionScheduler.RunningTasks != 0 ||
+		payload.SessionScheduler.QueuedTasks != 0 {
 		t.Fatalf("unexpected scheduler stats: %+v", payload.SessionScheduler)
 	}
 }
 
 func TestGoSettingsReportsEnvOverride(t *testing.T) {
 	t.Setenv(execution.EnvExecutionMode, "native")
-	router := setupTestRouter(newTestDeps(t.TempDir()))
+	router := setupTestRouter(liveGoSettings(t, t.TempDir()))
 
 	payload := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")))
 	if payload.ExecutionMode != string(execution.ModeNative) {
@@ -328,9 +387,9 @@ func TestGoSettingsMalformedConfigCanBeReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	router := setupTestRouter(newTestDeps(instanceDir))
-	if recorder := serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")); recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for malformed config, got %d", recorder.Code)
+	router := setupTestRouter(liveGoSettings(t, instanceDir))
+	if state := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", ""))); state.ConfigError == "" || state.NativeModeActive {
+		t.Fatalf("expected fallback with a config error, got %+v", state)
 	}
 
 	if recorder := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/reset", `{}`)); recorder.Code != http.StatusOK {
@@ -345,9 +404,9 @@ func TestGoSettingsFeatureSaveDoesNotPersistEnvMode(t *testing.T) {
 	instanceDir := t.TempDir()
 	writeRuntimeToml(t, instanceDir, "[execution]\nmode = \"compatibility\"\n")
 	t.Setenv(execution.EnvExecutionMode, "native")
-	router := setupTestRouter(newTestDeps(instanceDir))
+	router := setupTestRouter(liveGoSettings(t, instanceDir))
 
-	body := `{"features":{"native_session_scheduler":true},"execution_mode":"native","worker_pool_size":0}`
+	body := `{"features":{"native_session_scheduler":true}}`
 	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", body))
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
@@ -368,10 +427,9 @@ func TestGoSettingsFeatureSaveDoesNotPersistEnvMode(t *testing.T) {
 		t.Fatal("expected feature change to be persisted")
 	}
 
-	t.Setenv(execution.EnvExecutionMode, "")
 	after := decodeGoSettings(t, serve(router, authenticatedRequest(http.MethodGet, "/api/webui/go/settings", "")))
-	if after.ExecutionMode != string(execution.ModeCompatibility) {
-		t.Fatalf("expected file mode compatibility after env removal, got %s", after.ExecutionMode)
+	if after.ConfiguredMode != string(execution.ModeCompatibility) || !after.NativeModeActive {
+		t.Fatalf("expected configured compatibility and effective native, got %+v", after)
 	}
 }
 
@@ -383,7 +441,7 @@ mode = "compatibility"
 [features]
 native_event_dispatcher = true
 `)
-	router := setupTestRouter(newTestDeps(instanceDir))
+	router := setupTestRouter(liveGoSettings(t, instanceDir))
 
 	body := `{"features":{"native_session_scheduler":true,"native_event_dispatcher":true,"native_write_coordinator":false,"async_memory_writeback":false,"parallel_llm_calls":false,"batch_db_writes":false,"sqlite_read_pool":false},"execution_mode":"compatibility","worker_pool_size":0}`
 	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", body))
@@ -411,7 +469,7 @@ native_event_dispatcher = true
 
 func TestGoSettingsRejectsEmptyUpdate(t *testing.T) {
 	instanceDir := t.TempDir()
-	router := setupTestRouter(newTestDeps(instanceDir))
+	router := setupTestRouter(liveGoSettings(t, instanceDir))
 
 	response := serve(router, authenticatedRequest(http.MethodPost, "/api/webui/go/settings", `{}`))
 	if response.Code != http.StatusBadRequest {
@@ -427,7 +485,7 @@ func TestGoSettingsPreservesUnknownFeatureKeys(t *testing.T) {
 	writeRuntimeToml(t, instanceDir, `[features]
 future_flag = true
 `)
-	router := setupTestRouter(newTestDeps(instanceDir))
+	router := setupTestRouter(liveGoSettings(t, instanceDir))
 
 	response := serve(router, authenticatedRequest(
 		http.MethodPost,

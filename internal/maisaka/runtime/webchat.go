@@ -86,13 +86,13 @@ func (a *Agent) persistInternalBotMessage(ctx context.Context, conversationKind 
 		TargetID:         targetID,
 		UserID:           a.SelfID(),
 		// chat_sessions.user_id 对齐 Python INTERNAL_CHAT_USER_ID="owner"
-		ExternalUserID: internalchat.OwnerUserID,
+		ExternalUserID:   internalchat.OwnerUserID,
 		ExternalTargetID: internalchat.OwnerUserID,
-		Nickname:       a.BotName(),
-		FinalContent:   text,
-		Time:           now,
-		ReceivedAt:     now,
-		MessageParts:   parts,
+		Nickname:         a.BotName(),
+		FinalContent:     text,
+		Time:             now,
+		ReceivedAt:       now,
+		MessageParts:     parts,
 	}
 	if replyTo != 0 {
 		msg.Reply = &onebot.ReplyInfo{MessageID: replyTo}
@@ -151,7 +151,7 @@ func (a *Agent) PersistFileMessage(messageID int64, file onebot.FileInfo, platfo
 }
 
 // HandleInternalChatMessage 投递内部聊天消息，普通聊天使用 internal 平台
-func (a *Agent) HandleInternalChatMessage(msg *onebot.ConversationMessage) {
+func (a *Agent) HandleInternalChatMessage(parent context.Context, msg *onebot.ConversationMessage) {
 	if a == nil || msg == nil || msg.UserID <= 0 || msg.TargetID <= 0 {
 		return
 	}
@@ -166,7 +166,7 @@ func (a *Agent) HandleInternalChatMessage(msg *onebot.ConversationMessage) {
 		}
 	}
 	a.markInternalConversation(msg.ConversationKind, msg.TargetID)
-	ctx, cancel := a.persistenceContext()
+	ctx, cancel := persistenceContextFrom(parent)
 	defer cancel()
 	if msg.ConversationKind == memory.ConversationKindGroup && msg.GroupKey != "" {
 		a.sessionIndex().setGroupKey(msg.ConversationKind, msg.TargetID, msg.GroupKey)
@@ -189,5 +189,5 @@ func (a *Agent) HandleInternalChatMessage(msg *onebot.ConversationMessage) {
 			zap.Error(err))
 		return
 	}
-	a.onMessage(msg)
+	a.HandleMessage(ctx, msg)
 }

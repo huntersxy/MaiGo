@@ -57,7 +57,7 @@ CI 在 push `main` 时构建并通知服务器，服务器从镜像加速源拉�
 
 ## 榫卯（Sunmao）· Go 平台特调系统
 
-主线代码与 Python 逐行对齐，Go 平台独有的并发、批处理等优化不写进主线，而是通过**榫卯**在启动装配时插入：结构（业务主线）不动，只替换局部构件。槽位是榫眼，实现是榫头。
+榫卯把 Go 专属优化装配到类型化槽位。上游功能和修复进入基线，不依赖榫卯开关。榫卯的 `compatibility` 不切换插件后端，也不等于 Python Runner；原生插件与 Python 兼容插件各自加载、运行和验收。
 
 - `internal/runtime/execution` — 执行模式与功能开关
 - `internal/runtime/execution/policy` — 插槽与注册表（`Slot[T]` / `Registry`）
@@ -70,13 +70,13 @@ CI 在 push `main` 时构建并通知服务器，服务器从镜像加速源拉�
 | `compatibility` | 默认，行为与 Python 一致 |
 | `native` | Go 特调实现，仅在 `mode = "native"` 且对应开关打开时装配 |
 
-业务代码只读取槽位，不出现 `if native` 判断；新增特调只需定义接口、注册 typed 槽、在装配时 `Set`。
+全局模式控制所有优化是否允许生效；切换模式不会改写任何单项开关。单项开关只替换对应实现；调整工作池大小只重建已启用的会话调度器。原生模式若没有开启任何已接入引擎，仍运行基线实现。
 
 ```toml
 # config/runtime.toml
 [execution]
 mode = "compatibility"   # compatibility | native
-worker_pool_size = 0     # 仅 native 生效，0 表示按 CPU 核心数
+worker_pool_size = 0     # 仅原生会话调度器使用，0 表示按 CPU 核心数
 
 [features]
 native_session_scheduler = false  # 已接入
@@ -85,9 +85,13 @@ native_message_committer = false  # 已接入
 
 当前已接入的开关：`native_session_scheduler`（会话并发调度）、`native_message_committer`（入站提交定序）。其余开关在 `FeatureDescriptions()` 中按阶段登记，标记为未接入时 WebUI 只展示规划状态，不允许开启。
 
-浏览器打开 `http://<host>:7468/go` 调整执行模式与开关；宿主模式下作用于当前选中的 Bot。
+在 `/go` 保存或重置后在线生效；宿主模式下只作用于当前选中的 Bot。保存时暂停受影响槽位的新任务，旧任务及其携带同一上下文的后续操作继续运行。已接收任务排空后先原子写入 `runtime.toml`，再一次性发布新快照，最后回收旧实现。设置接口的排空预算为 5 秒；排空超时或写盘失败不会替换运行中的实现，也不会写入本次配置。未受影响的实现不重建，不清空其状态。
 
-临时覆盖模式：`MAIBOT_EXECUTION_MODE=native`。设置接口在 `/api/webui/go/settings`。
+入站定序在预处理开始前登记提交位置，预处理失败或被过滤也会归还该位置。待提交队列属于当前目标实现；切换不会重置 Agent 的会话到达序号，也不要求新队列等待旧实现已经消费的序号。
+
+`MAIBOT_EXECUTION_MODE` 在启动时覆盖实际模式，不改写文件，也不替你开启引擎。`GET /api/webui/go/settings` 分别返回 `configured_execution_mode`、`execution_mode` 和各引擎的 `enabled`（配置）/ `active`（实际生效）。手工编辑 `runtime.toml` 后需重启加载；在线保存不会覆盖外部修改过的已知配置字段。
+
+接入新优化时，先实现基线和候选策略，再用 `RegisterSlot[T]` 注册并由装配层通过 `Slot.With`、`Registry.Update` 发布。业务通过 `Slot.Acquire` 获取实现及租约，把返回的上下文传给嵌套操作；异步任务必须到实际执行结束才释放租约，失败或取消也必须释放。只读的多槽位查询用同一份 `Registry.Snapshot`，不要用 `Slot.Get` 获得长期执行引用。不要跨业务回调持锁，也不要在持有租约的操作里发起并等待切换。
 
 ## 贡献
 

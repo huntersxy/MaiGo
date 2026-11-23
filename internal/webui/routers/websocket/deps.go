@@ -47,7 +47,7 @@ type Deps struct {
 	// 必须与 /auth/check、/ws-token 用同一口径，否则会出现
 	// 「页面认为已登录、WebSocket 认为未登录」的登录死循环。
 	SessionTokenValid func(token string) bool
-	// SessionTaskSubmitter 返回提交函数；返回 nil 表示原生会话调度器未启用。
+	// SessionTaskSubmitter 返回当前进程的会话任务入口；nil 表示未接线。
 	SessionTaskSubmitter func() func(ctx context.Context, sessionKey string, task func(context.Context) error) error
 }
 

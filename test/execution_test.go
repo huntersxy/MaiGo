@@ -51,6 +51,7 @@ func TestDefaultProfileAndFeatures(t *testing.T) {
 
 	toggles := execution.DefaultFeatureToggles()
 	if toggles.NativeSessionScheduler ||
+		toggles.NativeMessageCommitter ||
 		toggles.NativeEventDispatcher ||
 		toggles.NativeWriteCoordinator ||
 		toggles.AsyncMemoryWriteback ||
@@ -74,7 +75,7 @@ func TestDefaultProfileAndFeatures(t *testing.T) {
 		if item.Phase <= 0 {
 			t.Fatalf("expected feature %s to declare a roadmap phase", item.Key)
 		}
-		if item.Key == "native_session_scheduler" {
+		if item.Key == "native_session_scheduler" || item.Key == "native_message_committer" {
 			if !item.Implemented {
 				t.Fatalf("feature %s should be implemented after phase 2 wiring", item.Key)
 			}

@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -44,7 +45,7 @@ func TestSnowLumaStickerReachesLearningList(t *testing.T) {
 	var dispatched *onebot.ConversationMessage
 	pipeline := &chatRuntimePipeline{
 		images:  newChatImagePreprocessor(images),
-		handler: func(msg *onebot.ConversationMessage) { dispatched = msg },
+		handler: func(_ context.Context, msg *onebot.ConversationMessage) { dispatched = msg },
 	}
 	gateway := hostports.NewGateway(nil, nil)
 	gateway.SetInboundHandler(pipeline.HandlePluginMessage)

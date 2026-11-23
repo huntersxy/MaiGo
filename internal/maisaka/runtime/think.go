@@ -286,7 +286,7 @@ func (a *Agent) doSendSticker(ctx context.Context, groupID int64, fileName strin
 			},
 		},
 	}
-	a.onMessage(msg)
+	a.HandleMessage(ctx, msg)
 	zap.L().Info("发送表情包成功", zap.Int64("group_id", groupID), zap.String("desc", description))
 	return nil
 }
@@ -307,7 +307,7 @@ func (a *Agent) doSendImageURL(ctx context.Context, groupID int64, imageURL stri
 		return nil
 	}
 	imageURL = out.ImageFile
-	a.onMessage(&onebot.ConversationMessage{
+	a.HandleMessage(ctx, &onebot.ConversationMessage{
 		Platform:         a.conversationPlatform(memory.ConversationKindGroup, groupID),
 		ConversationKind: memory.ConversationKindGroup,
 		MessageID:        msgID,

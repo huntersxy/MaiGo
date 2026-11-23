@@ -4,9 +4,7 @@ import (
 	"context"
 	"time"
 
-	messagereceive "MaiGo/internal/chat/message_receive"
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/common/media"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/platform_io/drivers/onebot"
@@ -14,10 +12,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-func (a *Agent) onPrivateMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
-}
 
 func (a *Agent) schedulePrivateThink(targetID int64, receivedAt time.Time) {
 	if a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsBusy(targetID) {
@@ -155,7 +149,7 @@ func (a *Agent) doPrivateSticker(ctx context.Context, targetID int64, fileName s
 		zap.L().Info("私聊表情包发送被 Hook 中止", zap.Int64("target_id", targetID))
 		return nil
 	}
-	a.onMessage(&onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{SubType: 1, Desc: description}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
+	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{SubType: 1, Desc: description}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
 	return nil
 }
 
@@ -175,7 +169,7 @@ func (a *Agent) doPrivateImage(ctx context.Context, targetID int64, imageURL str
 		return nil
 	}
 	imageURL = out.ImageFile
-	a.onMessage(&onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{URL: imageURL}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
+	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{URL: imageURL}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
 	// 对齐 Python reply attach_pic：已发送图片作为独立 guided_reply 条目进入历史并调度识图
 	if session := a.sessions.get(memory.ConversationKindPrivate, targetID); session != nil {
 		imageComponent := maisaka.ImageComponent{MediaRef: imageURL}

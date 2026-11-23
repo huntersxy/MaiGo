@@ -359,7 +359,7 @@ MaiBot Dashboard 市场列表为 **`GET /api/webui/plugins/marketplace`**（非 
 | `/models` | `routers/model.py` — **done**（`POST /test-model` 真实调用 chat/embedding/image_embedding；replyer 文本与工具调用分支） |
 | `/news` | `routers/news.py` — **done**（`GET ""` 需鉴权；`GET /status` 运维快照） |
 | `/html-render/status` | （Go 扩展）HTML 渲染侧车状态 — **done**（`sidecar_http`；渲染委托 Python 原版 Playwright 侧车，未配置时返回真实错误） |
-| `/go` | （Go 平台专属，正式功能）开发者设置页 — **done**。`GET /go`、`GET /go/` 渲染内嵌页面；`/api/webui/go/*` 统一挂在 `requireAuthMiddleware` 之后：`GET /settings`（含 `session_scheduler` 运行快照）、`POST /settings`、`POST /toggle/{feature_key}`、`POST /mode`、`POST /reset`、`POST /restart`，读写 `config/runtime.toml`。阶段 2 的 `native_session_scheduler` 已接入聊天主链；其余未接入运行时的 feature 只能关闭，开启返回 409。页面样式复用原版 Dashboard 的 shadcn 设计令牌；Go 测试位于仓库根目录 `test/`。宿主模式下页面由宿主输出，`/api/webui/go/*` 转发到当前选中的 Bot |
+| `/go` | （Go 平台专属）`GET /go`、`GET /go/` 输出榫卯设置页。`/api/webui/go/*` 需鉴权：`GET /settings` 返回已发布的模式、各引擎的 `enabled` / `active` 及 `session_scheduler` 快照；`POST /settings`、`POST /toggle/{feature_key}`、`POST /mode`、`POST /reset` 持久化并热切换，无需重启。未接入的引擎不能新开启，切换冲突返回 409，排空超时返回 503。`POST /restart` 单独执行重启。宿主代理到当前选中的 Bot |
 
 WebSocket（挂在 `/api/webui` 下无额外 prefix 或 plugin 子路径）：
 

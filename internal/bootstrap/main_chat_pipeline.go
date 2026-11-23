@@ -31,7 +31,7 @@ import (
 // 心流 Manager 只负责会话运行时索引与生命周期观察，运行时启停仍归 Agent
 type chatRuntimePipeline struct {
 	agent     *maisaruntime.Agent
-	handler   func(*onebot.ConversationMessage)
+	handler   func(context.Context, *onebot.ConversationMessage)
 	images    *chatImagePreprocessor
 	chat      *chatwiring.Runtime
 	manager   *heartflow.Manager
@@ -125,13 +125,9 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 		cancel:   cancel,
 	}
 	if options.Agent != nil {
-		pipeline.handler = options.Agent.MessageHandler()
+		pipeline.handler = options.Agent.HandleMessage
 	}
-	provider.dispatch = func(msg *onebot.ConversationMessage) {
-		if pipeline.handler != nil {
-			pipeline.handler(msg)
-		}
-	}
+	provider.dispatch = pipeline.dispatch
 	provider.onDelivered = func(key string) {
 		pipeline.delivered.Store(key, struct{}{})
 	}
@@ -211,17 +207,16 @@ func (p *chatRuntimePipeline) HandlePluginMessage(ctx context.Context, payload m
 	if err != nil {
 		return err
 	}
-	p.Handle(ctx, msg)
-	return nil
+	return p.Handle(ctx, msg)
 }
 
 // Handle 处理一条 Agent 入站消息：先补图片描述，再走统一接收链与心流校验。
 //
 // 开启原生会话调度后，同一会话的整条接收链按 FIFO 串行，跨会话由有界工作池并行；
 // 未开启或无法解析会话时保持原有直通路径。
-func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.ConversationMessage) {
+func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.ConversationMessage) error {
 	if p == nil || msg == nil {
-		return
+		return nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -230,57 +225,29 @@ func (p *chatRuntimePipeline) Handle(ctx context.Context, msg *onebot.Conversati
 		state, err := p.people.IdentityState(ctx)
 		if err != nil {
 			zap.L().Error("读取入站人物身份失败", zap.Error(err))
-			return
+			return nil
 		}
 		msg = normalizeInboundIdentity(msg, state)
 	}
-	sessionScheduler, ok := p.sessionScheduler()
-	if !ok || p.chat == nil || p.chat.ChatBot == nil {
-		p.handleMessage(ctx, msg)
-		return
-	}
 	session, ok := p.resolveSession(msg)
-	if !ok {
-		p.handleMessage(ctx, msg)
-		return
+	if !ok || p.chat == nil || p.chat.ChatBot == nil {
+		if p.images != nil {
+			p.images.Process(ctx, msg, "")
+		}
+		p.dispatch(ctx, msg)
+		return nil
 	}
-	if err := sessionScheduler.Submit(ctx, session.SessionID, policy.SessionTask(func(runCtx context.Context) error {
+	if err := p.policies.SubmitSession(ctx, session.SessionID, func(runCtx context.Context) error {
 		p.handleSessionMessage(runCtx, msg, session)
 		return nil
-	})); err != nil {
+	}); err != nil {
 		zap.L().Warn("会话调度拒绝入站消息",
 			zap.String("session_id", session.SessionID),
 			zap.String("message_id", msg.ExternalMessageID),
 			zap.Error(err))
+		return err
 	}
-}
-
-// sessionScheduler 从策略注册表读取当前会话调度实现。
-func (p *chatRuntimePipeline) sessionScheduler() (policy.SessionScheduler, bool) {
-	if p == nil || p.policies == nil || p.policies.SessionScheduler == nil {
-		return nil, false
-	}
-	return p.policies.SessionScheduler.Get()
-}
-
-// handleMessage 是未启用调度器时的完整入站链路，也用于无法解析会话的降级。
-func (p *chatRuntimePipeline) handleMessage(ctx context.Context, msg *onebot.ConversationMessage) {
-	if p.chat == nil || p.chat.ChatBot == nil {
-		if p.images != nil {
-			p.images.Process(ctx, msg, "")
-		}
-		p.dispatch(msg)
-		return
-	}
-	session, ok := p.resolveSession(msg)
-	if !ok {
-		if p.images != nil {
-			p.images.Process(ctx, msg, "")
-		}
-		p.dispatch(msg)
-		return
-	}
-	p.handleSessionMessage(ctx, msg, session)
+	return nil
 }
 
 func (p *chatRuntimePipeline) resolveSession(msg *onebot.ConversationMessage) (heartflow.ChatSession, bool) {
@@ -307,13 +274,13 @@ func (p *chatRuntimePipeline) handleSessionMessage(ctx context.Context, msg *one
 		zap.L().Warn("统一接收链处理失败，降级为 Agent 直通",
 			zap.String("session_id", session.SessionID), zap.Error(err))
 		if _, delivered := p.delivered.Load(key); !delivered {
-			p.dispatch(msg)
+			p.dispatch(ctx, msg)
 		}
 	}
 }
 
 // handleHeartflowError 只在不重复分发时降级；心流在 RegisterMessage 后失败不能再次直通
-func (p *chatRuntimePipeline) handleHeartflowError(_ context.Context, message *messagereceive.SessionMessage, err error) {
+func (p *chatRuntimePipeline) handleHeartflowError(ctx context.Context, message *messagereceive.SessionMessage, err error) {
 	if p == nil || message == nil {
 		return
 	}
@@ -334,7 +301,7 @@ func (p *chatRuntimePipeline) handleHeartflowError(_ context.Context, message *m
 	zap.L().Warn("心流消息处理失败，降级为 Agent 直通",
 		zap.String("session_id", message.SessionID), zap.Error(err))
 	p.delivered.Store(key, struct{}{})
-	p.dispatch(msg)
+	p.dispatch(ctx, msg)
 }
 
 // chatPipelineMessageKey 用会话、消息号与时间戳区分同一条入站消息
@@ -351,15 +318,7 @@ func chatPipelineContextMessageKey(sessionID, messageID string, timestamp time.T
 
 // HandleMessage 供不接受 context 的 OneBot 直通链调用
 func (p *chatRuntimePipeline) HandleMessage(msg *onebot.ConversationMessage) {
-	p.Handle(context.Background(), msg)
-}
-
-// SessionSchedulerStats 返回当前会话调度器快照；compatibility 实现返回 nil。
-func (p *chatRuntimePipeline) SessionSchedulerStats() any {
-	if p == nil || p.policies == nil {
-		return nil
-	}
-	return p.policies.SessionSchedulerStats()
+	_ = p.Handle(context.Background(), msg)
 }
 
 // SessionTaskSubmitter 返回按会话提交任务的入口；注册表使用 compatibility 实现时也会内联执行。
@@ -367,19 +326,7 @@ func (p *chatRuntimePipeline) SessionTaskSubmitter() func(context.Context, strin
 	if p == nil || p.policies == nil {
 		return nil
 	}
-	return func(ctx context.Context, sessionKey string, task func(context.Context) error) error {
-		sessionScheduler, ok := p.sessionScheduler()
-		if !ok {
-			if task != nil {
-				return task(ctx)
-			}
-			return nil
-		}
-		if task == nil {
-			return nil
-		}
-		return sessionScheduler.Submit(ctx, sessionKey, policy.SessionTask(task))
-	}
+	return p.policies.SubmitSession
 }
 
 // Close 先关闭策略注册表（排空 native 调度器），再停止心流管理与延迟挂接。
@@ -400,8 +347,8 @@ func (p *chatRuntimePipeline) Close(ctx context.Context) error {
 	return errors.Join(schedulerErr, p.manager.Shutdown(ctx))
 }
 
-func (p *chatRuntimePipeline) dispatch(msg *onebot.ConversationMessage) {
+func (p *chatRuntimePipeline) dispatch(ctx context.Context, msg *onebot.ConversationMessage) {
 	if p != nil && p.handler != nil {
-		p.handler(msg)
+		p.handler(ctx, msg)
 	}
 }

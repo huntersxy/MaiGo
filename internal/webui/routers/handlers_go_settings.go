@@ -1,16 +1,17 @@
 package webuiapi
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"MaiGo/internal/runtime/execution"
+	"MaiGo/internal/runtime/execution/policy"
 	"MaiGo/internal/services/statistics"
 
 	"github.com/bytedance/sonic"
@@ -18,6 +19,7 @@ import (
 )
 
 const maxGoSettingsBody = 1 << 20
+const goSettingsSwitchTimeout = 5 * time.Second
 
 // goSettingsRequestError 携带 HTTP 状态码的请求错误，供 UpdateRuntime 回调中止写入。
 type goSettingsRequestError struct {
@@ -48,20 +50,6 @@ func readGoSettingsBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 		return nil, false
 	}
 	return body, true
-}
-
-// envExecutionMode 返回环境变量中的执行模式（保留原始大小写，仅用于展示）。
-func envExecutionMode() string {
-	return strings.TrimSpace(os.Getenv(execution.EnvExecutionMode))
-}
-
-// shouldPersistMode 判断请求中的模式是否应写入文件。
-//
-// 环境变量只应影响实际生效值，不应因为页面回传当前生效模式就被持久化。
-// 用户显式选择与环境变量不同的模式时仍然写入，便于以后移除环境变量后生效。
-func shouldPersistMode(requested execution.Mode) bool {
-	envMode := strings.ToLower(envExecutionMode())
-	return envMode == "" || string(requested) != envMode
 }
 
 // validateFeatureChanges 只拒绝“本次新开启”的未接入功能。
@@ -108,6 +96,22 @@ func writeGoSettingsError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if errors.Is(err, policy.ErrSwitchInProgress) {
+		writeAPIError(w, http.StatusConflict, "已有榫卯切换正在进行")
+		return
+	}
+	if errors.Is(err, execution.ErrConfigChanged) {
+		writeAPIError(w, http.StatusConflict, "runtime.toml 已被外部修改。请重启以加载文件，或通过页面重置")
+		return
+	}
+	if errors.Is(err, policy.ErrClosed) {
+		writeAPIError(w, http.StatusServiceUnavailable, "执行策略正在关闭")
+		return
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		writeAPIError(w, http.StatusServiceUnavailable, "未能在期限内完成切换，原有策略与设置未变更")
+		return
+	}
 	if errors.Is(err, execution.ErrConfigParse) || errors.Is(err, execution.ErrConfigRead) {
 		writeAPIError(w, http.StatusInternalServerError, "读取 runtime.toml 失败: "+err.Error())
 		return
@@ -116,16 +120,52 @@ func writeGoSettingsError(w http.ResponseWriter, err error) {
 }
 
 // goSettingsState 构造各设置接口共享的状态字段。
-func goSettingsState(profile execution.Profile, toggles execution.FeatureToggles) map[string]any {
-	return map[string]any{
-		"success":                 true,
-		"execution_mode":          string(profile.Mode),
-		"worker_pool_size":        profile.WorkerPoolSize,
-		"native_mode_implemented": execution.NativeModeImplemented,
-		"native_mode_active":      execution.NativeModeActive(profile, toggles),
-		"features":                toggles.ToInfoList(),
-		"requires_restart":        true,
+func goSettingsState(state execution.Status) map[string]any {
+	features := state.Features.ToInfoList()
+	for index := range features {
+		features[index].Active = state.Effective.Mode == execution.ModeNative && features[index].Enabled && features[index].Implemented
 	}
+	payload := map[string]any{
+		"success":                   true,
+		"execution_mode":            string(state.Effective.Mode),
+		"configured_execution_mode": string(state.Configured.Mode),
+		"env_execution_mode":        state.EnvMode,
+		"worker_pool_size":          state.Effective.WorkerPoolSize,
+		"native_mode_implemented":   execution.NativeModeImplemented,
+		"native_mode_active":        execution.NativeModeActive(state.Effective, state.Features),
+		"features":                  features,
+		"requires_restart":          false,
+	}
+	if state.SessionScheduler != nil {
+		payload["session_scheduler"] = state.SessionScheduler
+	}
+	if state.ConfigError != "" {
+		payload["config_error"] = state.ConfigError
+	}
+	return payload
+}
+
+func (d Deps) applyGoSettings(w http.ResponseWriter, r *http.Request, mutate execution.MutateSettings, message string) {
+	if d.ExecutionSettings == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "榫卯运行时未就绪")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), goSettingsSwitchTimeout)
+	defer cancel()
+	var state execution.Status
+	var err error
+	if mutate == nil {
+		state, err = d.ExecutionSettings.Reset(ctx)
+	} else {
+		state, err = d.ExecutionSettings.Update(ctx, mutate)
+	}
+	if err != nil {
+		writeGoSettingsError(w, err)
+		return
+	}
+	payload := goSettingsState(state)
+	payload["message"] = message
+	writeJSON(w, http.StatusOK, payload)
 }
 
 // handleGoSettingsGet 返回 Go 平台执行模式与功能开关的完整状态
@@ -137,9 +177,8 @@ func (d Deps) handleGoSettingsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, toggles, err := execution.LoadRuntime(instanceDir)
-	if err != nil {
-		writeGoSettingsError(w, err)
+	if d.ExecutionSettings == nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "榫卯运行时未就绪")
 		return
 	}
 
@@ -154,16 +193,10 @@ func (d Deps) handleGoSettingsGet(w http.ResponseWriter, r *http.Request) {
 		sqlitePath = filepath.Join(instanceDir, "data", "MaiBot.db")
 	}
 
-	payload := goSettingsState(profile, toggles)
-	payload["env_execution_mode"] = envExecutionMode()
+	payload := goSettingsState(d.ExecutionSettings.Status())
 	payload["start_time"] = startTime
 	payload["sqlite_path"] = sqlitePath
 	payload["runtime_toml_path"] = execution.RuntimeTomlPath(instanceDir)
-	if d.SessionSchedulerStats != nil {
-		if stats := d.SessionSchedulerStats(); stats != nil {
-			payload["session_scheduler"] = stats
-		}
-	}
 	writeJSON(w, http.StatusOK, payload)
 }
 
@@ -172,7 +205,7 @@ func (d Deps) handleGoSettingsGet(w http.ResponseWriter, r *http.Request) {
 // POST /api/webui/go/settings
 // Body: { "features": { ... }, "execution_mode": "compatibility", "worker_pool_size": 0 }
 func (d Deps) handleGoSettingsUpdate(w http.ResponseWriter, r *http.Request) {
-	instanceDir, ok := d.goInstanceDir(w, r)
+	_, ok := d.goInstanceDir(w, r)
 	if !ok {
 		return
 	}
@@ -196,7 +229,7 @@ func (d Deps) handleGoSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, toggles, err := execution.UpdateRuntime(instanceDir, func(profile *execution.Profile, toggles *execution.FeatureToggles) error {
+	d.applyGoSettings(w, r, func(profile *execution.Profile, toggles *execution.FeatureToggles) error {
 		if req.Features != nil {
 			if err := validateFeatureChanges(*toggles, req.Features); err != nil {
 				return err
@@ -204,39 +237,13 @@ func (d Deps) handleGoSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 			toggles.MergeFromMap(req.Features)
 		}
 		if req.ExecutionMode != nil {
-			mode := execution.Mode(*req.ExecutionMode)
-			if !execution.IsValidMode(mode) {
-				return &goSettingsRequestError{
-					status:  http.StatusBadRequest,
-					message: fmt.Sprintf("无效的执行模式 %q，合法值: compatibility, native", mode),
-				}
-			}
-			if shouldPersistMode(mode) {
-				profile.Mode = mode
-			}
+			profile.Mode = execution.Mode(*req.ExecutionMode)
 		}
 		if req.WorkerPoolSize != nil {
 			profile.WorkerPoolSize = *req.WorkerPoolSize
 		}
-		if err := execution.ValidateProfile(*profile); err != nil {
-			return &goSettingsRequestError{status: http.StatusBadRequest, message: err.Error()}
-		}
 		return nil
-	})
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	effective, err := execution.ApplyEnvMode(profile)
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	payload := goSettingsState(effective, toggles)
-	payload["message"] = "Go 平台设置已保存，需要重启服务生效"
-	writeJSON(w, http.StatusOK, payload)
+	}, "榫卯设置已保存并应用")
 }
 
 // handleGoSettingsToggle 切换单个功能开关
@@ -244,7 +251,7 @@ func (d Deps) handleGoSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 // POST /api/webui/go/toggle/{feature_key}
 // Body: { "enabled": true }
 func (d Deps) handleGoSettingsToggle(w http.ResponseWriter, r *http.Request) {
-	instanceDir, ok := d.goInstanceDir(w, r)
+	_, ok := d.goInstanceDir(w, r)
 	if !ok {
 		return
 	}
@@ -265,66 +272,36 @@ func (d Deps) handleGoSettingsToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Enabled bool `json:"enabled"`
+		Enabled *bool `json:"enabled"`
 	}
 	if err := sonic.Unmarshal(body, &req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "JSON 格式错误")
 		return
 	}
+	if req.Enabled == nil {
+		writeAPIError(w, http.StatusBadRequest, "缺少 enabled 字段")
+		return
+	}
 
-	profile, toggles, err := execution.UpdateRuntime(instanceDir, func(_ *execution.Profile, toggles *execution.FeatureToggles) error {
-		if req.Enabled && !toggles.Enabled(featureKey) && !execution.IsFeatureImplemented(featureKey) {
-			return &goSettingsRequestError{
-				status:  http.StatusConflict,
-				message: fmt.Sprintf("功能 %s 尚未接入运行时，暂不能开启", featureKey),
-			}
+	d.applyGoSettings(w, r, func(_ *execution.Profile, toggles *execution.FeatureToggles) error {
+		if err := validateFeatureChanges(*toggles, map[string]bool{featureKey: *req.Enabled}); err != nil {
+			return err
 		}
-		if !toggles.SetByKey(featureKey, req.Enabled) {
-			return &goSettingsRequestError{
-				status:  http.StatusBadRequest,
-				message: "未知的功能键: " + featureKey,
-			}
-		}
+		toggles.SetByKey(featureKey, *req.Enabled)
 		return nil
-	})
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	effective, err := execution.ApplyEnvMode(profile)
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	payload := goSettingsState(effective, toggles)
-	payload["message"] = "开关已更新，需要重启生效"
-	writeJSON(w, http.StatusOK, payload)
+	}, "单项引擎开关已保存并应用")
 }
 
 // handleGoSettingsReset 重置所有功能开关为默认值（全部关闭，对齐 Python 状态）
 //
 // POST /api/webui/go/reset
 func (d Deps) handleGoSettingsReset(w http.ResponseWriter, r *http.Request) {
-	instanceDir, ok := d.goInstanceDir(w, r)
+	_, ok := d.goInstanceDir(w, r)
 	if !ok {
 		return
 	}
 
-	if err := execution.ResetAll(instanceDir); err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	profile, toggles, err := execution.LoadRuntime(instanceDir)
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	payload := goSettingsState(profile, toggles)
-	payload["message"] = "已重置为默认状态（全关，对齐 Python）"
-	writeJSON(w, http.StatusOK, payload)
+	d.applyGoSettings(w, r, nil, "已恢复默认配置，所有优化引擎已关闭")
 }
 
 // handleGoSettingsMode 切换全局执行模式
@@ -332,7 +309,7 @@ func (d Deps) handleGoSettingsReset(w http.ResponseWriter, r *http.Request) {
 // POST /api/webui/go/mode
 // Body: { "mode": "compatibility" | "native", "worker_pool_size": 0 }
 func (d Deps) handleGoSettingsMode(w http.ResponseWriter, r *http.Request) {
-	instanceDir, ok := d.goInstanceDir(w, r)
+	_, ok := d.goInstanceDir(w, r)
 	if !ok {
 		return
 	}
@@ -351,44 +328,18 @@ func (d Deps) handleGoSettingsMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, toggles, err := execution.UpdateRuntime(instanceDir, func(profile *execution.Profile, _ *execution.FeatureToggles) error {
-		mode := execution.Mode(req.Mode)
-		if !execution.IsValidMode(mode) {
-			return &goSettingsRequestError{
-				status:  http.StatusBadRequest,
-				message: fmt.Sprintf("无效的执行模式 %q，合法值: compatibility, native", mode),
-			}
-		}
-		if shouldPersistMode(mode) {
-			profile.Mode = mode
-		}
+	d.applyGoSettings(w, r, func(profile *execution.Profile, _ *execution.FeatureToggles) error {
+		profile.Mode = execution.Mode(req.Mode)
 		if req.WorkerPoolSize != nil {
 			profile.WorkerPoolSize = *req.WorkerPoolSize
 		}
-		if err := execution.ValidateProfile(*profile); err != nil {
-			return &goSettingsRequestError{status: http.StatusBadRequest, message: err.Error()}
-		}
 		return nil
-	})
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	effective, err := execution.ApplyEnvMode(profile)
-	if err != nil {
-		writeGoSettingsError(w, err)
-		return
-	}
-
-	payload := goSettingsState(effective, toggles)
-	payload["message"] = "执行模式已更新，需要重启生效"
-	writeJSON(w, http.StatusOK, payload)
+	}, "执行模式已保存并应用，环境变量优先")
 }
 
 // handleGoSettingsRestart 从 Go 开发者页面触发进程重启
 //
 // POST /api/webui/go/restart
 func (d Deps) handleGoSettingsRestart(w http.ResponseWriter, r *http.Request) {
-	d.respondWorkerRestart(w, "麦麦正在重启中，设置将在重启后生效...")
+	d.respondWorkerRestart(w, "麦麦正在重启中...")
 }

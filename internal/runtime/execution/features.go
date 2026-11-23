@@ -25,6 +25,7 @@ type FeatureInfo struct {
 	// Phase 分阶段实施编号，0 表示未排期。
 	Phase   int  `json:"phase"`
 	Enabled bool `json:"enabled"`
+	Active  bool `json:"active"`
 }
 
 // DefaultFeatureToggles 返回全部关闭的默认开关（完全对齐 Python 行为）
@@ -43,7 +44,7 @@ func FeatureDescriptions() []FeatureInfo {
 			Name:        "会话并发调度",
 			Category:    "调度",
 			Description: "在 native 模式且开启本开关时，按会话建立 FIFO 邮箱，跨会话交给有界工作池处理；同一会话内保持严格顺序。",
-			PythonState: "兼容：按 Python 单事件循环的节奏串行排队。",
+			PythonState: "兼容：在各自的入站任务内直接执行，不经过 Go 会话工作池。",
 			GoState:     "原生：跨会话并行，单会话 FIFO 保序。",
 			Implemented: true,
 			Phase:       2,
@@ -52,9 +53,9 @@ func FeatureDescriptions() []FeatureInfo {
 			Key:         "native_message_committer",
 			Name:        "入站提交定序",
 			Category:    "调度",
-			Description: "同一会话的入站提交按到达序号定序，跨会话并发执行；关闭后按 Python 的独立任务方式就地提交。",
-			PythonState: "兼容：每条入站事件作为独立任务直接执行，无队列与序号。",
-			GoState:     "原生：会话内按序号保序，会话间并行，不占用调用方协程。",
+			Description: "在 native 模式且开启本开关时，同一会话的入站提交按预处理登记顺序执行，跨会话并发。",
+			PythonState: "兼容：预处理完成后在各自的入站任务内就地提交，不经过定序队列。",
+			GoState:     "原生：预处理仍可并行，同一会话按登记顺序提交。",
 			Implemented: true,
 			Phase:       2,
 		},

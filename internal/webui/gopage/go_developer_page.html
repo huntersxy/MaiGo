@@ -945,7 +945,7 @@
             <div class="meta-value" id="status-mode">—</div>
           </div>
           <div class="meta-item">
-            <span class="meta-label">已开启开关</span>
+            <span class="meta-label">生效引擎</span>
             <div class="meta-value" id="status-features">—</div>
           </div>
           <div class="meta-item">
@@ -987,7 +987,7 @@
               <span class="mode-radio" aria-hidden="true"></span>
               <span class="mode-option-body">
                 <span class="mode-option-title">兼容模式 <span class="badge badge-muted">默认</span></span>
-                <p>对齐 Python 的事件排队与串行节奏，用作回归与一致性基准。</p>
+                <p>使用对齐 Python 的基线实现，不启用 Go 优化引擎。</p>
               </span>
             </label>
             <label class="mode-option" data-mode="native">
@@ -995,7 +995,7 @@
               <span class="mode-radio" aria-hidden="true"></span>
               <span class="mode-option-body">
                 <span class="mode-option-title">原生模式 <span id="native-badge" class="badge badge-warning">规划中</span></span>
-                <p>启用 Go 并发调度，跨会话可并行；同一会话仍保持 FIFO。</p>
+                <p>只启用下方已选中的优化引擎。</p>
               </span>
             </label>
           </div>
@@ -1030,7 +1030,6 @@
     <div class="action-inner">
       <div class="action-info">
         <strong id="save-state">尚未修改</strong>
-        <span>保存后需重启服务才会生效。</span>
       </div>
       <div class="action-buttons">
         <button id="reset-btn" class="btn btn-outline" type="button">重置为默认</button>
@@ -1047,6 +1046,7 @@
       "use strict";
 
       var state = null;
+      var savedState = null;
       var dirty = false;
       var authenticated = false;
       var busy = false;
@@ -1172,12 +1172,12 @@
         if (!state) {
           state = {
             execution_mode: "compatibility",
+            configured_execution_mode: "compatibility",
             worker_pool_size: 0,
             native_mode_implemented: true,
             native_mode_active: false,
             env_execution_mode: "",
             features: [],
-            requires_restart: true,
             start_time: "",
             sqlite_path: "",
             runtime_toml_path: "config/runtime.toml"
@@ -1186,8 +1186,8 @@
         showSettings();
         render();
         elements.loadError.hidden = false;
-        elements.loadError.textContent = "读取 runtime.toml 失败：" + (message || "未知错误") + "。可点击「重置为默认」恢复。";
-        showToast(message || "读取配置失败，可尝试重置为默认设置", "error");
+        elements.loadError.textContent = "读取榫卯设置失败：" + (message || "未知错误");
+        showToast(message || "读取设置失败", "error");
       }
 
       function setBusy(value) {
@@ -1222,11 +1222,12 @@
           return;
         }
 
-        var native = state.execution_mode === "native";
+        var native = state.configured_execution_mode === "native";
+        var live = savedState || state;
         var modeBadgeClass = native ? "badge badge-warning" : "badge badge-muted";
-        elements.headingModeBadge.className = modeBadgeClass;
-        elements.headingModeBadge.textContent = modeLabel(state.execution_mode);
-        elements.statusMode.textContent = modeLabel(state.execution_mode);
+        elements.headingModeBadge.className = live.execution_mode === "native" ? "badge badge-warning" : "badge badge-muted";
+        elements.headingModeBadge.textContent = modeLabel(live.execution_mode);
+        elements.statusMode.textContent = modeLabel(live.execution_mode);
 
         var enabled = 0;
         (state.features || []).forEach(function (feature) {
@@ -1234,7 +1235,8 @@
             enabled += 1;
           }
         });
-        elements.statusFeatures.textContent = enabled + " / " + (state.features || []).length;
+        var activeCount = (live.features || []).filter(function (feature) { return feature.active; }).length;
+        elements.statusFeatures.textContent = String(activeCount);
         elements.featureCount.textContent = enabled + " / " + (state.features || []).length;
         elements.statusScheduler.textContent = schedulerSummary();
         elements.statusStart.textContent = state.start_time || "—";
@@ -1243,22 +1245,22 @@
 
         elements.modeStateBadge.className = modeBadgeClass;
         elements.modeStateBadge.textContent = native ? "原生模式" : "兼容模式";
-        var activeNative = nativeModeActive();
+        var activeNative = !!live.native_mode_active;
         elements.nativeBadge.className = "badge " + (activeNative ? "badge-success" : (state.native_mode_implemented ? "badge-muted" : "badge-warning"));
         elements.nativeBadge.textContent = activeNative
           ? "已启用"
-          : (state.native_mode_implemented ? (native ? "未启用" : "已接入") : "规划中");
+          : (state.native_mode_implemented ? "未启用引擎" : "规划中");
         elements.nativeNotice.className = "notice";
         if (!state.native_mode_implemented) {
           elements.nativeNotice.hidden = false;
           elements.nativeNotice.textContent = "当前版本的原生模式仅保存配置，尚未接入调度层，实际行为与兼容模式一致。";
-        } else if (native && !activeNative) {
+        } else if (live.execution_mode === "native" && !activeNative) {
           elements.nativeNotice.hidden = false;
-          elements.nativeNotice.textContent = "原生模式已选中，但还没有开启任何已接入的引擎；开启「会话并发调度」后才会生效。";
-        } else if (native && activeNative) {
+          elements.nativeNotice.textContent = "原生模式未启用任何优化引擎，当前使用基线实现。";
+        } else if (activeNative) {
           elements.nativeNotice.hidden = false;
           elements.nativeNotice.className = "notice success";
-          elements.nativeNotice.textContent = "原生模式与已接入引擎已启用，重启服务后生效。";
+          elements.nativeNotice.textContent = "已选中的优化引擎正在运行。";
         } else {
           elements.nativeNotice.hidden = true;
           elements.nativeNotice.textContent = "";
@@ -1273,14 +1275,14 @@
         }
 
         document.querySelectorAll(".mode-option").forEach(function (option) {
-          option.classList.toggle("selected", option.getAttribute("data-mode") === state.execution_mode);
+          option.classList.toggle("selected", option.getAttribute("data-mode") === state.configured_execution_mode);
         });
         document.querySelectorAll('input[name="execution-mode"]').forEach(function (input) {
-          input.checked = input.value === state.execution_mode;
+          input.checked = input.value === state.configured_execution_mode;
           input.disabled = busy;
         });
         elements.poolSize.value = String(state.worker_pool_size || 0);
-        elements.poolSize.disabled = !native || busy;
+        elements.poolSize.disabled = busy;
 
         elements.featureGrid.innerHTML = (state.features || []).map(renderFeatureCard).join("");
         elements.featureGrid.querySelectorAll("input[data-feature-key]").forEach(function (input) {
@@ -1289,10 +1291,7 @@
           });
         });
 
-        if (!dirty) {
-          elements.saveState.textContent = "尚未修改";
-        }
-        elements.saveBtn.disabled = busy || !authenticated;
+        elements.saveBtn.disabled = busy || !authenticated || !dirty || !savedState || !!live.config_error;
         elements.resetBtn.disabled = busy || !authenticated;
         elements.restartBtn.disabled = busy || !authenticated;
       }
@@ -1316,21 +1315,10 @@
         return summary;
       }
 
-      function nativeModeActive() {
-        if (!state || state.execution_mode !== "native") {
-          return false;
-        }
-        for (var index = 0; index < state.features.length; index += 1) {
-          if (state.features[index].implemented && state.features[index].enabled) {
-            return true;
-          }
-        }
-        return false;
-      }
-
       function renderFeatureCard(feature) {
         var implemented = !!feature.implemented;
         var enabled = !!feature.enabled;
+        var liveFeature = savedState && savedState.features.find(function (item) { return item.key === feature.key; });
         var phase = feature.phase ? " · 阶段 " + feature.phase : "";
         var statusBadge = implemented
           ? '<span class="badge badge-success">已接入</span>'
@@ -1338,15 +1326,19 @@
         var stateText;
         if (!implemented) {
           stateText = enabled ? "配置已开启，运行时尚未接入" : "尚未接入，暂不可启用";
-        } else if (enabled && feature.key.indexOf("native_") === 0 && state.execution_mode !== "native") {
+        } else if (liveFeature && enabled !== liveFeature.enabled) {
+          stateText = enabled ? "待保存：开启" : "待保存：关闭";
+        } else if (feature.active) {
+          stateText = "已生效";
+        } else if (enabled) {
           stateText = "已配置，兼容模式下不生效";
         } else {
-          stateText = enabled ? "已启用" : "已关闭";
+          stateText = "已关闭";
         }
         var canToggle = implemented || enabled;
         var switchDisabled = (!canToggle || busy) ? " disabled" : "";
         return "" +
-          '<li class="feature-row' + (implemented && enabled ? " enabled" : "") + '">' +
+          '<li class="feature-row' + (feature.active ? " enabled" : "") + '">' +
             '<div class="feature-main">' +
               '<div class="feature-title-row">' +
                 '<h3 class="feature-title">' + escapeHtml(feature.name) + "</h3>" +
@@ -1394,17 +1386,7 @@
         if (!state || busy) {
           return;
         }
-        state.execution_mode = mode;
-        if (mode === "native" && !nativeModeActive()) {
-          for (var index = 0; index < state.features.length; index += 1) {
-            var feature = state.features[index];
-            if (feature.key === "native_session_scheduler" && feature.implemented) {
-              feature.enabled = true;
-              showToast("已同时开启会话并发调度，保存并重启后生效", "info");
-              break;
-            }
-          }
-        }
+        state.configured_execution_mode = mode;
         markDirty();
         render();
       }
@@ -1416,32 +1398,25 @@
         var parsed = Number(value);
         state.worker_pool_size = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
         markDirty();
+        elements.saveBtn.disabled = !authenticated || !savedState || !!savedState.config_error;
       }
 
       function applyServerState(data) {
         if (!data) {
           return;
         }
-        if (data.execution_mode) {
-          state.execution_mode = data.execution_mode;
-        }
-        if (typeof data.worker_pool_size === "number") {
-          state.worker_pool_size = data.worker_pool_size;
-        }
-        if (typeof data.native_mode_implemented === "boolean") {
-          state.native_mode_implemented = data.native_mode_implemented;
-        }
-        if (Array.isArray(data.features)) {
-          state.features = data.features;
-        }
+        savedState = Object.assign({}, state, { session_scheduler: null, config_error: "" }, data);
+        savedState.features = savedState.features || [];
+        state = Object.assign({}, savedState, {
+          features: savedState.features.map(function (feature) { return Object.assign({}, feature); })
+        });
+        elements.loadError.hidden = !savedState.config_error;
+        elements.loadError.textContent = savedState.config_error ? "runtime.toml 无法加载：" + savedState.config_error + "。当前使用默认引擎配置，可重置恢复。" : "";
       }
 
       function loadSettings() {
         return request("/api/webui/go/settings").then(function (data) {
-          state = data;
-          state.features = state.features || [];
-          elements.loadError.hidden = true;
-          elements.loadError.textContent = "";
+          applyServerState(data);
           clearDirty();
           showSettings();
           render();
@@ -1499,13 +1474,26 @@
         }
         var features = {};
         state.features.forEach(function (feature) {
-          features[feature.key] = !!feature.enabled;
+          var liveFeature = savedState.features.find(function (item) { return item.key === feature.key; });
+          if (feature.enabled !== liveFeature.enabled) {
+            features[feature.key] = !!feature.enabled;
+          }
         });
-        var payload = {
-          features: features,
-          execution_mode: state.execution_mode,
-          worker_pool_size: Number(elements.poolSize.value || 0)
-        };
+        var payload = {};
+        if (Object.keys(features).length) {
+          payload.features = features;
+        }
+        if (state.configured_execution_mode !== savedState.configured_execution_mode) {
+          payload.execution_mode = state.configured_execution_mode;
+        }
+        if (state.worker_pool_size !== savedState.worker_pool_size) {
+          payload.worker_pool_size = state.worker_pool_size;
+        }
+        if (!Object.keys(payload).length) {
+          clearDirty();
+          render();
+          return;
+        }
         setBusy(true);
         request("/api/webui/go/settings", {
           method: "POST",
@@ -1515,7 +1503,7 @@
           applyServerState(data);
           clearDirty();
           render();
-          showToast(data.message || "设置已保存，重启后生效", "success");
+          showToast(data.message || "设置已保存并应用", "success");
         }).catch(function (error) {
           if (error.unauthorized) {
             showAuth();

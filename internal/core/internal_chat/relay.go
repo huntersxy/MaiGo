@@ -20,7 +20,7 @@ type Relay struct {
 	instanceDir string
 
 	mu      sync.RWMutex
-	deliver func(*onebot.ConversationMessage) error
+	deliver func(context.Context, *onebot.ConversationMessage) error
 }
 
 // NewRelay 创建插件中继，deliver 由 Agent 在启动后注入
@@ -29,7 +29,7 @@ func NewRelay(hub *Hub, instanceDir string) *Relay {
 }
 
 // SetDeliver 注入 Agent 入站投递函数；投递失败会回传给插件调用方。
-func (r *Relay) SetDeliver(deliver func(*onebot.ConversationMessage) error) {
+func (r *Relay) SetDeliver(deliver func(context.Context, *onebot.ConversationMessage) error) {
 	if r == nil {
 		return
 	}
@@ -39,7 +39,7 @@ func (r *Relay) SetDeliver(deliver func(*onebot.ConversationMessage) error) {
 }
 
 // RelayPluginChatMessage 以主人身份投递插件消息，并返回内部聊天消息 ID
-func (r *Relay) RelayPluginChatMessage(_ context.Context, pluginID, content string, images []map[string]any) (string, error) {
+func (r *Relay) RelayPluginChatMessage(ctx context.Context, pluginID, content string, images []map[string]any) (string, error) {
 	if r == nil || r.hub == nil {
 		return "", fmt.Errorf("内部聊天服务未就绪")
 	}
@@ -105,7 +105,7 @@ func (r *Relay) RelayPluginChatMessage(_ context.Context, pluginID, content stri
 		chatMessage.Images = append(chatMessage.Images, image)
 		chatMessage.MessageParts = append(chatMessage.MessageParts, onebot.MessagePart{Kind: "image", Index: index})
 	}
-	if err := deliver(chatMessage); err != nil {
+	if err := deliver(ctx, chatMessage); err != nil {
 		return "", fmt.Errorf("投递聊天消息失败: %w", err)
 	}
 	payloadID, _ := payload["message_id"].(string)

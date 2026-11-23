@@ -15,6 +15,7 @@ import (
 	"MaiGo/internal/platform_io"
 	"MaiGo/internal/plugin_market"
 	"MaiGo/internal/plugin_runtime"
+	"MaiGo/internal/runtime/execution"
 	botservices "MaiGo/internal/services"
 	"MaiGo/internal/services/html_render"
 	"MaiGo/internal/services/news"
@@ -62,12 +63,11 @@ type Deps struct {
 	Files            *filesvc.Service
 	ChatHub          *internalchat.Hub
 	// Avatar 外部平台头像服务（对齐 avatar_service）；为空时外部 platform 返回 502
-	Avatar       *platformio.AvatarService
-	InstanceDir  string
-	BuildVersion string
-	// SessionSchedulerStats 返回原生会话调度器快照；nil 表示未启用。
-	SessionSchedulerStats func() any
-	// SessionTaskSubmitter 返回提交函数；返回 nil 表示原生会话调度器未启用。
+	Avatar            *platformio.AvatarService
+	InstanceDir       string
+	BuildVersion      string
+	ExecutionSettings *execution.Controller
+	// SessionTaskSubmitter 返回当前进程的会话任务入口；nil 表示未接线。
 	SessionTaskSubmitter func() func(ctx context.Context, sessionKey string, task func(context.Context) error) error
 	// DatabaseDSN 可选 SQLite DSN/路径覆盖；为空时用实例 data/MaiBot.db
 	DatabaseDSN string

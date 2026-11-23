@@ -332,9 +332,9 @@ func (s *unifiedWSSession) processChatMessage(state *chatSessionState, content, 
 	appendInternalChatFiles(msg, attachments.files)
 
 	s.beginTyping(channelKey)
-	run := func(context.Context) error {
+	run := func(runCtx context.Context) error {
 		defer s.endTyping(channelKey)
-		s.deps.Agent.HandleInternalChatMessage(msg)
+		s.deps.Agent.HandleInternalChatMessage(runCtx, msg)
 		zap.L().Debug("内部聊天消息已投递", zap.String("session", state.clientSessionID))
 		return nil
 	}

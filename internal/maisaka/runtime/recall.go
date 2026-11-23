@@ -52,14 +52,14 @@ func (a *Agent) refreshReplyRecall(ctx context.Context, msg *onebot.Conversation
 
 // commitRecall 先更新会话里的撤回标记，再补记数据库；数据库暂时失败只记日志，
 // 原消息落库或后续撤回事件还会再补一次，模型上下文里的撤回说明不依赖数据库
-func (a *Agent) commitRecall(recall *recallCommit) {
+func (a *Agent) commitRecall(parent context.Context, recall *recallCommit) {
 	a.recallMu.Lock()
 	now := time.Now()
 	a.prunePendingRecallsLocked(now)
 	a.pendingRecalls[*recall] = pendingRecall{expiresAt: now.Add(recallPendingTTL)}
 	a.recallMu.Unlock()
 	a.markSessionRecalled(recall.kind, recall.targetID, recall.messageID)
-	ctx, cancel := a.persistenceContext()
+	ctx, cancel := persistenceContextFrom(parent)
 	defer cancel()
 	a.applyPendingRecall(ctx, &onebot.ConversationMessage{ConversationKind: recall.kind, TargetID: recall.targetID, MessageID: recall.messageID})
 }

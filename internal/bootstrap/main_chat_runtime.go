@@ -53,7 +53,7 @@ type chatRuntimeProvider struct {
 	sessions    *chatSessionRegistry
 	agent       *maisaruntime.Agent
 	manager     *heartflow.Manager
-	dispatch    func(*onebot.ConversationMessage)
+	dispatch    func(context.Context, *onebot.ConversationMessage)
 	onDelivered func(string)
 	inflight    *sync.Map
 	ctx         context.Context
@@ -192,7 +192,7 @@ func (r *chatDispatchRuntime) RegisterMessage(ctx context.Context, message maisa
 		r.provider.onDelivered(key)
 	}
 	if r.provider.dispatch != nil {
-		r.provider.dispatch(source)
+		r.provider.dispatch(ctx, source)
 	}
 	r.provider.scheduleAttach(r.sessionID)
 	return nil
