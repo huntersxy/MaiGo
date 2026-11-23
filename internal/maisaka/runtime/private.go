@@ -4,9 +4,7 @@ import (
 	"context"
 	"time"
 
-	messagereceive "MaiGo/internal/chat/message_receive"
 	"MaiGo/internal/common/database"
-	"MaiGo/internal/common/media"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	"MaiGo/internal/platform_io/drivers/onebot"
@@ -14,10 +12,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-func (a *Agent) onPrivateMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
-}
 
 func (a *Agent) schedulePrivateThink(targetID int64, receivedAt time.Time) {
 	if a.stopping.Load() || a.ctx.Err() != nil || a.privateConcurrency.IsBusy(targetID) {

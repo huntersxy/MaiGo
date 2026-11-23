@@ -25,8 +25,12 @@ func (a *Agent) MessageHandler() func(*onebot.ConversationMessage) {
 	return a.onMessage
 }
 
-// onMessage 分流共享消息回调，群聊和私聊入口各自只处理本类会话
+// onMessage 处理适配器回调。
 func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
+	a.processConversationMessage(msg, false)
+}
+
+func (a *Agent) processConversationMessage(msg *onebot.ConversationMessage, sentByAgent bool) {
 	if msg == nil {
 		return
 	}
@@ -80,15 +84,9 @@ func (a *Agent) onMessage(msg *onebot.ConversationMessage) {
 		a.SkipConversationEvent(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq)
 		return
 	}
-	if msg.ConversationKind == memory.ConversationKindPrivate {
-		a.onPrivateMessage(msg, mediaRefs, forwards)
-		return
-	}
-	a.onGroupMessage(msg, mediaRefs, forwards)
-}
-
-func (a *Agent) onGroupMessage(msg *onebot.ConversationMessage, mediaRefs []media.Ref, forwards []messagereceive.ForwardDraft) {
-	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{msg: msg, media: mediaRefs, forwards: forwards})
+	a.submitCommit(msg.ConversationKind, msg.TargetID, msg.ArrivalSeq, commitItem{
+		msg: msg, media: mediaRefs, forwards: forwards, sentByAgent: sentByAgent,
+	})
 }
 
 // nextArrivalSeq 分配会话内单调递增的到达序号，作为提交定序的唯一来源

@@ -194,6 +194,10 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commit
 		msg = a.applyPendingRecall(ctx, msg)
 	}
 	if !created {
+		// 适配器回显可能先落库，机器人本地发送仍负责通知记忆写回。
+		if item.sentByAgent && log != nil && msg.MessageID != 0 && msg.UserID == a.SelfID() {
+			a.notifySentMessage(ctx, msg)
+		}
 		return
 	}
 	// 引用缓存只由提交阶段写入，避免并行解析在撤回后写回旧值
@@ -212,7 +216,7 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commit
 		a.observeExpressionInbound(ctx, msg)
 	}
 	if created && msg.MessageID != 0 && msg.UserID == a.SelfID() {
-		if !externalPlatformMessage(msg) {
+		if item.sentByAgent || !externalPlatformMessage(msg) {
 			a.notifySentMessage(ctx, msg)
 		}
 		return
@@ -231,10 +235,11 @@ func (a *Agent) commitConversationMessageLocked(ctx context.Context, item commit
 
 // commitItem 提交项：消息、戳一戳、撤回统一交给提交策略按会话处理
 type commitItem struct {
-	recall   *recallCommit
-	msg      *onebot.ConversationMessage
-	media    []media.Ref
-	forwards []messagereceive.ForwardDraft
+	recall      *recallCommit
+	msg         *onebot.ConversationMessage
+	media       []media.Ref
+	forwards    []messagereceive.ForwardDraft
+	sentByAgent bool
 }
 
 // submitCommit 把提交项交给当前提交策略
