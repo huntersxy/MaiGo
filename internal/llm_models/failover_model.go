@@ -18,6 +18,25 @@ type modelAttempt struct {
 	HardTimeout time.Duration
 }
 
+type successfulModelKey struct{}
+
+type SuccessfulModel struct {
+	Name   string
+	Client model.AgenticModel
+}
+
+func WithSuccessfulModel(ctx context.Context) (context.Context, *SuccessfulModel) {
+	selection := &SuccessfulModel{}
+	return context.WithValue(ctx, successfulModelKey{}, selection), selection
+}
+
+func (m *failoverModel) recordSuccessfulModel(ctx context.Context, name string, client model.AgenticModel) {
+	if selection, ok := ctx.Value(successfulModelKey{}).(*SuccessfulModel); ok {
+		selection.Name = name
+		selection.Client = newImageCompressionRetryModel(withUsageTracking(m.router, name, m.configs[name], client, m.runner(name, nil)))
+	}
+}
+
 // failoverModel 在同一个任务的多候选模型间做请求级切换
 // 对齐 MaiBot LLMOrchestrator._execute_request：
 //   - 单次逻辑请求最多尝试 model_list 中的全部候选
@@ -99,6 +118,7 @@ func (m *failoverModel) GenerateWithModelContext(ctx context.Context, build func
 		}
 		if err == nil {
 			m.complete(name, agenticMessageTokens(message))
+			m.recordSuccessfulModel(ctx, name, client)
 			return message, nil
 		}
 		if failoverStopped(ctx, err) {
@@ -142,6 +162,7 @@ func (m *failoverModel) Stream(ctx context.Context, input []*schema.AgenticMessa
 		}
 		if err == nil {
 			m.release(name)
+			m.recordSuccessfulModel(ctx, name, client)
 			return trackStreamUsage(m.router, name, replayAgenticStream(buffered)), nil
 		}
 		if failoverStopped(ctx, err) {

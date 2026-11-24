@@ -45,7 +45,7 @@ func (a *Agent) thinkCycle() {
 	}
 	for _, groupID := range groupIDs {
 		session := a.sessions.get(memory.ConversationKindGroup, groupID)
-		pending := session.PendingMessages()
+		pending := session.pendingAfterTurn()
 		if len(pending) == 0 {
 			continue
 		}
@@ -61,7 +61,7 @@ func (a *Agent) thinkCycle() {
 			continue
 		}
 		session := a.sessions.get(memory.ConversationKindPrivate, target.TargetID)
-		pending := session.PendingMessages()
+		pending := session.pendingAfterTurn()
 		if len(pending) == 0 {
 			continue
 		}
@@ -139,7 +139,7 @@ func (a *Agent) flushPendingThink(groupID int64, expected *pendingThink, generat
 		return
 	}
 	session := a.sessions.get(memory.ConversationKindGroup, groupID)
-	pendingMsgs := session.PendingMessages()
+	pendingMsgs := session.pendingAfterTurn()
 	if len(pendingMsgs) == 0 || !hasActionableMessage(pendingMsgs) {
 		return
 	}

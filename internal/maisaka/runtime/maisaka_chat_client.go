@@ -31,12 +31,16 @@ import (
 type maisakaChatClient struct {
 	model             model.AgenticModel
 	modelName         string
+	modelErr          error
 	saveReasoning     bool
 	keepPreviewBase64 bool
 }
 
 // Chat 执行一次 Planner 模型请求并把原生响应投影回 Maisaka 结构
 func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatRequest) (maisaka.ChatResponse, error) {
+	if c != nil && c.modelErr != nil {
+		return maisaka.ChatResponse{}, fmt.Errorf("Maisaka Planner 模型未就绪: %w", c.modelErr)
+	}
 	if c == nil || c.model == nil {
 		return maisaka.ChatResponse{}, fmt.Errorf("Maisaka ChatClient 缺少可用的模型客户端")
 	}
@@ -81,6 +85,10 @@ func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatReques
 		}
 	}
 	ctx = llm.WithModelUsageMetadata(ctx, request.ModelTaskName, request.RequestKind, request.SessionID)
+	var selection *llm.SuccessfulModel
+	if request.RequestKind == "planner" {
+		ctx, selection = llm.WithSuccessfulModel(ctx)
+	}
 	started := time.Now()
 	var reply *schema.AgenticMessage
 	var err error
@@ -100,6 +108,10 @@ func (c *maisakaChatClient) Chat(ctx context.Context, request maisaka.ChatReques
 	}
 	response := maisakaResponseFromAgentic(reply)
 	response.ModelName = c.modelName
+	if selection != nil && selection.Client != nil {
+		response.ModelName = selection.Name
+		response.RequestClient = &maisakaChatClient{model: selection.Client, modelName: selection.Name}
+	}
 	if c.saveReasoning && request.RequestKind == "planner" {
 		c.savePlannerPreview(ctx, request.SessionID, messages, reply, time.Since(started))
 	}

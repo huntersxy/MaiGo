@@ -44,7 +44,7 @@ func (a *Agent) flushPrivateThink(targetID int64, expected *pendingThink, genera
 	a.privateMu.Unlock()
 
 	session := a.sessions.get(memory.ConversationKindPrivate, targetID)
-	pendingMsgs := session.PendingMessages()
+	pendingMsgs := session.pendingAfterTurn()
 	if len(pendingMsgs) == 0 || !hasActionableMessage(pendingMsgs) {
 		return
 	}

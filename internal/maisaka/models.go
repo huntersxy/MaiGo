@@ -286,7 +286,8 @@ type ChatResponse struct {
 	// FinishReason 结束原因
 	FinishReason string
 	// ModelName 实际调用的模型标识，供终端面板展示
-	ModelName string
+	ModelName     string
+	RequestClient ChatClient `json:"-"`
 	// SelectedHistoryCount 本次请求选中的历史消息条数
 	SelectedHistoryCount int
 	// ToolCount 本次请求携带的工具定义数量
@@ -382,6 +383,9 @@ type PlannerRequestSnapshot struct {
 	ToolNames    []string
 	SessionID    string
 	IsGroup      bool
+	Client       ChatClient `json:"-"`
+	Stream       bool
+	MaxImageSide int
 	// CoveredHistory 本次请求实际选中的历史消息，压缩时用于排除已复用前缀
 	CoveredHistory []ContextMessage
 }

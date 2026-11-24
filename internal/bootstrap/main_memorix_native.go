@@ -127,9 +127,13 @@ func startNativeAMemorixBackend(plan nativeAMemorixStartupPlan, holder *maibotcf
 			BotSelfResolver: hostadapter.NewBotSelfResolver(botAccountService),
 		}
 		if holder != nil {
+			deps.ModelConfig = func() *maibotcfg.ModelConfigFile {
+				if cfg := holder.Config(); cfg != nil {
+					return &cfg.Model
+				}
+				return nil
+			}
 			if cfg := holder.Config(); cfg != nil {
-				modelConfig := cfg.Model
-				deps.ModelConfig = &modelConfig
 				deps.BotName = cfg.Bot.Bot.Nickname
 				deps.Personality = cfg.Bot.Personality.Personality
 			}

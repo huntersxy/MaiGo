@@ -44,10 +44,6 @@ type Options struct {
 	LLM utils.TextGenerationGateway
 	// Prompt 提示词提供者，nil 时按实例 prompts 目录构造
 	Prompt utils.SummaryPromptProvider
-	// ModelTasks 可用文本生成任务，用于摘要与修正选择模型
-	ModelTasks map[string]utils.TextGenerationTaskConfig
-	// ModelDict 当前模型字典，对齐 models_dict
-	ModelDict map[string]any
 	// WebImportCommandRunner WebUI 批量迁移/转换执行器，nil 时导入命令不可用
 	WebImportCommandRunner utils.WebImportCommandRunner
 	// BotName 机器人昵称，用于摘要提示词
@@ -86,8 +82,6 @@ type Runtime struct {
 	llmGateway            utils.TextGenerationGateway
 	embeddingConfigSource embedding.ModelConfigProvider
 	promptProvider        utils.SummaryPromptProvider
-	modelTasks            map[string]utils.TextGenerationTaskConfig
-	modelDict             map[string]any
 	webImportRunner       utils.WebImportCommandRunner
 	botName               string
 	personality           string
@@ -181,8 +175,6 @@ func OpenKernel(kernel *memruntime.Kernel, opts Options) (*Runtime, error) {
 		llmGateway:            opts.LLM,
 		embeddingConfigSource: opts.EmbeddingConfigSource,
 		promptProvider:        opts.Prompt,
-		modelTasks:            opts.ModelTasks,
-		modelDict:             opts.ModelDict,
 		webImportRunner:       opts.WebImportCommandRunner,
 		botName:               opts.BotName,
 		personality:           opts.Personality,

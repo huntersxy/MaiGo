@@ -180,15 +180,10 @@ func (a *Agent) executeMaisakaTurn(ctx context.Context, kind string, targetID in
 		return false
 	}
 	promptSource := a.newMaisakaPromptSource()
-	plannerModel := generation.plannerModel
-	plannerName := generation.plannerModelName
-	if plannerModel == nil {
-		plannerModel = generation.model
-		plannerName = generation.modelName
-	}
 	planner := &maisakaChatClient{
-		model:     plannerModel,
-		modelName: plannerName,
+		model:     generation.plannerModel,
+		modelName: generation.plannerModelName,
+		modelErr:  generation.plannerModelErr,
 	}
 	if bot := a.instanceBotConfig(); bot != nil {
 		planner.saveReasoning = bot.Debug.SaveMaisakaReasoning
@@ -765,12 +760,13 @@ func (a *Agent) newFocusGroupRuntime(scopeID string) *focus.GroupRuntime {
 		StoreRoot: focus.DefaultCheckpointRoot,
 		Prompts:   a.newMaisakaPromptSource(),
 		Planner: func(ctx context.Context, request focus.PlannerRequest) (maisaka.ChatResponse, error) {
-			generation := a.currentGeneration()
-			if generation == nil || generation.model == nil {
+			generation := a.acquireGeneration()
+			if generation == nil {
 				return maisaka.ChatResponse{}, fmt.Errorf("Focus 共享组缺少 Planner 模型")
 			}
+			defer generation.wg.Done()
 			loop := maisaka.NewChatLoopService(scopeID, true, a.newMaisakaPromptSource(), &maisakaChatClient{
-				model: generation.model, modelName: generation.modelName,
+				model: generation.plannerModel, modelName: generation.plannerModelName, modelErr: generation.plannerModelErr,
 			})
 			if generation.fastModel != nil {
 				loop.JudgeClient = &maisakaChatClient{model: generation.fastModel, modelName: generation.fastModelName}

@@ -1434,8 +1434,6 @@ func (e *ReasoningEngine) PostProcessChatHistoryAfterCycle(ctx context.Context, 
 		} else {
 			snapshot := runtime.PlannerRequestSnapshot()
 			if snapshot == nil {
-				// 冷启动或上次摘要提交后必须先完成一次 Planner 请求，才能复用真实前缀
-				zap.L().Warn(runtime.logPrefix + " 缺少 Planner 请求快照，取消提交本批上下文裁切")
 				return
 			}
 			summary, err := runtime.opts.Compactor.Summarize(ctx, HistoryCompactionInput{
@@ -1462,11 +1460,6 @@ func (e *ReasoningEngine) PostProcessChatHistoryAfterCycle(ctx context.Context, 
 		return
 	}
 	runtime.SetHistory(finalHistory)
-	if len(result.RemovedMessages) > 0 {
-		if loop, ok := runtime.opts.ChatLoop.(*ChatLoopService); ok && loop != nil {
-			loop.lastPlannerPromptTokens = 0
-		}
-	}
 	// 提交后同步宿主工作集，避免被裁条目在下一轮装配时复活
 	if sink := runtime.opts.HistoryTrimSink; sink != nil {
 		sink(originalHistory, finalHistory)

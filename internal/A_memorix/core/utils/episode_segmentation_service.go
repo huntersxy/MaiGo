@@ -18,7 +18,6 @@ const EpisodeSegmentationVersion = "episode_indices_v2"
 type EpisodeSegmentationService struct {
 	PluginConfig map[string]any
 	Gateway      TextGenerationGateway
-	Tasks        map[string]TextGenerationTaskConfig
 	Logger       Logger
 }
 
@@ -26,19 +25,14 @@ type EpisodeSegmentationService struct {
 func NewEpisodeSegmentationService(
 	pluginConfig map[string]any,
 	gateway TextGenerationGateway,
-	tasks map[string]TextGenerationTaskConfig,
 	logger Logger,
 ) *EpisodeSegmentationService {
 	if pluginConfig == nil {
 		pluginConfig = map[string]any{}
 	}
-	if tasks == nil {
-		tasks = map[string]TextGenerationTaskConfig{}
-	}
 	return &EpisodeSegmentationService{
 		PluginConfig: pluginConfig,
 		Gateway:      gateway,
-		Tasks:        tasks,
 		Logger:       logger,
 	}
 }
@@ -66,7 +60,10 @@ func episodeConfigValue(config map[string]any, key string, defaultValue any) any
 
 // resolveModelConfig 解析分段使用的模型与展示标签
 func (s *EpisodeSegmentationService) resolveModelConfig() (*ResolvedLLMModel, string) {
-	available := GetTextGenerationModelTasks(s.Tasks, false)
+	if s.Gateway == nil {
+		return nil, "unavailable"
+	}
+	available := GetTextGenerationModelTasks(s.Gateway.GetAvailableModels(), false)
 	if len(available) == 0 {
 		return nil, "unavailable"
 	}

@@ -319,7 +319,7 @@ func (r *Runtime) personProfileLLM() (utils.PersonProfileLLM, func() map[string]
 		r.markDegraded("人物画像分类 LLM 未接线: " + reason)
 		return nil, nil
 	}
-	adapter := utils.NewPersonProfileClassificationLLM(r.llmGateway, r.modelTasks, logger)
+	adapter := utils.NewPersonProfileClassificationLLM(r.llmGateway, logger)
 	if _, err := adapter.ResolveModel(); err != nil {
 		logger.Warning("A_Memorix 人物画像分类降级为规则分桶: " + err.Error())
 		r.markDegraded("人物画像分类 LLM 未就绪: " + err.Error())

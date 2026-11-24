@@ -191,6 +191,7 @@ func (r *Runtime) webImportDeps() utils.WebImportDeps {
 	scriptsRoot := memorix.ScriptsRoot()
 	deps := utils.WebImportDeps{
 		Config:         r.kernel.Cfg,
+		LLM:            r.llmGateway,
 		Logger:         r.logger,
 		DataDir:        dataDir,
 		ImportRoot:     filepath.Join(dataDir, "imports"),

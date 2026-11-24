@@ -82,6 +82,8 @@ type TextGenerationResult struct {
 
 // TextGenerationGateway 宿主 LLM 生成能力
 type TextGenerationGateway interface {
+	GetAvailableModels() map[string]TextGenerationTaskConfig
+	ModelsDict() map[string]any
 	// Generate 按任务候选列表生成
 	Generate(ctx context.Context, req TextGenerationRequest) (TextGenerationResult, error)
 	// GeneratePinned 以单一模型任务生成

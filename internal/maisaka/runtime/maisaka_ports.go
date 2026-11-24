@@ -1115,7 +1115,7 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 				options.PrivateQuoteFrequency = bot.Chat.ReplyStyle.PrivateQuoteFrequency
 			}
 			supplement, err := maisaka.GenerateReplySupplement(
-				&agentReplySupplementGenerator{agent: a, ctx: callCtx},
+				&agentReplySupplementGenerator{ctx: callCtx},
 				a.newMaisakaPromptSource(),
 				*snapshot,
 				guidance,

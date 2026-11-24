@@ -27,18 +27,17 @@ var ErrNoModel = fmt.Errorf("尚未配置模型")
 // Generation 是一次可替换的模型、工具、MCP 和 ADK Agent 快照
 //
 // LLM 任务路由（对齐 MaiBot model_task_config，经 Router.NewClientForTaskWithFailover）：
-//   - model / modelName：replyer，主聊天 groupAgent 与 privateAgent
-//   - plannerModel / plannerModelName：planner，子代理单次调用（MaiBot run_sub_agent 默认任务）
+//   - model / modelName：replyer，独立回复生成与 ADK Agent
+//   - plannerModel / plannerModelName：planner，主对话与子代理任务
 //   - fastModel / fastModelName：fast_model，Planner 正文动作判断器
 //   - utilsModel / utilsModelName：utils，子代理 planner 不可用时的回退及后续 utils 子任务
-//
-// 压缩仍共用 replyer 模型；Planner/Replyer 分环未拆
 type Generation struct {
 	model            model.AgenticModel
 	modelName        string
 	contextWindow    int
 	plannerModel     model.AgenticModel
 	plannerModelName string
+	plannerModelErr  error
 	fastModel        model.AgenticModel
 	fastModelName    string
 	utilsModel       model.AgenticModel
@@ -76,7 +75,7 @@ func (a *Agent) buildGeneration() (*Generation, error) {
 	if err != nil {
 		return nil, err
 	}
-	plannerModel, plannerModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskPlanner)
+	plannerModel, plannerModelName, _, plannerModelErr := a.buildRoutedTaskModel(a.ctx, llm.TaskPlanner)
 	fastModel, fastModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskFastModel)
 	utilsModel, utilsModelName := a.buildOptionalRoutedTaskModel(a.ctx, llm.TaskUtils)
 
@@ -119,6 +118,7 @@ func (a *Agent) buildGeneration() (*Generation, error) {
 		contextWindow:    contextWindow,
 		plannerModel:     plannerModel,
 		plannerModelName: plannerModelName,
+		plannerModelErr:  plannerModelErr,
 		fastModel:        fastModel,
 		fastModelName:    fastModelName,
 		utilsModel:       utilsModel,

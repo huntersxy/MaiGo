@@ -41,10 +41,6 @@ type SummaryImporterOptions struct {
 	PluginConfig map[string]any
 	// Host 对齐 plugin_instance，按可选接口取用能力
 	Host any
-	// ModelTasks 可用文本生成任务
-	ModelTasks map[string]TextGenerationTaskConfig
-	// ModelDict 当前模型字典，对齐 models_dict
-	ModelDict map[string]any
 	// BotName 对齐 global_config.bot.nickname
 	BotName string
 	// Personality 对齐 global_config.personality.personality
@@ -72,8 +68,6 @@ type SummaryImporter struct {
 	knowledgeTypes   KnowledgeTypeResolver
 	pluginConfig     map[string]any
 	host             any
-	modelTasks       map[string]TextGenerationTaskConfig
-	modelDict        map[string]any
 	botName          string
 	personality      string
 	selfCheckCache   *SelfCheckCache
@@ -86,10 +80,6 @@ func NewSummaryImporter(options SummaryImporterOptions) *SummaryImporter {
 	pluginConfig := options.PluginConfig
 	if pluginConfig == nil {
 		pluginConfig = map[string]any{}
-	}
-	modelTasks := options.ModelTasks
-	if modelTasks == nil {
-		modelTasks = map[string]TextGenerationTaskConfig{}
 	}
 	cache := options.SelfCheckCache
 	if cache == nil {
@@ -111,8 +101,6 @@ func NewSummaryImporter(options SummaryImporterOptions) *SummaryImporter {
 		knowledgeTypes:   options.KnowledgeTypeResolver,
 		pluginConfig:     pluginConfig,
 		host:             options.Host,
-		modelTasks:       modelTasks,
-		modelDict:        options.ModelDict,
 		botName:          options.BotName,
 		personality:      options.Personality,
 		selfCheckCache:   cache,

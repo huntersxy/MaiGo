@@ -1012,7 +1012,24 @@ func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []Contex
 		return ChatResponse{}, err
 	}
 	if requestKind == "planner" {
-		s.lastPlannerPromptTokens = response.Usage.PromptTokens
+		requestClient := response.RequestClient
+		if requestClient == nil {
+			requestClient = client
+		}
+		s.setPlannerSnapshot(&PlannerRequestSnapshot{
+			RequestKind:    requestKind,
+			ModelTask:      request.ModelTaskName,
+			SystemPrompt:   systemPrompt,
+			Items:          cloneContextItems(items),
+			Tools:          cloneToolSpecs(tools),
+			ToolNames:      toolNames(tools),
+			SessionID:      s.SessionID,
+			IsGroup:        s.IsGroupChat,
+			Client:         requestClient,
+			Stream:         request.Stream,
+			MaxImageSide:   request.MaxImageSide,
+			CoveredHistory: cloneContextMessages(selected),
+		}, response.Usage.PromptTokens)
 	}
 	response.SelectedHistoryCount = len(selected)
 	response.ToolCount = len(tools)
@@ -1033,17 +1050,6 @@ func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []Contex
 			response.RawMessages = BuildRawMessagesFromResponse(response, s.SessionID, items)
 			response.PlannerActionJudge = judgment.Metadata
 		}
-		s.setPlannerSnapshot(&PlannerRequestSnapshot{
-			RequestKind:    requestKind,
-			ModelTask:      request.ModelTaskName,
-			SystemPrompt:   systemPrompt,
-			Items:          cloneContextItems(items),
-			Tools:          cloneToolSpecs(tools),
-			ToolNames:      toolNames(tools),
-			SessionID:      s.SessionID,
-			IsGroup:        s.IsGroupChat,
-			CoveredHistory: cloneContextMessages(selected),
-		})
 	}
 	_ = historyItemCount
 	_ = reason
@@ -1052,25 +1058,30 @@ func (s *ChatLoopService) ChatLoopStep(ctx context.Context, chatHistory []Contex
 
 // PlannerSnapshot 返回最近一次成功的 Planner 请求快照
 func (s *ChatLoopService) PlannerSnapshot() *PlannerRequestSnapshot {
-	s.snapshotMu.Lock()
-	defer s.snapshotMu.Unlock()
-	return s.Snapshot
+	snapshot, _ := s.plannerState()
+	return snapshot
 }
 
 func (s *ChatLoopService) LastPlannerPromptTokens() int {
-	return s.lastPlannerPromptTokens
+	_, tokens := s.plannerState()
+	return tokens
+}
+
+func (s *ChatLoopService) plannerState() (*PlannerRequestSnapshot, int) {
+	s.snapshotMu.Lock()
+	defer s.snapshotMu.Unlock()
+	return s.Snapshot, s.lastPlannerPromptTokens
 }
 
 // ClearPlannerSnapshot 提交压缩后清空旧前缀，避免同一批资料重复复用
 func (s *ChatLoopService) ClearPlannerSnapshot() {
-	s.snapshotMu.Lock()
-	s.Snapshot = nil
-	s.snapshotMu.Unlock()
+	s.setPlannerSnapshot(nil, 0)
 }
 
-func (s *ChatLoopService) setPlannerSnapshot(snapshot *PlannerRequestSnapshot) {
+func (s *ChatLoopService) setPlannerSnapshot(snapshot *PlannerRequestSnapshot, tokens int) {
 	s.snapshotMu.Lock()
 	s.Snapshot = snapshot
+	s.lastPlannerPromptTokens = tokens
 	s.snapshotMu.Unlock()
 }
 

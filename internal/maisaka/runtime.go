@@ -406,6 +406,11 @@ type PlannerSnapshotProvider interface {
 // SetChatLoop 替换主对话循环实现，宿主可在每轮注入真实模型客户端
 func (r *Runtime) SetChatLoop(loop ChatLoopRunner) {
 	r.mu.Lock()
+	if next, ok := loop.(*ChatLoopService); ok && next != nil {
+		if previous, ok := r.opts.ChatLoop.(*ChatLoopService); ok && previous != nil && previous != next {
+			next.setPlannerSnapshot(previous.plannerState())
+		}
+	}
 	r.opts.ChatLoop = loop
 	r.mu.Unlock()
 }

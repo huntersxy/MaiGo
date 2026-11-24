@@ -6,10 +6,10 @@ package hostadapter
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
@@ -30,7 +30,7 @@ import (
 type NativeRuntimeDeps struct {
 	DB            *gorm.DB
 	ModelStore    modelprofiles.Source
-	ModelConfig   *maibotcfg.ModelConfigFile
+	ModelConfig   func() *maibotcfg.ModelConfigFile
 	BotName       string
 	Personality   string
 	SessionLookup func(streamID string) (groupID string, userID string)
@@ -77,22 +77,10 @@ func BuildNativeOptions(deps NativeRuntimeDeps) native.Options {
 	if deps.ModelStore != nil && deps.ModelConfig != nil {
 		gateway := NewNativeLLMGateway(deps.ModelStore, deps.ModelConfig)
 		options.LLM = gateway
-		// 复用 LLM 网关的模型配置快照，供 embedding 适配器解析 api_providers
-		router := gateway.ModelConfigProvider()
-		options.EmbeddingConfigSource = router
-		options.ModelTasks = TextGenerationTasksFromModelConfig(deps.ModelConfig)
-		options.ModelDict = ModelDictFromModelConfig(deps.ModelConfig)
-		// 原生内核可能早于 Agent 启动，图片运行时必须在宿主装配阶段就能解析
-		// image_embedding 任务；provider 每次按当前路由重新建客户端，模型热重载后仍有效
+		options.EmbeddingConfigSource = gateway
 		native.SetImageEmbeddingClientProvider(func(ctx context.Context) (llm.EmbeddingClient, error) {
-			if router == nil {
-				return nil, errors.New("模型服务未初始化")
-			}
-			_, client, err := router.NewEmbeddingClientForTask(ctx, llm.TaskImageEmbedding)
-			if err != nil {
-				return nil, err
-			}
-			return client, nil
+			_, client, err := gateway.routerSnapshot().NewEmbeddingClientForTask(ctx, llm.TaskImageEmbedding)
+			return client, err
 		})
 	}
 	return options
@@ -261,34 +249,53 @@ func sessionMessagesFromLogs(rows []memory.MessageLog) []utils.SessionMessage {
 
 // NativeLLMGateway 用 llm.Router 实现 A_Memorix 的文本生成端口
 type NativeLLMGateway struct {
-	profiles modelprofiles.Source
-	router   *llm.Router
-	file     *maibotcfg.ModelConfigFile
+	profiles    modelprofiles.Source
+	modelConfig func() *maibotcfg.ModelConfigFile
+	mu          sync.Mutex
+	router      *llm.Router
 }
 
 // NewNativeLLMGateway 构造按任务路由的文本生成网关
-func NewNativeLLMGateway(profiles modelprofiles.Source, file *maibotcfg.ModelConfigFile) *NativeLLMGateway {
-	return &NativeLLMGateway{profiles: profiles, router: llm.NewRouter(profiles, file), file: file}
+func NewNativeLLMGateway(profiles modelprofiles.Source, modelConfig func() *maibotcfg.ModelConfigFile) *NativeLLMGateway {
+	return &NativeLLMGateway{profiles: profiles, modelConfig: modelConfig}
 }
 
-// ModelConfigProvider 暴露网关持有的模型配置快照，供 embedding 适配器读取 api_providers
-func (g *NativeLLMGateway) ModelConfigProvider() *llm.Router {
-	if g == nil {
+func (g *NativeLLMGateway) ModelConfigFile() *maibotcfg.ModelConfigFile {
+	if g == nil || g.modelConfig == nil {
 		return nil
+	}
+	return g.modelConfig()
+}
+
+func (g *NativeLLMGateway) GetAvailableModels() map[string]utils.TextGenerationTaskConfig {
+	return TextGenerationTasksFromModelConfig(g.ModelConfigFile())
+}
+
+func (g *NativeLLMGateway) ModelsDict() map[string]any {
+	return ModelDictFromModelConfig(g.ModelConfigFile())
+}
+
+func (g *NativeLLMGateway) routerSnapshot() *llm.Router {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	file := g.ModelConfigFile()
+	if g.router == nil || g.router.ModelConfigFile() != file {
+		g.router = llm.NewRouter(g.profiles, file)
 	}
 	return g.router
 }
 
 // Generate 按任务名路由并生成
 func (g *NativeLLMGateway) Generate(ctx context.Context, req utils.TextGenerationRequest) (utils.TextGenerationResult, error) {
-	if g == nil || g.router == nil {
+	if g == nil || g.profiles == nil {
 		return utils.TextGenerationResult{Success: false, Error: "LLM 网关未初始化"}, errors.New("LLM 网关未初始化")
 	}
 	taskName := strings.TrimSpace(req.TaskName)
 	if taskName == "" {
 		return utils.TextGenerationResult{Success: false, Error: "LLM 任务名为空"}, errors.New("LLM 任务名为空")
 	}
-	_, client, err := g.router.NewClientForTaskWithFailover(ctx, llm.TaskName(taskName))
+	ctx = llm.WithModelUsageMetadata(ctx, taskName, req.RequestType, "")
+	_, client, err := g.routerSnapshot().NewClientForTaskWithFailover(ctx, llm.TaskName(taskName))
 	if err != nil {
 		return utils.TextGenerationResult{Success: false, Error: err.Error()}, err
 	}
@@ -300,7 +307,7 @@ func (g *NativeLLMGateway) GeneratePinned(
 	ctx context.Context, resolved utils.ResolvedLLMModel, requestType string, prompt string,
 	temperature *float64, maxTokens *int,
 ) (utils.TextGenerationResult, error) {
-	if g == nil || g.profiles == nil || g.file == nil {
+	if g == nil || g.profiles == nil {
 		return utils.TextGenerationResult{Success: false, Error: "LLM 网关未初始化"}, errors.New("LLM 网关未初始化")
 	}
 	taskName := strings.TrimSpace(resolved.TaskName)
@@ -311,25 +318,8 @@ func (g *NativeLLMGateway) GeneratePinned(
 			Temperature: temperature, MaxTokens: maxTokens,
 		})
 	}
-	file := *g.file
-	config := file.ModelTaskConfig
-	switch taskName {
-	case "replyer":
-		config.Replyer.ModelList = []string{modelName}
-	case "planner":
-		config.Planner.ModelList = []string{modelName}
-	case "memory":
-		config.Memory.ModelList = []string{modelName}
-	case "utils":
-		config.Utils.ModelList = []string{modelName}
-	case "learner":
-		config.Learner.ModelList = []string{modelName}
-	default:
-		return utils.TextGenerationResult{Success: false, Error: "不支持的固定模型任务: " + taskName}, fmt.Errorf("不支持的固定模型任务: %s", taskName)
-	}
-	file.ModelTaskConfig = config
-	router := llm.NewRouter(g.profiles, &file)
-	_, client, err := router.NewClientForTaskWithFailover(ctx, llm.TaskName(taskName))
+	ctx = llm.WithModelUsageMetadata(ctx, taskName, requestType, "")
+	_, client, err := g.routerSnapshot().NewClientForTaskWithFailoverAndModel(ctx, llm.TaskName(taskName), modelName)
 	if err != nil {
 		return utils.TextGenerationResult{Success: false, Error: err.Error()}, err
 	}
@@ -408,7 +398,7 @@ func TextGenerationTasksFromModelConfig(file *maibotcfg.ModelConfigFile) map[str
 	add("utils", file.ModelTaskConfig.Utils)
 	add("learner", file.ModelTaskConfig.Learner)
 	add("fast_model", file.ModelTaskConfig.FastModel)
-	return utils.GetTextGenerationModelTasks(tasks, false)
+	return tasks
 }
 
 // ModelDictFromModelConfig 构造 models_dict 的存在性字典

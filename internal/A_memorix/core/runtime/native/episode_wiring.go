@@ -21,7 +21,7 @@ func (r *Runtime) ensureEpisodeService() *utils.EpisodeService {
 			return
 		}
 		pluginConfig := r.kernel.Config()
-		segmentation := utils.NewEpisodeSegmentationService(pluginConfig, r.llmGateway, r.modelTasks, r.logger)
+		segmentation := utils.NewEpisodeSegmentationService(pluginConfig, r.llmGateway, r.logger)
 		// 对齐 Python：feedback_correction_paragraph_hard_filter_enabled 默认 true
 		hardFilter := memruntime.PyTruthy(
 			r.kernel.Cfg("integration.feedback_correction_paragraph_hard_filter_enabled", true),

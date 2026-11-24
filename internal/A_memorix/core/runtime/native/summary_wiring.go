@@ -74,8 +74,6 @@ func (r *Runtime) newSummaryImporter() *utils.SummaryImporter {
 		Prompt:              r.summaryPrompt(),
 		DeduplicatorFactory: r.summaryDedupFactory(store),
 		PluginConfig:        r.kernel.Config(),
-		ModelTasks:          r.modelTasks,
-		ModelDict:           r.modelDict,
 		BotName:             r.summaryBotName(),
 		Personality:         r.summaryPersonality(),
 		Logger:              r.logger,

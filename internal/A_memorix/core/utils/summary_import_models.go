@@ -73,7 +73,10 @@ func summaryModelListContains(modelList []string, modelName string) bool {
 
 // resolveSummaryModelTask 对齐 _resolve_summary_model_task
 func (i *SummaryImporter) resolveSummaryModelTask() (string, TextGenerationTaskConfig, bool, error) {
-	available := GetTextGenerationModelTasks(i.modelTasks, false)
+	if i.llm == nil {
+		return "", TextGenerationTaskConfig{}, false, nil
+	}
+	available := GetTextGenerationModelTasks(i.llm.GetAvailableModels(), false)
 	if len(available) == 0 {
 		return "", TextGenerationTaskConfig{}, false, nil
 	}
@@ -87,10 +90,7 @@ func (i *SummaryImporter) resolveSummaryModelTask() (string, TextGenerationTaskC
 		return "", TextGenerationTaskConfig{}, false, err
 	}
 	defaultTaskName, defaultTaskConfig, hasDefault := pickDefaultSummaryTask(available)
-	modelDict := i.modelDict
-	if modelDict == nil {
-		modelDict = map[string]any{}
-	}
+	modelDict := i.llm.ModelsDict()
 	baseName := ""
 	baseConfig := TextGenerationTaskConfig{}
 	hasBase := false

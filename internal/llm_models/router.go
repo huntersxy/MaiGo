@@ -129,11 +129,15 @@ func (r *Router) Resolve(ctx context.Context, task TaskName) (ResolvedRoute, err
 			taskCfg = resolved.Config
 			effective = resolved.Effective
 			if modelName, ok := SelectModelName(resolved.Config); ok {
-				if route, err := r.resolveMaiBotModel(ctx, task, effective, taskCfg, modelName); err == nil {
-					return route, nil
+				route, err := r.resolveMaiBotModel(ctx, task, effective, taskCfg, modelName)
+				if err == nil || task == TaskPlanner {
+					return route, err
 				}
 			}
 		}
+	}
+	if task == TaskPlanner {
+		return ResolvedRoute{}, fmt.Errorf("任务 %q 未配置模型", task)
 	}
 
 	profile, err := r.profiles.Active(ctx)

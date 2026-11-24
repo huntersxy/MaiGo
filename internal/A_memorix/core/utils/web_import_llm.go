@@ -12,7 +12,10 @@ import (
 
 // selectModel 对齐 _select_model
 func (m *WebImportManager) selectModel() (ResolvedLLMModel, error) {
-	models := GetTextGenerationModelTasks(m.deps.ModelTasks, false)
+	if m.deps.LLM == nil {
+		return ResolvedLLMModel{}, fmt.Errorf("没有可用 LLM 模型")
+	}
+	models := GetTextGenerationModelTasks(m.deps.LLM.GetAvailableModels(), false)
 	if len(models) == 0 {
 		return ResolvedLLMModel{}, fmt.Errorf("没有可用 LLM 模型")
 	}
@@ -156,7 +159,7 @@ func (m *WebImportManager) extractChatTimeMetaWithLLM(ctx context.Context, text 
 	}
 	prompt := strings.Join(lines, "\n")
 	// 时间字段抽取独立使用快速模型，不继承完整知识抽取的模型选择。
-	timeModel, err := ResolveFastTextGenerationModel(m.deps.ModelTasks)
+	timeModel, err := ResolveFastTextGenerationModel(m.deps.LLM.GetAvailableModels())
 	if err != nil {
 		m.deps.Logger.Warning(fmt.Sprintf("chat_log 时间语义抽取失败: %v", err))
 		return nil, nil

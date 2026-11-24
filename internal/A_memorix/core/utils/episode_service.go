@@ -44,7 +44,7 @@ func NewEpisodeService(
 		pluginConfig = map[string]any{}
 	}
 	if segmentation == nil {
-		segmentation = NewEpisodeSegmentationService(pluginConfig, nil, nil, logger)
+		segmentation = NewEpisodeSegmentationService(pluginConfig, nil, logger)
 	}
 	return &EpisodeService{
 		Deps:                      deps,

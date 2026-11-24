@@ -27,7 +27,7 @@ var ConversationStateLabels = []struct {
 	{"agreements", "对话约定"},
 }
 
-// ConversationState 可直接接续对话的状态；字段缺失或格式错误时拒绝提交压缩
+// ConversationState 可直接接续对话的状态
 type ConversationState struct {
 	Topics     []string `json:"topics"`
 	Background []string `json:"background"`
@@ -88,7 +88,7 @@ func (s *ConversationState) Render() string {
 	return strings.Join(blocks, "\n\n")
 }
 
-// ParseConversationState 解析模型返回的摘要 JSON；字段缺失、未知字段和类型错误都拒绝提交
+// ParseConversationState 校验摘要 JSON 中已知分类的类型
 func ParseConversationState(raw string) (*ConversationState, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(llmjson.Normalize(raw)), &fields); err != nil {
@@ -97,45 +97,31 @@ func ParseConversationState(raw string) (*ConversationState, error) {
 	if fields == nil {
 		return nil, fmt.Errorf("状态摘要必须是 JSON 对象")
 	}
-	allowed := make(map[string]struct{}, len(ConversationStateLabels))
-	for _, label := range ConversationStateLabels {
-		allowed[label.Key] = struct{}{}
-	}
-	for key := range fields {
-		if _, ok := allowed[key]; !ok {
-			return nil, fmt.Errorf("状态摘要包含未知字段: %s", key)
-		}
-	}
-	readEntries := func(key string) ([]string, error) {
-		rawEntries, ok := fields[key]
-		if !ok {
-			return nil, fmt.Errorf("状态摘要缺少字段: %s", key)
-		}
-		if string(rawEntries) == "null" {
-			return nil, fmt.Errorf("状态摘要字段 %s 不能为 null", key)
-		}
-		var entries []string
-		if err := json.Unmarshal(rawEntries, &entries); err != nil {
-			return nil, fmt.Errorf("状态摘要字段 %s 必须是字符串数组: %w", key, err)
-		}
-		return entries, nil
-	}
 	state := ConversationState{}
-	var err error
-	if state.Topics, err = readEntries("topics"); err != nil {
-		return nil, err
-	}
-	if state.Background, err = readEntries("background"); err != nil {
-		return nil, err
-	}
-	if state.Progress, err = readEntries("progress"); err != nil {
-		return nil, err
-	}
-	if state.Pending, err = readEntries("pending"); err != nil {
-		return nil, err
-	}
-	if state.Agreements, err = readEntries("agreements"); err != nil {
-		return nil, err
+	for _, category := range []struct {
+		key     string
+		entries *[]string
+	}{
+		{"topics", &state.Topics}, {"background", &state.Background}, {"progress", &state.Progress},
+		{"pending", &state.Pending}, {"agreements", &state.Agreements},
+	} {
+		rawEntries, ok := fields[category.key]
+		if !ok {
+			continue
+		}
+		var entries []*string
+		if err := json.Unmarshal(rawEntries, &entries); err != nil {
+			return nil, fmt.Errorf("状态摘要字段 %s 必须是字符串数组: %w", category.key, err)
+		}
+		if entries == nil {
+			return nil, fmt.Errorf("状态摘要字段 %s 不能为 null", category.key)
+		}
+		for _, entry := range entries {
+			if entry == nil {
+				return nil, fmt.Errorf("状态摘要字段 %s 不接受 null 元素", category.key)
+			}
+			*category.entries = append(*category.entries, *entry)
+		}
 	}
 	state.Clean()
 	return &state, nil

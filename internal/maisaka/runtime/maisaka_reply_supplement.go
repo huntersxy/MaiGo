@@ -14,30 +14,13 @@ import (
 
 // agentReplySupplementGenerator 复用 Planner 模型与请求前缀生成回复补充编排
 type agentReplySupplementGenerator struct {
-	agent *Agent
-	ctx   context.Context
+	ctx context.Context
 }
 
 // GenerateSupplement 在 Planner 快照末尾追加编排任务并解析结构化输出
-func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.PlannerRequestSnapshot, instruction string, retryInstruction string, schema map[string]any) (maisaka.SupplementGeneration, error) {
-	if g == nil || g.agent == nil {
-		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器缺少 Agent 绑定")
-	}
-	generation := generationFrom(g.ctx)
-	if generation == nil {
-		generation = g.agent.currentGeneration()
-	}
-	if generation == nil {
-		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器模型未就绪")
-	}
-	model := generation.plannerModel
-	modelName := generation.plannerModelName
-	if model == nil {
-		model = generation.model
-		modelName = generation.modelName
-	}
-	if model == nil {
-		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器模型未就绪")
+func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.PlannerRequestSnapshot, instruction string, retryInstruction string, _ map[string]any) (maisaka.SupplementGeneration, error) {
+	if snapshot.Client == nil {
+		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器缺少 Planner 请求快照客户端")
 	}
 	items := make([]maisaka.ContextItem, 0, len(snapshot.Items)+2)
 	items = append(items, snapshot.Items...)
@@ -51,24 +34,17 @@ func (g *agentReplySupplementGenerator) GenerateSupplement(snapshot maisaka.Plan
 		SystemPrompt:  snapshot.SystemPrompt,
 		Items:         items,
 		Tools:         snapshot.Tools,
-		ResponseFormat: map[string]any{
-			"type": "json_schema",
-			"json_schema": map[string]any{
-				"name":   "ReplySupplementPlan",
-				"schema": schema,
-				"strict": true,
-			},
-		},
-		SessionID: snapshot.SessionID,
+		SessionID:     snapshot.SessionID,
+		Stream:        snapshot.Stream,
+		MaxImageSide:  snapshot.MaxImageSide,
 	}
-	client := &maisakaChatClient{model: model, modelName: modelName}
-	response, err := client.Chat(g.ctx, request)
+	response, err := snapshot.Client.Chat(g.ctx, request)
 	if err != nil {
 		return maisaka.SupplementGeneration{}, fmt.Errorf("回复补充器模型调用失败: %w", err)
 	}
 	metadata := map[string]any{}
-	if strings.TrimSpace(modelName) != "" {
-		metadata["model_name"] = modelName
+	if strings.TrimSpace(response.ModelName) != "" {
+		metadata["model_name"] = response.ModelName
 	}
 	return maisaka.SupplementGeneration{
 		Raw:             strings.TrimSpace(response.Content),

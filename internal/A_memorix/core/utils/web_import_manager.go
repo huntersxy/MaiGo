@@ -71,8 +71,6 @@ type WebImportDeps struct {
 	Embedding    WebImportEmbedding
 	LLM          TextGenerationGateway
 
-	ModelTasks     map[string]TextGenerationTaskConfig
-	ModelDict      map[string]any
 	Logger         Logger
 	DataDir        string
 	ImportRoot     string
@@ -134,12 +132,6 @@ func NewWebImportManager(deps WebImportDeps) *WebImportManager {
 	}
 	if deps.Now == nil {
 		deps.Now = func() float64 { return float64(time.Now().UnixNano()) / 1e9 }
-	}
-	if deps.ModelTasks == nil {
-		deps.ModelTasks = map[string]TextGenerationTaskConfig{}
-	}
-	if deps.ModelDict == nil {
-		deps.ModelDict = map[string]any{}
 	}
 	if deps.AllowMetadataOnly == nil {
 		deps.AllowMetadataOnly = func() bool { return true }

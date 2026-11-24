@@ -49,9 +49,6 @@ func (a *Agent) runMaisakaSubagent(ctx context.Context, kind string, targetID in
 	defer generation.wg.Done()
 	model := generation.plannerModel
 	if model == nil {
-		model = generation.model
-	}
-	if model == nil {
 		return "", nil, fmt.Errorf("子代理模型未就绪")
 	}
 	if maxRounds <= 0 {

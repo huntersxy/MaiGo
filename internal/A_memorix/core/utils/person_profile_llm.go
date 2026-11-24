@@ -18,7 +18,6 @@ var ErrPersonProfileClassificationUnavailable = errors.New("人物画像分类�
 // PersonProfileClassificationLLM 把宿主文本生成网关适配为画像分类端口
 type PersonProfileClassificationLLM struct {
 	gateway TextGenerationGateway
-	tasks   map[string]TextGenerationTaskConfig
 	logger  Logger
 }
 
@@ -26,12 +25,10 @@ type PersonProfileClassificationLLM struct {
 // gateway 为 nil 时仍返回端口，调用时给出明确的未配置错误
 func NewPersonProfileClassificationLLM(
 	gateway TextGenerationGateway,
-	tasks map[string]TextGenerationTaskConfig,
 	logger Logger,
 ) *PersonProfileClassificationLLM {
 	return &PersonProfileClassificationLLM{
 		gateway: gateway,
-		tasks:   tasks,
 		logger:  OrLogger(logger),
 	}
 }
@@ -41,7 +38,7 @@ func (l *PersonProfileClassificationLLM) ResolveModel() (ResolvedLLMModel, error
 	if l == nil || l.gateway == nil {
 		return ResolvedLLMModel{}, fmt.Errorf("%w: LLM 网关未初始化", ErrPersonProfileClassificationUnavailable)
 	}
-	model, err := ResolveFastTextGenerationModel(l.tasks)
+	model, err := ResolveFastTextGenerationModel(l.gateway.GetAvailableModels())
 	if err != nil {
 		return ResolvedLLMModel{}, fmt.Errorf("%w: %v", ErrPersonProfileClassificationUnavailable, err)
 	}
