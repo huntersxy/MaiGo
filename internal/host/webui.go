@@ -695,15 +695,15 @@ func (w *WebUI) forwardToBot(rw http.ResponseWriter, r *http.Request, botID, pat
 		w.forwardWebSocket(rw, r, path, endpoint)
 		return
 	}
-		transport := &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return dialEndpoint(ctx, endpoint)
-			},
-			DisableCompression: true,
-			Proxy:              nil,
-		}
-		defer transport.CloseIdleConnections()
-		proxy := &httputil.ReverseProxy{
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialEndpoint(ctx, endpoint)
+		},
+		DisableCompression: true,
+		Proxy:              nil,
+	}
+	defer transport.CloseIdleConnections()
+	proxy := &httputil.ReverseProxy{
 		Rewrite: func(request *httputil.ProxyRequest) {
 			request.Out.URL.Scheme = "http"
 			request.Out.URL.Host = "bot"
@@ -747,13 +747,13 @@ func (w *WebUI) forwardWebSocket(rw http.ResponseWriter, r *http.Request, path, 
 	if r.URL.RawQuery != "" {
 		requestURL += "?" + r.URL.RawQuery
 	}
-		transport := &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return dialEndpoint(ctx, endpoint)
-			},
-		}
-		defer transport.CloseIdleConnections()
-		upstream, _, err := websocket.Dial(r.Context(), requestURL, &websocket.DialOptions{
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialEndpoint(ctx, endpoint)
+		},
+	}
+	defer transport.CloseIdleConnections()
+	upstream, _, err := websocket.Dial(r.Context(), requestURL, &websocket.DialOptions{
 		HTTPClient: &http.Client{Transport: transport}, HTTPHeader: headers,
 	})
 	if err != nil {
