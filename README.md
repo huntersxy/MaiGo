@@ -55,6 +55,10 @@ Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.6` 后把 `MAIBOT_D
 systemd 宿主部署（静态二进制 + 自动部署）见 [deploy/host/README.md](deploy/host/README.md)：
 CI 在 push `main` 时构建并通知服务器，服务器从镜像加速源拉包、校验、切换，失败自动回滚。
 
+## 适配器生命周期
+
+与 MaiBot 一样，Platform IO 中的插件网关驱动仅负责路由与投递。Python Runner 管理 Python 适配器的连接；Go 进程内适配器的连接由 Host 管理。网关重连只更新路由绑定，不重新启停适配器；禁用、重载和关停才停止连接。
+
 ## 榫卯（Sunmao）· Go 平台特调系统
 
 榫卯把 Go 专属优化装配到类型化槽位。上游功能和修复进入基线，不依赖榫卯开关。榫卯的 `compatibility` 不切换插件后端，也不等于 Python Runner；原生插件与 Python 兼容插件各自加载、运行和验收。

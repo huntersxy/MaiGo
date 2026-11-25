@@ -24,6 +24,19 @@ type NativeGatewaySpec struct {
 	Adapter         Adapter
 }
 
+type nativeGatewayDriver struct {
+	Adapter
+}
+
+func (*nativeGatewayDriver) Start(context.Context) error { return nil }
+func (*nativeGatewayDriver) Stop(context.Context) error  { return nil }
+
+func (d *nativeGatewayDriver) ClearOnMessage() {
+	if adapter, ok := d.Adapter.(interface{ ClearOnMessage() }); ok {
+		adapter.ClearOnMessage()
+	}
+}
+
 // RegisterNativeGatewayDriver 注册原生 Adapter 并 BindSend/BindReceive
 // 对齐 RegisterPluginGatewayDriver（plugin_gateway_broker.go:64-84）；独立 Adapter.Send
 func (m *Manager) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatewaySpec) error {
@@ -38,7 +51,7 @@ func (m *Manager) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGa
 	if err := m.unregisterPluginGatewayDriverByID(ctx, driverID); err != nil {
 		return fmt.Errorf("注销旧原生消息网关驱动 %s 失败: %w", driverID, err)
 	}
-	if err := m.AddDriver(ctx, spec.Adapter); err != nil {
+	if err := m.AddDriver(ctx, &nativeGatewayDriver{Adapter: spec.Adapter}); err != nil {
 		if cleanupErr := m.unregisterPluginGatewayDriverByID(ctx, driverID); cleanupErr != nil {
 			return fmt.Errorf("注册原生消息网关驱动 %s 失败: %w（回滚失败: %v）", driverID, err, cleanupErr)
 		}

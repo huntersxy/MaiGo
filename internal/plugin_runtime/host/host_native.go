@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +42,28 @@ func platformioNativeGet(pluginID string) (platformio.NativeRegistration, bool) 
 	return platformio.DefaultNativeRuntime().Get(pluginID)
 }
 
+func stopNativeAdapter(ctx context.Context, pluginID string) error {
+	runtime := platformio.DefaultNativeRuntime()
+	if adapter, ok := runtime.StartedAdapter(pluginID); ok {
+		if err := adapter.Stop(ctx); err != nil {
+			return fmt.Errorf("停止原生适配器 %s 失败: %w", pluginID, err)
+		}
+		runtime.StopRuntime(pluginID)
+	}
+	return nil
+}
+
+func (h *Host) StopNativeAdapters(ctx context.Context) error {
+	h.RequestShutdown()
+	var errs []error
+	for _, pluginID := range platformio.DefaultNativeRuntime().ListRegistered() {
+		if err := stopNativeAdapter(ctx, pluginID); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // NativeTeardown 完整卸载原生适配器：驱动 + API + 组件 + StopRuntime
 func (h *Host) NativeTeardown(ctx context.Context, pluginID string) error {
 	if h == nil {
@@ -49,6 +72,9 @@ func (h *Host) NativeTeardown(ctx context.Context, pluginID string) error {
 	pluginID = strings.TrimSpace(pluginID)
 	if pluginID == "" {
 		return nil
+	}
+	if err := stopNativeAdapter(ctx, pluginID); err != nil {
+		return err
 	}
 	var firstErr error
 	if err := h.UnregisterPluginGatewayDrivers(ctx, pluginID); err != nil {
@@ -66,7 +92,6 @@ func (h *Host) NativeTeardown(ctx context.Context, pluginID string) error {
 	if pluginID == qq_official.PluginID {
 		_ = h.ApplyWebUIExtension(pluginID, nil)
 	}
-	platformio.DefaultNativeRuntime().StopRuntime(pluginID)
 	h.ClearNativeInProcessReason(pluginID)
 	h.rememberNativeLoadStatus(pluginID, "inactive")
 	return firstErr
@@ -89,6 +114,12 @@ func (h *Host) RegisterNativeGatewayDriver(ctx context.Context, spec NativeGatew
 	h.EnsureNativeMessageGateways()
 	h.gatewayOpsMu.Lock()
 	defer h.gatewayOpsMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if h.shutdownRequestedNow() {
+		return fmt.Errorf("Host 正在关停")
+	}
 	driverPort, err := h.gatewayDriverPort()
 	if err != nil {
 		return err
@@ -200,6 +231,9 @@ func readNativePluginEnabledValue(raw string) (bool, error) {
 func (h *Host) StartNativeRuntimeIfEnabled(ctx context.Context, pluginID string) error {
 	if h == nil {
 		return nil
+	}
+	if h.shutdownRequestedNow() {
+		return fmt.Errorf("Host 正在关停")
 	}
 	pluginID = strings.TrimSpace(pluginID)
 	if !platformio.DefaultNativeRuntime().IsRegistered(pluginID) {

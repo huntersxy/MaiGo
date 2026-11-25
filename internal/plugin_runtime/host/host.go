@@ -340,12 +340,10 @@ func (h *Host) Stop(ctx context.Context) error {
 	h.RequestShutdown()
 	h.stopEventDispatch()
 	usageErr := h.stopUsageTracking()
+	nativeErr := h.StopNativeAdapters(ctx)
 	gatewayErr := h.UnregisterAllPluginGatewayDrivers(ctx)
 	h.StopAllRunners()
-	if usageErr != nil {
-		return errors.Join(gatewayErr, usageErr)
-	}
-	return gatewayErr
+	return errors.Join(usageErr, nativeErr, gatewayErr)
 }
 
 // stopEventDispatch 取消未完成的异步事件分发，对齐 EventDispatcher.stop

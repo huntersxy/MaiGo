@@ -2057,7 +2057,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 			if maimMsgCancel != nil {
 				maimMsgCancel()
 			}
-			return platformIOMgr.Stop(ctx)
+			return errors.Join(pluginHost.StopNativeAdapters(ctx), platformIOMgr.Stop(ctx))
 		},
 		StopDesktopPet: func(ctx context.Context) error {
 			if desktopPetSvc == nil {

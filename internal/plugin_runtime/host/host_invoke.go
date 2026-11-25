@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
+	"go.uber.org/zap"
 
 	"MaiGo/internal/platform_io/drivers/qq_official"
 	"MaiGo/internal/platform_io/drivers/snowluma"
@@ -81,6 +82,7 @@ func (h *Host) InvokeAPI(ctx context.Context, pluginID, componentName string, ar
 				}
 				result, err := handler(ctx, pluginID, componentName, args)
 				if err != nil {
+					zap.L().Error("插件 API 执行异常", zap.String("plugin_id", pluginID), zap.String("api", componentName), zap.Error(err))
 					return protocol.Envelope{
 						MessageType: protocol.MessageTypeResponse,
 						PluginID:    pluginID,
