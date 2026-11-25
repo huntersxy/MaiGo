@@ -2,6 +2,9 @@ package runtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,6 +104,8 @@ type AgentMonitorEmitter struct {
 	LogPrefix string
 	// FindSource 按消息编号回查会话历史，供引用预览补齐发送者与原文
 	FindSource func(string) (maisaka.ContextMessage, bool)
+	// DefaultOriginal 返回监控媒体默认是否直接显示原图，对齐 resolve_enable_visual_planner
+	DefaultOriginal func() bool
 }
 
 // NewAgentMonitorEmitter 创建监控端口
@@ -109,6 +114,13 @@ func NewAgentMonitorEmitter(prefix string, findSource func(string) (maisaka.Cont
 		prefix = "maisaka"
 	}
 	return &AgentMonitorEmitter{LogPrefix: prefix, FindSource: findSource}
+}
+
+func (e *AgentMonitorEmitter) defaultOriginal() bool {
+	if e != nil && e.DefaultOriginal != nil {
+		return e.DefaultOriginal()
+	}
+	return false
 }
 
 // SessionStart 会话开始，对齐 emit_session_start 的载荷
@@ -120,7 +132,7 @@ func (e *AgentMonitorEmitter) SessionStart(runID, sessionID, sessionName string,
 func (e *AgentMonitorEmitter) MessageIngested(sessionID string, message maisaka.ContextMessage) {
 	monitor.EmitMessage(monitor.EventMessageIngested, sessionID,
 		monitorSpeakerName(message), maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource))
+		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource, e.defaultOriginal(), e.LogPrefix))
 }
 
 // MessageSent 消息发送，对齐 emit_message_sent 的载荷
@@ -128,14 +140,14 @@ func (e *AgentMonitorEmitter) MessageSent(sessionID, speakerName, sourceKind str
 	monitor.EmitMessage(monitor.EventMessageSent, sessionID,
 		firstNonEmptyString(speakerName, monitorSpeakerName(message)),
 		maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), sourceKind, monitorMessageExtra(message, false, e.FindSource))
+		monitorMessageTimestamp(message), sourceKind, monitorMessageExtra(message, false, e.FindSource, e.defaultOriginal(), e.LogPrefix))
 }
 
 // MessageUpdated 消息更新，对齐 emit_message_updated 的载荷
 func (e *AgentMonitorEmitter) MessageUpdated(sessionID string, refreshKey [2]string, message maisaka.ContextMessage) {
 	monitor.EmitMessage(monitor.EventMessageUpdated, sessionID,
 		monitorSpeakerName(message), maisaka.BuildMonitorMessageContent(message), message.MessageID,
-		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource))
+		monitorMessageTimestamp(message), "", monitorMessageExtra(message, true, e.FindSource, e.defaultOriginal(), e.LogPrefix))
 }
 
 // monitorSpeakerName 对齐 Python user_cardname or user_nickname or user_id
@@ -157,16 +169,16 @@ func monitorMessageTimestamp(message maisaka.ContextMessage) float64 {
 }
 
 // monitorMessageExtra 构造消息事件的平台与引用附加字段
-func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool, findSource func(string) (maisaka.ContextMessage, bool)) map[string]any {
+func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool, findSource func(string) (maisaka.ContextMessage, bool), defaultOriginal bool, logPrefix string) map[string]any {
 	extra := map[string]any{
 		"platform": message.Platform,
 		"user_id":  message.UserID,
+		"group_id": message.MetadataString("group_id"),
+		"media":    monitorMessageMedia(message, defaultOriginal, logPrefix),
+		"reply_to": nil,
 	}
 	if withReceivedAt && message.ReceivedAt != nil {
 		extra["received_at"] = float64(message.ReceivedAt.UnixNano()) / 1e9
-	}
-	if media := monitorMessageMedia(message); len(media) > 0 {
-		extra["media"] = media
 	}
 	if preview := monitorMessageReplyPreview(message, findSource); preview != nil {
 		extra["reply_to"] = preview
@@ -175,21 +187,68 @@ func monitorMessageExtra(message maisaka.ContextMessage, withReceivedAt bool, fi
 }
 
 // monitorMessageMedia 把图片/表情组件投影为监控媒体载荷
-func monitorMessageMedia(message maisaka.ContextMessage) []map[string]any {
-	media := make([]map[string]any, 0, len(message.Images)+len(message.Emojis))
-	for index, image := range message.Images {
-		media = append(media, map[string]any{
-			"kind": monitor.MonitorMediaImage, "hash": image.MediaRef, "text": image.Description,
-			"format": image.Format, "index": index,
-		})
+func monitorMessageMedia(message maisaka.ContextMessage, defaultOriginal bool, logPrefix string) []map[string]any {
+	rawItems := make([]map[string]any, 0, len(message.Images)+len(message.Emojis))
+	appendKind := func(kind string, components []maisaka.ImageComponent, offset int) {
+		for index, component := range components {
+			if item, ok := monitorRawMediaItem(kind, component, offset+index); ok {
+				rawItems = append(rawItems, item)
+			}
+		}
 	}
-	for index, emoji := range message.Emojis {
-		media = append(media, map[string]any{
-			"kind": monitor.MonitorMediaEmoji, "hash": emoji.MediaRef, "text": emoji.Description,
-			"format": emoji.Format, "index": len(message.Images) + index,
-		})
+	appendKind(monitor.MonitorMediaImage, message.Images, 0)
+	appendKind(monitor.MonitorMediaEmoji, message.Emojis, len(message.Images))
+	return monitor.BuildMonitorMessageMedia(rawItems, defaultOriginal, logPrefix)
+}
+
+func monitorRawMediaItem(kind string, component maisaka.ImageComponent, index int) (map[string]any, bool) {
+	ref := strings.TrimSpace(component.MediaRef)
+	recHash := strings.TrimSpace(component.RecognitionHash)
+	item := map[string]any{
+		"kind":   kind,
+		"text":   strings.TrimSpace(component.Description),
+		"format": strings.TrimSpace(component.Format),
+		"index":  index,
 	}
-	return media
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		hash := recHash
+		if hash == "" {
+			sum := sha256.Sum256([]byte(ref))
+			hash = hex.EncodeToString(sum[:])
+		}
+		item["hash"] = hash
+		item["url"] = ref
+		return item, true
+	}
+	if strings.HasPrefix(ref, maisaka.DeferredMediaMarkerPrefix) || strings.HasPrefix(ref, "data:") || len(ref) > 128 {
+		if encoded, mime, ok := maisaka.ImageComponentPayload(component); ok {
+			hash := recHash
+			if hash == "" {
+				if raw, err := base64.StdEncoding.DecodeString(encoded); err == nil && len(raw) > 0 {
+					sum := sha256.Sum256(raw)
+					hash = hex.EncodeToString(sum[:])
+				}
+			}
+			if hash == "" {
+				return nil, false
+			}
+			item["hash"] = hash
+			item["data"] = encoded
+			item["format"] = mime
+			return item, true
+		}
+		if recHash == "" {
+			return nil, false
+		}
+		item["hash"] = recHash
+		return item, true
+	}
+	hash := firstNonEmptyString(ref, recHash)
+	if hash == "" {
+		return nil, false
+	}
+	item["hash"] = hash
+	return item, true
 }
 
 // monitorMessageReplyPreview 构造回复引用预览，缺正文时回查会话历史
@@ -988,13 +1047,17 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			}
 			return out
 		},
-		Monitor: NewAgentMonitorEmitter(sessionID, func(messageID string) (maisaka.ContextMessage, bool) {
-			runtime := session.MaisakaRuntime()
-			if runtime == nil {
-				return maisaka.ContextMessage{}, false
-			}
-			return runtime.FindSourceMessageByID(messageID)
-		}),
+		Monitor: func() *AgentMonitorEmitter {
+			emitter := NewAgentMonitorEmitter(sessionID, func(messageID string) (maisaka.ContextMessage, bool) {
+				runtime := session.MaisakaRuntime()
+				if runtime == nil {
+					return maisaka.ContextMessage{}, false
+				}
+				return runtime.FindSourceMessageByID(messageID)
+			})
+			emitter.DefaultOriginal = a.plannerVisualEnabled
+			return emitter
+		}(),
 		Learners: &AgentLearnerPort{
 			Trigger: a.triggerTrimmedHistoryLearning,
 		},

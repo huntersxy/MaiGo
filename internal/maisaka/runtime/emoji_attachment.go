@@ -330,9 +330,10 @@ func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID i
 			mediaRef = maisaka.DeferredMediaMarkerPrefix + path
 		}
 		component := maisaka.ImageComponent{
-			MediaRef:    mediaRef,
-			Description: strings.TrimSpace(attachment.Content),
-			HasBinary:   len(attachment.Binary) > 0 || mediaRef != "",
+			MediaRef:        mediaRef,
+			RecognitionHash: strings.TrimSpace(attachment.Hash),
+			Description:     strings.TrimSpace(attachment.Content),
+			HasBinary:       len(attachment.Binary) > 0 || mediaRef != "",
 		}
 		session.appendSentEmojiToHistory(historyMsgID, component, now, a.botName())
 	}

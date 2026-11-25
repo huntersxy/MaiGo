@@ -66,11 +66,15 @@ func BuildMonitorMessageMedia(media []map[string]any, defaultOriginal bool, logP
 				position = int(parsed)
 			}
 		}
+		mediaURL := fmt.Sprintf("/api/webui/system/maisaka-monitor/media/%s/%s", kind, hash)
+		if rawURL := strings.TrimSpace(fmt.Sprint(item["url"])); strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+			mediaURL = rawURL
+		}
 		entry := map[string]any{
 			"kind":             kind,
 			"hash":             hash,
 			"text":             text,
-			"url":              fmt.Sprintf("/api/webui/system/maisaka-monitor/media/%s/%s", kind, hash),
+			"url":              mediaURL,
 			"data_url":         "",
 			"default_original": defaultOriginal,
 			"index":            position,
