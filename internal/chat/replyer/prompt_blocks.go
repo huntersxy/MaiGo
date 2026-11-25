@@ -21,8 +21,11 @@ func normalizeReplyContent(content string, limit int) string {
 }
 
 func renderTargetAt(part MessagePart) string {
-	name := firstNonEmpty(part.TargetUserCardname, part.TargetUserNickname, part.TargetUserID)
-	return strings.TrimSpace("@" + name)
+	name := strings.TrimSpace(firstNonEmpty(part.TargetUserCardname, part.TargetUserNickname, part.TargetUserID))
+	if name == "" {
+		return ""
+	}
+	return "@" + name + " "
 }
 
 // BuildTargetMessageContent 对齐 _build_target_message_content

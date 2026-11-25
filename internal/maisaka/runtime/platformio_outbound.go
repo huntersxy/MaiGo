@@ -427,12 +427,16 @@ func (a *Agent) outboundMessageInfoForRoute(route platformio.RouteKey, conversat
 func (a *Agent) outboundSegmentsForText(conversationKind string, targetID int64, text string, mentions []int64) []platformio.Segment {
 	capacity := 1
 	if len(mentions) > 0 {
-		capacity += len(mentions)
+		capacity += len(mentions) * 2
 	}
 	segments := make([]platformio.Segment, 0, capacity)
+	atCount := 0
 	for _, uid := range mentions {
 		if uid <= 0 {
 			continue
+		}
+		if atCount > 0 {
+			segments = append(segments, platformio.Segment{Kind: platformio.SegmentText, Text: " "})
 		}
 		atID := strconv.FormatInt(uid, 10)
 		if external := a.externalIdentityFor(conversationKind, targetID, "at", uid); external != "" {
@@ -442,8 +446,12 @@ func (a *Agent) outboundSegmentsForText(conversationKind string, targetID int64,
 			Kind:     platformio.SegmentAt,
 			AtUserID: atID,
 		})
+		atCount++
 	}
 	if text != "" {
+		if atCount > 0 && !strings.HasPrefix(text, " ") {
+			text = " " + text
+		}
 		segments = append(segments, platformio.Segment{Kind: platformio.SegmentText, Text: text})
 	}
 	return segments

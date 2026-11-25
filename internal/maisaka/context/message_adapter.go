@@ -31,16 +31,16 @@ func ParseSpeakerContent(content string) (string, string) {
 	return matches[3], matches[4]
 }
 
-// RenderAtText 将 @ 目标渲染为文本
+// RenderAtText 将 @ 目标渲染为带尾随空格的文本
 func RenderAtText(cardName, nickname, userID string) string {
-	target := cardName
+	target := strings.TrimSpace(cardName)
 	if target == "" {
-		target = nickname
+		target = strings.TrimSpace(nickname)
 	}
 	if target == "" {
-		target = userID
+		target = strings.TrimSpace(userID)
 	}
-	return strings.TrimSpace("@" + target)
+	return "@" + target + " "
 }
 
 // RenderVisibleReply 渲染引用组件文本

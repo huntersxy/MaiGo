@@ -31,9 +31,13 @@ type MentionNameResolver func(ctx context.Context, msg *onebot.ConversationMessa
 // RenderContentPieces 渲染展示正文，媒体占位带上会话内短哈希
 func RenderContentPieces(pieces []ContentPiece, refs []media.Ref) string {
 	var b strings.Builder
-	for _, piece := range pieces {
+	for index, piece := range pieces {
 		if piece.MediaIdx < 0 {
-			b.WriteString(piece.Text)
+			text := piece.Text
+			if index > 0 && pieces[index-1].MediaIdx < 0 && strings.HasPrefix(pieces[index-1].Text, "@") && strings.HasSuffix(pieces[index-1].Text, " ") && strings.HasPrefix(text, " ") {
+				text = strings.TrimPrefix(text, " ")
+			}
+			b.WriteString(text)
 			continue
 		}
 		if piece.MediaIdx >= len(refs) {
@@ -76,11 +80,14 @@ func ParseMessageContent(ctx context.Context, msg *onebot.ConversationMessage, r
 			}
 		case "at":
 			if part.AtUserID == onebot.AtAllUserID {
-				pieces = append(pieces, ContentPiece{Text: "@全体成员", MediaIdx: -1})
+				pieces = append(pieces, ContentPiece{Text: "@全体成员 ", MediaIdx: -1})
 				continue
 			}
 			if part.AtUserID > 0 {
-				pieces = append(pieces, ContentPiece{Text: "@" + resolveMention(ctx, msg, part.AtUserID), MediaIdx: -1})
+				name := strings.TrimSpace(resolveMention(ctx, msg, part.AtUserID))
+				if name != "" {
+					pieces = append(pieces, ContentPiece{Text: "@" + name + " ", MediaIdx: -1})
+				}
 			}
 		case "face":
 			if part.Index < 0 || part.Index >= len(msg.Faces) {

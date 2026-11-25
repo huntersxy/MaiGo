@@ -256,7 +256,7 @@ func buildPlainText(rawMessage []any) string {
 				asString(data["target_user_id"]),
 			)
 			if name != "" {
-				parts = append(parts, "@"+name)
+				parts = append(parts, "@"+name+" ")
 			}
 		case "reply":
 			parts = append(parts, "[reply]")
