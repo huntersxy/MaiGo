@@ -249,7 +249,38 @@ func (r *Router) modelConfigFromProfile(profile modelprofiles.Profile) (ModelCon
 	if hasProvider {
 		cfg = applyProfileProviderDefaults(cfg, provider)
 	}
+	if r.file != nil {
+		if info, ok := profilePricingModel(*r.file, profile); ok {
+			cfg.PriceIn = info.PriceIn
+			cfg.CachePriceIn = info.CachePriceIn
+			cfg.PriceOut = info.PriceOut
+			cfg.PricePeriods = modelPricePeriods(info.PricePeriods)
+		}
+	}
 	return cfg, nil
+}
+
+// profilePricingModel 从对齐的 models[] 取档案价格；名称优先，模型标识仅在唯一命中时使用
+func profilePricingModel(file maibot.ModelConfigFile, profile modelprofiles.Profile) (maibot.ModelInfo, bool) {
+	if info, ok := findModelInfo(file.Models, trimTask(profile.Name)); ok {
+		return info, true
+	}
+	identifier := trimTask(profile.ModelName)
+	if identifier == "" {
+		return maibot.ModelInfo{}, false
+	}
+	var matched maibot.ModelInfo
+	count := 0
+	for _, info := range file.Models {
+		if trimTask(info.ModelIdentifier) != identifier {
+			continue
+		}
+		if count == 0 {
+			matched = info
+		}
+		count++
+	}
+	return matched, count == 1
 }
 
 func (r *Router) profileByName(ctx context.Context, name string) (modelprofiles.Profile, error) {

@@ -20,6 +20,8 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"MaiGo/internal/llm_models/contract"
 )
 
 // CacheUsageEvent 是一次生成请求的缓存统计输入
@@ -187,8 +189,8 @@ func recordGenerationCacheUsage(ctx context.Context, cfg ModelConfig, items []Co
 		return
 	}
 	usage := message.ResponseMeta.TokenUsage
-	// hit/miss 与 Python _extract_usage_record 一致：命中数已知但 miss 未单独上报时按 prompt-hit 补算
-	hit, miss, _ := cachedTokenFields(usage)
+	details, _ := message.ResponseMeta.Extension.(*contract.TokenUsageDetails)
+	hit, miss, _ := cachedTokenFields(usage, details)
 	meta := cacheStatsMetadataFromContext(ctx, cfg)
 	emitCacheUsage(CacheUsageEvent{
 		TaskName: meta.TaskName, RequestType: meta.RequestType, ModelName: cfg.Model, SessionID: meta.SessionID,
@@ -204,6 +206,7 @@ type cacheStatsStreamCollector struct {
 	options   *model.Options
 	rawFormat any
 	usage     *schema.TokenUsage
+	details   *contract.TokenUsageDetails
 }
 
 // wrapAgenticStreamCacheStats 记录流中最后一次 usage，并在 EOF 时上报
@@ -212,11 +215,12 @@ func wrapAgenticStreamCacheStats(reader *schema.StreamReader[*schema.AgenticMess
 	return schema.StreamReaderWithConvert(reader, func(message *schema.AgenticMessage) (*schema.AgenticMessage, error) {
 		if message != nil && message.ResponseMeta != nil && message.ResponseMeta.TokenUsage != nil {
 			collector.usage = message.ResponseMeta.TokenUsage
+			collector.details, _ = message.ResponseMeta.Extension.(*contract.TokenUsageDetails)
 		}
 		return message, nil
 	}, schema.WithOnEOF(func() (any, error) {
 		if collector.usage != nil {
-			hit, miss, _ := cachedTokenFields(collector.usage)
+			hit, miss, _ := cachedTokenFields(collector.usage, collector.details)
 			meta := cacheStatsMetadataFromContext(collector.ctx, collector.cfg)
 			emitCacheUsage(CacheUsageEvent{
 				TaskName: meta.TaskName, RequestType: meta.RequestType, ModelName: collector.cfg.Model, SessionID: meta.SessionID,

@@ -108,7 +108,7 @@ func (o *ConfigWatcherOptions) applyDefaults() {
 	}
 }
 
-// StartConfigWatcher 在后台轮询 bot/model TOML 与 adapter policy，防抖后热重载
+// StartConfigWatcher 在后台轮询 bot/model TOML、共享模型目录与 adapter policy，防抖后热重载
 //
 // ctx 取消时退出；单批回调受 CallbackTimeout 限制，连续失败达到阈值后进入冷却，
 // 与 Python FileWatcher 一致。重载失败只打日志，保留上一版配置快照
@@ -120,6 +120,7 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 
 	botPath := h.botConfigPath()
 	modelPath := h.modelConfigPath()
+	catalogPath := SharedCatalogPath()
 	policyPath := opts.PolicyPath
 	if policyPath == "" {
 		policyPath = filepath.Join(h.dir, "config", "adapter_policy.toml")
@@ -127,9 +128,11 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 
 	committedBot, _ := statSnap(botPath)
 	committedModel, _ := statSnap(modelPath)
+	committedCatalog, catalogErr := statSnap(catalogPath)
 	committedDigestBot := digestFile(botPath)
-	committedDigestModel := digestFile(modelPath)
+	committedDigestModel := digestModelConfigInput(modelPath, catalogPath)
 	committedPolicy, policyErr := statSnap(policyPath)
+	haveCatalog := catalogPath != "" && catalogErr == nil
 	havePolicy := policyErr == nil
 
 	go func() {
@@ -138,7 +141,8 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 		var debounceUntil time.Time
 		var lastReload time.Time
 		var settlingBot, settlingModel, settlingPolicy fileSnap
-		var haveSettlingBot, haveSettlingModel, haveSettlingPolicy bool
+		var settlingCatalog fileSnap
+		var haveSettlingBot, haveSettlingModel, haveSettlingCatalog, haveSettlingPolicy bool
 		var consecutiveFailures int
 		var cooldownUntil time.Time
 
@@ -154,6 +158,15 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 			if snap, err := statSnap(modelPath); err == nil {
 				committedModel = snap
 				haveSettlingModel = false
+			}
+			if catalogPath != "" {
+				if snap, err := statSnap(catalogPath); err == nil {
+					committedCatalog = snap
+					haveCatalog = true
+				} else {
+					haveCatalog = false
+				}
+				haveSettlingCatalog = false
 			}
 			if snap, err := statSnap(policyPath); err == nil {
 				committedPolicy = snap
@@ -190,6 +203,19 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 						debounceUntil = time.Now().Add(opts.Debounce)
 					}
 				}
+				if catalogPath != "" {
+					snap, err := statSnap(catalogPath)
+					catalogChanged := (err == nil) != haveCatalog || (err == nil && snap != committedCatalog)
+					if catalogChanged {
+						pending = mergeScope(pending, ReloadScopeModel)
+						if !haveSettlingCatalog || snap != settlingCatalog {
+							settlingCatalog = snap
+							haveSettlingCatalog = true
+							stats.changesSeen.Add(1)
+							debounceUntil = time.Now().Add(opts.Debounce)
+						}
+					}
+				}
 				if snap, err := statSnap(policyPath); (err == nil) != havePolicy || (err == nil && snap != committedPolicy) {
 					policyPending = true
 					if !haveSettlingPolicy || snap != settlingPolicy {
@@ -205,7 +231,7 @@ func (h *InstanceHolder) StartConfigWatcher(ctx context.Context, opts ConfigWatc
 				}
 
 				digestBot := digestFile(botPath)
-				digestModel := digestFile(modelPath)
+				digestModel := digestModelConfigInput(modelPath, catalogPath)
 				changedBot := digestBot != "" && digestBot != committedDigestBot
 				changedModel := digestModel != "" && digestModel != committedDigestModel
 
@@ -370,6 +396,23 @@ func digestFile(path string) string {
 	return string(sum[:])
 }
 
+// digestModelConfigInput 与 Python 配置指纹一致：本地模型配置与共享目录共同决定运行期模型定义
+func digestModelConfigInput(modelPath, catalogPath string) string {
+	raw, err := os.ReadFile(modelPath)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.New()
+	_, _ = hash.Write(raw)
+	if catalogPath != "" {
+		_, _ = hash.Write([]byte{0})
+		if catalog, err := os.ReadFile(catalogPath); err == nil {
+			_, _ = hash.Write(catalog)
+		}
+	}
+	return string(hash.Sum(nil))
+}
+
 func mergeScope(scopes []ReloadScope, scope ReloadScope) []ReloadScope {
 	for _, s := range scopes {
 		if s == scope {
@@ -394,7 +437,7 @@ func ResolveReloadScopesFromPaths(paths ...string) []ReloadScope {
 		switch filepath.Base(p) {
 		case botConfigFileName:
 			scopes = mergeScope(scopes, ReloadScopeBot)
-		case modelConfigFileName:
+		case modelConfigFileName, CatalogFilename:
 			scopes = mergeScope(scopes, ReloadScopeModel)
 		}
 	}

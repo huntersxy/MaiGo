@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	"MaiGo/internal/common/llmjson"
+	"MaiGo/internal/llm_models/contract"
 )
 
 // 工具调用来源标记，对齐 Python TOOL_CALL_SOURCE_EXTRA_KEY 及取值
@@ -589,8 +590,8 @@ func chatToolCallBlock(call *schema.FunctionToolCall, source string) *schema.Con
 	return block
 }
 
-// chatTokenUsage 对齐 _extract_usage_record 的缓存命中计算
-func chatTokenUsage(usage *chatUsage) *schema.TokenUsage {
+// chatUsageDetails 对齐 _extract_usage_record：保留供应商显式上报的命中、未命中与上报标志
+func chatUsageDetails(usage *chatUsage) *contract.TokenUsageDetails {
 	if usage == nil {
 		return nil
 	}
@@ -600,7 +601,42 @@ func chatTokenUsage(usage *chatUsage) *schema.TokenUsage {
 		hit = *usage.PromptCacheHitTokens
 		reportedHit = true
 	}
-	if !reportedHit && usage.PromptTokensDetails != nil && usage.PromptTokensDetails.CachedTokens != nil {
+	reportedCached := false
+	if hit == 0 && usage.PromptTokensDetails != nil && usage.PromptTokensDetails.CachedTokens != nil {
+		hit = *usage.PromptTokensDetails.CachedTokens
+		reportedCached = true
+	}
+	reportedMiss := usage.PromptCacheMissTokens != nil
+	miss := 0
+	if reportedMiss {
+		miss = *usage.PromptCacheMissTokens
+	}
+	reported := reportedHit || reportedMiss || reportedCached
+	if !reportedMiss && reported {
+		miss = max(usage.PromptTokens-hit, 0)
+	}
+	if !reported {
+		return nil
+	}
+	return &contract.TokenUsageDetails{
+		PromptCacheHitTokens:  hit,
+		PromptCacheMissTokens: miss,
+		PromptCacheReported:   true,
+	}
+}
+
+// chatTokenUsage 对齐 _extract_usage_record 的缓存命中计算
+func chatTokenUsage(usage *chatUsage, details *contract.TokenUsageDetails) *schema.TokenUsage {
+	if usage == nil {
+		return nil
+	}
+	hit := 0
+	if details != nil {
+		hit = details.PromptCacheHitTokens
+	} else if usage.PromptCacheHitTokens != nil {
+		hit = *usage.PromptCacheHitTokens
+	}
+	if details == nil && hit == 0 && usage.PromptTokensDetails != nil && usage.PromptTokensDetails.CachedTokens != nil {
 		hit = *usage.PromptTokensDetails.CachedTokens
 	}
 	return &schema.TokenUsage{
@@ -612,11 +648,16 @@ func chatTokenUsage(usage *chatUsage) *schema.TokenUsage {
 }
 
 func chatResponseMeta(usage *chatUsage) *schema.AgenticResponseMeta {
-	tokenUsage := chatTokenUsage(usage)
+	details := chatUsageDetails(usage)
+	tokenUsage := chatTokenUsage(usage, details)
 	if tokenUsage == nil {
 		return nil
 	}
-	return &schema.AgenticResponseMeta{TokenUsage: tokenUsage}
+	meta := &schema.AgenticResponseMeta{TokenUsage: tokenUsage}
+	if details != nil {
+		meta.Extension = details
+	}
+	return meta
 }
 
 func chatWarnMaxTokens(modelName, finishReason, content string, toolCallCount int, maxTokens *int) {

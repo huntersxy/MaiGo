@@ -207,7 +207,7 @@ func (r *Recorder) RecordModelUsage(record ModelUsageRecord) {
 	if duration < 0 {
 		duration = 0
 	}
-	seconds := math.Round(duration.Seconds()*1000) / 1000
+	seconds := math.RoundToEven(duration.Seconds()*1000) / 1000
 	k := key{Bucket: now.UTC().Truncate(time.Hour), Task: task, Model: model}
 	r.mu.Lock()
 	item := r.pending[k]

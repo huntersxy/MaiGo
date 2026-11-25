@@ -16,6 +16,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"MaiGo/internal/llm_models/contract"
 )
 
 const (
@@ -418,9 +420,7 @@ func pluginResultToMessage(result map[string]any, logicalTurnID string) (*schema
 		if err != nil {
 			return nil, err
 		}
-		if usage := pluginUsage(result["usage"]); usage != nil {
-			message.ResponseMeta = &schema.AgenticResponseMeta{TokenUsage: usage}
-		}
+		message.ResponseMeta = pluginUsageMeta(result["usage"])
 		return message, nil
 	}
 	content := pluginFirstString(result, "content", "response")
@@ -445,9 +445,7 @@ func pluginResultToMessage(result map[string]any, logicalTurnID string) (*schema
 	if err != nil {
 		return nil, err
 	}
-	if usage := pluginUsage(result["usage"]); usage != nil {
-		message.ResponseMeta = &schema.AgenticResponseMeta{TokenUsage: usage}
-	}
+	message.ResponseMeta = pluginUsageMeta(result["usage"])
 	return message, nil
 }
 
@@ -543,33 +541,58 @@ func pluginToolCalls(raw any) ([]*schema.FunctionToolCall, error) {
 	return calls, nil
 }
 
-// pluginUsage 解析使用量记录，映射 cache token
-func pluginUsage(raw any) *schema.TokenUsage {
+// pluginUsageMeta 解析使用量记录，保留供应商上报的命中、未命中与上报标志
+func pluginUsageMeta(raw any) *schema.AgenticResponseMeta {
 	payload, ok := raw.(map[string]any)
 	if !ok {
 		return nil
 	}
+	promptTokens := pluginInt(payload, "prompt_tokens")
+	hit, reportedHit := pluginIntField(payload, "prompt_cache_hit_tokens")
+	miss, reportedMiss := pluginIntField(payload, "prompt_cache_miss_tokens")
 	usage := &schema.TokenUsage{
-		PromptTokens:     pluginInt(payload, "prompt_tokens"),
+		PromptTokens:     promptTokens,
 		CompletionTokens: pluginInt(payload, "completion_tokens"),
 		TotalTokens:      pluginInt(payload, "total_tokens"),
+		PromptTokenDetails: schema.PromptTokenDetails{
+			CachedTokens: max(hit, 0),
+		},
 	}
-	if hit := pluginInt(payload, "prompt_cache_hit_tokens"); hit > 0 {
-		usage.PromptTokenDetails.CachedTokens = hit
+	var details *contract.TokenUsageDetails
+	if reportedHit || reportedMiss {
+		if !reportedMiss {
+			miss = max(promptTokens-hit, 0)
+		}
+		details = &contract.TokenUsageDetails{
+			PromptCacheHitTokens:  max(hit, 0),
+			PromptCacheMissTokens: max(miss, 0),
+			PromptCacheReported:   true,
+		}
 	}
-	if usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.TotalTokens == 0 {
+	return &schema.AgenticResponseMeta{TokenUsage: usage, Extension: details}
+}
+
+func pluginUsage(raw any) *schema.TokenUsage {
+	meta := pluginUsageMeta(raw)
+	if meta == nil {
 		return nil
 	}
-	return usage
+	return meta.TokenUsage
 }
 
 func pluginInt(payload map[string]any, key string) int {
+	value, _ := pluginIntField(payload, key)
+	return value
+}
+
+func pluginIntField(payload map[string]any, key string) (int, bool) {
 	if value, ok := payload[key]; ok {
 		if parsed, ok := IntFromAny(value); ok {
-			return parsed
+			return parsed, true
 		}
+		return 0, true
 	}
-	return 0
+	return 0, false
 }
 
 // PluginToolOptions 工具定义 → MaiBot tool_options（OpenAI function 包装）

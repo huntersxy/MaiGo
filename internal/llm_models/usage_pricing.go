@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+
+	"MaiGo/internal/llm_models/contract"
 )
 
 // resolveModelPrices 对齐 MaiBot LLMUsageRecorder._resolve_prices：
@@ -54,12 +56,24 @@ func pricePeriodContains(start, end, current int) bool {
 
 // calculateModelUsageCost 对齐 MaiBot _calculate_input_cost + output cost，结果 round 6
 func calculateModelUsageCost(cfg ModelConfig, usage *schema.TokenUsage, at time.Time) float64 {
+	return calculateModelUsageCostWithDetails(cfg, usage, at, nil)
+}
+
+func calculateModelUsageCostWithDetails(
+	cfg ModelConfig,
+	usage *schema.TokenUsage,
+	at time.Time,
+	details *contract.TokenUsageDetails,
+) float64 {
 	if usage == nil {
 		return 0
 	}
 	prompt := int64(usage.PromptTokens)
-	hit := int64(usage.PromptTokenDetails.CachedTokens)
-	miss := int64(0)
+	hit, miss := int64(usage.PromptTokenDetails.CachedTokens), int64(0)
+	if details != nil {
+		hit = int64(details.PromptCacheHitTokens)
+		miss = int64(details.PromptCacheMissTokens)
+	}
 	if miss == 0 && hit > 0 {
 		miss = max(prompt-hit, 0)
 	}
@@ -69,12 +83,16 @@ func calculateModelUsageCost(cfg ModelConfig, usage *schema.TokenUsage, at time.
 	priceIn, cachePriceIn, priceOut := resolveModelPrices(cfg, at)
 	inputCost := float64(hit)/1_000_000*cachePriceIn + float64(miss)/1_000_000*priceIn
 	outputCost := float64(usage.CompletionTokens) / 1_000_000 * priceOut
-	return math.Round((inputCost+outputCost)*1_000_000) / 1_000_000
+	return math.RoundToEven((inputCost+outputCost)*1_000_000) / 1_000_000
 }
 
 // cachedTokenFields 从 eino 统一 usage 构造缓存字段
-// eino.TokenUsage 只保留命中数；命中存在但 miss 未上报时，按 Python _extract_usage_record 的 max(prompt-hit,0) 补算
-func cachedTokenFields(usage *schema.TokenUsage) (hit, miss int64, enabled bool) {
+func cachedTokenFields(usage *schema.TokenUsage, details *contract.TokenUsageDetails) (hit, miss int64, enabled bool) {
+	if details != nil {
+		return int64(max(details.PromptCacheHitTokens, 0)),
+			int64(max(details.PromptCacheMissTokens, 0)),
+			details.PromptCacheReported
+	}
 	if usage == nil {
 		return 0, 0, false
 	}
