@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,18 +18,18 @@ import (
 
 // Transport 正向 WebSocket 客户端（coder/websocket）
 type Transport struct {
-	mu            sync.Mutex
-	cfg           ClientConfig
-	profile       *ProfileState
-	onOpen        func(ctx context.Context) error
-	onClose       func(ctx context.Context) error
-	onPayload     func(ctx context.Context, payload map[string]any) error
-	conn          *websocket.Conn
-	pending       map[string]chan map[string]any
-	stopCh        chan struct{}
-	loopDone      chan struct{}
-	running       bool
-	dialedOnce    bool
+	mu         sync.Mutex
+	cfg        ClientConfig
+	profile    *ProfileState
+	onOpen     func(ctx context.Context) error
+	onClose    func(ctx context.Context) error
+	onPayload  func(ctx context.Context, payload map[string]any) error
+	conn       *websocket.Conn
+	pending    map[string]chan map[string]any
+	stopCh     chan struct{}
+	loopDone   chan struct{}
+	running    bool
+	dialedOnce bool
 }
 
 func NewTransport(
@@ -155,7 +157,7 @@ func (t *Transport) connectionLoop(parent context.Context) {
 		default:
 		}
 		if err := t.dialOnce(parent, cfg); err != nil {
-			zap.L().Warn("SnowLuma 适配器连接失败", zap.String("url", cfg.BuildWSURL()), zap.Error(err))
+			zap.L().Warn("SnowLuma 适配器连接失败", zap.String("url", displayURL(cfg)), zap.String("error", redactDialError(err, cfg.Token)))
 		}
 		select {
 		case <-stopCh:
@@ -165,6 +167,20 @@ func (t *Transport) connectionLoop(parent context.Context) {
 		case <-time.After(time.Duration(cfg.ReconnectDelaySec * float64(time.Second))):
 		}
 	}
+}
+
+var accessTokenQuery = regexp.MustCompile(`(?i)(access_token=)[^&\s"'<>]+`)
+
+func redactDialError(err error, token string) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if token != "" {
+		message = strings.ReplaceAll(message, url.QueryEscape(token), "***")
+		message = strings.ReplaceAll(message, token, "***")
+	}
+	return accessTokenQuery.ReplaceAllString(message, "${1}***")
 }
 
 func (t *Transport) dialOnce(parent context.Context, cfg ClientConfig) error {

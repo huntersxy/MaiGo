@@ -190,6 +190,45 @@ func (r *Registry) GetProfile(ctx context.Context, personID string) (*Profile, e
 	return &p, nil
 }
 
+// MentionDisplayName resolves a group card or nickname without treating an ID as a name.
+func (r *Registry) MentionDisplayName(ctx context.Context, platform, userID, groupID string) string {
+	platform = normalizePlatform(platform)
+	userID = strings.TrimSpace(userID)
+	if platform == "" || userID == "" {
+		return ""
+	}
+	db := r.db(ctx)
+	if db == nil {
+		return ""
+	}
+	var record PersonInfo
+	if err := db.Where("platform = ? AND user_id = ?", platform, userID).First(&record).Error; err != nil {
+		return ""
+	}
+	groupID = strings.TrimSpace(groupID)
+	for _, card := range decodeGroupCards(record.GroupCardname) {
+		if card.GroupID == groupID {
+			if name := nonIDDisplayName(card.GroupCardname, userID); name != "" {
+				return name
+			}
+		}
+	}
+	return nonIDDisplayName(record.UserNickname, userID)
+}
+
+func nonIDDisplayName(candidate, userID string) string {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" || candidate == userID {
+		return ""
+	}
+	candidateID, candidateErr := strconv.ParseInt(candidate, 10, 64)
+	userIDValue, userIDErr := strconv.ParseInt(userID, 10, 64)
+	if candidateErr == nil && userIDErr == nil && candidateID == userIDValue {
+		return ""
+	}
+	return candidate
+}
+
 // IsKnown 对齐 MaiBot is_person_known(person_id=...)
 func (r *Registry) IsKnown(ctx context.Context, personID string) bool {
 	rec, err := r.loadPersonByID(ctx, personID)

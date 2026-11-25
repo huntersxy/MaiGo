@@ -181,7 +181,7 @@ func convertInboundSegments(message, fallback any, selfID string) (segments []an
 				"type": "at",
 				"data": map[string]any{
 					"target_user_id":       target,
-					"target_user_nickname": firstNonEmpty(asString(data["name"]), asString(data["nickname"]), target),
+					"target_user_nickname": firstNonEmpty(asString(data["name"]), asString(data["nickname"])),
 					"target_user_cardname": asString(data["card"]),
 				},
 			})

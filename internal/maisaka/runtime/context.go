@@ -16,6 +16,7 @@ import (
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	maisakactx "MaiGo/internal/maisaka/context"
+	"MaiGo/internal/person_info"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -53,16 +54,74 @@ func (a *Agent) resolveMentionDisplayName(ctx context.Context, msg *onebot.Conve
 	if selfID > 0 && userID == selfID {
 		return botMentionDisplayName(a.botName())
 	}
-	if displayName := strings.TrimSpace(msg.AtNames[userID]); displayName != "" {
+	if msg == nil {
+		return strconv.FormatInt(userID, 10)
+	}
+	targetUserID := strconv.FormatInt(userID, 10)
+	for index, atID := range msg.AtList {
+		if atID == userID && index < len(msg.ExternalAtList) {
+			if externalID := strings.TrimSpace(msg.ExternalAtList[index]); externalID != "" {
+				targetUserID = externalID
+				break
+			}
+		}
+	}
+	for _, part := range msg.MessageParts {
+		if part.Kind != "at" {
+			continue
+		}
+		externalID := strings.TrimSpace(part.ExternalAtUserID)
+		if part.AtUserID != userID && (externalID == "" || externalID != targetUserID) {
+			continue
+		}
+		if externalID != "" {
+			targetUserID = externalID
+		}
+		if name := usableMentionDisplayName(part.AtCardname, targetUserID); name != "" {
+			return name
+		}
+		if name := usableMentionDisplayName(part.AtNickname, targetUserID); name != "" {
+			return name
+		}
+	}
+	if name := usableMentionDisplayName(msg.AtNames[userID], targetUserID); name != "" {
+		return name
+	}
+	platform := strings.TrimSpace(msg.Platform)
+	if platform == "" {
+		platform = personinfo.PlatformQQ
+	}
+	groupID := strings.TrimSpace(msg.ExternalTargetID)
+	if groupID == "" {
+		groupID = strings.TrimSpace(msg.GroupKey)
+	}
+	if groupID == "" && msg.TargetID > 0 {
+		groupID = strconv.FormatInt(msg.TargetID, 10)
+	}
+	if displayName := personinfo.DefaultRegistry().MentionDisplayName(ctx, platform, targetUserID, groupID); displayName != "" {
 		return displayName
 	}
 	if msg.ConversationKind == memory.ConversationKindPrivate {
-		if userID == msg.UserID && msg.Nickname != "" {
-			return msg.Nickname
+		if userID == msg.UserID {
+			if name := usableMentionDisplayName(msg.Nickname, targetUserID); name != "" {
+				return name
+			}
 		}
-		return fmt.Sprintf("%d", userID)
 	}
-	return fmt.Sprintf("%d", userID)
+	return targetUserID
+}
+
+func usableMentionDisplayName(candidate, userID string) string {
+	name := strings.TrimSpace(candidate)
+	if name == "" || name == userID {
+		return ""
+	}
+	nameID, nameErr := strconv.ParseInt(name, 10, 64)
+	targetID, targetErr := strconv.ParseInt(userID, 10, 64)
+	if nameErr == nil && targetErr == nil && nameID == targetID {
+		return ""
+	}
+	return name
 }
 
 // buildConversationToolContext 构造工具执行上下文，会话内的消息编号与媒体都由会话维护

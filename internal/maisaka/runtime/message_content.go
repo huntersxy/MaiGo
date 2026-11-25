@@ -16,7 +16,16 @@ func (a *Agent) prepareMessageContent(ctx context.Context, msg *onebot.Conversat
 	if err := a.resolveReplyInfo(ctx, msg); err != nil {
 		zap.L().Debug("解析回复消息失败", zap.String("conversation_kind", msg.ConversationKind), zap.Int64("target_id", msg.TargetID), zap.Int64("message_id", msg.MessageID), zap.Error(err))
 	}
-	pieces, pending, forwards := messagereceive.ParseMessageContent(ctx, msg, a.resolveMentionDisplayName)
+	mentionNames := make(map[int64]string)
+	resolveMention := func(resolveCtx context.Context, resolveMsg *onebot.ConversationMessage, userID int64) string {
+		if name, ok := mentionNames[userID]; ok {
+			return name
+		}
+		name := a.resolveMentionDisplayName(resolveCtx, resolveMsg, userID)
+		mentionNames[userID] = name
+		return name
+	}
+	pieces, pending, forwards := messagereceive.ParseMessageContent(ctx, msg, resolveMention)
 	refs := a.cacheMedia(ctx, pending)
 	a.markCollectedStickers(ctx, refs)
 	session := a.sessions.get(msg.ConversationKind, msg.TargetID)
