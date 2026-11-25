@@ -29,10 +29,11 @@ type OutboundMessage struct {
 	ReplyTo  int64
 	// ReplyAnchor 被动回复锚点，独立于显示引用，供平台适配器占用被动额度
 	ReplyAnchor int64
-	Typing      bool
-	Storage     bool
-	ShowLog     bool
-	MessageID   int64
+	Typing            bool
+	Storage           bool
+	ShowLog           bool
+	MessageID         int64
+	ExternalMessageID string
 }
 
 // SendFunc 执行一次真实发送；返回平台消息 ID、到达序号、是否已发送

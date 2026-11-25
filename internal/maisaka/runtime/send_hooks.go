@@ -46,7 +46,8 @@ type outboundMessage struct {
 	storageExplicit bool
 	showLogExplicit bool
 
-	MessageID int64
+	MessageID         int64
+	ExternalMessageID string
 }
 
 func (m *outboundMessage) isImage() bool {
@@ -251,16 +252,18 @@ func (a *Agent) sendOutboundWith(ctx context.Context, emitter sendHookEmitter, m
 	}
 	// 引用段只在 set_reply 为真时生成；reply_to 元数据始终保留，供存储与 Hook 观察
 	replySegment := replySegmentFor(msg)
+	var externalID string
 	if msg.isImage() {
-		messageID, arrivalSeq, err = a.sendConversationImage(ctx, msg.Kind, msg.TargetID, msg.ImageFile, msg.IsSticker, msg.ReplyAnchor)
+		messageID, externalID, arrivalSeq, err = a.sendConversationImage(ctx, msg.Kind, msg.TargetID, msg.ImageFile, msg.IsSticker, msg.ReplyAnchor)
 	} else {
-		messageID, arrivalSeq, err = a.sendConversationMessage(ctx, msg.Kind, msg.TargetID, msg.Text, replySegment, msg.ReplyAnchor, msg.Mentions)
+		messageID, externalID, arrivalSeq, err = a.sendConversationMessage(ctx, msg.Kind, msg.TargetID, msg.Text, replySegment, msg.ReplyAnchor, msg.Mentions)
 	}
 	if err != nil {
 		emitAfterSend(ctx, emitter, msg, false)
 		return 0, 0, false, err
 	}
 	msg.MessageID = messageID
+	msg.ExternalMessageID = externalID
 	emitAfterSend(ctx, emitter, msg, true)
 	return messageID, arrivalSeq, true, nil
 }

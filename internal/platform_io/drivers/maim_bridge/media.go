@@ -197,11 +197,17 @@ func segmentToMaimSeg(ctx context.Context, seg platformio.Segment) (maimmsg.Seg,
 		return maimmsg.Seg{Type: "forward", Data: mustJSON(nodes)}, nil
 	case platformio.SegmentImage, platformio.SegmentEmoji, platformio.SegmentVoice, platformio.SegmentRecord:
 		// record 是 OneBot 侧的叫法，Python 组件只有 voice
+		maimType := map[platformio.SegmentKind]string{
+			platformio.SegmentImage:  "image",
+			platformio.SegmentEmoji:  "emoji",
+			platformio.SegmentVoice:  "voice",
+			platformio.SegmentRecord: "voice",
+		}[seg.Kind]
 		encoded, err := platformio.SegmentMediaBase64(ctx, seg)
 		if err != nil {
 			return maimmsg.Seg{}, err
 		}
-		return maimmsg.Seg{Type: "voice", Data: mustJSON(encoded)}, nil
+		return maimmsg.Seg{Type: maimType, Data: mustJSON(encoded)}, nil
 	case platformio.SegmentFile:
 		return maimmsg.Seg{Type: "file", Data: mustJSON(mediaPayload(seg))}, nil
 	case platformio.SegmentVideo, platformio.SegmentFace:

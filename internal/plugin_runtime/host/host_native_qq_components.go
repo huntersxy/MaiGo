@@ -82,8 +82,8 @@ func (h *Host) registerQQOfficialModeration(adapter *qq_official.Adapter) {
 				Platforms: []string{qq_official.PlatformQQ}, InvokeMethod: "plugin.invoke_tool", Description: definition.description,
 				ParametersRaw: map[string]any{"type": "object", "properties": definition.properties, "required": definition.required},
 				localTool: func(ctx context.Context, args map[string]any, exec ToolExecutionContext) (any, error) {
-					id, _ := args["msg_id"].(string)
-					if strings.TrimSpace(id) == "" {
+					id := coerceToolStringArg(args["msg_id"])
+					if id == "" {
 						return nil, fmt.Errorf("缺少目标消息 ID")
 					}
 					session := firstNonEmptyText(exec.SessionID, exec.StreamID)
@@ -234,4 +234,26 @@ func (h *Host) loadQQOfficialWebUI() error {
 		page["document"] = string(document)
 	}
 	return h.ApplyWebUIExtension(qq_official.PluginID, definition)
+}
+
+// coerceToolStringArg 对齐 Python str(value or "").strip()，兼容数值型消息 ID。
+func coerceToolStringArg(raw any) string {
+	switch value := raw.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(value)
+	case int:
+		return strconv.Itoa(value)
+	case int64:
+		return strconv.FormatInt(value, 10)
+	case uint64:
+		return strconv.FormatUint(value, 10)
+	case float64:
+		return strconv.FormatInt(int64(value), 10)
+	case fmt.Stringer:
+		return strings.TrimSpace(value.String())
+	default:
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
 }

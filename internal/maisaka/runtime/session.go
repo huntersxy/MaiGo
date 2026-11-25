@@ -15,6 +15,7 @@ import (
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
+	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/maisaka/focus"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
@@ -43,6 +44,8 @@ type sessionUser struct {
 	QuoteIDs     []string
 	QuoteSender  string
 	QuoteContent string
+	VisibleText  string
+	VisibleBody  string
 	Msg          *schema.AgenticMessage
 	// MediaRefs 该消息缓存过的媒体引用，供跨会话传话取图
 	MediaRefs []media.Ref
@@ -413,6 +416,15 @@ func annotateSessionUserMessage(message *schema.AgenticMessage, user *sessionUse
 	if user.BotAtName != "" {
 		message.Extra["bot_platform_nickname"] = user.BotAtName
 	}
+	if _, exists := message.Extra["source_kind"]; !exists {
+		message.Extra["source_kind"] = maisaka.SourceUser
+	}
+	if user.VisibleText != "" {
+		message.Extra["visible_text"] = user.VisibleText
+	}
+	if user.VisibleBody != "" {
+		message.Extra["visible_body"] = user.VisibleBody
+	}
 	if len(user.QuoteIDs) > 0 {
 		message.Extra["quote_ids"] = append([]string(nil), user.QuoteIDs...)
 		// 监控引用预览按 reply_to 取目标，入站引用沿用平台消息号
@@ -474,11 +486,29 @@ func (s *Session) newUserLocked(msg *onebot.ConversationMessage, logID uint, med
 	}
 	if msg.AccountID != "" {
 		for atID, name := range msg.AtNames {
-			if strconv.FormatInt(atID, 10) == msg.AccountID && strings.TrimSpace(name) != "" {
-				user.BotAtName = strings.TrimSpace(name)
-				break
+			if strconv.FormatInt(atID, 10) == msg.AccountID {
+				if usable := usableMentionDisplayName(name, msg.AccountID); usable != "" {
+					user.BotAtName = usable
+					break
+				}
 			}
 		}
+	}
+	rawBody := strings.TrimSpace(msg.FinalContent)
+	if rawBody == "" {
+		rawBody = strings.TrimSpace(msg.Content)
+	}
+	cleanBody := stripReplyMarkerFromBody(msg, rawBody)
+	speaker := firstNonEmptyString(strings.TrimSpace(msg.GroupCard), strings.TrimSpace(msg.Nickname), strconv.FormatInt(msg.UserID, 10))
+	visibleMsgID := ref
+	if msg.MessageID == 0 {
+		visibleMsgID = user.NoticeID
+	}
+	user.VisibleBody = cleanBody
+	if !msg.IsNotify && cleanBody != "" {
+		user.VisibleText = maisakactx.FormatSpeakerContent(speaker, cleanBody, &msg.Time, visibleMsgID)
+	} else if !msg.IsNotify {
+		user.VisibleText = maisakactx.FormatSpeakerContent(speaker, rawBody, &msg.Time, visibleMsgID)
 	}
 	user.Text = s.renderUserText(msg, ref, mediaRefs)
 	user.Msg = userSchemaMessage(user.Text, mediaRefs)
@@ -623,8 +653,32 @@ func (s *Session) renderUserText(msg *onebot.ConversationMessage, ref string, _ 
 	if body == "" {
 		body = strings.TrimSpace(msg.Content)
 	}
+	body = stripReplyMarkerFromBody(msg, body)
 	b.WriteString(body)
 	return strings.TrimSpace(b.String())
+}
+
+// stripReplyMarkerFromBody 去掉已解析或降级拼接的引用前缀，避免与 Planner XML quote 及 Replyer Quotes 重复
+func stripReplyMarkerFromBody(msg *onebot.ConversationMessage, body string) string {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" || msg == nil || msg.Reply == nil {
+		return trimmed
+	}
+	for _, prefix := range []string{
+		"[回复了一条消息，但原消息已无法访问]",
+	} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+		}
+	}
+	if strings.HasPrefix(trimmed, "[回复了一条作者未核验的消息: ") || strings.HasPrefix(trimmed, "[回复了") {
+		if reply := strings.TrimSpace(msg.Reply.Content); reply != "" {
+			if idx := strings.Index(trimmed, ": "+reply+"]"); idx >= 0 {
+				return strings.TrimSpace(trimmed[idx+len(": "+reply+"]"):])
+			}
+		}
+	}
+	return trimmed
 }
 
 // maisakaSessionInfoLocked 返回已缓存运行时的会话编号、名称与 Focus 状态，调用方必须已持有 s.mu

@@ -86,10 +86,10 @@ type ReplyInput struct {
 	ChatAnlyze       string               `json:"chat_anlyze,omitempty" jsonschema:"description=回复方向与上下文要点，不是正文"`
 	ReplyStyle       string               `json:"reply_style,omitempty" jsonschema:"description=控制本次回复的篇幅和表达方式，当其他人回复都偏短时使用正常回复或者简短表达。当需要解释说明复杂问题时使用长回复，其他情况视情况决定。"`
 	ExpressionIntent map[string]any       `json:"expression_intent,omitempty" jsonschema:"description=可选；给表达方式选择使用的结构化意图"`
-	Content          string               `json:"content,omitempty" jsonschema:"description=内部桥接字段，模型不要填写；正文由回复生成器生成"`
-	Text             string               `json:"text,omitempty" jsonschema:"description=内部桥接字段，模型不要填写"`
+	Content          string               `json:"content,omitempty" jsonschema:"-"`
+	Text             string               `json:"text,omitempty" jsonschema:"-"`
 	ReplyerGenerated bool                 `json:"_replyer_generated,omitempty" jsonschema:"-"`
-	ReplyTo          int64                `json:"reply_to,omitempty" jsonschema:"description=内部桥接字段，模型不要填写；引用目标由 msg_id 解析"`
+	ReplyTo          int64                `json:"reply_to,omitempty" jsonschema:"-"`
 	AttachAt         []string             `json:"attach_at,omitempty" jsonschema:"description=可选；随回复 at 的目标消息 msg_id 列表"`
 	AttachPic        []ReplyAttachPicture `json:"attach_pic,omitempty" jsonschema:"description=可选；随回复发送的图片列表"`
 	AttachEmoji      any                  `json:"attach_emoji,omitempty" jsonschema:"description=可选；上下文表情引用或按情绪、画面内容匹配的表情"`

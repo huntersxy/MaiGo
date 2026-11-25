@@ -93,31 +93,31 @@ func (a *Agent) sendConversationMessage(
 	replyTo int64,
 	replyAnchor int64,
 	mentions []int64,
-) (messageID int64, arrivalSeq uint64, err error) {
+) (messageID int64, externalMessageID string, arrivalSeq uint64, err error) {
 	if a.isInternalConversation(conversationKind, targetID) {
 		messageID, err := a.webChatSender().SendBotRich(ctx, conversationKind, targetID, text, replyTo, mentions)
 		if err != nil {
-			return 0, 0, err
+			return 0, "", 0, err
 		}
 		// WebUI 内聊没有协议端回传，必须自己落库，否则历史只剩用户消息、气泡全在右侧
 		a.persistInternalBotMessage(ctx, conversationKind, targetID, text, messageID, replyTo)
-		return messageID, 0, nil
+		return messageID, "", 0, nil
 	}
 	if a.platformIO != nil {
 		if resolved, ok := a.resolvePlatformRoute(conversationKind, targetID); ok {
 			if resolved.HasAdapter {
-				messageID, arrivalSeq, err = a.sendViaPlatformIO(ctx, resolved, conversationKind, targetID, text, replyTo, replyAnchor, mentions)
+				messageID, externalMessageID, arrivalSeq, err = a.sendViaPlatformIO(ctx, resolved, conversationKind, targetID, text, replyTo, replyAnchor, mentions)
 				if err != nil {
-					return 0, 0, err
+					return 0, "", 0, err
 				}
-				return messageID, arrivalSeq, nil
+				return messageID, externalMessageID, arrivalSeq, nil
 			}
 			if resolved.External {
-				return 0, 0, platformRouteUnavailableError(resolved)
+				return 0, "", 0, platformRouteUnavailableError(resolved)
 			}
 		}
 	}
-	return 0, 0, fmt.Errorf("没有可用的平台发送适配器，请先在适配器管理中启用对应平台连接")
+	return 0, "", 0, fmt.Errorf("没有可用的平台发送适配器，请先在适配器管理中启用对应平台连接")
 }
 
 // sendConversationImage 群聊/私聊图片或表情包出站：已绑定 qq 发送路由时走 Platform IO
@@ -128,29 +128,29 @@ func (a *Agent) sendConversationImage(
 	filePath string,
 	isSticker bool,
 	replyAnchor int64,
-) (messageID int64, arrivalSeq uint64, err error) {
+) (messageID int64, externalMessageID string, arrivalSeq uint64, err error) {
 	if a.isInternalConversation(conversationKind, targetID) {
 		messageID, err := a.webChatSender().SendBotImage(ctx, conversationKind, targetID, filePath, isSticker)
 		if err != nil {
-			return 0, 0, err
+			return 0, "", 0, err
 		}
-		return messageID, 0, nil
+		return messageID, "", 0, nil
 	}
 	if a.platformIO != nil {
 		if resolved, ok := a.resolvePlatformRoute(conversationKind, targetID); ok {
 			if resolved.HasAdapter {
-				messageID, arrivalSeq, err = a.sendImageViaPlatformIO(ctx, resolved, conversationKind, targetID, filePath, isSticker, replyAnchor)
+				messageID, externalMessageID, arrivalSeq, err = a.sendImageViaPlatformIO(ctx, resolved, conversationKind, targetID, filePath, isSticker, replyAnchor)
 				if err != nil {
-					return 0, 0, err
+					return 0, "", 0, err
 				}
-				return messageID, arrivalSeq, nil
+				return messageID, externalMessageID, arrivalSeq, nil
 			}
 			if resolved.External {
-				return 0, 0, platformRouteUnavailableError(resolved)
+				return 0, "", 0, platformRouteUnavailableError(resolved)
 			}
 		}
 	}
-	return 0, 0, fmt.Errorf("没有可用的平台发送适配器，请先在适配器管理中启用对应平台连接")
+	return 0, "", 0, fmt.Errorf("没有可用的平台发送适配器，请先在适配器管理中启用对应平台连接")
 }
 
 // SendFileToConversation 群聊/私聊文件出站：优先 Platform IO，否则直调 OneBot 上传接口
@@ -255,14 +255,14 @@ func (a *Agent) sendViaPlatformIO(
 	replyTo int64,
 	replyAnchor int64,
 	mentions []int64,
-) (messageID int64, arrivalSeq uint64, err error) {
+) (messageID int64, externalMessageID string, arrivalSeq uint64, err error) {
 	chatType, err := chatTypeForKind(conversationKind)
 	if err != nil {
-		return 0, 0, err
+		return 0, "", 0, err
 	}
 	target, err := a.platformTransportTarget(ctx, resolved, chatType)
 	if err != nil {
-		return 0, 0, err
+		return 0, "", 0, err
 	}
 	routeKey := resolved.RouteKey
 	segments := a.outboundSegmentsForText(conversationKind, targetID, text, mentions)
@@ -294,11 +294,12 @@ func (a *Agent) sendViaPlatformIO(
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
 	if !batch.HasSuccess() {
-		return 0, 0, platformIOSendError(batch)
+		return 0, "", 0, platformIOSendError(batch)
 	}
 	receipt := batch.SentReceipts()[0]
-	messageID, err = parseExternalMessageID(receipt.ExternalMessageID)
-	if err != nil && receipt.ExternalMessageID != "" {
+	externalMessageID = strings.TrimSpace(receipt.ExternalMessageID)
+	messageID, err = parseExternalMessageID(externalMessageID)
+	if err != nil && externalMessageID != "" {
 		zap.L().Warn("Platform IO 出站 message_id 解析失败",
 			zap.String("driver_id", receipt.DriverID),
 			zap.String("external_message_id", receipt.ExternalMessageID),
@@ -307,8 +308,11 @@ func (a *Agent) sendViaPlatformIO(
 	if messageID == 0 && resolved.External {
 		messageID = syntheticOutboundMessageID(resolved)
 	}
+	if externalMessageID == "" && messageID != 0 {
+		externalMessageID = strconv.FormatInt(messageID, 10)
+	}
 	arrivalSeq = arrivalSeqFromReceipt(receipt)
-	return messageID, arrivalSeq, nil
+	return messageID, externalMessageID, arrivalSeq, nil
 }
 
 func (a *Agent) sendImageViaPlatformIO(
@@ -319,14 +323,14 @@ func (a *Agent) sendImageViaPlatformIO(
 	filePath string,
 	isSticker bool,
 	replyAnchor int64,
-) (messageID int64, arrivalSeq uint64, err error) {
+) (messageID int64, externalMessageID string, arrivalSeq uint64, err error) {
 	chatType, err := chatTypeForKind(conversationKind)
 	if err != nil {
-		return 0, 0, err
+		return 0, "", 0, err
 	}
 	target, err := a.platformTransportTarget(ctx, resolved, chatType)
 	if err != nil {
-		return 0, 0, err
+		return 0, "", 0, err
 	}
 	routeKey := resolved.RouteKey
 	seg := outboundImageSegment(filePath, isSticker)
@@ -349,11 +353,12 @@ func (a *Agent) sendImageViaPlatformIO(
 	}
 	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
 	if !batch.HasSuccess() {
-		return 0, 0, platformIOSendError(batch)
+		return 0, "", 0, platformIOSendError(batch)
 	}
 	receipt := batch.SentReceipts()[0]
-	messageID, err = parseExternalMessageID(receipt.ExternalMessageID)
-	if err != nil && receipt.ExternalMessageID != "" {
+	externalMessageID = strings.TrimSpace(receipt.ExternalMessageID)
+	messageID, err = parseExternalMessageID(externalMessageID)
+	if err != nil && externalMessageID != "" {
 		zap.L().Warn("Platform IO 图片出站 message_id 解析失败",
 			zap.String("driver_id", receipt.DriverID),
 			zap.String("external_message_id", receipt.ExternalMessageID),
@@ -362,8 +367,11 @@ func (a *Agent) sendImageViaPlatformIO(
 	if messageID == 0 && resolved.External {
 		messageID = syntheticOutboundMessageID(resolved)
 	}
+	if externalMessageID == "" && messageID != 0 {
+		externalMessageID = strconv.FormatInt(messageID, 10)
+	}
 	arrivalSeq = arrivalSeqFromReceipt(receipt)
-	return messageID, arrivalSeq, nil
+	return messageID, externalMessageID, arrivalSeq, nil
 }
 
 func outboundImageSegment(filePath string, isSticker bool) platformio.Segment {

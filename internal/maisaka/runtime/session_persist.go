@@ -12,6 +12,15 @@ import (
 
 // AppendAssistant 保存一条 assistant 工作集记录
 func (s *Session) AppendAssistant(ctx context.Context, runID string, msg *schema.AgenticMessage) (*memory.TranscriptEntry, error) {
+	return s.appendTranscriptEntry(ctx, runID, "assistant", msg)
+}
+
+// AppendGuidedReply 保存一条机器人自身发言的 guided_reply 工作集记录（以 assistant entry_kind 写入 transcript，由 payload extra.source_kind 区分）。
+func (s *Session) AppendGuidedReply(ctx context.Context, runID string, msg *schema.AgenticMessage) (*memory.TranscriptEntry, error) {
+	return s.appendTranscriptEntry(ctx, runID, "assistant", msg)
+}
+
+func (s *Session) appendTranscriptEntry(ctx context.Context, runID, entryKind string, msg *schema.AgenticMessage) (*memory.TranscriptEntry, error) {
 	if msg == nil || s.memory == nil {
 		return nil, nil
 	}
@@ -20,7 +29,7 @@ func (s *Session) AppendAssistant(ctx context.Context, runID string, msg *schema
 		return nil, err
 	}
 	entry := &memory.TranscriptEntry{
-		ConversationKind: s.kind, TargetID: s.targetID, EntryKind: "assistant",
+		ConversationKind: s.kind, TargetID: s.targetID, EntryKind: entryKind,
 		RunID: runID, Payload: payload,
 	}
 	if err := s.memory.AppendTranscript(ctx, entry); err != nil {

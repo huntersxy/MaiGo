@@ -646,6 +646,16 @@ func (r *Runtime) DrainTurnTranscript() []ContextMessage {
 	return out
 }
 
+// IsTranscriptRecording 返回当前是否处于单轮转录录制期
+func (r *Runtime) IsTranscriptRecording() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.transcriptRecording
+}
+
 // SetHistory 整体替换内部历史，供 Focus 组与恢复流程使用
 func (r *Runtime) SetHistory(messages []ContextMessage) {
 	r.mu.Lock()

@@ -13,6 +13,7 @@ import (
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
+	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/maisaka/focus"
 	"MaiGo/internal/prompt"
 
@@ -340,13 +341,29 @@ func (a *Agent) captureMaisakaSummary(session *Session, history []maisaka.Contex
 // maisakaTranscriptRunID Maisaka 工具轨迹统一使用的 run 编号，保证 assistant/tool 配对
 const maisakaTranscriptRunID = "maisaka"
 
-// persistMaisakaHistory 把本轮新增的 assistant 与工具结果按顺序写回 transcript
+// persistMaisakaHistory 把本轮新增的 assistant、工具结果与自身回复按协议顺序写回 transcript
 func (a *Agent) persistMaisakaHistory(ctx context.Context, session *Session, history []maisaka.ContextMessage) []uint {
 	ids := make([]uint, 0, 4)
 	if session == nil || len(history) == 0 || session.memory == nil {
 		return ids
 	}
-	for _, message := range history {
+	orderedHistory, _ := maisakactx.NormalizeToolResultOrder(history)
+	for _, message := range orderedHistory {
+		if message.Source == maisaka.SourceGuidedReply {
+			msg := maisakaGuidedReplySchemaMessage(message)
+			if msg == nil {
+				continue
+			}
+			entry, err := session.AppendGuidedReply(ctx, maisakaTranscriptRunID, msg)
+			if err != nil {
+				zap.L().Warn("保存 Maisaka guided_reply 消息失败", zap.Error(err))
+				continue
+			}
+			if entry != nil {
+				ids = append(ids, entry.ID)
+			}
+			continue
+		}
 		switch message.Role {
 		case maisaka.RoleAssistant:
 			if strings.TrimSpace(message.Content) == "" && len(message.ToolCalls) == 0 {
@@ -453,6 +470,80 @@ func maisakaAssistantSchemaMessage(message maisaka.ContextMessage) *schema.Agent
 	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeAssistant, ContentBlocks: blocks}
 }
 
+// maisakaGuidedReplySchemaMessage 把自身发言序列化为可持久化/恢复的 user/guided_reply 工作集消息。
+func maisakaGuidedReplySchemaMessage(message maisaka.ContextMessage) *schema.AgenticMessage {
+	text := strings.TrimSpace(message.Content)
+	if text == "" && len(message.Images) == 0 && len(message.Emojis) == 0 {
+		return nil
+	}
+	blocks := make([]*schema.ContentBlock, 0, 1+len(message.Images)+len(message.Emojis))
+	if text != "" {
+		blocks = append(blocks, schema.NewContentBlock(&schema.UserInputText{Text: text}))
+	}
+	appendPersistedMedia := func(items []maisaka.ImageComponent, sticker bool) {
+		for _, item := range items {
+			ref := strings.TrimSpace(item.MediaRef)
+			if ref == "" || strings.HasPrefix(strings.ToLower(ref), "data:") || isBase64PicturePayload(ref) {
+				continue
+			}
+			marker := ref
+			if !strings.HasPrefix(marker, maisaka.DeferredMediaMarkerPrefix) {
+				marker = maisaka.DeferredMediaMarkerPrefix + ref
+			}
+			mime := strings.TrimSpace(item.Format)
+			block := schema.NewContentBlock(&schema.UserInputImage{
+				Base64Data: marker,
+				MIMEType:   mime,
+			})
+			extra := map[string]any{mediaStickerKey: sticker}
+			if item.RecognitionHash != "" {
+				extra[imageRecognitionHashKey] = item.RecognitionHash
+			}
+			if item.Description != "" {
+				extra[mediaDescriptionKey] = item.Description
+			}
+			block.Extra = extra
+			blocks = append(blocks, block)
+		}
+	}
+	appendPersistedMedia(message.Images, false)
+	appendPersistedMedia(message.Emojis, true)
+	if len(blocks) == 0 {
+		return nil
+	}
+	extra := map[string]any{
+		"source":      maisaka.SourceGuidedReply,
+		"source_kind": maisaka.SourceGuidedReply,
+	}
+	for _, key := range []string{
+		"message_id", "sender_id", "sender_name", "nickname", "visible_text", "visible_body",
+		"reply_to", "quote_ids", "quote_sender", "quote_content",
+		"quote_sender_cardname", "quote_sender_nickname", "kind",
+	} {
+		if message.Metadata != nil {
+			if value, ok := message.Metadata[key]; ok {
+				extra[key] = value
+			}
+		}
+	}
+	if _, exists := extra["message_id"]; !exists && message.MessageID != "" {
+		extra["message_id"] = message.MessageID
+	}
+	if _, exists := extra["visible_text"]; !exists && message.VisibleText != "" {
+		extra["visible_text"] = message.VisibleText
+	}
+	if !message.Timestamp.IsZero() {
+		extra["timestamp_unix_ms"] = message.Timestamp.UnixMilli()
+	}
+	return &schema.AgenticMessage{
+		Role:          schema.AgenticRoleTypeUser,
+		ContentBlocks: blocks,
+		Extra:         extra,
+	}
+}
+
+const mediaDescriptionKey = "media_description"
+
 // agenticMessagesToMaisakaHistory 把会话装配结果转换为 Maisaka 内部历史
 // transcriptIDs 与 messages 等长同序，缺位按 0 处理
 func agenticMessagesToMaisakaHistory(messages []*schema.AgenticMessage, transcriptIDs []uint) []maisaka.ContextMessage {
@@ -482,10 +573,14 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 	if message == nil {
 		return nil, false
 	}
-	switch message.Role {
-	case schema.AgenticRoleTypeSystem:
+	sourceKind := extraString(message.Extra, "source_kind")
+	if sourceKind == "" {
+		sourceKind = extraString(message.Extra, "source")
+	}
+	switch {
+	case message.Role == schema.AgenticRoleTypeSystem:
 		return nil, false
-	case schema.AgenticRoleTypeAssistant:
+	case message.Role == schema.AgenticRoleTypeAssistant && sourceKind != maisaka.SourceGuidedReply:
 		// 模型输出不计入真实聊天条数，对齐 Python ModelOutputContextMessage
 		out := maisaka.ContextMessage{Role: maisaka.RoleAssistant, TranscriptID: transcriptID}
 		for _, block := range message.ContentBlocks {
@@ -541,6 +636,9 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 			if block.UserInputText != nil {
 				textParts = append(textParts, block.UserInputText.Text)
 			}
+			if block.AssistantGenText != nil && sourceKind == maisaka.SourceGuidedReply {
+				textParts = append(textParts, block.AssistantGenText.Text)
+			}
 			if block.UserInputImage != nil {
 				image := block.UserInputImage
 				hash := strings.TrimSpace(image.Base64Data)
@@ -549,8 +647,9 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 				}
 				if hash != "" {
 					recognitionHash, _ := block.Extra[imageRecognitionHashKey].(string)
+					description, _ := block.Extra[mediaDescriptionKey].(string)
 					component := maisaka.ImageComponent{
-						MediaRef: hash, Format: strings.TrimSpace(image.MIMEType), RecognitionHash: recognitionHash,
+						MediaRef: hash, Format: strings.TrimSpace(image.MIMEType), RecognitionHash: recognitionHash, Description: description,
 					}
 					if sticker, _ := block.Extra[mediaStickerKey].(bool); sticker {
 						emojis = append(emojis, component)
@@ -562,11 +661,25 @@ func agenticMessageToMaisaka(message *schema.AgenticMessage, transcriptID uint) 
 		}
 		text := strings.TrimSpace(strings.Join(textParts, "\n"))
 		if text != "" || len(images) > 0 || len(emojis) > 0 {
+			resolvedSource := maisaka.SourceUser
+			countInContext := true
+			extraKind := extraString(message.Extra, "kind")
+			switch {
+			case sourceKind == maisaka.SourceGuidedReply:
+				resolvedSource = maisaka.SourceGuidedReply
+			case sourceKind != "" && sourceKind != maisaka.SourceUser:
+				resolvedSource = sourceKind
+				countInContext = false
+			case extraKind != "" && extraKind != "image" && extraKind != "emoji":
+				resolvedSource = extraKind
+				countInContext = false
+			}
 			convertedMessage := maisaka.ContextMessage{
 				Role:           maisaka.RoleUser,
 				Content:        text,
-				Source:         maisaka.SourceUser,
-				CountInContext: true,
+				VisibleText:    extraString(message.Extra, "visible_text"),
+				Source:         resolvedSource,
+				CountInContext: countInContext,
 				Metadata:       sessionExtraMetadata(message.Extra),
 				Images:         images,
 				Emojis:         emojis,
@@ -600,15 +713,30 @@ func sessionExtraMetadata(extra map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(extra))
-	for _, key := range []string{"message_id", "sender_name", "sender_cardname", "nickname", "platform", "is_mentioned", "is_notify", "bot_platform_nickname", "quote_ids", "reply_to", "quote_sender", "quote_content"} {
+	for _, key := range []string{
+		"source_kind", "visible_body", "message_id", "sender_name", "sender_cardname", "nickname",
+		"platform", "is_mentioned", "is_notify", "bot_platform_nickname",
+		"quote_ids", "reply_to", "quote_sender", "quote_content",
+		"quote_sender_cardname", "quote_sender_nickname",
+	} {
 		if value, ok := extra[key]; ok {
 			out[key] = value
 		}
 	}
 	if raw, ok := extraInt64(extra, "sender_id"); ok {
 		out["sender_id"] = strconv.FormatInt(raw, 10)
+	} else if raw := extraString(extra, "sender_id"); raw != "" {
+		out["sender_id"] = raw
 	}
 	return out
+}
+
+func extraString(extra map[string]any, key string) string {
+	if len(extra) == 0 {
+		return ""
+	}
+	raw, _ := extra[key].(string)
+	return strings.TrimSpace(raw)
 }
 
 func extraInt64(extra map[string]any, key string) (int64, bool) {

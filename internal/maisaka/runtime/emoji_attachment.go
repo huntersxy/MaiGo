@@ -8,12 +8,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
+	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/emoji_system"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
+	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"go.uber.org/zap"
 )
@@ -272,14 +276,78 @@ func (a *Agent) sendEmojiAttachment(ctx context.Context, kind string, targetID i
 	if cleanup {
 		defer os.Remove(path)
 	}
-	messageID, _, err = a.sendConversationImage(ctx, kind, targetID, path, true, tools.ReplyAnchorFromContext(ctx))
+	now := time.Now()
+	out := &outboundMessage{
+		Kind:        kind,
+		TargetID:    targetID,
+		ImageFile:   path,
+		IsSticker:   true,
+		ReplyAnchor: tools.ReplyAnchorFromContext(ctx),
+	}
+	var (
+		seq  uint64
+		sent bool
+	)
+	messageID, seq, sent, err = a.sendOutbound(ctx, out)
 	if err != nil {
 		return err
+	}
+	if !sent {
+		return nil
 	}
 	if hash := strings.TrimSpace(attachment.Hash); hash != "" {
 		if _, err := emojisystem.DefaultRegistry().RecordUsageByHash(ctx, hash); err != nil {
 			zap.L().Warn("记录表情包使用次数失败", zap.String("emoji_hash", hash), zap.Error(err))
 		}
 	}
+	imageURL := emojiAttachmentDataURL(attachment, path)
+	conversation := &onebot.ConversationMessage{
+		Platform:          a.conversationPlatform(kind, targetID),
+		ConversationKind:  kind,
+		MessageID:         messageID,
+		ExternalMessageID: out.ExternalMessageID,
+		TargetID:          targetID,
+		UserID:            a.SelfID(),
+		Nickname:          a.botName(),
+		MessageParts:      []onebot.MessagePart{{Kind: "image", Index: 0}},
+		Images:            []onebot.ImageInfo{{URL: imageURL, File: path, SubType: 1, Desc: attachment.Content}},
+		Time:              now,
+		ArrivalSeq:        seq,
+	}
+	if kind == memory.ConversationKindPrivate {
+		conversation.ReceivedAt = now
+	}
+	a.processConversationMessage(ctx, conversation, true)
+	if session := a.sessions.get(kind, targetID); session != nil {
+		historyMsgID := messageID
+		if historyMsgID == 0 && out.ExternalMessageID != "" {
+			if parsed, parseErr := strconv.ParseInt(out.ExternalMessageID, 10, 64); parseErr == nil {
+				historyMsgID = parsed
+			}
+		}
+		mediaRef := imageURL
+		if !cleanup && path != "" {
+			mediaRef = maisaka.DeferredMediaMarkerPrefix + path
+		}
+		component := maisaka.ImageComponent{
+			MediaRef:    mediaRef,
+			Description: strings.TrimSpace(attachment.Content),
+			HasBinary:   len(attachment.Binary) > 0 || mediaRef != "",
+		}
+		session.appendSentEmojiToHistory(historyMsgID, component, now, a.botName())
+	}
 	return nil
+}
+
+func emojiAttachmentDataURL(attachment tools.EmojiAttachment, path string) string {
+	raw := attachment.Binary
+	if len(raw) == 0 && path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			raw = data
+		}
+	}
+	if len(raw) == 0 {
+		return ""
+	}
+	return onebot.ImageDataURL(base64.StdEncoding.EncodeToString(raw))
 }

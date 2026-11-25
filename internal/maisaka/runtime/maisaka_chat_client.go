@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -478,19 +479,21 @@ func replyerHistoryMessages(history []maisaka.ContextMessage) []replyer.ChatMess
 				sourceKind = "assistant"
 			}
 		}
+		parts := replyerMessageParts(message)
+		renderedContent := replyerRenderedContent(message, parts)
 		out = append(out, replyer.ChatMessage{
 			Role:        role,
 			MessageID:   message.MessageID,
 			IsNotify:    message.MetadataBool("is_notify"),
 			SourceKind:  sourceKind,
-			IsBotSelf:   message.Role == maisaka.RoleAssistant,
+			IsBotSelf:   message.Role == maisaka.RoleAssistant || message.Source == maisaka.SourceGuidedReply,
 			SenderName:  firstNonEmptyString(message.MetadataString("sender_name"), message.MetadataString("nickname"), message.UserID),
 			SenderID:    message.UserID,
 			Platform:    message.Platform,
 			Timestamp:   message.Timestamp,
-			Content:     replyerHistoryContent(message),
+			Content:     renderedContent,
 			VisibleText: strings.TrimSpace(message.VisibleText),
-			Parts:       replyerMessageParts(message),
+			Parts:       parts,
 			Images:      replyerMessageImages(message),
 			Quotes:      replyerQuotes(message),
 		})
@@ -498,19 +501,66 @@ func replyerHistoryMessages(history []maisaka.ContextMessage) []replyer.ChatMess
 	return out
 }
 
-// replyerHistoryContent 返回 replyer 使用的正文
-//
-// 对齐 Python replyer：guided_reply 取 visible_text 去掉说话人前缀后的正文，
-// 避免把 Planner 前缀与 [时间][昵称] 一起送进提示词。
+var (
+	replyerPlannerTagPattern = regexp.MustCompile(`(?is)^(?:.*?\n)?<message\b[^>]*>\s*`)
+	replyerMediaTokenPattern = regexp.MustCompile(`\[(图片|表情包)(?::[0-9a-fA-F]{6,12}(?:\(已收藏\))?)?\]`)
+)
+
+// replyerHistoryContent 返回 replyer 使用的纯净正文：
+// 优先取无回复前导的 visible_body / visible_text，回退时剥离 Planner <message ...> 与内联引用前导。
 func replyerHistoryContent(message maisaka.ContextMessage) string {
-	if message.Source == maisaka.SourceGuidedReply {
-		if visible := strings.TrimSpace(message.VisibleText); visible != "" {
-			if _, body := maisakactx.ParseSpeakerContent(visible); strings.TrimSpace(body) != "" {
-				return strings.TrimSpace(body)
+	if body := strings.TrimSpace(message.MetadataString("visible_body")); body != "" {
+		return stripInlineReplyMarker(body, message.MetadataString("quote_content"))
+	}
+	if visible := strings.TrimSpace(message.VisibleText); visible != "" {
+		if _, body := maisakactx.ParseSpeakerContent(visible); strings.TrimSpace(body) != "" {
+			return stripInlineReplyMarker(strings.TrimSpace(body), message.MetadataString("quote_content"))
+		}
+	}
+	content := strings.TrimSpace(message.Content)
+	if strings.Contains(strings.ToLower(content), "<message") {
+		content = strings.TrimSpace(replyerPlannerTagPattern.ReplaceAllString(content, ""))
+	}
+	return stripInlineReplyMarker(content, message.MetadataString("quote_content"))
+}
+
+func stripInlineReplyMarker(body, quoteContent string) string {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "[回复了一条消息，但原消息已无法访问]") {
+		return strings.TrimSpace(strings.TrimPrefix(trimmed, "[回复了一条消息，但原消息已无法访问]"))
+	}
+	if strings.HasPrefix(trimmed, "[回复了一条作者未核验的消息: ") || strings.HasPrefix(trimmed, "[回复了") {
+		if quote := strings.TrimSpace(quoteContent); quote != "" {
+			if idx := strings.Index(trimmed, ": "+quote+"]"); idx >= 0 {
+				return strings.TrimSpace(trimmed[idx+len(": "+quote+"]"):])
 			}
 		}
 	}
-	return message.Content
+	return trimmed
+}
+
+func replyerRenderedContent(message maisaka.ContextMessage, parts []replyer.MessagePart) string {
+	if len(message.Images) == 0 && len(message.Emojis) == 0 {
+		return replyerHistoryContent(message)
+	}
+	// 带媒体消息优先按结构化 Parts 渲染，避免在非视觉模式留下 [图片:hash]
+	rendered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch part.Kind {
+		case replyer.PartText:
+			if trimmed := strings.TrimSpace(part.Text); trimmed != "" {
+				rendered = append(rendered, trimmed)
+			}
+		case replyer.PartImage:
+			rendered = append(rendered, firstNonEmptyString(strings.TrimSpace(part.Description), "[图片，识别中.....]"))
+		case replyer.PartEmoji:
+			rendered = append(rendered, firstNonEmptyString(strings.TrimSpace(part.Description), "[表情包]"))
+		}
+	}
+	return strings.TrimSpace(strings.Join(rendered, " "))
 }
 
 // replyerHistoryMessageAllowed 对齐 _is_replyer_filtered_history_message：
@@ -530,11 +580,15 @@ func replyerHistoryMessageAllowed(message maisaka.ContextMessage) bool {
 	}
 }
 
-// replyerMessageParts 保留消息内文本与图片的相对顺序；文本在前、图片按上下文顺序追加
+// replyerMessageParts 保留文本在前、媒体在后的顺序，同时剔除正文中的原始 [图片:hash]/[表情包:hash] 占位避免视觉模式下重复。
 func replyerMessageParts(message maisaka.ContextMessage) []replyer.MessagePart {
+	body := replyerHistoryContent(message)
+	if len(message.Images) > 0 || len(message.Emojis) > 0 {
+		body = strings.TrimSpace(replyerMediaTokenPattern.ReplaceAllString(body, ""))
+	}
 	parts := make([]replyer.MessagePart, 0, len(message.Images)+len(message.Emojis)+1)
-	if text := replyerHistoryContent(message); strings.TrimSpace(text) != "" {
-		parts = append(parts, replyer.MessagePart{Kind: replyer.PartText, Text: text})
+	if body != "" {
+		parts = append(parts, replyer.MessagePart{Kind: replyer.PartText, Text: body})
 	}
 	for _, image := range message.Images {
 		parts = append(parts, replyerMediaPart(replyer.PartImage, image))
@@ -685,14 +739,15 @@ func replyerTarget(target *maisaka.ContextMessage) *replyer.ReplyTarget {
 	if target == nil {
 		return nil
 	}
+	parts := replyerMessageParts(*target)
 	return &replyer.ReplyTarget{
 		MessageID:  target.MessageID,
 		SenderName: firstNonEmptyString(target.MetadataString("sender_name"), target.MetadataString("nickname"), target.UserID),
 		SenderID:   target.UserID,
 		Platform:   target.Platform,
-		Content:    target.Content,
-		IsBotSelf:  target.Role == maisaka.RoleAssistant,
-		Parts:      replyerMessageParts(*target),
+		Content:    replyerRenderedContent(*target, parts),
+		IsBotSelf:  target.Role == maisaka.RoleAssistant || target.Source == maisaka.SourceGuidedReply,
+		Parts:      parts,
 		Images:     replyerMessageImages(*target),
 		Quotes:     replyerQuotes(*target),
 	}

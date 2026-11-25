@@ -308,10 +308,11 @@ func (a *Agent) doSendImageURL(ctx context.Context, groupID int64, imageURL stri
 	}
 	imageURL = out.ImageFile
 	a.HandleMessage(ctx, &onebot.ConversationMessage{
-		Platform:         a.conversationPlatform(memory.ConversationKindGroup, groupID),
-		ConversationKind: memory.ConversationKindGroup,
-		MessageID:        msgID,
-		TargetID:         groupID,
+		Platform:          a.conversationPlatform(memory.ConversationKindGroup, groupID),
+		ConversationKind:  memory.ConversationKindGroup,
+		MessageID:         msgID,
+		ExternalMessageID: out.ExternalMessageID,
+		TargetID:          groupID,
 		UserID:           a.SelfID(),
 		Nickname:         a.botName(),
 		MessageParts:     []onebot.MessagePart{{Kind: "image", Index: 0}},

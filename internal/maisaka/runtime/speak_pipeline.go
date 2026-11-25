@@ -107,6 +107,7 @@ func (a *Agent) speakHooks(ctx context.Context, send speakSender, abortOnFailure
 		msg.Storage = out.Storage
 		msg.ShowLog = out.ShowLog
 		msg.MessageID = messageID
+		msg.ExternalMessageID = out.ExternalMessageID
 		return messageID, arrivalSeq, sent, err
 	}
 	hooks.BroadcastTyping = func(callCtx context.Context, kind replyer.SendKind, targetID int64, typing, start bool) {
@@ -135,22 +136,26 @@ func (a *Agent) afterSpeakSegment(ctx context.Context, msg *replyer.OutboundMess
 	parts = append(parts, onebot.MessagePart{Kind: "text", Text: msg.Text})
 
 	conversation := &onebot.ConversationMessage{
-		Platform:         a.conversationPlatform(kind, msg.TargetID),
-		ConversationKind: kind,
-		MessageID:        msg.MessageID,
-		TargetID:         msg.TargetID,
-		UserID:           a.SelfID(),
-		Nickname:         a.botName(),
-		Content:          msg.Text,
-		MessageParts:     parts,
-		Time:             at,
-		ArrivalSeq:       arrivalSeq,
+		Platform:          a.conversationPlatform(kind, msg.TargetID),
+		ConversationKind:  kind,
+		MessageID:         msg.MessageID,
+		ExternalMessageID: msg.ExternalMessageID,
+		TargetID:          msg.TargetID,
+		UserID:            a.SelfID(),
+		Nickname:          a.botName(),
+		Content:           msg.Text,
+		MessageParts:      parts,
+		Time:              at,
+		ArrivalSeq:        arrivalSeq,
 	}
 	if kind == memory.ConversationKindPrivate {
 		conversation.ReceivedAt = at
 	}
 	if msg.ReplyTo != 0 {
-		conversation.Reply = &onebot.ReplyInfo{MessageID: msg.ReplyTo}
+		conversation.Reply = &onebot.ReplyInfo{
+			MessageID:         msg.ReplyTo,
+			ExternalMessageID: a.externalIdentityFor(kind, msg.TargetID, "reply", msg.ReplyTo),
+		}
 	}
 	a.recordQuoteOutbound(ctx, kind, msg.TargetID, msg.MessageID, a.SelfID(), conversation.Time)
 	if len(msg.Mentions) > 0 {
@@ -169,7 +174,7 @@ func (a *Agent) afterSpeakSegment(ctx context.Context, msg *replyer.OutboundMess
 	}
 	// 对齐 Python reply 工具：已发送的可见回复以 guided_reply 写入 Maisaka 历史
 	if session := a.sessions.get(kind, msg.TargetID); session != nil {
-		session.appendGuidedReplyToHistory(msg.MessageID, msg.ReplyTo, msg.Text, conversation.Time, a.botName())
+		session.appendGuidedReplyToHistory(msg.MessageID, msg.ExternalMessageID, msg.ReplyTo, msg.Text, conversation.Time, a.botName(), a.SelfID())
 	}
 }
 

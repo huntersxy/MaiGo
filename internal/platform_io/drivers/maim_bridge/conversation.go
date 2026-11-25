@@ -299,11 +299,11 @@ func messagePartsFromSegments(segments []platformio.Segment) inboundMessageParts
 			if part.AtUserID != 0 {
 				out.AtList = append(out.AtList, part.AtUserID)
 				out.ExternalAtList = append(out.ExternalAtList, external)
-				name := external
-				if seg.Extra != nil && strings.TrimSpace(seg.Extra["name"]) != "" {
-					name = strings.TrimSpace(seg.Extra["name"])
+				if seg.Extra != nil {
+					if name := strings.TrimSpace(seg.Extra["name"]); name != "" && name != external {
+						out.AtNames[part.AtUserID] = name
+					}
 				}
-				out.AtNames[part.AtUserID] = name
 			}
 		case platformio.SegmentReply:
 			part.Kind = "reply"
@@ -316,8 +316,12 @@ func messagePartsFromSegments(segments []platformio.Segment) inboundMessageParts
 			part.Text = externalID
 			if externalID != "" && out.Reply == nil {
 				reply := &onebot.ReplyInfo{
-					MessageID:         onebot.SyntheticIdentityID("reply", externalID),
 					ExternalMessageID: externalID,
+				}
+				if uid, ok := parseNumericID(externalID); ok {
+					reply.MessageID = uid
+				} else {
+					reply.MessageID = onebot.SyntheticIdentityID("reply", externalID)
 				}
 				if seg.Extra != nil {
 					reply.Content = strings.TrimSpace(seg.Extra["target_message_content"])

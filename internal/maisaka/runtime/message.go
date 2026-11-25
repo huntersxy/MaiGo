@@ -180,6 +180,16 @@ func (a *Agent) resolveReplyInfo(ctx context.Context, msg *onebot.ConversationMe
 			}
 		}
 	}
+	if externalID := strings.TrimSpace(msg.Reply.ExternalMessageID); externalID != "" {
+		if numericID, err := strconv.ParseInt(externalID, 10, 64); err == nil && numericID != 0 && numericID != msg.Reply.MessageID {
+			if log, err := a.memory.WithContext(ctx).GetMessageLogByScope(msg.ConversationKind, msg.TargetID, numericID); err == nil {
+				if reply := replyInfoFromMessageLog(log); reply != nil {
+					msg.Reply = reply
+					return nil
+				}
+			}
+		}
+	}
 	// 本地查不到时保留原始引用 ID，由 Platform IO 引用段或前端按 ID 展示
 	return nil
 }

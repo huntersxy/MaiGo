@@ -149,7 +149,7 @@ func (a *Agent) doPrivateSticker(ctx context.Context, targetID int64, fileName s
 		zap.L().Info("私聊表情包发送被 Hook 中止", zap.Int64("target_id", targetID))
 		return nil
 	}
-	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{SubType: 1, Desc: description}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
+	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, ExternalMessageID: out.ExternalMessageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{SubType: 1, Desc: description}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
 	return nil
 }
 
@@ -169,7 +169,7 @@ func (a *Agent) doPrivateImage(ctx context.Context, targetID int64, imageURL str
 		return nil
 	}
 	imageURL = out.ImageFile
-	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{URL: imageURL}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
+	a.HandleMessage(ctx, &onebot.ConversationMessage{Platform: a.conversationPlatform(memory.ConversationKindPrivate, targetID), ConversationKind: memory.ConversationKindPrivate, MessageID: messageID, ExternalMessageID: out.ExternalMessageID, TargetID: targetID, UserID: a.SelfID(), Nickname: a.botName(), Images: []onebot.ImageInfo{{URL: imageURL}}, MessageParts: []onebot.MessagePart{{Kind: "image", Index: 0}}, Time: time.Now(), ReceivedAt: time.Now(), ArrivalSeq: seq})
 	// 对齐 Python reply attach_pic：已发送图片作为独立 guided_reply 条目进入历史并调度识图
 	if session := a.sessions.get(memory.ConversationKindPrivate, targetID); session != nil {
 		imageComponent := maisaka.ImageComponent{MediaRef: imageURL}

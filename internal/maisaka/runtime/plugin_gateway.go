@@ -261,11 +261,15 @@ func pluginGatewayParts(message map[string]any) (
 			part.Text = externalID
 			if externalID != "" && reply == nil {
 				reply = &onebot.ReplyInfo{
-					MessageID:         onebot.SyntheticIdentityID("reply", externalID),
 					ExternalMessageID: externalID,
 					Content:           pluginGatewayDataString(data, "target_message_content", "content"),
 					Nickname:          pluginGatewayDataString(data, "target_message_sender_nickname", "nickname"),
 					GroupCard:         pluginGatewayDataString(data, "target_message_sender_cardname", "cardname"),
+				}
+				if numeric, err := strconv.ParseInt(externalID, 10, 64); err == nil && numeric > 0 {
+					reply.MessageID = numeric
+				} else {
+					reply.MessageID = onebot.SyntheticIdentityID("reply", externalID)
 				}
 				if sender := pluginGatewayDataString(data, "target_message_sender_id", "sender_id"); sender != "" {
 					reply.ExternalSenderID = sender

@@ -9,6 +9,7 @@ import (
 
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/maisaka"
+	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/platform_io/drivers/onebot"
 
 	"github.com/bytedance/sonic"
@@ -265,11 +266,13 @@ func (a *Agent) fillSeenFromLogs(session *Session, logs []memory.MessageLog, use
 	if session == nil || len(logs) == 0 {
 		return
 	}
+	sessionID, sessionName, includeChatID := a.plannerSessionInfo(session)
+	botName := a.botName()
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	for _, log := range logs {
 		if log.UserID == selfID {
-			payload := assistantHistoryMessage(log)
+			payload := a.assistantHistoryMessage(log, botName, sessionID, sessionName, includeChatID)
 			if payload == nil {
 				continue
 			}
@@ -293,11 +296,15 @@ func (a *Agent) restoreSession(kind string, targetID int64, logs []memory.Messag
 	seeds := make([]memory.TranscriptSeed, 0, len(logs))
 	users := map[uint]*sessionUser{}
 	selfID := a.SelfID()
+	botName := a.botName()
 	sessionID, sessionName, includeChatID := a.plannerSessionInfo(session)
 	for _, log := range logs {
 		var payloadMessage *schema.AgenticMessage
 		if log.UserID == selfID {
-			payloadMessage = assistantHistoryMessage(log)
+			payloadMessage = a.assistantHistoryMessage(log, botName, sessionID, sessionName, includeChatID)
+			if payloadMessage == nil {
+				continue
+			}
 		} else {
 			msg := a.conversationMessageFromLog(log)
 			payloadMessage = msgToPayloadWithSession(msg, sessionID, sessionName, includeChatID)
@@ -370,12 +377,76 @@ func trimRestoreMessages(logs []memory.MessageLog, limit int) []memory.MessageLo
 	return logs[len(logs)-limit:]
 }
 
-func assistantHistoryMessage(log memory.MessageLog) *schema.AgenticMessage {
-	text := strings.TrimSpace(log.ProcessedPlainText)
-	if text == "" {
-		text = strings.TrimSpace(log.ProcessedPlainText)
+func (a *Agent) assistantHistoryMessage(log memory.MessageLog, botName, sessionID, sessionName string, includeChatID bool) *schema.AgenticMessage {
+	body := strings.TrimSpace(log.ProcessedPlainText)
+	if body == "" && len(log.MediaRefs) > 0 {
+		if log.IsEmoji {
+			body = "[表情包]"
+		} else {
+			body = "[图片]"
+		}
 	}
-	return &schema.AgenticMessage{Role: schema.AgenticRoleTypeAssistant, ContentBlocks: []*schema.ContentBlock{{Type: schema.ContentBlockTypeAssistantGenText, AssistantGenText: &schema.AssistantGenText{Text: text}}}}
+	if body == "" {
+		return nil
+	}
+	speaker := strings.TrimSpace(firstNonEmptyString(log.UserCardname, log.UserNickname, botName, strconv.FormatInt(log.UserID, 10)))
+	messageID := strings.TrimSpace(log.ExternalMessageID)
+	if messageID == "" && log.MessageID != 0 {
+		messageID = strconv.FormatInt(log.MessageID, 10)
+	}
+	var quoteIDs []string
+	var quoteSender, quoteContent string
+	if log.ReplyTo != nil && *log.ReplyTo != 0 {
+		quoteID := strconv.FormatInt(*log.ReplyTo, 10)
+		quoteIDs = []string{quoteID}
+		if a != nil && a.memory != nil {
+			if replyLog, err := a.memory.WithContext(a.ctx).GetMessageLogByScope(log.ConversationKind, log.TargetID, *log.ReplyTo); err == nil && replyLog != nil {
+				quoteSender = firstNonEmptyString(strings.TrimSpace(replyLog.UserCardname), strings.TrimSpace(replyLog.UserNickname), strconv.FormatInt(replyLog.UserID, 10))
+				quoteContent = strings.TrimSpace(replyLog.ProcessedPlainText)
+				if ext := strings.TrimSpace(replyLog.ExternalMessageID); ext != "" {
+					quoteID = ext
+					quoteIDs = []string{ext}
+				}
+			}
+		}
+	}
+	prefix := maisakactx.BuildPlannerPrefix(maisakactx.PlannerPrefixInput{
+		Timestamp:        log.Timestamp,
+		UserName:         speaker,
+		GroupCard:        strings.TrimSpace(log.UserCardname),
+		MessageID:        messageID,
+		ChatID:           sessionID,
+		ChatName:         sessionName,
+		QuoteIDs:         quoteIDs,
+		IncludeMessageID: messageID != "",
+		IncludeChatID:    includeChatID,
+		IsSelfMessage:    true,
+	})
+	visibleText := maisakactx.FormatSpeakerContent(speaker, body, &log.Timestamp, messageID)
+	msg := schema.UserAgenticMessage(prefix + body)
+	extra := map[string]any{
+		"source":            maisaka.SourceGuidedReply,
+		"source_kind":       maisaka.SourceGuidedReply,
+		"message_id":        messageID,
+		"sender_id":         log.UserID,
+		"sender_name":       speaker,
+		"nickname":          speaker,
+		"visible_text":      visibleText,
+		"visible_body":      body,
+		"timestamp_unix_ms": log.Timestamp.UnixMilli(),
+	}
+	if len(quoteIDs) > 0 {
+		extra["reply_to"] = quoteIDs[0]
+		extra["quote_ids"] = quoteIDs
+	}
+	if quoteSender != "" {
+		extra["quote_sender"] = quoteSender
+	}
+	if quoteContent != "" {
+		extra["quote_content"] = quoteContent
+	}
+	msg.Extra = extra
+	return attachDeferredMediaBlocks(msg, log.MediaRefs)
 }
 
 func msgToPayload(msg *onebot.ConversationMessage) *schema.AgenticMessage {
@@ -389,23 +460,32 @@ func msgToPayloadWithSession(msg *onebot.ConversationMessage, sessionID, session
 	if msg == nil {
 		return nil
 	}
-	body := strings.TrimSpace(msg.FinalContent)
-	if body == "" {
-		body = strings.TrimSpace(msg.Content)
+	rawBody := strings.TrimSpace(msg.FinalContent)
+	if rawBody == "" {
+		rawBody = strings.TrimSpace(msg.Content)
 	}
+	cleanBody := stripReplyMarkerFromBody(msg, rawBody)
 	messageID := strconv.FormatInt(msg.MessageID, 10)
 	if msg.MessageID == 0 {
 		if noticeID := onebot.NoticeIDFromMessage(msg); noticeID != "" {
 			messageID = noticeID
 		}
 	}
+	speaker := firstNonEmptyString(strings.TrimSpace(msg.GroupCard), strings.TrimSpace(msg.Nickname), strconv.FormatInt(msg.UserID, 10))
+	visibleText := ""
+	if !msg.IsNotify && cleanBody != "" {
+		visibleText = maisakactx.FormatSpeakerContent(speaker, cleanBody, &msg.Time, messageID)
+	}
 	prefix := plannerPrefixForMessage(msg, sessionID, sessionName, includeChatID, false)
-	message := schema.UserAgenticMessage(prefix + body)
+	message := schema.UserAgenticMessage(prefix + cleanBody)
 	message.Extra = map[string]any{
+		"source_kind":         maisaka.SourceUser,
 		"message_id":          messageID,
 		"sender_id":           msg.UserID,
 		"sender_name":         msg.Nickname,
 		"nickname":            msg.Nickname,
+		"visible_text":        visibleText,
+		"visible_body":        cleanBody,
 		"timestamp_unix_ms":   msg.Time.UnixMilli(),
 		"received_at_unix_ms": msg.ReceivedAt.UnixMilli(),
 		"is_mentioned":        msg.IsMentioned,

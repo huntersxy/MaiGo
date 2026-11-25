@@ -11,7 +11,9 @@ import (
 	"go.uber.org/zap"
 
 	"MaiGo/internal/chat/heart_flow"
+	messagereceive "MaiGo/internal/chat/message_receive"
 	"MaiGo/internal/chat/session"
+	"MaiGo/internal/common/data_models/messagecomponent"
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/maisaka"
 	maisaruntime "MaiGo/internal/maisaka/runtime"
@@ -188,6 +190,9 @@ func (r *chatDispatchRuntime) RegisterMessage(ctx context.Context, message maisa
 	if source == nil {
 		return nil
 	}
+	if resolved, ok := message.Metadata[heartflow.MetadataHostSource].(*messagereceive.SessionMessage); ok && resolved != nil {
+		syncResolvedInboundFields(source, resolved)
+	}
 	if r.provider.onDelivered != nil {
 		r.provider.onDelivered(key)
 	}
@@ -196,6 +201,95 @@ func (r *chatDispatchRuntime) RegisterMessage(ctx context.Context, message maisa
 	}
 	r.provider.scheduleAttach(r.sessionID)
 	return nil
+}
+
+// syncResolvedInboundFields 将统一接收链已经解析好的引用原文和 @ 显示名同步回宿主消息，避免下游重复查找失败。
+func syncResolvedInboundFields(source *onebot.ConversationMessage, resolved *messagereceive.SessionMessage) {
+	if source == nil || resolved == nil || resolved.RawMessage == nil {
+		return
+	}
+	for _, component := range resolved.RawMessage.Components {
+		switch item := component.(type) {
+		case messagecomponent.ReplyComponent:
+			applyResolvedReplyComponent(source, item)
+		case *messagecomponent.ReplyComponent:
+			if item != nil {
+				applyResolvedReplyComponent(source, *item)
+			}
+		case messagecomponent.AtComponent:
+			applyResolvedAtComponent(source, item)
+		case *messagecomponent.AtComponent:
+			if item != nil {
+				applyResolvedAtComponent(source, *item)
+			}
+		}
+	}
+}
+
+func applyResolvedReplyComponent(source *onebot.ConversationMessage, item messagecomponent.ReplyComponent) {
+	if item.TargetContent == nil || strings.TrimSpace(*item.TargetContent) == "" {
+		return
+	}
+	if source.Reply == nil {
+		externalID := strings.TrimSpace(item.TargetMessageID)
+		if externalID == "" {
+			return
+		}
+		reply := &onebot.ReplyInfo{ExternalMessageID: externalID}
+		if numeric, err := strconv.ParseInt(externalID, 10, 64); err == nil && numeric > 0 {
+			reply.MessageID = numeric
+		} else {
+			reply.MessageID = onebot.SyntheticIdentityID("reply", externalID)
+		}
+		source.Reply = reply
+	}
+	if strings.TrimSpace(source.Reply.Content) == "" {
+		source.Reply.Content = strings.TrimSpace(*item.TargetContent)
+	}
+	if item.SenderID != nil && strings.TrimSpace(*item.SenderID) != "" {
+		sender := strings.TrimSpace(*item.SenderID)
+		if source.Reply.ExternalSenderID == "" {
+			source.Reply.ExternalSenderID = sender
+		}
+		if source.Reply.SenderID == 0 {
+			if numeric, err := strconv.ParseInt(sender, 10, 64); err == nil && numeric > 0 {
+				source.Reply.SenderID = numeric
+			}
+		}
+	}
+	if item.SenderNickname != nil && strings.TrimSpace(*item.SenderNickname) != "" && strings.TrimSpace(source.Reply.Nickname) == "" {
+		source.Reply.Nickname = strings.TrimSpace(*item.SenderNickname)
+	}
+	if item.SenderCardname != nil && strings.TrimSpace(*item.SenderCardname) != "" && strings.TrimSpace(source.Reply.GroupCard) == "" {
+		source.Reply.GroupCard = strings.TrimSpace(*item.SenderCardname)
+	}
+}
+
+func applyResolvedAtComponent(source *onebot.ConversationMessage, item messagecomponent.AtComponent) {
+	targetID := strings.TrimSpace(item.TargetUserID)
+	if targetID == "" {
+		return
+	}
+	numeric, err := strconv.ParseInt(targetID, 10, 64)
+	if err != nil || numeric <= 0 {
+		return
+	}
+	display := ""
+	if item.Cardname != nil && strings.TrimSpace(*item.Cardname) != "" {
+		display = strings.TrimSpace(*item.Cardname)
+	} else if item.Nickname != nil && strings.TrimSpace(*item.Nickname) != "" {
+		display = strings.TrimSpace(*item.Nickname)
+	}
+	if display == "" || display == targetID {
+		return
+	}
+	if source.AtNames == nil {
+		source.AtNames = map[int64]string{}
+	}
+	existing := strings.TrimSpace(source.AtNames[numeric])
+	if existing == "" || existing == targetID {
+		source.AtNames[numeric] = display
+	}
 }
 
 func (r *chatDispatchRuntime) AdjustTalkFrequency(frequency float64) {

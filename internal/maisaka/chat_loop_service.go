@@ -667,6 +667,7 @@ func (s *ChatLoopService) SelectLLMContextMessages(chatHistory []ContextMessage,
 	}
 	// 重启后 transcript 可能残留「工具未执行」的孤儿结果，首次装配就要清掉
 	selected = dropOrphanToolResultPrefix(selected)
+	selected = normalizeLoopToolResultOrder(selected)
 	selectedCount := 0
 	toolCount := 0
 	for _, message := range selected {
@@ -1195,4 +1196,46 @@ func trimUngroundedLeadingToolCalls(items []ContextItem) []ContextItem {
 		return items
 	}
 	return items[index:]
+}
+
+func normalizeLoopToolResultOrder(history []ContextMessage) []ContextMessage {
+	if len(history) == 0 {
+		return history
+	}
+	consumed := make(map[int]struct{})
+	normalized := make([]ContextMessage, 0, len(history))
+	for i := 0; i < len(history); i++ {
+		if _, skip := consumed[i]; skip {
+			continue
+		}
+		if history[i].Role != RoleAssistant {
+			normalized = append(normalized, history[i])
+			continue
+		}
+		var calls []ToolCall
+		for j := i; j < len(history) && history[j].Role == RoleAssistant; j++ {
+			if _, skip := consumed[j]; skip {
+				continue
+			}
+			consumed[j] = struct{}{}
+			normalized = append(normalized, history[j])
+			calls = append(calls, history[j].ToolCalls...)
+		}
+		for _, call := range calls {
+			if call.CallID == "" {
+				continue
+			}
+			for k := i + 1; k < len(history); k++ {
+				if _, skip := consumed[k]; skip {
+					continue
+				}
+				if history[k].Role == RoleTool && history[k].ToolCallID == call.CallID {
+					consumed[k] = struct{}{}
+					normalized = append(normalized, history[k])
+					break
+				}
+			}
+		}
+	}
+	return normalized
 }

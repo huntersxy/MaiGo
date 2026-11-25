@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -28,9 +29,8 @@ func (s *Session) replyTargetMemory() *chatsession.ReplyTargetMemory {
 //
 // 对齐 Python send_service._sync_sent_message_to_maisaka_history +
 // maisaka/runtime.py::append_sent_message_to_chat_history(source_kind="guided_reply")：
-// 历史条目需要 Planner 前缀（msg_id/quote/time/user/is_self_message）与带说话人的
-// visible_text 两个字段；只有写入历史后，_find_recent_reply_to_target 才能反查到重复回复的目标正文。
-func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, content string, at time.Time, speakerName string) {
+// 使用 user 角色与 source_kind="guided_reply"，同时保留 Planner 前缀与干净的 visible_text / visible_body。
+func (s *Session) appendGuidedReplyToHistory(messageID int64, externalMessageID string, replyTo int64, content string, at time.Time, speakerName string, selfID int64) {
 	if s == nil {
 		return
 	}
@@ -45,8 +45,8 @@ func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, con
 	if at.IsZero() {
 		at = time.Now()
 	}
-	messageIDText := ""
-	if messageID != 0 {
+	messageIDText := strings.TrimSpace(externalMessageID)
+	if messageIDText == "" && messageID != 0 {
 		messageIDText = strconv.FormatInt(messageID, 10)
 	}
 	quoteIDs := make([]string, 0, 1)
@@ -65,13 +65,27 @@ func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, con
 		IncludeChatID:    runtime.FocusModeActive(),
 		IsSelfMessage:    true,
 	})
-	metadata := map[string]any{}
+	visibleText := maisakactx.FormatSpeakerContent(speaker, text, &at, messageIDText)
+	metadata := map[string]any{
+		"source_kind":       maisaka.SourceGuidedReply,
+		"sender_name":       speaker,
+		"nickname":          speaker,
+		"visible_text":      visibleText,
+		"visible_body":      text,
+		"message_id":        messageIDText,
+		"timestamp_unix_ms": at.UnixMilli(),
+	}
+	if selfID > 0 {
+		metadata["sender_id"] = strconv.FormatInt(selfID, 10)
+	}
 	if replyTo != 0 {
-		metadata["reply_to"] = strconv.FormatInt(replyTo, 10)
+		replyID := strconv.FormatInt(replyTo, 10)
+		metadata["reply_to"] = replyID
+		metadata["quote_ids"] = []string{replyID}
 		// 引用预览在发送时固化，对齐 Python ReplyComponent 携带目标正文与发送者
-		if source, ok := runtime.FindSourceMessageByID(strconv.FormatInt(replyTo, 10)); ok {
-			if content := strings.TrimSpace(maisaka.BuildMonitorMessageContent(source)); content != "" {
-				metadata["quote_content"] = content
+		if source, ok := runtime.FindSourceMessageByID(replyID); ok {
+			if quoteBody := strings.TrimSpace(maisaka.BuildMonitorMessageContent(source)); quoteBody != "" {
+				metadata["quote_content"] = quoteBody
 			}
 			if sender := monitorSpeakerName(source); sender != "" {
 				metadata["quote_sender"] = sender
@@ -84,18 +98,24 @@ func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, con
 			}
 		}
 	}
+	userIDText := ""
+	if selfID > 0 {
+		userIDText = strconv.FormatInt(selfID, 10)
+	}
 	message := maisaka.ContextMessage{
-		Role:           maisaka.RoleAssistant,
+		Role:           maisaka.RoleUser,
 		Content:        plannerPrefix + text,
-		VisibleText:    maisakactx.FormatSpeakerContent(speaker, text, &at, messageIDText),
+		VisibleText:    visibleText,
 		Source:         maisaka.SourceGuidedReply,
 		Timestamp:      at,
 		MessageID:      messageIDText,
+		UserID:         userIDText,
 		SessionID:      runtime.SessionID(),
 		CountInContext: true,
 		Metadata:       metadata,
 	}
 	runtime.AppendHistory(message)
+	s.persistGuidedReplyIfStandalone(message)
 	if s.maisakaFocusGroup != nil {
 		s.maisakaFocusGroup.RecordSentMessageForSession(runtime.SessionID(), message)
 	}
@@ -103,11 +123,21 @@ func (s *Session) appendGuidedReplyToHistory(messageID int64, replyTo int64, con
 }
 
 // appendSentImagesToHistory 把已发送的图片作为独立 guided_reply 条目写入历史
-//
-// 对齐 Python reply 工具的 attach_pic：图片作为独立 PostProcessedReplyMessage 逐条发送，
-// 每条都经 send_service 同步进 Maisaka 历史并调度后台识图，供后续轮次引用。
 func (s *Session) appendSentImagesToHistory(messageID int64, images []maisaka.ImageComponent, at time.Time, speakerName string) {
-	if s == nil || len(images) == 0 {
+	s.appendSentMediaToHistory(messageID, images, nil, maisaka.ImagePlaceholderText(images), "image", at, speakerName)
+}
+
+// appendSentEmojiToHistory 把已发送的表情包作为独立 guided_reply 条目写入历史
+func (s *Session) appendSentEmojiToHistory(messageID int64, emoji maisaka.ImageComponent, at time.Time, speakerName string) {
+	placeholder := strings.TrimSpace(emoji.Description)
+	if placeholder == "" {
+		placeholder = "[表情包]"
+	}
+	s.appendSentMediaToHistory(messageID, nil, []maisaka.ImageComponent{emoji}, placeholder, "emoji", at, speakerName)
+}
+
+func (s *Session) appendSentMediaToHistory(messageID int64, images []maisaka.ImageComponent, emojis []maisaka.ImageComponent, placeholder, kind string, at time.Time, speakerName string) {
+	if s == nil || (len(images) == 0 && len(emojis) == 0) {
 		return
 	}
 	runtime := s.MaisakaRuntime()
@@ -122,7 +152,6 @@ func (s *Session) appendSentImagesToHistory(messageID int64, images []maisaka.Im
 		messageIDText = strconv.FormatInt(messageID, 10)
 	}
 	speaker := strings.TrimSpace(speakerName)
-	placeholder := maisaka.ImagePlaceholderText(images)
 	plannerPrefix := maisakactx.BuildPlannerPrefix(maisakactx.PlannerPrefixInput{
 		Timestamp:        at,
 		UserName:         speaker,
@@ -134,24 +163,65 @@ func (s *Session) appendSentImagesToHistory(messageID int64, images []maisaka.Im
 		IncludeChatID:    runtime.FocusModeActive(),
 		IsSelfMessage:    true,
 	})
+	visibleText := maisakactx.FormatSpeakerContent(speaker, placeholder, &at, messageIDText)
 	message := maisaka.ContextMessage{
-		Role:           maisaka.RoleAssistant,
+		Role:           maisaka.RoleUser,
 		Content:        plannerPrefix + placeholder,
-		VisibleText:    maisakactx.FormatSpeakerContent(speaker, placeholder, &at, messageIDText),
+		VisibleText:    visibleText,
 		Source:         maisaka.SourceGuidedReply,
 		Timestamp:      at,
 		MessageID:      messageIDText,
 		SessionID:      runtime.SessionID(),
 		CountInContext: true,
 		Images:         images,
-		Metadata:       map[string]any{"kind": "image"},
+		Emojis:         emojis,
+		Metadata: map[string]any{
+			"kind":              kind,
+			"source_kind":       maisaka.SourceGuidedReply,
+			"sender_name":       speaker,
+			"nickname":          speaker,
+			"visible_text":      visibleText,
+			"visible_body":      placeholder,
+			"message_id":        messageIDText,
+			"timestamp_unix_ms": at.UnixMilli(),
+		},
 	}
 	runtime.AppendHistory(message)
+	s.persistGuidedReplyIfStandalone(message)
 	if s.maisakaFocusGroup != nil {
 		s.maisakaFocusGroup.RecordSentMessageForSession(runtime.SessionID(), message)
 	}
 	runtime.EmitMonitorMessageSent(message, speaker, maisaka.SourceGuidedReply)
-	runtime.ScheduleSentImageRecognition(images)
+	if len(images) > 0 {
+		runtime.ScheduleSentImageRecognition(images)
+	}
+	if len(emojis) > 0 {
+		runtime.ScheduleSentImageRecognition(emojis)
+	}
+}
+
+func (s *Session) persistGuidedReplyIfStandalone(message maisaka.ContextMessage) {
+	if s == nil || s.memory == nil {
+		return
+	}
+	runtime := s.MaisakaRuntime()
+	if runtime != nil && runtime.IsTranscriptRecording() {
+		return
+	}
+	schemaMsg := maisakaGuidedReplySchemaMessage(message)
+	if schemaMsg == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	entry, err := s.AppendGuidedReply(ctx, maisakaTranscriptRunID, schemaMsg)
+	if err != nil || entry == nil {
+		return
+	}
+	seqs, err := s.memory.MarkVisibleAndPersistReceipts(ctx, s.kind, s.targetID, []uint{entry.ID}, nil)
+	if err == nil {
+		s.ApplyVisibleSeqs(seqs)
+	}
 }
 
 // previousReplyToTarget 返回本会话最近一次回复同一目标消息的正文

@@ -730,9 +730,15 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 			return maisaka.ToolExecutionResult{Success: false, ToolName: invocation.ToolName, Message: "工具 " + invocation.ToolName + " 在当前聊天已被禁用"}, nil
 		}
 	}
-	if invocation.ToolName == "reply" && !replyerGeneratedArgument(invocation.Arguments) {
-		if err := t.injectReplyerContent(ctx, t.Kind, t.TargetID, session, invocation.Arguments); err != nil {
-			if result, ok := replyToolFailureResult(invocation, err); ok {
+	execArgs := cloneToolArgumentsMap(invocation.Arguments)
+	execInvocation := invocation
+	execInvocation.Arguments = execArgs
+	if invocation.ToolName == "reply" {
+		for _, internalKey := range []string{"_replyer_generated", "content", "text", "reply_to"} {
+			delete(execArgs, internalKey)
+		}
+		if err := t.injectReplyerContent(ctx, t.Kind, t.TargetID, session, execArgs); err != nil {
+			if result, ok := replyToolFailureResult(execInvocation, err); ok {
 				return result, nil
 			}
 			return maisaka.ToolExecutionResult{Success: false, ToolName: "reply", Message: err.Error()}, nil
@@ -752,8 +758,8 @@ func (t *AgentToolRuntime) Invoke(ctx context.Context, invocation maisaka.ToolIn
 			return maisaka.ToolExecutionResult{}, fmt.Errorf("工具 %s 不支持直接调用", invocation.ToolName)
 		}
 		arguments := "{}"
-		if invocation.Arguments != nil {
-			raw, err := sonic.Marshal(invocation.Arguments)
+		if execArgs != nil {
+			raw, err := sonic.Marshal(execArgs)
 			if err != nil {
 				return maisaka.ToolExecutionResult{}, fmt.Errorf("工具 %s 参数序列化失败: %w", invocation.ToolName, err)
 			}
@@ -1326,4 +1332,15 @@ func (a *Agent) mentionIsBotSelf(platform, userID string) bool {
 		}
 	}
 	return false
+}
+
+func cloneToolArgumentsMap(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
 }
