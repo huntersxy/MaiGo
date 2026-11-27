@@ -139,9 +139,14 @@ jobs:
           fi
           notes="sha256: $(cat maigo-*.tar.gz.sha256)"$'\n'"commit: ${GITHUB_SHA}"
           if [ "$rolling" -eq 1 ]; then
-            gh release delete "$tag" --cleanup-tag --yes >/dev/null 2>&1 || true
-            gh release create "$tag" --target "$GITHUB_SHA" --draft=false --prerelease --title "滚动构建（main）" \
-              --notes "$notes" maigo-*.tar.gz maigo-*.tar.gz.sha256
+            # 原地替换 rolling，避免 delete/create 竞态导致 tag already exists。
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --target "$GITHUB_SHA" --draft=false --prerelease --title "滚动构建（main）" --notes "$notes"
+              gh release upload "$tag" maigo-*.tar.gz maigo-*.tar.gz.sha256 --clobber
+            else
+              gh release create "$tag" --target "$GITHUB_SHA" --draft=false --prerelease --title "滚动构建（main）" \
+                --notes "$notes" maigo-*.tar.gz maigo-*.tar.gz.sha256
+            fi
             # 部署器匿名读 Release，草稿或旧缓存均不能触发部署。
             for attempt in 1 2 3 4 5; do
               if curl -fsS --max-time 15 "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${tag}?build=${GITHUB_SHA}&attempt=${attempt}" \
