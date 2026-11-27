@@ -393,13 +393,12 @@ class BilibiliPlugin(MaiBotPlugin):
             return ""
         return "\n" + "\n".join(parts)
 
-    @Command("bili_login", description="Scan login Bilibili", pattern=r"^/bili_login$")
-    async def bili_login(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
-        if not is_local_operator:
-            return self._command_fail('仅管理员可使用 /bili_login')
+    @Command("bili_login", description="Scan login Bilibili", pattern=r"^/bili_login$", permission="operator")
+    async def bili_login(self, stream_id: str = "", **kwargs: Any):
         message = kwargs.get("message") if isinstance(kwargs.get("message"), dict) else {}
         if bool(message.get("is_group_message")):
-            return self._command_fail('仅支持管理员在私聊中使用 /bili_login')
+            await self._reply_text(stream_id, '仅支持在私聊中使用 /bili_login')
+            return self._command_fail('仅支持在私聊中使用 /bili_login')
         try:
             login_client = BiliQrLoginClient(proxy=self.config.credential.proxy)
             qrcode_info = await login_client.generate_qrcode()
@@ -426,11 +425,9 @@ class BilibiliPlugin(MaiBotPlugin):
             self.ctx.logger.error(f"login failed: {{exc}}")
             await self._reply_text(stream_id, '❌ 登录失败: ' + str(exc))
             return self._command_fail(str(exc))
-    @Command("bili_logout", description="Logout Bilibili", pattern=r"^/bili_logout$")
-    async def bili_logout(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
+    @Command("bili_logout", description="Logout Bilibili", pattern=r"^/bili_logout$", permission="operator")
+    async def bili_logout(self, stream_id: str = "", **kwargs: Any):
         del kwargs
-        if not is_local_operator:
-            return self._command_fail('仅管理员可使用 /bili_logout')
         assert self.bili_client is not None and self.data_manager is not None and self.dynamic_listener is not None
         has_credential = self.bili_client.credential is not None
         server_logout = has_credential and await self.bili_client.logout()
@@ -454,10 +451,9 @@ class BilibiliPlugin(MaiBotPlugin):
         "bili_card_style",
         description="Switch dynamic card style",
         pattern=rf"^/(?:bili_card_style|{CARD_STYLE_ALIAS})(?:\s+(?P<style>\S+))?$",
+        permission="operator",
     )
-    async def bili_card_style(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
-        if not is_local_operator:
-            return self._command_fail('仅管理员可切换卡片样式')
+    async def bili_card_style(self, stream_id: str = "", **kwargs: Any):
         matched = kwargs.get("matched_groups") if isinstance(kwargs.get("matched_groups"), dict) else {}
         style = str(matched.get("style") or "").strip()
         available = get_template_names()
@@ -577,11 +573,9 @@ class BilibiliPlugin(MaiBotPlugin):
         msg = '删除成功' if ok else '未找到指定的订阅'
         await self._reply_text(stream_id, msg)
         return self._command_ok(msg) if ok else self._command_fail(msg)
-    @Command("bili_global_list", description="List all subscriptions", pattern=rf"^/(?:bili_global_list|{GLOBAL_LIST_ALIAS})$")
-    async def bili_global_list(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
+    @Command("bili_global_list", description="List all subscriptions", pattern=rf"^/(?:bili_global_list|{GLOBAL_LIST_ALIAS})$", permission="operator")
+    async def bili_global_list(self, stream_id: str = "", **kwargs: Any):
         del kwargs
-        if not is_local_operator:
-            return self._command_fail('仅管理员可查看全局订阅')
         assert self.data_manager is not None
         all_subs = self.data_manager.get_all_subscriptions()
         if not all_subs:
@@ -599,10 +593,9 @@ class BilibiliPlugin(MaiBotPlugin):
         "bili_global_del",
         description="Delete all subscriptions for a session",
         pattern=rf"^/(?:bili_global_del|全局删除)\s+(?P<raw>.+)$",
+        permission="operator",
     )
-    async def bili_global_del(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
-        if not is_local_operator:
-            return self._command_fail("仅管理员可删除全局订阅")
+    async def bili_global_del(self, stream_id: str = "", **kwargs: Any):
         matched = kwargs.get("matched_groups") if isinstance(kwargs.get("matched_groups"), dict) else {}
         raw = str(matched.get("raw") or kwargs.get("text") or "").strip()
         if raw.startswith("/"):
@@ -628,10 +621,9 @@ class BilibiliPlugin(MaiBotPlugin):
         "bili_global_sub",
         description="Add subscription for a session",
         pattern=rf"^/(?:bili_global_sub|全局订阅)\s+(?P<raw>.+)$",
+        permission="operator",
     )
-    async def bili_global_sub(self, stream_id: str = "", is_local_operator: bool = False, **kwargs: Any):
-        if not is_local_operator:
-            return self._command_fail("仅管理员可添加全局订阅")
+    async def bili_global_sub(self, stream_id: str = "", **kwargs: Any):
         matched = kwargs.get("matched_groups") if isinstance(kwargs.get("matched_groups"), dict) else {}
         raw = str(matched.get("raw") or "").strip()
         umo = ""

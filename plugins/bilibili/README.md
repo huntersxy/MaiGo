@@ -16,6 +16,9 @@
 依赖由 `_manifest.json` 声明，宿主会按插件依赖流水线安装。
 首次使用请配置 `sessdata`，或私聊管理员执行 `/bili_login`。
 
+管理员命令（`/bili_login`、`/bili_logout`、`/bili_card_style`、全局订阅管理）走 MaiBot `permission="operator"`，
+需要把使用者写进 `bot_config.toml` 的 `plugin.permission`，例如 `qq:123456789`。
+
 ## 命令
 
 - `/bili_sub <UID> [过滤器...]` / `订阅动态`
@@ -25,6 +28,8 @@
 - `/bili_sub_test <UID>` / `订阅测试`
 - `/bili_card_style [样式]` / `卡片样式`
 - `/bili_login` / `/bili_logout`
+
+注意：没有单独的 `/bili` 命令；订阅列表用 `/bili_sub_list`。
 
 ## MaiBot 适配说明
 
