@@ -103,6 +103,27 @@ jobs:
           cp -a src/desktop_pet/web "$stage/src/desktop_pet/web"
           cp deploy/host/requirements-plugin-runtime.txt "$stage/"
 
+          # 仓库内非内置插件随包发布；deploy.sh 会同步到实例 plugins/
+          mkdir -p "$stage/bundled-plugins"
+          if [ -d plugins ]; then
+            for plugin_dir in plugins/*; do
+              [ -d "$plugin_dir" ] || continue
+              name="$(basename "$plugin_dir")"
+              case "$name" in
+                built_in|__pycache__|.*) continue ;;
+              esac
+              [ -f "$plugin_dir/_manifest.json" ] || continue
+              plugin_id="$(python -c "import json,sys; m=json.load(open(sys.argv[1],encoding='utf-8')); info=m.get('plugin_info') if isinstance(m.get('plugin_info'), dict) else {}; print((m.get('id') or info.get('id') or info.get('plugin_id') or '').strip())" "$plugin_dir/_manifest.json")"
+              [ -n "$plugin_id" ] || continue
+              dest_name="${plugin_id//./_}"
+              mkdir -p "$stage/bundled-plugins/$dest_name"
+              tar -C "$plugin_dir" \
+                --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' \
+                -cf - . | tar -C "$stage/bundled-plugins/$dest_name" -xf -
+            done
+          fi
+          cp deploy/host/sync_bundled_plugins.sh "$stage/"
+
           name="maigo-${version}-linux-amd64"
           tar -C "$stage" -czf "$name.tar.gz" .
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"

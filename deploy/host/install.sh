@@ -28,7 +28,7 @@ fi
 
 log "创建目录 $ROOT"
 mkdir -p "$ROOT"/{app,releases,runtime,deploy,incoming}
-for script in deploy.sh update.sh ci-trigger.sh migrate-from-docker.sh; do
+for script in deploy.sh update.sh ci-trigger.sh migrate-from-docker.sh sync_bundled_plugins.sh; do
     install -m 755 "$SCRIPT_DIR/$script" "$ROOT/deploy/$script"
 done
 install -m 644 "$SCRIPT_DIR/requirements-plugin-runtime.txt" "$ROOT/deploy/"

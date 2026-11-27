@@ -18,7 +18,7 @@
 └── maigo.env    环境变量（640 root:maibot，含密钥）
 ```
 
-`current` 只放发布产物（`maigo`、`dashboard/dist`、`desktop_pet/presets`）；用户数据与 venv 独立于版本，切换版本不动它们。
+`current` 放发布产物（`maigo`、`dashboard/dist`、`desktop_pet/presets`、可选 `bundled-plugins`）；`deploy.sh` 会把随包插件同步到实例 `app/plugins/`，并保留现网 `config.toml` 与 `data/`。用户数据与 venv 仍独立于版本。
 
 表达向量聚类在 Go 进程内执行。从使用 Python 兼容侧车的版本升级时，可以从
 `maigo.env` 移除旧的 `MAIBOT_COMPAT_*` 设置，以及指向 `current/pycompat-src` 的

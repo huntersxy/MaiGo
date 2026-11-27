@@ -49,7 +49,7 @@ class DynamicListener:
 
     def __init__(
         self,
-        context: Context,
+        context: Any,
         data_manager: DataManager,
         bili_client: BiliClient,
         renderer: Renderer,
@@ -489,39 +489,9 @@ class DynamicListener:
     async def _persist_ai_summary(
         self, sub_user: str, payload: Any, summary_text: str
     ) -> None:
-        conv_mgr = self.context.conversation_manager
-
-        try:
-            cid = await conv_mgr.get_curr_conversation_id(sub_user)
-            if not cid:
-                return
-
-            user_parts: list = [TextPart(text=self._build_ai_summary_prompt(payload))]
-            for index, image_url in enumerate(
-                [
-                    url.strip().replace("http://", "https://")
-                    for url in getattr(payload, "image_urls", []) or []
-                    if isinstance(url, str)
-                    and url.strip()
-                    and not url.startswith("data:")
-                ][:8],
-                start=1,
-            ):
-                user_parts.append(
-                    ImageURLPart(
-                        image_url=ImageURLPart.ImageURL(
-                            url=image_url, id=f"dynamic-{index}"
-                        )
-                    )
-                )
-
-            await conv_mgr.add_message_pair(
-                cid=cid,
-                user_message=UserMessageSegment(content=user_parts),
-                assistant_message=AssistantMessageSegment(content=summary_text),
-            )
-        except Exception as e:
-            logger.error(f"写入动态摘要到会话历史失败: {e}\n{traceback.format_exc()}")
+        # MaiBot 没有 AstrBot conversation_manager；摘要仅推送，不写会话历史。
+        del sub_user, payload, summary_text
+        return
 
     async def _send_ai_summary(
         self, sub_user: str, payload: Any, dyn_id: Optional[str] = None

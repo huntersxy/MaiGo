@@ -143,6 +143,13 @@ active_before="$(current_version)"
 log "切换 current -> releases/$release_id"
 switch_to "$target"
 
+# 仓库随包附带的第三方插件同步到实例 plugins/（保留现网 config/data）
+if [ -x "$target/sync_bundled_plugins.sh" ]; then
+    "$target/sync_bundled_plugins.sh" "$target"
+elif [ -x "$ROOT/deploy/sync_bundled_plugins.sh" ]; then
+    "$ROOT/deploy/sync_bundled_plugins.sh" "$target"
+fi
+
 if [ "$restart" = "--no-restart" ]; then
     log "已切换，未重启（--no-restart）"
     exit 0
