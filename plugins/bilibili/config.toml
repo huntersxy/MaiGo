@@ -1,0 +1,30 @@
+[plugin]
+enabled = true
+config_version = "1.7.2"
+
+[credential]
+sessdata = ""
+proxy = ""
+bangumi_token = ""
+
+[polling]
+interval_secs = 300
+task_gap_secs = 20
+reconnect_silent = false
+dynamic_limit = 5
+recent_dynamic_cache = 4
+
+[render]
+rai = true
+renderer_template = "template_2"
+node = false
+plain_push_template = ""
+plain_push_forward_template = ""
+
+[parse]
+enable_parse_miniapp = true
+enable_parse_BV = true
+
+[ai]
+enable_ai_summary = false
+ai_summary_prompt = ""

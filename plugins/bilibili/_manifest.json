@@ -1,0 +1,58 @@
+{
+  "manifest_version": 2,
+  "id": "soulter.bilibili",
+  "version": "1.7.2",
+  "name": "Bilibili",
+  "description": "哔哩哔哩动态推送、视频信息、直播间信息查询、自然语言番剧推荐插件",
+  "author": {
+    "name": "Flartiny & Soulter",
+    "url": "https://github.com/Soulter/astrbot_plugin_bilibili"
+  },
+  "license": "AGPL-3.0",
+  "urls": {
+    "repository": "https://github.com/Soulter/astrbot_plugin_bilibili",
+    "homepage": "https://github.com/Soulter/astrbot_plugin_bilibili",
+    "issues": "https://github.com/Soulter/astrbot_plugin_bilibili/issues"
+  },
+  "changelog": "CHANGELOG.md",
+  "display": {
+    "icon": {
+      "type": "local",
+      "value": "logo.png",
+      "fallback": "tv",
+      "background": "#FB7299"
+    }
+  },
+  "host_application": {
+    "min_version": "1.4.0",
+    "max_version": "1.99.99"
+  },
+  "sdk": {
+    "min_version": "2.20.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [
+    {"type": "python_package", "name": "bilibili-api-python", "version_spec": ">=17.4.1"},
+    {"type": "python_package", "name": "curl_cffi", "version_spec": ">=0.14.0"},
+    {"type": "python_package", "name": "pycryptodomex", "version_spec": ">=3.23.0"},
+    {"type": "python_package", "name": "brotli", "version_spec": ">=1.2.0"},
+    {"type": "python_package", "name": "qrcode", "version_spec": ">=8.2"},
+    {"type": "python_package", "name": "qrcode_terminal", "version_spec": ">=0.8"},
+    {"type": "python_package", "name": "jinja2", "version_spec": ">=3.1.6"},
+    {"type": "python_package", "name": "pillow", "version_spec": ">=9"},
+    {"type": "python_package", "name": "aiohttp", "version_spec": ">=3.9"}
+  ],
+  "capabilities": [
+    "send.text",
+    "send.image",
+    "send.hybrid",
+    "send.forward",
+    "render.html2png",
+    "llm.generate",
+    "webui.claim_upload"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN",
+    "supported_locales": ["zh-CN"]
+  }
+}
