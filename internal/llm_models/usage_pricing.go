@@ -74,15 +74,20 @@ func calculateModelUsageCostWithDetails(
 		hit = int64(details.PromptCacheHitTokens)
 		miss = int64(details.PromptCacheMissTokens)
 	}
+	priceIn, cachePriceIn, priceOut := resolveModelPrices(cfg, at)
+	return CalculateUsageCost(priceIn, cachePriceIn, priceOut, prompt, int64(usage.CompletionTokens), hit, miss)
+}
+
+// CalculateUsageCost 按百万 token 单价计算费用，对齐 Python round(..., 6) 的银行家舍入
+func CalculateUsageCost(priceIn, cachePriceIn, priceOut float64, prompt, completion, hit, miss int64) float64 {
 	if miss == 0 && hit > 0 {
 		miss = max(prompt-hit, 0)
 	}
 	if hit+miss == 0 {
 		miss = prompt
 	}
-	priceIn, cachePriceIn, priceOut := resolveModelPrices(cfg, at)
 	inputCost := float64(hit)/1_000_000*cachePriceIn + float64(miss)/1_000_000*priceIn
-	outputCost := float64(usage.CompletionTokens) / 1_000_000 * priceOut
+	outputCost := float64(completion) / 1_000_000 * priceOut
 	return math.RoundToEven((inputCost+outputCost)*1_000_000) / 1_000_000
 }
 

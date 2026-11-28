@@ -18,6 +18,9 @@ func Dispatch(argv []string) Outcome {
 	if len(args) > 0 && args[0] == "person-migrate" {
 		return Outcome{Handled: true, ExitCode: runPersonMigrationCommand(args[1:])}
 	}
+	if len(args) > 0 && args[0] == "usage-cost-recalc" {
+		return Outcome{Handled: true, ExitCode: runUsageCostRecalcCommand(args[1:])}
+	}
 	if len(args) > 0 && args[0] == "host" {
 		result := host.RunCommand(args)
 		return Outcome{Handled: result.Handled, ExitCode: result.ExitCode}
@@ -77,11 +80,13 @@ func printUsage(w *os.File) {
 	fmt.Fprintf(w, "  %s init [-d 实例目录]\n", name)
 	fmt.Fprintf(w, "  %s run     [-d 实例目录]\n", name)
 	fmt.Fprintf(w, "  %s maisaka [-d 实例目录]\n", name)
-	fmt.Fprintf(w, "  %s person-migrate [-d 实例目录] <preview|execute|recover>\n\n", name)
+	fmt.Fprintf(w, "  %s person-migrate [-d 实例目录] <preview|execute|recover>\n", name)
+	fmt.Fprintf(w, "  %s usage-cost-recalc [-d 实例目录]\n\n", name)
 	fmt.Fprintf(w, "子命令:\n")
-	fmt.Fprintf(w, "  init     初始化实例（保留已有配置）\n")
-	fmt.Fprintf(w, "  run      运行实例（校验配置后启动 bot）\n")
-	fmt.Fprintf(w, "  maisaka  启动实例并以 BufferCLI（maisaka_cli）接入 Heartflow\n\n")
+	fmt.Fprintf(w, "  init               初始化实例（保留已有配置）\n")
+	fmt.Fprintf(w, "  run                运行实例（校验配置后启动 bot）\n")
+	fmt.Fprintf(w, "  maisaka            启动实例并以 BufferCLI（maisaka_cli）接入 Heartflow\n")
+	fmt.Fprintf(w, "  usage-cost-recalc  按当前模型目录重算 llm_usage 零费用并重建小时汇总\n\n")
 	fmt.Fprintf(w, "选项:\n")
 	fmt.Fprintf(w, "  -d, --directory  实例目录，默认为当前工作目录\n")
 	fmt.Fprintf(w, "  -h, --help       显示此帮助\n")
