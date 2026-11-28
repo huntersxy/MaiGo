@@ -13,7 +13,7 @@ ARG PIP_INDEX_URL
 RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
         sed -i "s#dl-cdn.alpinelinux.org#${APK_MIRROR}#g" /etc/apk/repositories; \
     fi
-RUN pip install --no-cache-dir --no-deps --index-url "$PIP_INDEX_URL" --target /out maibot-dashboard==1.10.7
+RUN pip install --no-cache-dir --no-deps --index-url "$PIP_INDEX_URL" --target /out maibot-dashboard==1.10.8
 
 # 插件 Runner 复用 MaiBot 原版 Python 实现，只装 runner 真正需要的依赖
 # （maibot wheel 提供 src.plugin_runtime.runner，--no-deps 避免拉入 faiss/playwright 等）
@@ -26,7 +26,7 @@ RUN if [ "$APK_MIRROR" != "dl-cdn.alpinelinux.org" ]; then \
     fi && \
     apk add --no-cache python3 py3-pip && \
     python3 -m venv /runner && \
-    /runner/bin/pip install --no-cache-dir --no-input --no-deps --index-url "$PIP_INDEX_URL" "maibot==1.4.7" && \
+    /runner/bin/pip install --no-cache-dir --no-input --no-deps --index-url "$PIP_INDEX_URL" "maibot==1.4.8" && \
     /runner/bin/pip install --no-cache-dir --no-input --index-url "$PIP_INDEX_URL" \
         pydantic tomlkit structlog packaging msgpack maibot-plugin-sdk \
         "aiohttp>=3.14.3,<4" "httpx>=0.28,<1" "socksio>=1,<2" "pillow>=12.3" "qrcode>=8.2" \

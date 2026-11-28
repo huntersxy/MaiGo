@@ -7,9 +7,9 @@ import (
 
 const (
 	// Baseline 对齐 ../MaiBot/pyproject.toml 的 project.version
-	Baseline = "1.4.7"
-	// RequiredWebUIVersion 对齐 MaiBot 1.4.7 的 maibot-dashboard==1.10.7
-	RequiredWebUIVersion = "1.10.7"
+	Baseline = "1.4.8"
+	// RequiredWebUIVersion 对齐 MaiBot 1.4.8 的 maibot-dashboard==1.10.8
+	RequiredWebUIVersion = "1.10.8"
 )
 
 // Build 是构建时注入的应用版本，开发构建使用 dev

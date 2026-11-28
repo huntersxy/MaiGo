@@ -48,8 +48,8 @@ MAIBOT_WEB_PORT=8080 docker compose up -d
 
 ### 非 Docker
 
-Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.7` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
-装好 `maibot==1.4.7` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
+Linux 需 cgo 与 `libwebp`。装好 `maibot-dashboard==1.10.8` 后把 `MAIBOT_DASHBOARD_DIR` 指向其 `dist`；
+装好 `maibot==1.4.8` 后把 `MAIBOT_PLUGIN_PYTHON` 指向该解释器（依赖集合见 Dockerfile）。
 非 Docker 首次启动需设置 `MAIBOT_SECRET_KEY`（`openssl rand -base64 32`）。
 
 systemd 宿主部署（静态二进制 + 自动部署）见 [deploy/host/README.md](deploy/host/README.md)：
