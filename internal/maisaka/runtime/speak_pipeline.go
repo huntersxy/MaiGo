@@ -20,6 +20,7 @@ func (a *Agent) replyerOptionsForSpeak(ctx context.Context) replyer.Options {
 	if bot := a.instanceBotConfig(); bot != nil {
 		settings := bot.ReplyPostProcessSettings()
 		cfg.EnablePostProcess = settings.Enable
+		cfg.RemoveBracketContent = settings.RemoveBracketContent
 		cfg.TypingSpeed = settings.TypingSpeed
 		cfg.Splitter = replyer.SplitterConfig{
 			Enable:                  settings.SplitterEnable,
