@@ -1178,7 +1178,8 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			options := maisaka.SupplementResourceOptions{
 				IsGroup:       isGroup,
 				EnableReplyAt: a.replyAtEnabled(),
-				Platform: platformForSupplement(target, a.conversationPlatform(kind, targetID)),
+				Platform:      platformForSupplement(target, a.conversationPlatform(kind, targetID)),
+				VoiceSchema:   tools.VoiceAttachmentSchema,
 			}
 			if snap := a.instanceConfigSnapshot(); snap != nil {
 				options.ModelConfig = func() (maibotcfg.ModelConfigFile, bool) { return snap.Model, true }
