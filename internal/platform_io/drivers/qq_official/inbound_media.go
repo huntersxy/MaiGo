@@ -48,19 +48,19 @@ func (c *Client) inboundAttachments(ctx context.Context, payload map[string]any)
 			"url": address, "file_id": strings.TrimSpace(asString(attachment["file_uuid"])), "mime_type": mime,
 		}}
 		if mime == "voice" || strings.HasPrefix(mime, "audio/") || kind == "voice" {
-			transcript, _ := attachment["asr_refer_text"].(string)
-			if transcript = strings.TrimSpace(transcript); transcript != "" {
-				label := "[语音: " + transcript + "]"
-				segments = append(segments, map[string]any{"type": "text", "data": label})
-				labels = append(labels, label)
-				return
+			voiceText := strings.TrimSpace(asString(attachment["asr_refer_text"]))
+			transcript := ""
+			if voiceText != "" {
+				transcript = "[语音: " + voiceText + "]"
 			}
 			if binary := c.downloadInboundMedia(ctx, address); len(binary) > 0 {
-				segments = append(segments, binaryAttachment("voice", binary))
+				segments = append(segments, binaryAttachmentWithData("voice", transcript, binary))
+			} else if transcript != "" {
+				segments = append(segments, map[string]any{"type": "text", "data": transcript})
 			} else {
 				segments = append(segments, file)
 			}
-			labels = append(labels, "[语音]")
+			labels = append(labels, firstNonEmpty(transcript, "[语音]"))
 		} else if address != "" || filename != "" {
 			segments = append(segments, file)
 			label := "[文件：" + firstNonEmpty(filename, "未命名") + "]"
@@ -88,7 +88,11 @@ func (c *Client) inboundAttachments(ctx context.Context, payload map[string]any)
 }
 
 func binaryAttachment(kind string, binary []byte) map[string]any {
-	return map[string]any{"type": kind, "data": "", "binary_data_base64": base64.StdEncoding.EncodeToString(binary), "hash": fmt.Sprintf("%x", sha256.Sum256(binary))}
+	return binaryAttachmentWithData(kind, "", binary)
+}
+
+func binaryAttachmentWithData(kind, data string, binary []byte) map[string]any {
+	return map[string]any{"type": kind, "data": data, "binary_data_base64": base64.StdEncoding.EncodeToString(binary), "hash": fmt.Sprintf("%x", sha256.Sum256(binary))}
 }
 
 func isEmojiAttachment(kind string) bool {
