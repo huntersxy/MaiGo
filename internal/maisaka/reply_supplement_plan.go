@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	maibotcfg "MaiGo/internal/config/maibot"
+
 	"github.com/bytedance/sonic"
 	"go.uber.org/zap"
 )
@@ -207,7 +209,7 @@ type SupplementGenerator interface {
 }
 
 // BuildReplySupplementSchema 生成编排 JSON Schema；不允许 @ 时移除 AtNode
-func BuildReplySupplementSchema(allowAt bool) map[string]any {
+func BuildReplySupplementSchema(allowAt bool, voiceSchema map[string]any) map[string]any {
 	defs := map[string]any{
 		"ReplyNode": map[string]any{
 			"type": "object", "additionalProperties": false,
@@ -260,22 +262,22 @@ func BuildReplySupplementSchema(allowAt bool) map[string]any {
 		mapping["at"] = "#/$defs/AtNode"
 	}
 	discriminator["mapping"] = mapping
+	properties := map[string]any{
+		"msg_id": map[string]any{"type": "string", "minLength": 1},
+		"parts": map[string]any{
+			"type": "array", "minItems": 1, "maxItems": 16,
+			"items": map[string]any{"oneOf": oneOf, "discriminator": discriminator},
+		},
+	}
+	if voiceSchema != nil {
+		properties["attach_voice"] = voiceSchema
+	}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"properties": map[string]any{
-			"msg_id": map[string]any{"type": "string", "minLength": 1},
-			"attach_voice": map[string]any{
-				"type": "string",
-				"enum": []any{"voice_only", "with_text"},
-			},
-			"parts": map[string]any{
-				"type": "array", "minItems": 1, "maxItems": 16,
-				"items": map[string]any{"oneOf": oneOf, "discriminator": discriminator},
-			},
-		},
-		"required": []any{"parts"},
-		"$defs":    defs,
+		"properties":           properties,
+		"required":             []any{"parts"},
+		"$defs":                defs,
 	}
 }
 
@@ -388,18 +390,17 @@ func generateReplySupplementOnce(
 }
 
 func resolveSupplementVoiceSchema(options SupplementResourceOptions) map[string]any {
-	if options.ModelConfig == nil {
+	if options.VoiceSchema == nil {
 		return nil
 	}
-	file, ok := options.ModelConfig()
+	file, ok := maibotcfg.ModelConfigFile{}, false
+	if options.ModelConfig != nil {
+		file, ok = options.ModelConfig()
+	}
 	if !ok {
 		return nil
 	}
-	tools := loadBuiltinToolsPackage()
-	if tools == nil {
-		return nil
-	}
-	return tools.VoiceAttachmentSchema(options.Platform, file)
+	return options.VoiceSchema(options.Platform, file)
 }
 
 func voiceModeAllowed(mode string) bool {

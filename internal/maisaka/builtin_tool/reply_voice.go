@@ -48,15 +48,28 @@ func parseVoiceMode(raw any) (VoiceMode, error) {
 	return "", fmt.Errorf("当前回复不可使用指定的语音附件模式")
 }
 
-// AttachReplyVoice 整段正文合成一次语音并发送，对齐 Python attach_reply_voice
-func AttachReplyVoice(ctx context.Context, tc *ToolContext, content string, mode VoiceMode) error {
+func resolveAttachVoiceMode(ctx context.Context, raw string) (VoiceMode, error) {
+	mode := strings.TrimSpace(raw)
+	if mode == "" {
+		return "", nil
+	}
+	tc := GetToolContext(ctx)
 	if tc == nil {
-		return fmt.Errorf("缺少工具上下文")
+		return "", fmt.Errorf("生成语音附件失败：缺少工具上下文")
 	}
-	if tc.SynthesizeReplySpeech == nil {
-		return fmt.Errorf("语音合成功能未接入")
+	file, ok := maibotcfg.ModelConfigFile{}, false
+	if tc.ModelConfigSnapshot != nil {
+		file, ok = tc.ModelConfigSnapshot()
 	}
-	if tc.SendVoiceBinary == nil {
+	if schema := VoiceAttachmentSchema(tc.Platform, file); !ok || schema == nil {
+		return "", fmt.Errorf("当前回复不可使用语音附件")
+	}
+	return parseVoiceMode(mode)
+}
+
+func sendReplyVoiceOnly(ctx context.Context, content string, replyTo int64) error {
+	tc := GetToolContext(ctx)
+	if tc == nil || tc.SynthesizeReplySpeech == nil || tc.SendVoiceBinary == nil {
 		return fmt.Errorf("语音发送端口未接入")
 	}
 	text := strings.TrimSpace(content)
@@ -67,9 +80,21 @@ func AttachReplyVoice(ctx context.Context, tc *ToolContext, content string, mode
 	if err != nil {
 		return err
 	}
-	if mode == VoiceModeWithText {
-		return tc.SendVoiceBinary(ctx, audio)
+	return tc.SendVoiceBinary(WithReplyAnchor(ctx, replyTo), audio)
+}
+
+func sendReplyVoiceWithText(ctx context.Context, content string) error {
+	tc := GetToolContext(ctx)
+	if tc == nil || tc.SynthesizeReplySpeech == nil || tc.SendVoiceBinary == nil {
+		return fmt.Errorf("语音发送端口未接入")
 	}
-	// voice_only：正文已通过文本路径发送时不重复；无正文时单独发送语音
+	text := strings.TrimSpace(content)
+	if text == "" {
+		return fmt.Errorf("没有可朗读的回复正文")
+	}
+	audio, err := tc.SynthesizeReplySpeech(ctx, text)
+	if err != nil {
+		return err
+	}
 	return tc.SendVoiceBinary(ctx, audio)
 }

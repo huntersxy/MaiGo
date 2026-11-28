@@ -11,7 +11,6 @@ import (
 
 	"MaiGo/internal/A_memorix"
 	"MaiGo/internal/chat/replyer"
-	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/maisaka"
 	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/person_info"
@@ -319,6 +318,23 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	if err != nil {
 		return &maisakaStubOutput{Success: false, Message: err.Error()}, nil
 	}
+	voiceMode, voiceErr := resolveAttachVoiceMode(ctx, input.AttachVoice)
+	if voiceErr != nil {
+		return &maisakaStubOutput{Success: false, Message: voiceErr.Error()}, nil
+	}
+	if voiceMode == VoiceModeOnly {
+		if err := sendReplyVoiceOnly(ctx, content, replyTo); err != nil {
+			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
+		}
+		out := &ReplyOutput{
+			Success: true, Message: "发言成功", Content: content, ReplyTo: replyTo,
+			MsgID: strings.TrimSpace(input.MsgID), Sent: true, SetQuote: replyTo != 0, EffectiveSetQuote: replyTo != 0,
+		}
+		if tc != nil && tc.RecordReplyTarget != nil {
+			tc.RecordReplyTarget(strconv.FormatInt(replyTo, 10), content)
+		}
+		return finishReplyAttachments(ctx, tc, out, replyTo, pictures, emojiAttachment, emojiResolveErr, afterReply, input.WaitSeconds)
+	}
 	out, outcome, err := sendReplyContent(replyer.WithPostProcessOptions(ctx, postProcess), content, replyTo, mentions)
 	if err != nil {
 		return nil, err
@@ -351,6 +367,15 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	if tc != nil && tc.RecordReplyTarget != nil {
 		tc.RecordReplyTarget(strconv.FormatInt(replyTo, 10), content)
 	}
+	if voiceMode == VoiceModeWithText {
+		if err := sendReplyVoiceWithText(ctx, content); err != nil {
+			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
+		}
+	}
+	return finishReplyAttachments(ctx, tc, out, replyTo, pictures, emojiAttachment, emojiResolveErr, afterReply, input.WaitSeconds)
+}
+
+func finishReplyAttachments(ctx context.Context, tc *ToolContext, out *ReplyOutput, replyTo int64, pictures []resolvedReplyPicture, emojiAttachment *EmojiAttachment, emojiResolveErr error, afterReply string, waitSeconds *int) (*ReplyOutput, error) {
 	if tc != nil && tc.SendImageURLCallback != nil {
 		attachmentCtx := WithReplyAnchor(ctx, replyTo)
 		for _, picture := range pictures {
@@ -360,26 +385,6 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			if err := tc.SendImageURLCallback(attachmentCtx, picture.Path); err != nil {
 				return nil, fmt.Errorf("发送回复图片失败: %w", err)
 			}
-		}
-	}
-	if mode := strings.TrimSpace(input.AttachVoice); mode != "" {
-		if tc == nil {
-			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：缺少工具上下文"}, nil
-		}
-		file, ok := maibotcfg.ModelConfigFile{}, false
-		if tc.ModelConfigSnapshot != nil {
-			file, ok = tc.ModelConfigSnapshot()
-		}
-		schema := VoiceAttachmentSchema(tc.Platform, file)
-		if !ok || schema == nil {
-			return &maisakaStubOutput{Success: false, Message: "当前回复不可使用语音附件"}, nil
-		}
-		voiceMode, err := parseVoiceMode(mode)
-		if err != nil {
-			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
-		}
-		if err := AttachReplyVoice(ctx, tc, content, voiceMode); err != nil {
-			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
 		}
 	}
 	if emojiAttachment != nil {
@@ -401,7 +406,7 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 	}
 	out.AfterReply = afterReply
 	if afterReply == "wait" {
-		out.WaitSeconds = input.WaitSeconds
+		out.WaitSeconds = waitSeconds
 	}
 	return out, nil
 }

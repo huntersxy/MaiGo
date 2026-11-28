@@ -1167,7 +1167,7 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			}
 			return a.generateReplyerText(callCtx, plannerContent, target, history, isGroup, replyToolArgs)
 		},
-		Supplement: func(callCtx context.Context, guidance string, _ *maisaka.ContextMessage) (*maisaka.ReplySupplement, error) {
+		Supplement: func(callCtx context.Context, guidance string, target *maisaka.ContextMessage) (*maisaka.ReplySupplement, error) {
 			if built == nil {
 				return nil, fmt.Errorf("缺少本轮 Planner 请求快照，无法生成回复补充内容")
 			}
@@ -1178,6 +1178,10 @@ func (a *Agent) buildMaisakaRuntime(kind string, targetID int64, session *Sessio
 			options := maisaka.SupplementResourceOptions{
 				IsGroup:       isGroup,
 				EnableReplyAt: a.replyAtEnabled(),
+				Platform: platformForSupplement(target, a.conversationPlatform(kind, targetID)),
+			}
+			if snap := a.instanceConfigSnapshot(); snap != nil {
+				options.ModelConfig = func() (maibotcfg.ModelConfigFile, bool) { return snap.Model, true }
 			}
 			if bot != nil {
 				options.GroupQuoteFrequency = bot.Chat.ReplyStyle.GroupQuoteFrequency
@@ -1406,4 +1410,11 @@ func cloneToolArgumentsMap(src map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func platformForSupplement(target *maisaka.ContextMessage, fallback string) string {
+	if target != nil && strings.TrimSpace(target.Platform) != "" {
+		return strings.TrimSpace(target.Platform)
+	}
+	return strings.TrimSpace(fallback)
 }

@@ -214,6 +214,7 @@ type SupplementResourceOptions struct {
 	PrivateQuoteFrequency string
 	Platform              string
 	ModelConfig           func() (maibotcfg.ModelConfigFile, bool)
+	VoiceSchema           func(platform string, file maibotcfg.ModelConfigFile) map[string]any
 }
 
 // SupplementResources 只允许引用本轮 Planner 已看到的资源，不受生成期间新消息影响
