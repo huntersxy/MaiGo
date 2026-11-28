@@ -21,8 +21,9 @@ import (
 
 // Options 宿主装配依赖；缺失能力在调用时返回真实错误，不用空实现伪造成功
 type Options struct {
-	DB          *gorm.DB
-	Writer      MessageLogWriter
+	DB           *gorm.DB
+	InstanceRoot string
+	Writer       MessageLogWriter
 	ChatManager *messagereceive.ChatManager
 
 	Broadcaster messagereceive.WebUIBroadcaster
@@ -137,10 +138,11 @@ func New(options Options) *Runtime {
 		Fallback: frequencyFallback,
 	}
 	store := &MessageStore{
-		DB:        options.DB,
-		Writer:    options.Writer,
-		Frequency: frequency,
-		Now:       now,
+		DB:           options.DB,
+		InstanceRoot: options.InstanceRoot,
+		Writer:       options.Writer,
+		Frequency:    frequency,
+		Now:          now,
 	}
 	var people heartflow.PersonRegistrar
 	if options.People != nil {

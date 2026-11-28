@@ -115,6 +115,15 @@ type MoodState struct {
 
 func (MoodState) TableName() string { return "mood_state" }
 
+// BinaryData 二进制原件索引，对齐 Python binary_data
+type BinaryData struct {
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	DataHash string `gorm:"column:data_hash;index;not null" json:"data_hash"`
+	FullPath string `gorm:"column:full_path;not null" json:"full_path"`
+}
+
+func (BinaryData) TableName() string { return "binary_data" }
+
 type SchemaMigration struct {
 	Version   int       `gorm:"primaryKey" json:"version"`
 	Name      string    `gorm:"type:text;not null" json:"name"`

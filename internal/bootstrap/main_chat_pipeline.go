@@ -50,6 +50,7 @@ type chatPipelineOptions struct {
 	Images       *chatImagePreprocessor
 	Platform     *platformio.Manager
 	DB           *gorm.DB
+	InstanceRoot string
 	Writer       chatwiring.MessageLogWriter
 	Broadcaster  messagereceive.WebUIBroadcaster
 	Files        *filesvc.Service
@@ -143,8 +144,9 @@ func newChatRuntimePipelineWithOptions(parent context.Context, options chatPipel
 		voiceTranscriber = chatwiring.NewRouterAudioTranscriber(options.LLMRouter)
 	}
 	runtimeAssembly := chatwiring.New(chatwiring.Options{
-		DB:          options.DB,
-		Writer:      options.Writer,
+		DB:           options.DB,
+		InstanceRoot: options.InstanceRoot,
+		Writer:       options.Writer,
 		Broadcaster: options.Broadcaster,
 		Platform:    options.Platform,
 		ImageFiles:  imageFiles,

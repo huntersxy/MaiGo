@@ -1334,6 +1334,7 @@ func runWorker(boot config.Bootstrap, startup *startupLifecycle, shutdownSignal 
 		Images:       newChatImagePreprocessor(imageManager),
 		Platform:     platformIOMgr,
 		DB:           db,
+		InstanceRoot: instanceDir,
 		Broadcaster:  webuichat.NewChatBroadcaster(chatHub),
 		Files:        fileService,
 		ImageManager: imageManager,

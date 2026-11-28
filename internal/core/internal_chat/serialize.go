@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"MaiGo/internal/common/data_models/messagecomponent"
+	"MaiGo/internal/common/utils"
 )
 
 // BinaryLoader 按段类型与 hash 读取图片/表情缓存字节
@@ -42,8 +43,7 @@ func serializeComponent(component messagecomponent.Component, loader BinaryLoade
 	case messagecomponent.EmojiComponent:
 		return serializeBinaryComponent("emoji", "image/gif", item.Binary, item.Hash, loader, "emoji", item.Content)
 	case messagecomponent.VoiceComponent:
-		// Python 侧 voice 传 binary_hash=""、image_type_name=""，即从不回查图片缓存
-		return serializeBinaryComponent("voice", "audio/wav", item.Binary, "", nil, "", item.Content)
+		return serializeVoiceComponent(item, loader)
 	case messagecomponent.FileComponent:
 		return map[string]any{"type": "file", "data": item.ToPayload()}
 	case messagecomponent.AtComponent:
@@ -95,7 +95,29 @@ func serializeComponent(component messagecomponent.Component, loader BinaryLoade
 // serializeBinaryComponent 对齐 serializers._serialize_binary_component
 func serializeBinaryComponent(segmentType, defaultMIME string, binary []byte, hash string, loader BinaryLoader, lookupType, fallback string) map[string]any {
 	data, mimeType := loadCachedBinaryData(binary, hash, loader, lookupType, defaultMIME)
+	return binarySegment(segmentType, mimeType, data, fallback)
+}
+
+func serializeVoiceComponent(item messagecomponent.VoiceComponent, loader BinaryLoader) map[string]any {
+	data := append([]byte(nil), item.Binary...)
+	if len(data) == 0 && strings.TrimSpace(item.Hash) != "" && loader != nil {
+		loaded, mime := loader("voice", item.Hash)
+		if len(loaded) > 0 {
+			data = loaded
+			if strings.TrimSpace(mime) != "" {
+				return binarySegment("voice", mime, data, item.Content)
+			}
+		}
+	}
+	_, mimeType := utils.DetectAudioFormat(data)
+	return binarySegment("voice", mimeType, data, item.Content)
+}
+
+func binarySegment(segmentType, mimeType string, data []byte, fallback string) map[string]any {
 	if len(data) > 0 {
+		if strings.TrimSpace(mimeType) == "" {
+			mimeType = "application/octet-stream"
+		}
 		return map[string]any{
 			"type": segmentType,
 			"data": "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data),

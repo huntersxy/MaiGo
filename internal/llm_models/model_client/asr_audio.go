@@ -11,32 +11,17 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"MaiGo/internal/common/utils"
 )
 
 // TranscriptionFilename 根据文件头为转写接口还原文件名，对齐 Python asr_audio.transcription_filename
 func TranscriptionFilename(data []byte) string {
-	if len(data) >= 12 && bytes.HasPrefix(data, []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WAVE")) {
-		return "audio.wav"
+	extension, _ := utils.DetectAudioFormat(data)
+	if extension == "" {
+		return "audio"
 	}
-	if bytes.HasPrefix(data, []byte("OggS")) {
-		return "audio.ogg"
-	}
-	if bytes.HasPrefix(data, []byte("fLaC")) {
-		return "audio.flac"
-	}
-	if len(data) >= 8 && bytes.Equal(data[4:8], []byte("ftyp")) {
-		return "audio.mp4"
-	}
-	if bytes.HasPrefix(data, []byte("\x1aE\xdf\xa3")) {
-		return "audio.webm"
-	}
-	if bytes.HasPrefix(data, []byte("ID3")) || (len(data) >= 2 && data[0] == 0xFF && data[1]&0xE6 == 0xE2) {
-		return "audio.mp3"
-	}
-	if bytes.HasPrefix(data, []byte("\xff\xf1")) || bytes.HasPrefix(data, []byte("\xff\xf9")) {
-		return "audio.aac"
-	}
-	return "audio"
+	return "audio." + extension
 }
 
 // AudioFile 上传转写用的文件名、字节与 MIME

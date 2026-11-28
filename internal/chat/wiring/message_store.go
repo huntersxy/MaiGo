@@ -33,10 +33,11 @@ func (f MessageLogWriterFunc) CreateMessageLog(ctx context.Context, log *memory.
 
 // MessageStore 把 SessionMessage 落成 mai_messages 行，并在入库前补全回复频率
 type MessageStore struct {
-	DB        *gorm.DB
-	Writer    MessageLogWriter
-	Frequency *FrequencyFiller
-	Now       func() time.Time
+	DB           *gorm.DB
+	InstanceRoot string
+	Writer       MessageLogWriter
+	Frequency    *FrequencyFiller
+	Now          func() time.Time
 }
 
 // StoreMessage 对齐 Python store_message_to_db：先补频率，再序列化入库
@@ -52,11 +53,35 @@ func (s *MessageStore) StoreMessage(ctx context.Context, message *messagereceive
 			return fmt.Errorf("补全回复频率失败: %w", err)
 		}
 	}
+	if s.DB != nil {
+		return s.writeWithMedia(ctx, message)
+	}
 	log, err := BuildMessageLog(message, s.now())
 	if err != nil {
 		return err
 	}
 	return s.write(ctx, log)
+}
+
+func (s *MessageStore) writeWithMedia(ctx context.Context, message *messagereceive.SessionMessage) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if message.RawMessage != nil {
+			if err := PersistMediaComponents(tx, s.InstanceRoot, message.RawMessage.Components); err != nil {
+				return err
+			}
+		}
+		log, err := BuildMessageLog(message, s.now())
+		if err != nil {
+			return err
+		}
+		if s.Writer != nil {
+			return s.Writer.CreateMessageLog(ctx, log)
+		}
+		if err := tx.Create(log).Error; err != nil {
+			return fmt.Errorf("写入消息记录失败: %w", err)
+		}
+		return nil
+	})
 }
 
 // StoreHeartflowMessage 写心流接收器的消息；优先复用宿主原始消息

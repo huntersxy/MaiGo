@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"MaiGo/internal/chat/image_system"
+	voicesystem "MaiGo/internal/chat/voice_system"
+	"MaiGo/internal/common/utils"
 	"MaiGo/internal/core/internal_chat"
 )
 
@@ -21,6 +23,14 @@ func (d Deps) HistoryBinaryLoader(ctx context.Context) internalchat.BinaryLoader
 		return nil
 	}
 	return func(segmentType, hash string) ([]byte, string) {
+		if segmentType == "voice" {
+			data, err := voicesystem.ReadVoice(root, hash)
+			if err != nil || len(data) == 0 {
+				return nil, ""
+			}
+			_, mimeType := utils.DetectAudioFormat(data)
+			return data, mimeType
+		}
 		imageType := imagesystem.ImageTypeImage
 		if segmentType == "emoji" {
 			imageType = imagesystem.ImageTypeEmoji

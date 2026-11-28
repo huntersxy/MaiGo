@@ -45,4 +45,5 @@ var migrationSteps = []migrationStep{
 	{56, "sharing_groups", "建立独立相通组表", migrateV56},
 	{57, "chat_migration", "建立在线聊天流迁移任务与复制账本", migrateV57},
 	{58, "individual_profiles", "统一人物资料并建立身份合并审计", migrateV58},
+	{59, "binary_data", "建立语音等二进制原件索引表", migrateV59},
 }
