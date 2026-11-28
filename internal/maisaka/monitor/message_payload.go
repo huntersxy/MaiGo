@@ -10,6 +10,7 @@ import (
 const (
 	MonitorMediaImage = "image"
 	MonitorMediaEmoji = "emoji"
+	MonitorMediaVoice = "voice"
 )
 
 // PendingImagePlaceholder 与视觉占位保持一致的文本
@@ -53,8 +54,11 @@ func BuildMonitorMessageMedia(media []map[string]any, defaultOriginal bool, logP
 			continue
 		}
 		label := "[表情包]"
-		if kind == MonitorMediaImage {
+		switch kind {
+		case MonitorMediaImage:
 			label = PendingImagePlaceholder
+		case MonitorMediaVoice:
+			label = "[语音消息]"
 		}
 		text := strings.TrimSpace(fmt.Sprint(item["text"]))
 		if text == "" || text == "<nil>" {

@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"MaiGo/internal/chat/image_system"
+	voicesystem "MaiGo/internal/chat/voice_system"
+	"MaiGo/internal/common/utils"
 )
 
 // monitorMediaStore 只读访问 images 元数据表；测试可注入替身
@@ -41,6 +43,49 @@ func (d Deps) handleSystemMaisakaMonitorMedia(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	root := strings.TrimSpace(d.InstanceDir)
+	if root == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "实例目录未配置，无法解析监控媒体"})
+		return
+	}
+
+	if mediaKind == "voice" {
+		filePath, err := voicesystem.VoicePathByHash(root, mediaHash)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"detail": "未找到语音原件"})
+			return
+		}
+		if rel, err := filepath.Rel(filepath.Join(root, "data", "voices"), filePath); err != nil || strings.HasPrefix(rel, "..") {
+			writeJSON(w, http.StatusNotFound, map[string]any{"detail": "未找到语音原件"})
+			return
+		}
+		info, err := os.Stat(filePath)
+		if err != nil || !info.Mode().IsRegular() {
+			writeJSON(w, http.StatusNotFound, map[string]any{"detail": "未找到语音原件"})
+			return
+		}
+		file, err := os.Open(filePath)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"detail": "未找到语音原件"})
+			return
+		}
+		defer file.Close()
+		header := make([]byte, 16)
+		_, _ = file.Read(header)
+		_, contentType := utils.DetectAudioFormat(header)
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "读取语音原件失败"})
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(filePath)}))
+		http.ServeContent(w, r, filepath.Base(filePath), info.ModTime(), file)
+		return
+	}
+
 	var imageType string
 	var label string
 	switch mediaKind {
@@ -51,7 +96,7 @@ func (d Deps) handleSystemMaisakaMonitorMedia(w http.ResponseWriter, r *http.Req
 		imageType = imagesystem.ImageTypeEmoji
 		label = "表情包"
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "媒体类型必须是 image 或 emoji"})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "媒体类型必须是 image、emoji 或 voice"})
 		return
 	}
 
@@ -70,11 +115,6 @@ func (d Deps) handleSystemMaisakaMonitorMedia(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	root := strings.TrimSpace(d.InstanceDir)
-	if root == "" {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"detail": "实例目录未配置，无法解析监控媒体"})
-		return
-	}
 	filePath, err := imagesystem.ResolveStoredImagePath(root, record.FullPath)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"detail": "无法解析指定" + label + "文件"})

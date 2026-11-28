@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	MonitorEventSchemaVersion   = 1
+	MonitorEventSchemaVersion   = VoiceMediaSchemaVersion
 	MaxMonitorEventRecords      = 10000
 	MaxMonitorEventAgeHours     = 72
 	DefaultReplayLimit          = 1000
@@ -173,6 +173,7 @@ func (s *EventStore) Replay(sinceEventID int64, limit int) ([]Event, error) {
 		}
 		events = append(events, event)
 	}
+	RestoreLegacyVoiceMedia(s.db, events)
 	return events, nil
 }
 
@@ -214,13 +215,16 @@ func (s *EventStore) LoadSessionSummaries() ([]map[string]any, error) {
 		).Scan(&records).Error; err != nil {
 			return nil, fmt.Errorf("读取麦麦观察会话详情失败: %w", err)
 		}
+		detailList := make([]Event, 0, len(records))
 		for _, record := range records {
 			event, err := recordToReplayEvent(record)
 			if err != nil {
 				return nil, err
 			}
 			details[record.EventID] = event
+			detailList = append(detailList, event)
 		}
+		RestoreLegacyVoiceMedia(s.db, detailList)
 	}
 	summaries := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
@@ -290,6 +294,7 @@ func (s *EventStore) LoadSessionEventPage(sessionID string, beforeEventID int64,
 		}
 		page.Events = append(page.Events, event)
 	}
+	RestoreLegacyVoiceMedia(s.db, page.Events)
 	return page, nil
 }
 
