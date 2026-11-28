@@ -450,9 +450,9 @@ func (a *Adapter) onPayload(ctx context.Context, op int, event string, data map[
 		attachmentSegments, attachmentLabels, picture, emoji = client.inboundAttachments(ctx, data)
 	}
 	legacy, profiles := a.groupUserMapping(mapping, groupOpenID)
-	effective := legacy
-	if !a.mappingEnabled.Load() {
-		effective.User = nil
+	effective := idMapping{}
+	if a.mappingEnabled.Load() {
+		effective = legacy
 	}
 	message, scene, _, err := decodeMessage(event, data, accountID, botName, unified, groupName, attachmentSegments, attachmentLabels, effective, picture, emoji)
 	if err != nil {

@@ -12,7 +12,7 @@ const (
 	PluginID               = "Mai-with-u.qq-adapter"
 	GatewayName            = "qq_official_gateway"
 	DirectoryName          = "qq_official_adapter"
-	SupportedConfigVersion = "0.5.3"
+	SupportedConfigVersion = "0.5.4"
 	PlatformQQ             = "qq"
 	RouteTypeDuplex        = "duplex"
 	ProtocolOfficial       = "qq_official"

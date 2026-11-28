@@ -52,8 +52,8 @@ func ConfigSchemaMap() map[string]any {
 			Order:       2,
 		}),
 		"enable_mapping": platformio.NativeSchemaField("enable_mapping", "boolean", qq["enable_mapping"], platformio.NativeFieldOpts{
-			Label:       "启用 QQ 号映射",
-			Description: "开启后使用已关联的 QQ 号；关闭时聊天身份保留原始 OpenID",
+			Label:       "启用映射",
+			Description: "启用后，已绑定的群使用群号，已关联的用户使用 QQ 号；关闭后群和用户都使用原始 OpenID，保留关联记录",
 			Order:       1,
 		}),
 		"snowluma_identity_only": platformio.NativeSchemaField("snowluma_identity_only", "boolean", qq["snowluma_identity_only"], platformio.NativeFieldOpts{

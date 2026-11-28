@@ -359,11 +359,12 @@ func (a *Adapter) AssignIdentity(ctx context.Context, kind string, message map[s
 	}
 	result := problem
 	if result == "" {
-		subject := "目标用户"
 		if kind == "group" {
-			subject = "当前群"
+			result = "已绑定当前群的群号 " + value + "。启用映射时，后续消息归入该群号的会话。"
+		} else {
+			result = "已保留目标用户的 QQ 号关联 " + value + "；是否映射为 QQ 号由启用映射开关控制。" +
+				"需要合并旧用户数据时，可在插件页面使用用户数据灌注功能。"
 		}
-		result = "已将" + subject + "的 ID 绑定为 " + value + "。后续消息按该 ID 归属；会话身份改变时使用另一聊天流，旧记录不会自动迁移。"
 	}
 	scene, rawTarget := "private", sender
 	if group != "" {
