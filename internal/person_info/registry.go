@@ -103,15 +103,17 @@ func (r *Registry) RegisterPerson(ctx context.Context, in RegisterInput) (*Profi
 		}
 	}
 
-	rec, err := r.upsertPersonOnRegister(ctx, pid, rawPlatform, userID, nickname, in)
+	rec, created, err := r.upsertPersonOnRegister(ctx, pid, rawPlatform, userID, nickname, in)
 	if err != nil {
 		return nil, err
 	}
-	zap.L().Info("成功注册新用户",
-		zap.String("person_id", pid),
-		zap.String("platform", platform),
-		zap.String("nickname", nickname),
-	)
+	if created {
+		zap.L().Info("成功注册新用户",
+			zap.String("person_id", pid),
+			zap.String("platform", platform),
+			zap.String("nickname", nickname),
+		)
+	}
 	p := profileFromRecord(rec)
 	return &p, nil
 }

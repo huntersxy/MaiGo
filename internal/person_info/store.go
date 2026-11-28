@@ -15,10 +15,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, userID, nickname string, in RegisterInput) (*PersonInfo, error) {
+func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, userID, nickname string, in RegisterInput) (*PersonInfo, bool, error) {
 	db := r.db(ctx)
 	if db == nil {
-		return nil, errMemoryUnavailable
+		return nil, false, errMemoryUnavailable
 	}
 	if !db.Migrator().HasTable((PersonInfo{}).TableName()) {
 		// 仅 member_profiles 路径时仍返回合成 Profile
@@ -27,7 +27,7 @@ func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, us
 			PersonID: pid, Platform: platform, UserID: userID, UserNickname: nickname,
 			PersonName: stringPtr(nickname), IsKnown: true, KnowCounts: 1,
 			FirstKnownTime: &now, LastKnownTime: &now,
-		}, nil
+		}, true, nil
 	}
 
 	groupKey := strings.TrimSpace(in.GroupKey)
@@ -37,6 +37,7 @@ func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, us
 	groupNick := strings.TrimSpace(in.GroupNickName)
 
 	var record PersonInfo
+	created := false
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if tx.Dialector.Name() == "sqlite" {
 			if err := tx.Exec("UPDATE person_info SET id=id WHERE person_id=?", pid).Error; err != nil {
@@ -73,12 +74,13 @@ func (r *Registry) upsertPersonOnRegister(ctx context.Context, pid, platform, us
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
+		created = true
 		return tx.Preload("Individual").Where("person_id = ?", pid).First(&record).Error
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &record, nil
+	return &record, created, nil
 }
 
 func lockPersonRow(tx *gorm.DB, personID string) *gorm.DB {
