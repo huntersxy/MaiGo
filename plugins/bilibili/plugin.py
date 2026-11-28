@@ -17,6 +17,7 @@ from maibot_sdk.types import EventType, ToolParameterInfo, ToolParamType
 
 from .bili_client import BiliClient
 from .core.bili_login import BiliLoginError, BiliQrLoginClient
+from .core.message_text import event_message_plain_text
 from .core.constant import (
     AT_ALL_OPTION,
     AT_SUB_OPTION,
@@ -683,7 +684,7 @@ class BilibiliPlugin(MaiBotPlugin):
         del kwargs
         if not self.config.parse.enable_parse_BV or not message:
             return True, True, None, None, None
-        plain = message.get("plain_text", "") if isinstance(message, dict) else str(message)
+        plain = event_message_plain_text(message)
         match_ = re.search(BV, plain or "", re.IGNORECASE)
         if not match_:
             return True, True, None, None, None

@@ -123,6 +123,15 @@ jobs:
             done
           fi
           cp deploy/host/sync_bundled_plugins.sh "$stage/"
+          chmod +x "$stage/sync_bundled_plugins.sh"
+
+          # 持久化宿主脚本随包发布；deploy.sh 切换版本后写回 /opt/maigo/deploy
+          mkdir -p "$stage/host-scripts"
+          for script in deploy.sh update.sh ci-trigger.sh sync_bundled_plugins.sh migrate-from-docker.sh; do
+            cp "deploy/host/$script" "$stage/host-scripts/$script"
+            chmod +x "$stage/host-scripts/$script"
+          done
+          cp deploy/host/requirements-plugin-runtime.txt deploy/host/requirements-pycompat.txt "$stage/host-scripts/"
 
           name="maigo-${version}-linux-amd64"
           tar -C "$stage" -czf "$name.tar.gz" .

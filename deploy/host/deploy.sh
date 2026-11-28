@@ -143,11 +143,32 @@ active_before="$(current_version)"
 log "切换 current -> releases/$release_id"
 switch_to "$target"
 
+# 用本包 host-scripts 刷新持久化 deploy 脚本，避免服务器脚本停留在旧版
+if [ -d "$target/host-scripts" ]; then
+    mkdir -p "$ROOT/deploy"
+    for script in deploy.sh update.sh ci-trigger.sh sync_bundled_plugins.sh migrate-from-docker.sh; do
+        if [ -f "$target/host-scripts/$script" ]; then
+            install -m 755 "$target/host-scripts/$script" "$ROOT/deploy/$script"
+        fi
+    done
+    for req in requirements-plugin-runtime.txt requirements-pycompat.txt; do
+        if [ -f "$target/host-scripts/$req" ]; then
+            install -m 644 "$target/host-scripts/$req" "$ROOT/deploy/$req"
+        fi
+    done
+    log "已刷新 $ROOT/deploy 宿主脚本"
+fi
+
 # 仓库随包附带的第三方插件同步到实例 plugins/（保留现网 config/data）
-if [ -x "$target/sync_bundled_plugins.sh" ]; then
-    "$target/sync_bundled_plugins.sh" "$target"
-elif [ -x "$ROOT/deploy/sync_bundled_plugins.sh" ]; then
-    "$ROOT/deploy/sync_bundled_plugins.sh" "$target"
+# 用 bash 调用，避免打包后丢失可执行位导致跳过同步
+sync_script=""
+if [ -f "$target/sync_bundled_plugins.sh" ]; then
+    sync_script="$target/sync_bundled_plugins.sh"
+elif [ -f "$ROOT/deploy/sync_bundled_plugins.sh" ]; then
+    sync_script="$ROOT/deploy/sync_bundled_plugins.sh"
+fi
+if [ -n "$sync_script" ]; then
+    bash "$sync_script" "$target"
 fi
 
 if [ "$restart" = "--no-restart" ]; then
