@@ -128,7 +128,7 @@ func (e *ReasoningEngine) RunTurnOnce(ctx context.Context, trigger *ContextMessa
 // 返回值表示是否真的取到并执行了触发；没有排队触发时返回 false
 func (e *ReasoningEngine) RunQueuedTurn(ctx context.Context) (bool, error) {
 	runtime := e.runtime
-	var queued TurnTriggerSource
+	var queued InternalTurnTrigger
 	select {
 	case queued = <-runtime.internalTurnQueue:
 	default:
@@ -384,7 +384,7 @@ func (e *ReasoningEngine) finalizeCycle(ctx context.Context, cycleDetail CycleDe
 }
 
 // PrepareTurnStartContext 消费触发信号并准备本轮初始消息与触发消息
-func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued TurnTriggerSource) TurnStartContext {
+func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued InternalTurnTrigger) TurnStartContext {
 	runtime := e.runtime
 	messageTriggered, timeoutTriggered, proactiveTriggered := e.drainReadyTurnTriggers(queued)
 	silenceTriggered := runtime.scheduler.ConsumeSilenceTrigger()
@@ -394,20 +394,30 @@ func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued Tu
 		pendingWaitStartedAt != nil && acceptedWaitStartedAt.Equal(*pendingWaitStartedAt)
 	silent := runtime.IsReplyFrequencySilent()
 
-	if timeoutTriggered && !(runtime.HasPendingWaitToolCall() && runtime.scheduler.AllowsTimedWakeup()) {
-		timeoutTriggered = false
-		if !(messageTriggered || proactiveTriggered || silenceTriggered) {
-			return TurnStartContext{SilentReplyFrequency: silent}
-		}
+	timeoutTriggered = timeoutTriggered && runtime.scheduler.AllowsTimedWakeup()
+	if !(messageTriggered || timeoutTriggered || proactiveTriggered || silenceTriggered) {
+		return TurnStartContext{SilentReplyFrequency: silent}
 	}
 
 	if runtime.AgentState() == turn_trigger.StateWait &&
-		!(timeoutTriggered || proactiveTriggered || silenceTriggered || acceptedWaitMessage) &&
-		!silent &&
-		!(runtime.PlannerMessageSteering() && messageTriggered && runtime.HasPendingMessages()) {
-		runtime.MarkMessageTurnUnscheduled()
-		zap.L().Debug(runtime.logPrefix + " 当前仍处于 wait 状态，忽略消息触发并继续等待超时")
-		return TurnStartContext{TimeoutTriggered: timeoutTriggered, ProactiveTriggered: proactiveTriggered, SilentReplyFrequency: silent}
+		!(proactiveTriggered || silenceTriggered || acceptedWaitMessage) {
+		if timeoutTriggered {
+			if !runtime.scheduler.AcceptWaitTimeout() {
+				waitMessage := e.BuildWaitCompletedMessage(runtime.HasPendingMessages())
+				runtime.AppendHistory(waitMessage)
+				runtime.EndPlannerContinuation()
+				runtime.EnterStopState()
+				runtime.UpdateStageStatus("空闲", "定时等待结束，本次未唤醒思考")
+				if messageTriggered {
+					runtime.MarkMessageTurnUnscheduled()
+				}
+				return TurnStartContext{SilentReplyFrequency: silent}
+			}
+		} else if !(silent || (runtime.PlannerMessageSteering() && messageTriggered && runtime.HasPendingMessages())) {
+			runtime.MarkMessageTurnUnscheduled()
+			zap.L().Debug(runtime.logPrefix + " 当前仍处于 wait 状态，忽略消息触发并继续等待超时")
+			return TurnStartContext{SilentReplyFrequency: silent}
+		}
 	}
 
 	if runtime.HasPendingMessages() {
@@ -501,22 +511,23 @@ func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued Tu
 	}
 }
 
-func (e *ReasoningEngine) drainReadyTurnTriggers(queued TurnTriggerSource) (message, timeout, proactive bool) {
+func (e *ReasoningEngine) drainReadyTurnTriggers(queued InternalTurnTrigger) (message, timeout, proactive bool) {
 	runtime := e.runtime
-	message = queued == TriggerMessage
-	timeout = queued == TriggerTimeout
-	proactive = queued == TriggerProactive
 	for {
+		switch queued.Kind {
+		case TriggerMessage:
+			message = true
+		case TriggerProactive:
+			proactive = true
+		case TriggerTimeout:
+			if queued.WaitTimeoutToolCallID != "" &&
+				queued.WaitTimeoutToolCallID == runtime.PendingWaitToolCallID() {
+				timeout = true
+			}
+		}
 		select {
 		case next := <-runtime.internalTurnQueue:
-			switch next {
-			case TriggerMessage:
-				message = true
-			case TriggerTimeout:
-				timeout = true
-			case TriggerProactive:
-				proactive = true
-			}
+			queued = next
 		default:
 			return
 		}

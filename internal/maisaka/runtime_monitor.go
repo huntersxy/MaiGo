@@ -334,7 +334,7 @@ func (r *Runtime) QueueProactiveTurn(triggerMessage ContextMessage, logicalTurnI
 	r.messageTurnScheduled = true
 	r.mu.Unlock()
 	r.ResumeFromWaitForProactiveTrigger()
-	r.pushTrigger(TriggerProactive)
+	r.pushTrigger(NewInternalTurnTrigger(TriggerProactive))
 }
 
 // ToolResultCondenseConfig 返回当前生效的工具结果整理开关与字符阈值，阈值 <=0 表示关闭

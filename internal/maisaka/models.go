@@ -401,3 +401,16 @@ const (
 	// TriggerProactive 主动任务触发
 	TriggerProactive TurnTriggerSource = "proactive"
 )
+
+type InternalTurnTrigger struct {
+	Kind                  TurnTriggerSource
+	WaitTimeoutToolCallID string
+}
+
+func NewInternalTurnTrigger(kind TurnTriggerSource) InternalTurnTrigger {
+	return InternalTurnTrigger{Kind: kind}
+}
+
+func NewWaitTimeoutTrigger(toolCallID string) InternalTurnTrigger {
+	return InternalTurnTrigger{Kind: TriggerTimeout, WaitTimeoutToolCallID: toolCallID}
+}

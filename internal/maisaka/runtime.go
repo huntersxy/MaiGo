@@ -270,9 +270,9 @@ type Runtime struct {
 	// messageCache 原始消息缓存，用于成批处理与后续学习
 	messageCache        []ContextMessage
 	lastProcessedIndex  int
-	internalTurnQueue   chan TurnTriggerSource
+	internalTurnQueue   chan InternalTurnTrigger
 	turnQueueMu         sync.Mutex
-	pendingTurnTriggers []TurnTriggerSource
+	pendingTurnTriggers []InternalTurnTrigger
 
 	proactiveTriggerMessage *ContextMessage
 	proactiveLogicalTurnID  string
@@ -346,7 +346,7 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		sessionID:              opts.SessionID,
 		sessionName:            firstNonEmpty(opts.SessionName, opts.SessionID),
 		opts:                   opts,
-		internalTurnQueue:      make(chan TurnTriggerSource, 16),
+		internalTurnQueue:      make(chan InternalTurnTrigger, 16),
 		subagentTasks:          NewSubAgentTaskManager(),
 		maxInternalRounds:      MaxInternalRounds,
 		agentState:             turn_trigger.StateStop,

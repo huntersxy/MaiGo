@@ -26,9 +26,8 @@ func (s *groupRoundState) startPlannerTurn(sched *MessageTurnScheduler, logicalT
 		sched.mu.Unlock()
 		return completed
 	}
-	frequency := math.Min(1.0, rt.EffectiveReplyFrequency())
-	sched.viewFrequency.Activate(frequency)
 	if logicalTurnID != s.logicalTurnID {
+		frequency := math.Min(1.0, rt.EffectiveReplyFrequency())
 		s.logicalTurnID = logicalTurnID
 		s.completedRounds = 0
 		s.roundAllowance = int(math.Ceil(frequency * MaxInternalRounds))
@@ -65,8 +64,9 @@ func (s *groupRoundState) applyDebtPayoff(sched *MessageTurnScheduler) (bool, in
 func (s *groupRoundState) finishPlannerTurn(sched *MessageTurnScheduler) {
 	sched.mu.Lock()
 	s.inPlannerTurn = false
-	if !sched.runtime.HasPendingWaitToolCall() {
-		s.logicalTurnID = ""
-	}
 	sched.mu.Unlock()
+}
+
+func (s *groupRoundState) endLogicalTurn() {
+	s.logicalTurnID = ""
 }

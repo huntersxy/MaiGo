@@ -185,10 +185,10 @@ func (r *Runtime) EnqueueMessageTurn() {
 	r.mu.Lock()
 	r.messageTurnScheduled = true
 	r.mu.Unlock()
-	r.pushTrigger(TriggerMessage)
+	r.pushTrigger(NewInternalTurnTrigger(TriggerMessage))
 }
 
-func (r *Runtime) pushTrigger(trigger TurnTriggerSource) {
+func (r *Runtime) pushTrigger(trigger InternalTurnTrigger) {
 	select {
 	case r.internalTurnQueue <- trigger:
 	default:
@@ -200,12 +200,12 @@ func (r *Runtime) pushTrigger(trigger TurnTriggerSource) {
 }
 
 // TakeTrigger 阻塞读取一次内部循环触发
-func (r *Runtime) TakeTrigger(ctx context.Context) (TurnTriggerSource, bool) {
+func (r *Runtime) TakeTrigger(ctx context.Context) (InternalTurnTrigger, bool) {
 	select {
 	case trigger := <-r.internalTurnQueue:
 		return trigger, true
 	case <-ctx.Done():
-		return "", false
+		return InternalTurnTrigger{}, false
 	}
 }
 
@@ -371,7 +371,7 @@ func (r *Runtime) enterStopState() {
 	r.agentState = turn_trigger.StateStop
 	r.mu.Unlock()
 	r.resetConsecutiveWaitCount("stop_state")
-	r.clearWaitState()
+	r.endLogicalTurn()
 }
 
 // EnterRunningState 切换到运行状态，不清理 wait 工具挂起信息
@@ -389,7 +389,8 @@ func cloneRuntimeTimestamp(value *time.Time) *time.Time {
 	return &copy
 }
 
-func (r *Runtime) clearWaitState() {
+func (r *Runtime) endLogicalTurn() {
+	r.scheduler.EndLogicalTurn()
 	r.mu.Lock()
 	r.pendingWaitToolCallID = ""
 	r.pendingWaitLogicalTurnID = ""
@@ -401,6 +402,12 @@ func (r *Runtime) clearWaitState() {
 	if cancel != nil {
 		cancel()
 	}
+}
+
+func (r *Runtime) PendingWaitToolCallID() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pendingWaitToolCallID
 }
 
 func (r *Runtime) resetConsecutiveWaitCount(reason string) {
@@ -501,7 +508,7 @@ func (r *Runtime) scheduleWaitTimeout(seconds float64, toolCallID string) {
 		if !r.scheduler.AllowsTimedWakeup() {
 			return
 		}
-		r.pushTrigger(TriggerTimeout)
+		r.pushTrigger(NewWaitTimeoutTrigger(toolCallID))
 	}()
 }
 

@@ -14,9 +14,8 @@ import (
 type MessageTurnScheduler struct {
 	runtime RuntimeView
 
-	mu                      sync.Mutex
-	viewFrequency           ViewFrequencyController
-	group                   groupRoundState
+	mu    sync.Mutex
+	group groupRoundState
 	lastBatch               []string
 	acceptedWaitStartedAt   *time.Time
 	silenceTriggered        bool
@@ -43,6 +42,23 @@ func (s *MessageTurnScheduler) SetClock(now func() time.Time) {
 
 func (s *MessageTurnScheduler) AllowsTimedWakeup() bool {
 	return s.group.allowsTimedWakeup()
+}
+
+func (s *MessageTurnScheduler) AcceptWaitTimeout() bool {
+	runtime := s.runtime
+	if !runtime.IsGroupSession() || runtime.FocusModeActive() {
+		return true
+	}
+	probability, accepted := sampleView(runtime.EffectiveReplyFrequency())
+	zap.L().Debug(runtime.LogPrefix()+" wait 到期查看判定",
+		zap.Float64("概率", probability), zap.Bool("放行", accepted))
+	return accepted
+}
+
+func (s *MessageTurnScheduler) EndLogicalTurn() {
+	s.mu.Lock()
+	s.group.endLogicalTurn()
+	s.mu.Unlock()
 }
 
 func (s *MessageTurnScheduler) RoundDebt() int {
@@ -135,10 +151,7 @@ func (s *MessageTurnScheduler) evaluateScene(pendingCount int, frequency float64
 		return TurnGateResult{Decision: DecisionWait, Detail: "本批已判定，等待新批次或静默判定"}
 	}
 	s.lastBatch = append(s.lastBatch[:0], batch...)
-	probability := s.viewFrequency.Probability(frequency)
-	accepted := s.viewFrequency.Decide(frequency, rand.Float64())
-	internal := s.viewFrequency.Internal
-	phase := s.viewFrequency.Phase
+	probability, accepted := sampleView(frequency)
 	s.mu.Unlock()
 	runtime.ConsumeMessageDebounce()
 	if accepted {
@@ -161,8 +174,7 @@ func (s *MessageTurnScheduler) evaluateScene(pendingCount int, frequency float64
 	}
 	return TurnGateResult{
 		Decision: decision,
-		Detail: fmt.Sprintf("概率查看 外部频率=%.3f 内部频率=%.3f 放行概率=%.3f 阶段=%s 判定=%s",
-			frequency, internal, probability, phase, label),
+		Detail: fmt.Sprintf("概率查看 外部频率=%.3f 放行概率=%.3f 判定=%s", frequency, probability, label),
 	}
 }
 
@@ -185,7 +197,6 @@ func (s *MessageTurnScheduler) RecordPlannerRun() {
 	s.mu.Lock()
 	s.previousContextInterval = cloneFloat(s.currentContextInterval)
 	s.currentContextInterval = interval
-	s.viewFrequency.RecordPlannerRun()
 	s.mu.Unlock()
 	s.group.recordPlannerRun(s)
 }
@@ -332,7 +343,12 @@ func (s *MessageTurnScheduler) checkSilence(ctx context.Context, generation uint
 		s.mu.Lock()
 		allowsWakeup := s.group.allowsTimedWakeup()
 		s.mu.Unlock()
-		if !runtime.LastMessageReceivedAt().Equal(receivedAt) || !allowsWakeup || runtime.AgentState() == StateRunning ||
+		s.mu.Lock()
+		handledAt := s.silenceHandledAt
+		s.mu.Unlock()
+		if !runtime.LastMessageReceivedAt().Equal(receivedAt) ||
+			(!handledAt.IsZero() && !receivedAt.After(handledAt)) ||
+			!allowsWakeup || runtime.AgentState() == StateRunning ||
 			runtime.FocusModeActive() || runtime.MessageTurnScheduled() || runtime.IsReplyFrequencySilent() {
 			return
 		}
@@ -341,38 +357,31 @@ func (s *MessageTurnScheduler) checkSilence(ctx context.Context, generation uint
 			continue
 		}
 		frequency := runtime.EffectiveReplyFrequency()
-		now := s.currentTime()
 		s.mu.Lock()
 		if generation != s.silenceGeneration {
 			s.mu.Unlock()
 			return
 		}
-		probability := s.viewFrequency.Probability(frequency)
-		accepted := s.viewFrequency.Decide(frequency, rand.Float64())
-		if accepted {
-			s.silenceHandledAt = receivedAt
-			s.silenceTriggered = true
-			if runtime.AgentState() == StateWait {
-				s.acceptedWaitStartedAt = cloneTimestamp(runtime.PendingWaitStartedAt())
-			}
-			s.silenceCancel = nil
-		}
-		phase := s.viewFrequency.Phase
-		internal := s.viewFrequency.Internal
-		if !accepted {
-			deadline = now.Add(time.Duration(interval * float64(time.Second)))
-		}
+		probability, accepted := sampleView(frequency)
+		s.silenceHandledAt = receivedAt
 		s.mu.Unlock()
 		zap.L().Debug(runtime.LogPrefix()+" 静默查看判定",
-			zap.Float64("间隔", interval), zap.Float64("概率", probability), zap.Bool("放行", accepted),
-			zap.Float64("内部频率", internal), zap.String("阶段", string(phase)))
-		if accepted {
-			if runtime.AgentState() == StateWait {
-				runtime.CancelWaitTimeout()
-			}
-			runtime.EnqueueMessageTurn()
+			zap.Float64("间隔", interval), zap.Float64("概率", probability), zap.Bool("放行", accepted))
+		if !accepted {
 			return
 		}
+		s.mu.Lock()
+		s.silenceTriggered = true
+		if runtime.AgentState() == StateWait {
+			s.acceptedWaitStartedAt = cloneTimestamp(runtime.PendingWaitStartedAt())
+		}
+		s.silenceCancel = nil
+		s.mu.Unlock()
+		if runtime.AgentState() == StateWait {
+			runtime.CancelWaitTimeout()
+		}
+		runtime.EnqueueMessageTurn()
+		return
 	}
 }
 
@@ -384,6 +393,17 @@ func (s *MessageTurnScheduler) currentTime() time.Time {
 		return now()
 	}
 	return time.Now()
+}
+
+func sampleView(frequency float64) (float64, bool) {
+	probability := frequency
+	if probability > 1 {
+		probability = 1
+	}
+	if probability < 0 {
+		probability = 0
+	}
+	return probability, rand.Float64() < probability
 }
 
 func filterExternalMessages(runtime RuntimeView, messages []PendingMessage) []PendingMessage {
