@@ -1,10 +1,11 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cloudwego/eino/schema"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -90,9 +92,44 @@ type ReplyInput struct {
 	Text             string               `json:"text,omitempty" jsonschema:"-"`
 	ReplyerGenerated bool                 `json:"_replyer_generated,omitempty" jsonschema:"-"`
 	ReplyTo          int64                `json:"reply_to,omitempty" jsonschema:"-"`
-	AttachAt         []string             `json:"attach_at,omitempty" jsonschema:"description=可选；随回复 at 的目标消息 msg_id 列表"`
+	AttachAt         []ReplyAttachAt      `json:"attach_at,omitempty" jsonschema:"-"`
 	AttachPic        []ReplyAttachPicture `json:"attach_pic,omitempty" jsonschema:"description=可选；随回复发送的图片列表"`
 	AttachEmoji      any                  `json:"attach_emoji,omitempty" jsonschema:"description=可选；上下文表情引用或按情绪、画面内容匹配的表情"`
+}
+
+// ReplyAttachAt 对齐 Python attach_at：字符串为消息 ID，对象为平台用户 ID
+type ReplyAttachAt struct {
+	MsgID  string
+	UserID string
+}
+
+func (t *ReplyAttachAt) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		*t = ReplyAttachAt{}
+		return nil
+	}
+	if data[0] == '"' {
+		var msgID string
+		if err := json.Unmarshal(data, &msgID); err != nil {
+			return err
+		}
+		*t = ReplyAttachAt{MsgID: strings.TrimSpace(msgID)}
+		return nil
+	}
+	var object struct {
+		UserID    string `json:"user_id"`
+		MsgID     string `json:"msg_id"`
+		MessageID string `json:"message_id"`
+	}
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	*t = ReplyAttachAt{
+		UserID: strings.TrimSpace(object.UserID),
+		MsgID:  strings.TrimSpace(maisakaFirstNonEmpty(object.MsgID, object.MessageID)),
+	}
+	return nil
 }
 
 // ReplyOutput reply 工具的输出，字段对齐 Python reply 的 content 与 structured_content
@@ -276,15 +313,9 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			Message: "回复正文被 Hook 清空，未发送",
 		}, nil
 	}
-	mentions := make([]int64, 0, len(input.AttachAt))
-	if len(input.AttachAt) > 0 {
-		if tc := GetToolContext(ctx); tc != nil && tc.ResolveMessageSender != nil {
-			for _, raw := range input.AttachAt {
-				if senderID, ok := tc.ResolveMessageSender(raw); ok && senderID > 0 {
-					mentions = append(mentions, senderID)
-				}
-			}
-		}
+	mentions, err := resolveReplyAttachAtMentions(GetToolContext(ctx), input.AttachAt)
+	if err != nil {
+		return &maisakaStubOutput{Success: false, Message: err.Error()}, nil
 	}
 	out, outcome, err := sendReplyContent(replyer.WithPostProcessOptions(ctx, postProcess), content, replyTo, mentions)
 	if err != nil {
@@ -390,6 +421,37 @@ func sendReplyContent(ctx context.Context, content string, replyTo int64, mentio
 	return out, outcome, nil
 }
 
+// resolveReplyAttachAtMentions 对齐 Python _resolve_at_attachment：支持消息 ID 或 user_id 对象
+func resolveReplyAttachAtMentions(tc *ToolContext, targets []ReplyAttachAt) ([]int64, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	mentions := make([]int64, 0, len(targets))
+	for _, target := range targets {
+		if userID := strings.TrimSpace(target.UserID); userID != "" {
+			id, err := strconv.ParseInt(userID, 10, 64)
+			if err != nil || id <= 0 {
+				return nil, fmt.Errorf("无法解析 at 目标用户：user_id=%s", userID)
+			}
+			mentions = append(mentions, id)
+			continue
+		}
+		msgID := strings.TrimSpace(target.MsgID)
+		if msgID == "" {
+			return nil, fmt.Errorf("无法解析 at 目标消息：msg_id=")
+		}
+		if tc == nil || tc.ResolveMessageSender == nil {
+			return nil, fmt.Errorf("无法解析 at 目标消息：msg_id=%s", msgID)
+		}
+		senderID, ok := tc.ResolveMessageSender(msgID)
+		if !ok || senderID <= 0 {
+			return nil, fmt.Errorf("无法解析 at 目标消息：msg_id=%s", msgID)
+		}
+		mentions = append(mentions, senderID)
+	}
+	return mentions, nil
+}
+
 // resolveReplyTargetUserName 解析目标消息作者显示名：群名片优先，其次昵称，最后 user_id
 func resolveReplyTargetUserName(tc *ToolContext, msgID string, replyTo int64) string {
 	if tc == nil || tc.ResolveMessageAuthor == nil {
@@ -461,7 +523,17 @@ func replyToolArguments(input *ReplyInput) map[string]any {
 		args["expression_intent"] = input.ExpressionIntent
 	}
 	if len(input.AttachAt) > 0 {
-		args["attach_at"] = append([]string(nil), input.AttachAt...)
+		attachAt := make([]any, 0, len(input.AttachAt))
+		for _, target := range input.AttachAt {
+			if userID := strings.TrimSpace(target.UserID); userID != "" {
+				attachAt = append(attachAt, map[string]any{"user_id": userID})
+				continue
+			}
+			if msgID := strings.TrimSpace(target.MsgID); msgID != "" {
+				attachAt = append(attachAt, msgID)
+			}
+		}
+		args["attach_at"] = attachAt
 	}
 	if input.AttachEmoji != nil {
 		args["attach_emoji"] = input.AttachEmoji

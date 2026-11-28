@@ -59,7 +59,7 @@ func (s *TodoStore) Add(text string, options map[string]any) (map[string]any, er
 	}
 	item := map[string]any{
 		"id": newScheduleID(), "text": normalized, "created_at": float64(time.Now().UnixNano()) / 1e9,
-		"kind": "user", "due_at": nil, "session_id": "", "session_name": "主人私聊", "images": []any{},
+		"kind": "user", "due_at": nil, "trigger_people": []any{}, "session_id": "", "session_name": "主人私聊", "images": []any{},
 		"status": "pending", "condition": "", "condition_type": "natural", "revision": newScheduleID(),
 	}
 	item, err = s.applyTodoOptions(item, options)
@@ -103,7 +103,7 @@ func (s *TodoStore) Update(todoID string, text *string, options map[string]any) 
 			return nil, err
 		}
 		changed := false
-		for _, key := range []string{"text", "kind", "due_at", "condition", "condition_type", "images"} {
+		for _, key := range []string{"text", "kind", "due_at", "condition", "condition_type", "images", "trigger_people"} {
 			if !todoValueEqual(updated[key], item[key]) {
 				changed = true
 				break
@@ -323,12 +323,40 @@ func validateTodoText(text string) (string, error) {
 func (s *TodoStore) applyTodoOptions(item map[string]any, options map[string]any) (map[string]any, error) {
 	allowed := map[string]struct{}{
 		"kind": {}, "due_at": {}, "delay_seconds": {}, "condition": {}, "condition_type": {},
-		"images": {}, "session_id": {}, "session_name": {},
+		"images": {}, "session_id": {}, "session_name": {}, "trigger_people": {},
 	}
 	for key := range options {
 		if _, ok := allowed[key]; !ok {
 			return nil, fmt.Errorf("未知待办字段")
 		}
+	}
+	if raw, exists := options["trigger_people"]; exists {
+		people, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("日程发起人必须为列表")
+		}
+		byID := make(map[string]map[string]any, len(people))
+		order := make([]string, 0, len(people))
+		for _, entry := range people {
+			person, ok := entry.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("每位日程发起人都需要名称和平台用户 ID")
+			}
+			userID := strings.TrimSpace(asString(person["user_id"]))
+			name := strings.TrimSpace(asString(person["name"]))
+			if userID == "" || name == "" {
+				return nil, fmt.Errorf("每位日程发起人都需要名称和平台用户 ID")
+			}
+			if _, seen := byID[userID]; !seen {
+				order = append(order, userID)
+			}
+			byID[userID] = map[string]any{"user_id": userID, "name": name}
+		}
+		stored := make([]any, 0, len(order))
+		for _, userID := range order {
+			stored = append(stored, byID[userID])
+		}
+		item["trigger_people"] = stored
 	}
 	for _, key := range []string{"session_id", "session_name"} {
 		if raw, exists := options[key]; exists {

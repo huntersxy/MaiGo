@@ -173,9 +173,17 @@ func replySpecSchemaForContext(base map[string]any, ctx context.Context) map[str
 	if tc.EnableReplyAt && tc.ConversationKind == "group" {
 		properties["attach_at"] = map[string]any{
 			"type":        "array",
-			"description": "可选。随本次回复 at 一个或多个目标消息的发送者，填写目标 msg_id。",
-			"items":       map[string]any{"type": "string"},
-			"default":     []any{},
+			"description": "可选。随回复 at 一人或多人。字符串填写消息 ID；使用日程记录的平台用户 ID 时填写 user_id 对象。",
+			"items": map[string]any{"anyOf": []any{
+				map[string]any{"type": "string"},
+				map[string]any{
+					"type":                 "object",
+					"properties":           map[string]any{"user_id": map[string]any{"type": "string", "minLength": 1}},
+					"required":             []any{"user_id"},
+					"additionalProperties": false,
+				},
+			}},
+			"default": []any{},
 		}
 	}
 	return clone

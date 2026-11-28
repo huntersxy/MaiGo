@@ -15,18 +15,20 @@ import (
 )
 
 type ScheduleInput struct {
-	Action           string   `json:"action"`
-	Text             *string  `json:"text,omitempty"`
-	DelaySeconds     *float64 `json:"delay_seconds,omitempty"`
-	DueAt            *string  `json:"due_at,omitempty"`
-	TodoID           string   `json:"todo_id,omitempty"`
-	IncludeCompleted *bool    `json:"include_completed,omitempty"`
-	Kind             *string  `json:"kind,omitempty"`
-	ConditionType    *string  `json:"condition_type,omitempty"`
-	Condition        *string  `json:"condition,omitempty"`
-	Revision         *string  `json:"revision,omitempty"`
-	Evidence         *string  `json:"evidence,omitempty"`
-	dueAtSet         bool
+	Action               string   `json:"action"`
+	Text                 *string  `json:"text,omitempty"`
+	DelaySeconds         *float64 `json:"delay_seconds,omitempty"`
+	DueAt                *string  `json:"due_at,omitempty"`
+	TodoID               string   `json:"todo_id,omitempty"`
+	IncludeCompleted     *bool    `json:"include_completed,omitempty"`
+	Kind                 *string  `json:"kind,omitempty"`
+	ConditionType        *string  `json:"condition_type,omitempty"`
+	Condition            *string  `json:"condition,omitempty"`
+	Revision             *string  `json:"revision,omitempty"`
+	Evidence             *string  `json:"evidence,omitempty"`
+	TriggerMessageIDs    []string `json:"trigger_message_ids,omitempty"`
+	dueAtSet             bool
+	triggerMessageIDsSet bool
 }
 
 func (in *ScheduleInput) UnmarshalJSON(data []byte) error {
@@ -46,6 +48,7 @@ func (in *ScheduleInput) UnmarshalJSON(data []byte) error {
 	}
 	*in = ScheduleInput(decoded)
 	_, in.dueAtSet = fields["due_at"]
+	_, in.triggerMessageIDsSet = fields["trigger_message_ids"]
 	return nil
 }
 
@@ -135,6 +138,28 @@ func scheduleTool(ctx context.Context, input *ScheduleInput) (*ScheduleOutput, e
 				options[key] = *value
 			}
 		}
+		if input.triggerMessageIDsSet {
+			people := make([]any, 0, len(input.TriggerMessageIDs))
+			if tc.ResolveMessageAuthor == nil {
+				return nil, fmt.Errorf("触发消息解析能力未初始化")
+			}
+			for _, messageID := range input.TriggerMessageIDs {
+				raw := strings.TrimSpace(messageID)
+				if raw == "" {
+					return nil, fmt.Errorf("触发消息 ID 必须为非空字符串")
+				}
+				author, ok := tc.ResolveMessageAuthor(raw)
+				if !ok || strings.TrimSpace(author.UserID) == "" {
+					return nil, fmt.Errorf("当前聊天中找不到触发消息 %s", raw)
+				}
+				name := strings.TrimSpace(author.Cardname)
+				if name == "" {
+					name = strings.TrimSpace(author.Nickname)
+				}
+				people = append(people, map[string]any{"user_id": strings.TrimSpace(author.UserID), "name": name})
+			}
+			options["trigger_people"] = people
+		}
 		command["options"] = options
 	}
 	var result map[string]any
@@ -173,7 +198,12 @@ func scheduleToolSpec(owner bool) MaisakaToolSpec {
 	description := "创建，查询或者修改日程，日程可以在定时唤起提醒，当需要在特定时间点做事时使用。"
 	dueAt := map[string]any{"type": "string", "description": "未来 ISO 8601 时间，建议带时区"}
 	properties := map[string]any{
-		"text":              map[string]any{"type": "string", "minLength": 1, "maxLength": 200, "description": "事项内容，add 必填"},
+		"text": map[string]any{"type": "string", "minLength": 1, "maxLength": 200, "description": "事项内容，add 必填"},
+		"trigger_message_ids": map[string]any{
+			"type": "array", "items": map[string]any{"type": "string", "minLength": 1},
+			"description": "用户发起日程时，填写每位发起人在当前聊天中的一条消息 ID，以记录姓名和平台用户 ID。" +
+				"自主创建可省略；update 省略保留原记录，传列表替换，传空列表清除。",
+		},
 		"delay_seconds":     map[string]any{"type": "number", "exclusiveMinimum": 0, "description": "多少秒后触发，与 due_at 二选一"},
 		"due_at":            dueAt,
 		"todo_id":           map[string]any{"type": "string", "minLength": 1, "description": "操作已有事项时填写查询返回的真实 id"},

@@ -98,6 +98,9 @@ func readItems(path string, sessionID string) ([]map[string]any, error) {
 				return nil, fmt.Errorf("日程图片标识无效: %s, id=%q", path, id)
 			}
 		}
+		if _, ok := item["trigger_people"].([]any); !ok {
+			item["trigger_people"] = []any{}
+		}
 		seen[id] = true
 	}
 	return items, nil

@@ -2721,8 +2721,12 @@ func dispatchScheduleItem(
 	if !ok {
 		return fmt.Errorf("当前聊天平台暂不支持日程投递")
 	}
+	triggerPeople := item["trigger_people"]
+	if triggerPeople == nil {
+		triggerPeople = []any{}
+	}
 	payload, err := sonic.Marshal(map[string]any{
-		"id": anyString(item["id"]), "text": anyString(item["text"]), "due_at": item["due_at"],
+		"id": anyString(item["id"]), "text": anyString(item["text"]), "due_at": item["due_at"], "trigger_people": triggerPeople,
 	})
 	if err != nil {
 		return err
