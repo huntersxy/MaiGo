@@ -54,7 +54,7 @@ build_venv() {
     "$venv/bin/pip" install --no-cache-dir --no-input --upgrade pip >/dev/null
     if [ "$name" = "plugin-runtime" ]; then
         "$venv/bin/pip" install --no-cache-dir --no-input --no-deps \
-            --index-url "$PIP_INDEX" "maibot==1.4.6"
+            --index-url "$PIP_INDEX" "maibot==1.4.7"
     fi
     "$venv/bin/pip" install --no-cache-dir --no-input --index-url "$PIP_INDEX" -r "$requirements"
 }

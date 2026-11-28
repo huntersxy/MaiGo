@@ -37,7 +37,7 @@ func writeGeneratedConfigIfMissing(path, version string, body []byte) error {
 		return fmt.Errorf("检查配置文件 %s: %w", path, err)
 	}
 	var builder strings.Builder
-	builder.WriteString("# 本文件由 MaiGo 按 MaiBot 1.4.6 默认配置生成\n")
+	builder.WriteString("# 本文件由 MaiGo 按 MaiBot 1.4.7 默认配置生成\n")
 	builder.WriteString("[inner]\nversion = ")
 	builder.WriteString(fmt.Sprintf("%q", version))
 	builder.WriteString("\n\n")
