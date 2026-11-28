@@ -222,6 +222,10 @@ func searchProvider(cfg RuntimeConfig) (SearchProvider, error) {
 	case "bing", "http", "":
 		return BingProvider{}, nil
 	default:
+		if strings.HasPrefix(cfg.SearchAdapter, "plugin:") {
+			service := cfg.Services[strings.TrimSpace(cfg.SearchService)]
+			return NewPluginWebProvider(cfg.SearchService, cfg.SearchAdapter, service.BaseURL, service.APIKey, cfg.Timeout)
+		}
 		return nil, NewError(fmt.Sprintf("未知搜索供应商: %s", cfg.SearchAdapter))
 	}
 }
@@ -259,6 +263,10 @@ func fetchProvider(cfg RuntimeConfig) (FetchProvider, error) {
 	case "http", "bing", "":
 		return HTTPFetchProvider{}, nil
 	default:
+		if strings.HasPrefix(cfg.FetchAdapter, "plugin:") {
+			service := cfg.Services[strings.TrimSpace(cfg.FetchService)]
+			return NewPluginWebProvider(cfg.FetchService, cfg.FetchAdapter, service.BaseURL, service.APIKey, cfg.Timeout)
+		}
 		return nil, NewError(fmt.Sprintf("未知抓取供应商: %s", cfg.FetchAdapter))
 	}
 }

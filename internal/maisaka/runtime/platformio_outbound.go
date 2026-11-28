@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
@@ -231,6 +232,43 @@ func (a *Agent) sendFileViaPlatformIO(
 	}
 	arrivalSeq = arrivalSeqFromReceipt(receipt)
 	return messageID, arrivalSeq, nil
+}
+
+func (a *Agent) sendVoiceViaPlatformIO(ctx context.Context, conversationKind string, targetID int64, audio []byte) error {
+	if len(audio) == 0 {
+		return fmt.Errorf("语音数据为空")
+	}
+	resolved, ok := a.resolvePlatformRoute(conversationKind, targetID)
+	if !ok {
+		return fmt.Errorf("没有可用的平台发送适配器")
+	}
+	chatType, err := chatTypeForKind(conversationKind)
+	if err != nil {
+		return err
+	}
+	target, err := a.platformTransportTarget(ctx, resolved, chatType)
+	if err != nil {
+		return err
+	}
+	encoded := base64.StdEncoding.EncodeToString(audio)
+	routeKey := resolved.RouteKey
+	outbound := platformio.OutboundMessageEnvelope{
+		RouteKey:    routeKey,
+		ChatType:    chatType,
+		TargetID:    target,
+		Timestamp:   time.Now(),
+		MessageInfo: a.outboundMessageInfoForRoute(routeKey, conversationKind, target),
+		Segments: []platformio.Segment{{
+			Kind: platformio.SegmentVoice,
+			URL:  "data:audio/wav;base64," + encoded,
+			Text: encoded,
+		}},
+	}
+	batch := a.platformIO.SendMessage(ctx, outbound, routeKey)
+	if !batch.HasSuccess() {
+		return platformIOSendError(batch)
+	}
+	return nil
 }
 
 var outboundMessageSeq atomic.Uint64

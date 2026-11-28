@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"MaiGo/internal/common/llmjson"
+	maibotcfg "MaiGo/internal/config/maibot"
 )
 
 // 回复补充编排节点类型，对齐 Python reply_supplement 的 discriminated union
@@ -39,8 +40,9 @@ type SupplementPart struct {
 
 // ReplySupplementPlan 一份发送编排；reply 只能出现一次，不能携带或改写正文
 type ReplySupplementPlan struct {
-	MsgID string
-	Parts []SupplementPart
+	MsgID       string
+	AttachVoice string
+	Parts       []SupplementPart
 }
 
 // ParseReplySupplementPlan 严格解析模型输出，多余字段与结构错误直接报错
@@ -50,7 +52,7 @@ func ParseReplySupplementPlan(raw string) (ReplySupplementPlan, error) {
 		return ReplySupplementPlan{}, fmt.Errorf("回复补充编排不是合法 JSON：%w", err)
 	}
 	for key := range payload {
-		if key != "msg_id" && key != "parts" {
+		if key != "msg_id" && key != "parts" && key != "attach_voice" {
 			return ReplySupplementPlan{}, fmt.Errorf("回复补充编排包含未知字段：%s", key)
 		}
 	}
@@ -61,6 +63,13 @@ func ParseReplySupplementPlan(raw string) (ReplySupplementPlan, error) {
 			return ReplySupplementPlan{}, errors.New("回复补充编排的 msg_id 必须是非空字符串")
 		}
 		plan.MsgID = msgID
+	}
+	if value, ok := payload["attach_voice"]; ok && value != nil {
+		mode, ok := value.(string)
+		if !ok || strings.TrimSpace(mode) == "" {
+			return ReplySupplementPlan{}, errors.New("attach_voice 必须是非空字符串")
+		}
+		plan.AttachVoice = strings.TrimSpace(mode)
 	}
 	rawParts, ok := payload["parts"].([]any)
 	if !ok {
@@ -203,6 +212,8 @@ type SupplementResourceOptions struct {
 	EnableReplyAt         bool
 	GroupQuoteFrequency   string
 	PrivateQuoteFrequency string
+	Platform              string
+	ModelConfig           func() (maibotcfg.ModelConfigFile, bool)
 }
 
 // SupplementResources 只允许引用本轮 Planner 已看到的资源，不受生成期间新消息影响

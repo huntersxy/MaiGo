@@ -18,6 +18,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"MaiGo/internal/llm_models/contract"
+	providerformats "MaiGo/internal/plugin_runtime/provider_formats"
 )
 
 const (
@@ -47,6 +48,7 @@ type PluginProviderResolver interface {
 type registeredPluginProvider struct {
 	pluginID string
 	invoker  PluginLLMInvoker
+	formats  providerformats.ProviderFormats
 }
 
 var (
@@ -74,8 +76,94 @@ func RegisterPluginProvider(clientType, pluginID string, invoker PluginLLMInvoke
 	if existing, ok := pluginProviders[clientType]; ok && existing.pluginID != pluginID {
 		return fmt.Errorf("LLM Provider client_type 冲突: %s 已由 %s 注册", clientType, pluginProviderOwnerLabel(existing.pluginID))
 	}
-	pluginProviders[clientType] = registeredPluginProvider{pluginID: pluginID, invoker: invoker}
+	pluginProviders[clientType] = registeredPluginProvider{pluginID: pluginID, invoker: invoker, formats: existingFormats(clientType)}
 	return nil
+}
+
+// RegisterPluginProviderFormats 更新已注册 Provider 的 formats 声明
+func RegisterPluginProviderFormats(clientType string, formats providerformats.ProviderFormats) {
+	clientType = normalizeClientType(clientType)
+	pluginProviderMu.Lock()
+	defer pluginProviderMu.Unlock()
+	provider := pluginProviders[clientType]
+	provider.formats = formats
+	pluginProviders[clientType] = provider
+}
+
+func existingFormats(clientType string) providerformats.ProviderFormats {
+	if provider, ok := pluginProviders[clientType]; ok {
+		return provider.formats
+	}
+	return providerformats.ProviderFormats{}
+}
+
+// PluginProviderFormats 返回 client_type 对应的插件 formats
+func PluginProviderFormats(clientType string) (providerformats.ProviderFormats, bool) {
+	provider, ok := lookupRegisteredPluginProvider(clientType)
+	if !ok {
+		return providerformats.ProviderFormats{}, false
+	}
+	return provider.formats, true
+}
+
+func lookupPluginTTSPreset(clientType, model string) *providerformats.SpeechPreset {
+	formats, ok := PluginProviderFormats(clientType)
+	if !ok {
+		return nil
+	}
+	if preset, ok := formats.TTS[model]; ok {
+		copy := preset
+		return &copy
+	}
+	return nil
+}
+
+// ParsePluginWebAdapter 解析 plugin:{owner}/{client_type} 联网适配器名
+func ParsePluginWebAdapter(adapter string) (pluginID, clientType string, ok bool) {
+	adapter = strings.TrimSpace(adapter)
+	if !strings.HasPrefix(adapter, "plugin:") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(adapter, "plugin:")
+	pluginID, clientType, ok = strings.Cut(rest, "/")
+	pluginID = strings.TrimSpace(pluginID)
+	clientType = strings.TrimSpace(clientType)
+	return pluginID, clientType, ok && pluginID != "" && clientType != ""
+}
+
+// FindPluginWebProvider 对齐 plugin web adapter 的 find_web_plugin
+func FindPluginWebProvider(adapter string) (pluginID, clientType string, formats providerformats.ProviderFormats, ok bool) {
+	pluginID, clientType, ok = ParsePluginWebAdapter(adapter)
+	if !ok {
+		return "", "", providerformats.ProviderFormats{}, false
+	}
+	provider, ok := lookupRegisteredPluginProvider(clientType)
+	if !ok || provider.pluginID != pluginID || len(provider.formats.Web) == 0 {
+		return "", "", providerformats.ProviderFormats{}, false
+	}
+	return pluginID, clientType, provider.formats, true
+}
+
+// InvokePluginWebOperation 调用插件声明的联网 RPC 操作
+func InvokePluginWebOperation(ctx context.Context, cfg ModelConfig, pluginID string, invoker PluginLLMInvoker, operation string, args map[string]any) (map[string]any, error) {
+	if invoker == nil {
+		return nil, fmt.Errorf("联网插件缺少 RPC 入口")
+	}
+	m := &pluginModel{cfg: cfg, pluginID: pluginID, invoker: invoker}
+	request := map[string]any{"api_provider": m.apiProviderSnapshot(true)}
+	for key, value := range args {
+		request[key] = value
+	}
+	return m.invoke(ctx, operation, request)
+}
+
+// PluginLLMInvokerForClientType 返回已注册插件 Provider 的 RPC 入口
+func PluginLLMInvokerForClientType(clientType string) (string, PluginLLMInvoker, bool) {
+	provider, ok := lookupRegisteredPluginProvider(clientType)
+	if !ok {
+		return "", nil, false
+	}
+	return provider.pluginID, provider.invoker, true
 }
 
 // isBuiltinPluginClientType 判断 MaiBot 主程序内置客户端类型，插件不能覆盖
@@ -173,6 +261,7 @@ func PluginProviderAvailable(clientType string) bool {
 type RegisteredPluginProvider struct {
 	ClientType string
 	PluginID   string
+	Formats    providerformats.ProviderFormats
 }
 
 // ListRegisteredPluginProviders 返回当前显式注册的插件 client_type 列表（按类型名字典序）
@@ -181,7 +270,11 @@ func ListRegisteredPluginProviders() []RegisteredPluginProvider {
 	defer pluginProviderMu.RUnlock()
 	out := make([]RegisteredPluginProvider, 0, len(pluginProviders))
 	for clientType, provider := range pluginProviders {
-		out = append(out, RegisteredPluginProvider{ClientType: clientType, PluginID: provider.pluginID})
+		out = append(out, RegisteredPluginProvider{
+			ClientType: clientType,
+			PluginID:   provider.pluginID,
+			Formats:    provider.formats,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ClientType < out[j].ClientType })
 	return out

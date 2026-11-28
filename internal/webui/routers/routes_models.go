@@ -10,4 +10,5 @@ func mountModelsRoutes(mr chi.Router, d Deps) {
 	mr.Get("/test-connection", d.handleModelsTestConnection)
 	mr.Post("/test-connection-by-name", d.handleModelsTestConnectionByName)
 	mr.Post("/test-model", d.handleModelsTestModel)
+	mr.Post("/preview-speech", d.handleModelsPreviewSpeech)
 }

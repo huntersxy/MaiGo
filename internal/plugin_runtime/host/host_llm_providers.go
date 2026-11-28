@@ -9,16 +9,18 @@ import (
 
 	"MaiGo/internal/llm_models"
 	"MaiGo/internal/plugin_runtime/protocol"
+	providerformats "MaiGo/internal/plugin_runtime/provider_formats"
 )
 
 // LLMProviderEntry Host 侧插件 LLM Provider 注册项，对齐 ClientProviderRegistration 的可观察字段
 type LLMProviderEntry struct {
-	ClientType  string         `json:"client_type"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Version     string         `json:"version"`
-	Metadata    map[string]any `json:"metadata"`
-	PluginID    string         `json:"plugin_id"`
+	ClientType  string                          `json:"client_type"`
+	Name        string                          `json:"name"`
+	Description string                          `json:"description"`
+	Version     string                          `json:"version"`
+	Metadata    map[string]any                  `json:"metadata"`
+	PluginID    string                          `json:"plugin_id"`
+	Formats     providerformats.ProviderFormats `json:"formats"`
 }
 
 // LLMProviderRegistry 插件 LLM Provider 注册表，对齐 llm_models.model_client.base_client 的插件分区
@@ -108,6 +110,7 @@ func (r *LLMProviderRegistry) ReplacePluginProviders(pluginID string, declaratio
 			Version:     version,
 			Metadata:    metadata,
 			PluginID:    pluginID,
+			Formats:     decodeProviderFormats(declaration.Formats),
 		})
 	}
 	r.mu.Lock()
@@ -196,8 +199,56 @@ func (r *LLMProviderRegistry) syncRuntimeProviders(pluginID string, entries []LL
 	}
 	invoker := hostPluginLLMInvoker{host: r.hostInvoker}
 	for _, entry := range entries {
-		_ = llm.RegisterPluginProvider(entry.ClientType, pluginID, invoker)
+		if err := llm.RegisterPluginProvider(entry.ClientType, pluginID, invoker); err != nil {
+			continue
+		}
+		llm.RegisterPluginProviderFormats(entry.ClientType, entry.Formats)
 	}
+}
+
+func decodeProviderFormats(raw map[string]any) providerformats.ProviderFormats {
+	if len(raw) == 0 {
+		return providerformats.ProviderFormats{}
+	}
+	formats := providerformats.ProviderFormats{
+		ASR: map[string]providerformats.SpeechPreset{},
+		TTS: map[string]providerformats.SpeechPreset{},
+	}
+	if asrRaw, ok := raw["asr"].(map[string]any); ok {
+		for key, value := range asrRaw {
+			if presetMap, ok := value.(map[string]any); ok {
+				formats.ASR[key] = decodeSpeechPreset(presetMap)
+			}
+		}
+	}
+	if ttsRaw, ok := raw["tts"].(map[string]any); ok {
+		for key, value := range ttsRaw {
+			if presetMap, ok := value.(map[string]any); ok {
+				formats.TTS[key] = decodeSpeechPreset(presetMap)
+			}
+		}
+	}
+	if webRaw, ok := raw["web"].([]any); ok {
+		for _, item := range webRaw {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				formats.Web = append(formats.Web, text)
+			}
+		}
+	}
+	return formats
+}
+
+func decodeSpeechPreset(raw map[string]any) providerformats.SpeechPreset {
+	preset := providerformats.SpeechPreset{Voices: map[string]string{}}
+	if label, ok := raw["label"].(string); ok {
+		preset.Label = strings.TrimSpace(label)
+	}
+	if voices, ok := raw["voices"].(map[string]any); ok {
+		for key, value := range voices {
+			preset.Voices[key] = strings.TrimSpace(fmt.Sprint(value))
+		}
+	}
+	return preset
 }
 
 // hostPluginLLMInvoker 把 internal/llm 的 Provider 调用桥接回 Runner RPC

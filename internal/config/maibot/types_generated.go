@@ -716,6 +716,7 @@ type ModelTaskConfig struct {
 	FastModel      TaskConfig          `toml:"fast_model"`
 	Vlm            TaskConfig          `toml:"vlm"`
 	Voice          TaskConfig          `toml:"voice"`
+	Tts            TaskConfig          `toml:"tts"`
 	Embedding      TaskConfig          `toml:"embedding"`
 	ImageEmbedding TaskConfig          `toml:"image_embedding"`
 }

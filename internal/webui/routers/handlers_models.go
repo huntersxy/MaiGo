@@ -21,11 +21,12 @@ import (
 func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 type modelClientType struct {
-	ClientType    string  `json:"client_type"`
-	OwnerPluginID *string `json:"owner_plugin_id"`
-	Version       string  `json:"version"`
-	Description   string  `json:"description"`
-	Builtin       bool    `json:"builtin"`
+	ClientType    string         `json:"client_type"`
+	OwnerPluginID *string        `json:"owner_plugin_id"`
+	Version       string         `json:"version"`
+	Description   string         `json:"description"`
+	Builtin       bool           `json:"builtin"`
+	Formats       map[string]any `json:"formats"`
 }
 
 // handleModelsClientTypes 对应 GET /api/webui/models/client-types
@@ -42,8 +43,14 @@ func (d Deps) handleModelsClientTypes(w http.ResponseWriter, r *http.Request) {
 			ownerCopy := owner
 			ownerPtr = &ownerCopy
 		}
+		formats := map[string]any{}
+		if len(provider.Formats.ASR) > 0 || len(provider.Formats.TTS) > 0 || len(provider.Formats.Web) > 0 {
+			formats["asr"] = provider.Formats.ASR
+			formats["tts"] = provider.Formats.TTS
+			formats["web"] = provider.Formats.Web
+		}
 		clientTypes = append(clientTypes, modelClientType{
-			ClientType: provider.ClientType, OwnerPluginID: ownerPtr, Builtin: false,
+			ClientType: provider.ClientType, OwnerPluginID: ownerPtr, Builtin: false, Formats: formats,
 		})
 	}
 	// 对齐 Python：内置优先，再按 client_type 字典序

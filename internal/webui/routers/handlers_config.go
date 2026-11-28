@@ -58,7 +58,7 @@ func (d Deps) handleConfigModelGet(w http.ResponseWriter, r *http.Request) {
 func applyModelTaskListDefaults(doc map[string]any) {
 	tasks, _ := doc["model_task_config"].(map[string]any)
 	for _, name := range [...]string{
-		"web_search", "replyer", "planner", "memory", "utils", "learner", "fast_model", "vlm", "voice", "embedding", "image_embedding",
+		"web_search", "replyer", "planner", "memory", "utils", "learner", "fast_model", "vlm", "voice", "tts", "embedding", "image_embedding",
 	} {
 		task, _ := tasks[name].(map[string]any)
 		if task != nil {

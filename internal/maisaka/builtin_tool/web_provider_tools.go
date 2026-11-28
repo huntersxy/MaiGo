@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"MaiGo/internal/llm_models/model_client"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/web_search"
 
@@ -41,22 +42,48 @@ func WebToolBuilders() []func() (tool.BaseTool, error) {
 		return nil
 	}
 	builders := make([]func() (tool.BaseTool, error), 0, 2)
-	if webSearchEnabled(cfg) {
+	if webToolAvailable(cfg, cfg.SearchService, "web_search") {
 		builders = append(builders, NewWebSearchTool)
 	}
-	if webFetchEnabled(cfg) {
+	if webToolAvailable(cfg, cfg.FetchService, "web_fetch") {
 		builders = append(builders, NewWebFetchTool)
 	}
 	return builders
 }
 
-// webSearchEnabled / webFetchEnabled 对齐 Python config.search / config.fetch 判定
-func webSearchEnabled(cfg websearch.RuntimeConfig) bool {
-	return cfg.Enabled && (strings.TrimSpace(cfg.SearchService) != "" || strings.TrimSpace(cfg.SearchAdapter) != "")
-}
-
-func webFetchEnabled(cfg websearch.RuntimeConfig) bool {
-	return cfg.Enabled && (strings.TrimSpace(cfg.FetchService) != "" || strings.TrimSpace(cfg.FetchAdapter) != "")
+// webToolAvailable 对齐 Python WebSearchToolProvider.available
+func webToolAvailable(cfg websearch.RuntimeConfig, serviceName, operation string) bool {
+	if !cfg.Enabled {
+		return false
+	}
+	name := strings.TrimSpace(serviceName)
+	if name == "" {
+		switch operation {
+		case "web_search":
+			return strings.TrimSpace(cfg.SearchAdapter) != ""
+		case "web_fetch":
+			return strings.TrimSpace(cfg.FetchAdapter) != ""
+		default:
+			return false
+		}
+	}
+	service, ok := cfg.Services[name]
+	if !ok {
+		return false
+	}
+	if strings.HasPrefix(service.Adapter, "plugin:") {
+		_, _, formats, found := model_client.FindPluginWebProvider(service.Adapter)
+		if !found {
+			return false
+		}
+		for _, declared := range formats.Web {
+			if declared == operation {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 type webSearchTool struct{}

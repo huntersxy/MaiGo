@@ -43,6 +43,8 @@ type (
 	StepSearchProvider = adapters.StepSearchProvider
 	// TavilyProvider Tavily 适配器
 	TavilyProvider = adapters.TavilyProvider
+	// PluginWebProvider 插件联网适配器
+	PluginWebProvider = adapters.PluginWebProvider
 )
 
 var (
@@ -58,6 +60,8 @@ var (
 	NewStepSearchProvider = adapters.NewStepSearchProvider
 	// NewTavilyProvider 构造 Tavily 适配器
 	NewTavilyProvider = adapters.NewTavilyProvider
+	// NewPluginWebProvider 构造插件联网适配器
+	NewPluginWebProvider = adapters.NewPluginWebProvider
 	// DefaultWebTimeout 默认联网超时
 	DefaultWebTimeout = adapters.DefaultWebTimeout
 )

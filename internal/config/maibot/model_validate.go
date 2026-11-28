@@ -120,6 +120,7 @@ func taskModelListEntries(mtc ModelTaskConfig) []taskModelListEntry {
 		{task: "fast_model", list: mtc.FastModel.ModelList},
 		{task: "vlm", list: mtc.Vlm.ModelList},
 		{task: "voice", list: mtc.Voice.ModelList},
+		{task: "tts", list: mtc.Tts.ModelList},
 		{task: "embedding", list: mtc.Embedding.ModelList},
 		{task: "image_embedding", list: mtc.ImageEmbedding.ModelList},
 	}

@@ -15,6 +15,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -49,12 +50,26 @@ func (t *openAIAudioTranscriber) Transcribe(ctx context.Context, req AudioTransc
 		formBody[key] = value
 	}
 
-	body, contentType, err := buildAudioTranscriptionForm(t.client.model, audioBytes, formBody)
+	deepseek := t.client.cfg.ModelType == "asr" && strings.TrimSpace(t.client.model) == "deepseek-asr"
+	endpoint := openAIAudioTranscriptionsPath
+	operation := "audio.transcriptions.create"
+	uploadName, uploadData := "audio.wav", audioBytes
+	if deepseek {
+		endpoint = resolveDeepseekASREndpoint(t.client.baseURL)
+		operation = "deepseek.tools.asr"
+		prepared, err := PrepareDeepseekAudio(audioBytes)
+		if err != nil {
+			return AudioTranscriptionResult{}, t.snapshotFailure(recorder, started, req, nil, &ParseError{Message: err.Error(), Err: err})
+		}
+		uploadName, uploadData = prepared.Name, prepared.Data
+	} else if t.client.cfg.ModelType == "asr" {
+		uploadName = TranscriptionFilename(audioBytes)
+	}
+	body, contentType, err := buildAudioTranscriptionForm(t.client.model, uploadName, uploadData, formBody)
 	if err != nil {
 		return AudioTranscriptionResult{}, t.snapshotFailure(recorder, started, req, nil, err)
 	}
-	endpoint := t.client.baseURL + openAIAudioTranscriptionsPath
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.client.baseURL+endpoint, bytes.NewReader(body))
 	if err != nil {
 		return AudioTranscriptionResult{}, t.snapshotFailure(recorder, started, req, nil, &NetworkError{Message: err.Error(), Err: err})
 	}
@@ -75,9 +90,9 @@ func (t *openAIAudioTranscriber) Transcribe(ctx context.Context, req AudioTransc
 
 	providerRequest := map[string]any{
 		"base_url":      t.client.baseURL,
-		"endpoint":      openAIAudioTranscriptionsPath,
+		"endpoint":      endpoint,
 		"method":        http.MethodPost,
-		"operation":     "audio.transcriptions.create",
+		"operation":     operation,
 		"file_name":     "audio.wav",
 		"model":         t.client.model,
 		"extra_body":    formBody,
@@ -90,7 +105,7 @@ func (t *openAIAudioTranscriber) Transcribe(ctx context.Context, req AudioTransc
 	if err != nil {
 		return AudioTranscriptionResult{}, t.snapshotFailure(recorder, started, req, providerRequest, err)
 	}
-	text, err := parseAudioTranscriptionResponse(raw)
+	text, err := parseAudioTranscriptionResponse(raw, deepseek)
 	if err != nil {
 		return AudioTranscriptionResult{}, t.snapshotFailure(recorder, started, req, providerRequest, err)
 	}
@@ -157,13 +172,16 @@ func decodeBase64Audio(encoded string) ([]byte, error) {
 	return decoded, nil
 }
 
-func buildAudioTranscriptionForm(modelName string, audio []byte, body map[string]any) ([]byte, string, error) {
+func buildAudioTranscriptionForm(modelName, fileName string, audio []byte, body map[string]any) ([]byte, string, error) {
+	if fileName == "" {
+		fileName = "audio.wav"
+	}
 	var buffer bytes.Buffer
 	writer := multipart.NewWriter(&buffer)
 	if err := writer.WriteField("model", modelName); err != nil {
 		return nil, "", err
 	}
-	part, err := writer.CreateFormFile("file", "audio.wav")
+	part, err := writer.CreateFormFile("file", fileName)
 	if err != nil {
 		return nil, "", err
 	}
@@ -227,7 +245,19 @@ func splitAudioTranscriptionOverrides(extraParams map[string]any) chatCompletion
 	return overrides
 }
 
-func parseAudioTranscriptionResponse(raw []byte) (string, error) {
+func resolveDeepseekASREndpoint(baseURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return "/v1/tools/asr"
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if strings.HasSuffix(path, "/v1") {
+		return "/tools/asr"
+	}
+	return "/v1/tools/asr"
+}
+
+func parseAudioTranscriptionResponse(raw []byte, deepseek bool) (string, error) {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" {
 		return "", &ParseError{Message: "音频转写响应解析失败，缺少文本内容。"}
@@ -237,6 +267,12 @@ func parseAudioTranscriptionResponse(raw []byte) (string, error) {
 		if text, ok := payload["text"].(string); ok {
 			return text, nil
 		}
+		if deepseek {
+			return "", &ParseError{Message: "音频转写响应解析失败，缺少文本内容。"}
+		}
+		return "", &ParseError{Message: "音频转写响应解析失败，缺少文本内容。"}
+	}
+	if deepseek {
 		return "", &ParseError{Message: "音频转写响应解析失败，缺少文本内容。"}
 	}
 	// response_format=text 时上游直接返回纯文本

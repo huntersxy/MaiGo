@@ -105,6 +105,10 @@ model_list = []
 max_tokens = 8192
 hard_timeout = 120.0
 
+[model_task_config.tts]
+model_list = []
+hard_timeout = 120.0
+
 [model_task_config.embedding]
 model_list = []
 max_tokens = 4096

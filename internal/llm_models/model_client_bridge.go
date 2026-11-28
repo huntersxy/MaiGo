@@ -100,7 +100,8 @@ type (
 
 var (
 	// RegisterPluginProvider 注册插件 LLM Provider
-	RegisterPluginProvider = model_client.RegisterPluginProvider
+	RegisterPluginProvider            = model_client.RegisterPluginProvider
+	RegisterPluginProviderFormats     = model_client.RegisterPluginProviderFormats
 	// UnregisterPluginProvider 注销插件 LLM Provider
 	UnregisterPluginProvider = model_client.UnregisterPluginProvider
 

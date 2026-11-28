@@ -11,6 +11,7 @@ import (
 
 	"MaiGo/internal/A_memorix"
 	"MaiGo/internal/chat/replyer"
+	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/maisaka"
 	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/person_info"
@@ -95,6 +96,7 @@ type ReplyInput struct {
 	AttachAt         []ReplyAttachAt      `json:"attach_at,omitempty" jsonschema:"-"`
 	AttachPic        []ReplyAttachPicture `json:"attach_pic,omitempty" jsonschema:"description=可选；随回复发送的图片列表"`
 	AttachEmoji      any                  `json:"attach_emoji,omitempty" jsonschema:"description=可选；上下文表情引用或按情绪、画面内容匹配的表情"`
+	AttachVoice      string               `json:"attach_voice,omitempty" jsonschema:"-"`
 }
 
 // ReplyAttachAt 对齐 Python attach_at：字符串为消息 ID，对象为平台用户 ID
@@ -358,6 +360,26 @@ func replyFunc(ctx context.Context, input *ReplyInput) (any, error) {
 			if err := tc.SendImageURLCallback(attachmentCtx, picture.Path); err != nil {
 				return nil, fmt.Errorf("发送回复图片失败: %w", err)
 			}
+		}
+	}
+	if mode := strings.TrimSpace(input.AttachVoice); mode != "" {
+		if tc == nil {
+			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：缺少工具上下文"}, nil
+		}
+		file, ok := maibotcfg.ModelConfigFile{}, false
+		if tc.ModelConfigSnapshot != nil {
+			file, ok = tc.ModelConfigSnapshot()
+		}
+		schema := VoiceAttachmentSchema(tc.Platform, file)
+		if !ok || schema == nil {
+			return &maisakaStubOutput{Success: false, Message: "当前回复不可使用语音附件"}, nil
+		}
+		voiceMode, err := parseVoiceMode(mode)
+		if err != nil {
+			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
+		}
+		if err := AttachReplyVoice(ctx, tc, content, voiceMode); err != nil {
+			return &maisakaStubOutput{Success: false, Message: "生成语音附件失败：" + err.Error()}, nil
 		}
 	}
 	if emojiAttachment != nil {

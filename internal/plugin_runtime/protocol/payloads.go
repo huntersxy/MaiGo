@@ -47,6 +47,7 @@ type LLMProviderDeclaration struct {
 	Description string         `msgpack:"description" json:"description"`
 	Version     string         `msgpack:"version" json:"version"`
 	Metadata    map[string]any `msgpack:"metadata" json:"metadata"`
+	Formats     map[string]any `msgpack:"formats" json:"formats"`
 }
 
 // BootstrapPluginPayload plugin.bootstrap 请求，对齐 protocol.envelope.BootstrapPluginPayload

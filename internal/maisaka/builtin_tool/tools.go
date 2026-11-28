@@ -10,6 +10,7 @@ import (
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/common/media"
 	"MaiGo/internal/config"
+	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/files"
 	"MaiGo/internal/llm_models"
 
@@ -45,6 +46,9 @@ type ResolveMessageAuthorCallback func(msgID string) (MessageAuthor, bool)
 // SendStickerCallback 发送表情包回调函数类型
 type SendStickerCallback func(ctx context.Context, targetID int64, fileName string, description string) error
 type SendImageURLCallback func(ctx context.Context, imageURL string) error
+type SendVoiceBinaryCallback func(ctx context.Context, audio []byte) error
+type SynthesizeReplySpeechCallback func(ctx context.Context, text string) ([]byte, error)
+type ModelConfigSnapshotCallback func() (maibotcfg.ModelConfigFile, bool)
 type GetNewMessagesCallback func(ctx context.Context) (any, error)
 
 // EmojiAttachment 已解析的表情包附件；Path/Binary 至少一个可用
@@ -94,6 +98,9 @@ type ToolContext struct {
 	ReplySendCallback       ReplySendCallback   // 可见回复逐段发送结果回调；未接入时回退 SpeakCallback
 	SendStickerCallback     SendStickerCallback // 发送表情包回调
 	SendImageURLCallback    SendImageURLCallback
+	SendVoiceBinary         SendVoiceBinaryCallback
+	SynthesizeReplySpeech   SynthesizeReplySpeechCallback
+	ModelConfigSnapshot     ModelConfigSnapshotCallback
 	GetNewMessagesCallback  GetNewMessagesCallback
 	ReplyerCallback         ReplyerCallback
 	ResolveMessageSender    ResolveMessageSenderCallback

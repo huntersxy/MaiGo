@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ func (e *ConfigError) ErrorCode() string { return CodeWebServiceConfigInvalid }
 // ServiceConfig 单个联网服务的调用配置快照
 type ServiceConfig struct {
 	Adapter   string
+	BaseURL   string
 	APIKey    string
 	ServerRef string
 }
@@ -363,6 +365,7 @@ func ParseRuntimeTOML(raw []byte) (RuntimeConfig, error) {
 		}
 		cfg.Services[name] = ServiceConfig{
 			Adapter:   normalizedAdapter(service.Adapter),
+			BaseURL:   strings.TrimSpace(service.BaseURL),
 			APIKey:    strings.TrimSpace(service.APIKey),
 			ServerRef: strings.TrimSpace(service.ServerRef),
 		}
@@ -397,13 +400,17 @@ func ParseRuntimeTOML(raw []byte) (RuntimeConfig, error) {
 	return applyEnvAndValidate(cfg)
 }
 
+var pluginWebAdapterPattern = regexp.MustCompile(`^plugin:[^/\s]+/\S(?:.*\S)?$`)
+
 func validateRawService(name string, service rawService) error {
-	adapter := strings.ToLower(strings.TrimSpace(service.Adapter))
+	adapter := strings.TrimSpace(service.Adapter)
 	if adapter == "" {
 		adapter = "deepseek"
 	}
-	switch adapter {
-	case "deepseek", "tavily", "exa", "firecrawl", "anysearch", "stepsearch", "stepsearch_mcp", "bing", "http":
+	lower := strings.ToLower(adapter)
+	switch {
+	case pluginWebAdapterPattern.MatchString(adapter):
+	case lower == "deepseek", lower == "tavily", lower == "exa", lower == "firecrawl", lower == "anysearch", lower == "stepsearch", lower == "stepsearch_mcp", lower == "bing", lower == "http":
 	default:
 		return fmt.Errorf("联网服务 %s 的 adapter 不受支持: %s", name, service.Adapter)
 	}
@@ -451,7 +458,11 @@ func validateRawService(name string, service rawService) error {
 }
 
 func normalizedAdapter(raw string) string {
-	adapter := strings.ToLower(strings.TrimSpace(raw))
+	adapter := strings.TrimSpace(raw)
+	if strings.HasPrefix(adapter, "plugin:") {
+		return adapter
+	}
+	adapter = strings.ToLower(adapter)
 	if adapter == "" {
 		return "deepseek"
 	}
@@ -466,6 +477,9 @@ func requireWebService(cfg RuntimeConfig, name string) error {
 	service, ok := cfg.Services[strings.TrimSpace(name)]
 	if !ok {
 		return &ConfigError{Message: fmt.Sprintf("web_search 引用了不存在的联网服务：%s，请修正或取消该功能分配", name)}
+	}
+	if strings.HasPrefix(service.Adapter, "plugin:") {
+		return nil
 	}
 	field, value := "api_key", service.APIKey
 	if service.Adapter == "stepsearch_mcp" {

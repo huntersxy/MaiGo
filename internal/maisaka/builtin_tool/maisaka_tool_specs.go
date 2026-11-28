@@ -170,6 +170,13 @@ func replySpecSchemaForContext(base map[string]any, ctx context.Context) map[str
 	if !tc.UseVectorExpression {
 		delete(properties, "expression_intent")
 	}
+	if tc.ModelConfigSnapshot != nil {
+		if file, ok := tc.ModelConfigSnapshot(); ok {
+			if voiceSchema := VoiceAttachmentSchema(tc.Platform, file); voiceSchema != nil {
+				properties["attach_voice"] = voiceSchema
+			}
+		}
+	}
 	if tc.EnableReplyAt && tc.ConversationKind == "group" {
 		properties["attach_at"] = map[string]any{
 			"type":        "array",

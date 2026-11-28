@@ -125,6 +125,9 @@ func buildReplySupplementArguments(
 	if len(attachPic) > 0 {
 		arguments["attach_pic"] = attachPic
 	}
+	if strings.TrimSpace(supplement.Plan.AttachVoice) != "" {
+		arguments["attach_voice"] = supplement.Plan.AttachVoice
+	}
 	return arguments, emojis
 }
 

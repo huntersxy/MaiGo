@@ -265,6 +265,10 @@ func BuildReplySupplementSchema(allowAt bool) map[string]any {
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"msg_id": map[string]any{"type": "string", "minLength": 1},
+			"attach_voice": map[string]any{
+				"type": "string",
+				"enum": []any{"voice_only", "with_text"},
+			},
 			"parts": map[string]any{
 				"type": "array", "minItems": 1, "maxItems": 16,
 				"items": map[string]any{"oneOf": oneOf, "discriminator": discriminator},
@@ -337,7 +341,7 @@ func generateReplySupplementOnce(
 		return ReplySupplement{}, err
 	}
 	resources := CaptureSupplementResources(history, sessionID, options)
-	schema := BuildReplySupplementSchema(resources.AllowAt)
+	schema := BuildReplySupplementSchema(resources.AllowAt, resolveSupplementVoiceSchema(options))
 	instruction, err := BuildReplySupplementInstruction(template, guidance, resources, schema)
 	if err != nil {
 		return ReplySupplement{}, err
@@ -370,8 +374,41 @@ func generateReplySupplementOnce(
 	if err != nil {
 		return ReplySupplement{}, err
 	}
+	voiceSchema := resolveSupplementVoiceSchema(options)
+	if plan.AttachVoice != "" {
+		if voiceSchema == nil {
+			return ReplySupplement{}, errors.New("当前回复不可使用语音附件")
+		}
+		if !voiceModeAllowed(plan.AttachVoice) {
+			return ReplySupplement{}, errors.New("当前回复不可使用语音附件")
+		}
+	}
 	metadata["plan"] = planToPayload(plan)
 	return ResolveSupplement(plan, resources, metadata)
+}
+
+func resolveSupplementVoiceSchema(options SupplementResourceOptions) map[string]any {
+	if options.ModelConfig == nil {
+		return nil
+	}
+	file, ok := options.ModelConfig()
+	if !ok {
+		return nil
+	}
+	tools := loadBuiltinToolsPackage()
+	if tools == nil {
+		return nil
+	}
+	return tools.VoiceAttachmentSchema(options.Platform, file)
+}
+
+func voiceModeAllowed(mode string) bool {
+	switch strings.TrimSpace(mode) {
+	case "voice_only", "with_text":
+		return true
+	default:
+		return false
+	}
 }
 
 func planToPayload(plan ReplySupplementPlan) map[string]any {
@@ -392,6 +429,9 @@ func planToPayload(plan ReplySupplementPlan) map[string]any {
 	payload := map[string]any{"parts": parts}
 	if plan.MsgID != "" {
 		payload["msg_id"] = plan.MsgID
+	}
+	if plan.AttachVoice != "" {
+		payload["attach_voice"] = plan.AttachVoice
 	}
 	return payload
 }

@@ -13,11 +13,13 @@ import (
 
 	"MaiGo/internal/common/database"
 	"MaiGo/internal/config"
+	maibotcfg "MaiGo/internal/config/maibot"
 	"MaiGo/internal/maisaka"
 	"MaiGo/internal/maisaka/builtin_tool"
 	maisakactx "MaiGo/internal/maisaka/context"
 	"MaiGo/internal/person_info"
 	"MaiGo/internal/platform_io/drivers/onebot"
+	"MaiGo/internal/services"
 
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -190,6 +192,23 @@ func (a *Agent) buildConversationToolContext(ctx context.Context, kind string, t
 				return a.doPrivateImage(callCtx, targetID, imageURL)
 			}
 			return a.doSendImageURL(callCtx, targetID, imageURL)
+		},
+		SendVoiceBinary: func(callCtx context.Context, audio []byte) error {
+			return a.sendVoiceViaPlatformIO(callCtx, kind, targetID, audio)
+		},
+		SynthesizeReplySpeech: func(callCtx context.Context, text string) ([]byte, error) {
+			snap := a.instanceConfigSnapshot()
+			if snap == nil {
+				return nil, fmt.Errorf("语音合成配置不可用")
+			}
+			return services.SynthesizeReplySpeech(callCtx, snap.Model, text)
+		},
+		ModelConfigSnapshot: func() (maibotcfg.ModelConfigFile, bool) {
+			snap := a.instanceConfigSnapshot()
+			if snap == nil {
+				return maibotcfg.ModelConfigFile{}, false
+			}
+			return snap.Model, true
 		},
 		GetNewMessagesCallback: func(callCtx context.Context) (any, error) {
 			return a.readNewMessages(callCtx, session)

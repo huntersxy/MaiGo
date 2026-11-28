@@ -95,6 +95,10 @@ func (d Deps) handleModelsTestModel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, testTextEmbeddingModel(r.Context(), cfg, modelName, started))
 	case "image_embedding":
 		writeJSON(w, http.StatusOK, testImageEmbeddingModel(r.Context(), cfg, modelName, started))
+	case "tts":
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请在模型编辑卡片中试听音色"})
+	case "asr":
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "请在语音识别任务中选用该服务并发送语音消息验证转写"})
 	case "llm":
 		writeJSON(w, http.StatusOK, testChatModel(r.Context(), cfg, modelName, modelIdentifierByName(file.Models, modelName), started))
 	default:
