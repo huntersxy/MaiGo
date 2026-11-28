@@ -15,7 +15,7 @@ type Individual struct {
 	DisplayName        string    `gorm:"type:varchar(255);not null" json:"display_name"`
 	IsKnown            bool      `gorm:"not null;default:false" json:"is_known"`
 	ProfileSourcesJSON string    `gorm:"type:text;not null;default:'[]'" json:"-"`
-	CreatedAt          time.Time `gorm:"not null" json:"created_at"`
+	CreatedAt          time.Time `gorm:"type:datetime;not null" json:"created_at"`
 }
 
 func (Individual) TableName() string { return "individuals" }
@@ -25,7 +25,7 @@ type IndividualMergeEvent struct {
 	TargetIndividualID string    `gorm:"type:varchar(32);index;not null" json:"target_individual_id"`
 	MembersJSON        string    `gorm:"type:text;not null" json:"-"`
 	ProfilesJSON       string    `gorm:"type:text;not null;default:'{}'" json:"-"`
-	CreatedAt          time.Time `gorm:"not null" json:"created_at"`
+	CreatedAt          time.Time `gorm:"type:datetime;not null" json:"created_at"`
 }
 
 func (IndividualMergeEvent) TableName() string { return "individual_merge_events" }

@@ -107,6 +107,11 @@ func (r *Registry) RegisterPerson(ctx context.Context, in RegisterInput) (*Profi
 	if err != nil {
 		return nil, err
 	}
+	zap.L().Info("成功注册新用户",
+		zap.String("person_id", pid),
+		zap.String("platform", platform),
+		zap.String("nickname", nickname),
+	)
 	p := profileFromRecord(rec)
 	return &p, nil
 }
