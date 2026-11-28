@@ -31,8 +31,11 @@ mkdir -p "$ROOT"/{app,releases,runtime,deploy,incoming}
 for script in deploy.sh update.sh ci-trigger.sh migrate-from-docker.sh sync_bundled_plugins.sh; do
     install -m 755 "$SCRIPT_DIR/$script" "$ROOT/deploy/$script"
 done
-install -m 644 "$SCRIPT_DIR/requirements-plugin-runtime.txt" "$ROOT/deploy/"
-install -m 644 "$SCRIPT_DIR/requirements-pycompat.txt" "$ROOT/deploy/"
+for req in requirements-plugin-runtime.txt requirements-pycompat.txt; do
+    if [ -f "$SCRIPT_DIR/$req" ]; then
+        install -m 644 "$SCRIPT_DIR/$req" "$ROOT/deploy/$req"
+    fi
+done
 
 if [ ! -f "$ROOT/maigo.env" ]; then
     log "生成 maigo.env"

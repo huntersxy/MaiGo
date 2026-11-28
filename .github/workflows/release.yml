@@ -131,7 +131,11 @@ jobs:
             cp "deploy/host/$script" "$stage/host-scripts/$script"
             chmod +x "$stage/host-scripts/$script"
           done
-          cp deploy/host/requirements-plugin-runtime.txt deploy/host/requirements-pycompat.txt "$stage/host-scripts/"
+          for req in requirements-plugin-runtime.txt requirements-pycompat.txt; do
+            if [ -f "deploy/host/$req" ]; then
+              cp "deploy/host/$req" "$stage/host-scripts/$req"
+            fi
+          done
 
           name="maigo-${version}-linux-amd64"
           tar -C "$stage" -czf "$name.tar.gz" .
