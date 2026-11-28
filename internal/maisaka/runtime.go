@@ -15,7 +15,7 @@ import (
 // 对齐 runtime.py 的常量
 const (
 	// MaxInternalRounds 单轮内部思考最多执行的模型—工具循环轮数
-	MaxInternalRounds = 16
+	MaxInternalRounds = turn_trigger.MaxInternalRounds
 	// MaxRetainedMessageCacheSize 已消费消息缓存保留上限
 	MaxRetainedMessageCacheSize = 200
 	// ContextRestoreFillRatio 启动上下文回灌与主动回合回填占窗口比例
@@ -895,6 +895,21 @@ func (r *Runtime) EndPlannerContinuation() {
 }
 
 // IsPlannerContinuationActive 判断当前是否保持连续 Planner 状态
+func (r *Runtime) SetMaxInternalRounds(rounds int) {
+	if rounds <= 0 {
+		rounds = turn_trigger.MaxInternalRounds
+	}
+	r.mu.Lock()
+	r.maxInternalRounds = rounds
+	r.mu.Unlock()
+}
+
+func (r *Runtime) MaxInternalRounds() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.maxInternalRounds
+}
+
 func (r *Runtime) IsPlannerContinuationActive() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

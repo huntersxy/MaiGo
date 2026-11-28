@@ -452,7 +452,7 @@ func (r *Runtime) EnterWaitState(seconds *float64, toolCallID, logicalTurnID str
 	r.CancelWaitTimeout()
 	if r.opts.WaitStarted != nil {
 		r.opts.WaitStarted(seconds)
-	} else if seconds != nil {
+	} else if seconds != nil && r.scheduler.AllowsTimedWakeup() {
 		r.scheduleWaitTimeout(*seconds, toolCallID)
 	}
 	if r.PlannerMessageSteering() && r.HasPendingMessages() {
@@ -498,7 +498,9 @@ func (r *Runtime) scheduleWaitTimeout(seconds float64, toolCallID string) {
 			return
 		}
 		zap.L().Debug(r.logPrefix + " Maisaka 等待已超时")
-		r.EnterRunningState()
+		if !r.scheduler.AllowsTimedWakeup() {
+			return
+		}
 		r.pushTrigger(TriggerTimeout)
 	}()
 }

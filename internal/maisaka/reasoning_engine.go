@@ -207,12 +207,12 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 	if reason := runtime.ConsumeForcedTurnReason(); reason != "" {
 		zap.L().Info(runtime.logPrefix + " " + reason)
 	}
-	runtime.scheduler.StartPlannerTurn()
+	roundIndex := runtime.scheduler.StartPlannerTurn(e.activeLogicalTurnID)
 	if runtime.opts.TurnStarted != nil {
 		runtime.opts.TurnStarted()
 	}
 
-	for roundIndex := 0; roundIndex < runtime.maxInternalRounds; roundIndex++ {
+	for roundIndex < runtime.MaxInternalRounds() {
 		// 工具执行或整理上下文期间收到的消息，在下一次模型请求前补齐
 		if roundIndex > 0 {
 			pendingRoundMessages := e.ingestPendingMessages(ctx)
@@ -237,6 +237,9 @@ func (e *ReasoningEngine) runTurn(ctx context.Context, startContext TurnStartCon
 		}
 		if exit {
 			break
+		}
+		if !state.PlannerInterrupted {
+			roundIndex++
 		}
 	}
 	return nil
@@ -331,7 +334,7 @@ func (e *ReasoningEngine) handlePlannerInterrupt(ctx context.Context, err error,
 	zap.L().Info(fmt.Sprintf("%s Planner 打断成功: 回合=%d 开始时间=%.3f 打断时间=%.3f 耗时=%.3f 秒",
 		runtime.logPrefix, roundIndex+1,
 		float64(startedAt.UnixNano())/1e9, float64(interruptedAt.UnixNano())/1e9, elapsed))
-	if roundIndex+1 >= runtime.maxInternalRounds || !e.hasPendingInputs(ctx) {
+	if roundIndex+1 >= runtime.MaxInternalRounds() || !e.hasPendingInputs(ctx) {
 		return response, extraLines, nil
 	}
 	retryMessages := e.ingestPendingMessages(ctx)
@@ -356,19 +359,27 @@ func (e *ReasoningEngine) finalizeCycle(ctx context.Context, cycleDetail CycleDe
 	// 对齐 _end_cycle：收尾先执行消费引用与压缩，再结束本轮
 	e.PostProcessChatHistoryAfterCycle(ctx, cycleDetail, true, true)
 	end := state.CycleEnd
-	if roundIndex+1 >= runtime.maxInternalRounds && (end.Reason == "continue" || end.Reason == "tool_continue") {
-		end = CycleEnd{Reason: CycleEndMaxRounds, Detail: fmt.Sprintf("达到内部思考轮次上限 %d，结束本轮。", runtime.maxInternalRounds)}
-	}
-	if end.Reason == "" {
-		end = CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "Planner本轮思考结束。"}
-	}
-	state.CycleEnd = end
 	if state.HasResponse && !state.PlannerInterrupted && end.Reason != "cycle_error" && end.Reason != "cancelled" {
 		runtime.scheduler.RecordPlannerRun()
 		if runtime.opts.PlannerCompleted != nil {
 			runtime.opts.PlannerCompleted()
 		}
 	}
+	if roundIndex+1 >= runtime.MaxInternalRounds() {
+		if end.Reason == CycleEndToolPauseWait && runtime.IsGroupSession() && runtime.HasPendingWaitToolCall() {
+			waitMessage := e.BuildWaitCompletedMessage(runtime.HasPendingMessages())
+			runtime.AppendHistory(waitMessage)
+			runtime.EndPlannerContinuation()
+			runtime.EnterStopState()
+			end = CycleEnd{Reason: CycleEndMaxRounds, Detail: fmt.Sprintf("达到内部思考轮次上限 %d，结束本轮。", runtime.MaxInternalRounds())}
+		} else if end.Reason == "continue" || end.Reason == "tool_continue" {
+			end = CycleEnd{Reason: CycleEndMaxRounds, Detail: fmt.Sprintf("达到内部思考轮次上限 %d，结束本轮。", runtime.MaxInternalRounds())}
+		}
+	}
+	if end.Reason == "" {
+		end = CycleEnd{Reason: CycleEndPlannerNoTool, Detail: "Planner本轮思考结束。"}
+	}
+	state.CycleEnd = end
 	runtime.emitPlannerFinalized(cycleDetail, state)
 }
 
@@ -382,6 +393,13 @@ func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued Tu
 	acceptedWaitMessage := messageTriggered && runtime.HasPendingMessages() && acceptedWaitStartedAt != nil &&
 		pendingWaitStartedAt != nil && acceptedWaitStartedAt.Equal(*pendingWaitStartedAt)
 	silent := runtime.IsReplyFrequencySilent()
+
+	if timeoutTriggered && !(runtime.HasPendingWaitToolCall() && runtime.scheduler.AllowsTimedWakeup()) {
+		timeoutTriggered = false
+		if !(messageTriggered || proactiveTriggered || silenceTriggered) {
+			return TurnStartContext{SilentReplyFrequency: silent}
+		}
+	}
 
 	if runtime.AgentState() == turn_trigger.StateWait &&
 		!(timeoutTriggered || proactiveTriggered || silenceTriggered || acceptedWaitMessage) &&
@@ -466,6 +484,7 @@ func (e *ReasoningEngine) PrepareTurnStartContext(ctx context.Context, queued Tu
 			return TurnStartContext{TimeoutTriggered: timeoutTriggered, ProactiveTriggered: proactiveTriggered, SilentReplyFrequency: silent}
 		}
 		zap.L().Info(runtime.logPrefix + " 等待结束，再看一眼！")
+		runtime.EnterRunningState()
 		waitMessage := e.BuildWaitCompletedMessage(false)
 		continuationLogicalTurnID = waitMessage.LogicalTurnID
 		runtime.AppendHistory(waitMessage)

@@ -115,4 +115,7 @@ type RuntimeView interface {
 	EnterStopState()
 	// EnterRunningState 进入 running 状态
 	EnterRunningState()
+	SetMaxInternalRounds(rounds int)
+	MaxInternalRounds() int
+	HasPendingWaitToolCall() bool
 }

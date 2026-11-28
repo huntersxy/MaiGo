@@ -16,6 +16,7 @@ type MessageTurnScheduler struct {
 
 	mu                      sync.Mutex
 	viewFrequency           ViewFrequencyController
+	group                   groupRoundState
 	lastBatch               []string
 	acceptedWaitStartedAt   *time.Time
 	silenceTriggered        bool
@@ -40,10 +41,22 @@ func (s *MessageTurnScheduler) SetClock(now func() time.Time) {
 	s.mu.Unlock()
 }
 
+func (s *MessageTurnScheduler) AllowsTimedWakeup() bool {
+	return s.group.allowsTimedWakeup()
+}
+
+func (s *MessageTurnScheduler) RoundDebt() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.group.roundDebt
+}
 func (s *MessageTurnScheduler) ScheduleMessageTurn() {
 	runtime := s.runtime
+	s.mu.Lock()
+	inPlannerTurn := s.group.inPlannerTurn
+	s.mu.Unlock()
 	state := runtime.AgentState()
-	if state == StateRunning {
+	if !inPlannerTurn && state == StateRunning {
 		return
 	}
 	if state == StateWait && runtime.IsReplyFrequencySilent() {
@@ -128,6 +141,12 @@ func (s *MessageTurnScheduler) evaluateScene(pendingCount int, frequency float64
 	phase := s.viewFrequency.Phase
 	s.mu.Unlock()
 	runtime.ConsumeMessageDebounce()
+	if accepted {
+		if paid, debt := s.group.applyDebtPayoff(s); paid {
+			s.armSilenceCheck()
+			return TurnGateResult{Decision: DecisionWait, Detail: fmt.Sprintf("本批查看抵扣 1 轮欠债 剩余=%d", debt)}
+		}
+	}
 	s.armSilenceCheck()
 	label := "等待更多消息"
 	decision := DecisionWait
@@ -153,15 +172,9 @@ func (s *MessageTurnScheduler) ObserveMessage() {
 	}
 }
 
-func (s *MessageTurnScheduler) StartPlannerTurn() {
+func (s *MessageTurnScheduler) StartPlannerTurn(logicalTurnID string) int {
 	s.Close()
-	if !s.runtime.IsGroupSession() || s.runtime.FocusModeActive() {
-		return
-	}
-	s.mu.Lock()
-	s.viewFrequency.Activate(s.runtime.EffectiveReplyFrequency())
-	s.acceptedWaitStartedAt = nil
-	s.mu.Unlock()
+	return s.group.startPlannerTurn(s, logicalTurnID)
 }
 
 func (s *MessageTurnScheduler) RecordPlannerRun() {
@@ -174,9 +187,11 @@ func (s *MessageTurnScheduler) RecordPlannerRun() {
 	s.currentContextInterval = interval
 	s.viewFrequency.RecordPlannerRun()
 	s.mu.Unlock()
+	s.group.recordPlannerRun(s)
 }
 
 func (s *MessageTurnScheduler) FinishPlannerTurn() {
+	s.group.finishPlannerTurn(s)
 	if !s.runtime.RuntimeRunning() {
 		return
 	}
@@ -266,8 +281,12 @@ func (s *MessageTurnScheduler) armSilenceCheck() {
 	}
 	s.mu.Unlock()
 	runtime := s.runtime
+	s.mu.Lock()
+	inPlannerTurn := s.group.inPlannerTurn
+	allowsWakeup := s.group.allowsTimedWakeup()
+	s.mu.Unlock()
 	lastReceived := runtime.LastMessageReceivedAt()
-	if !runtime.RuntimeRunning() || !runtime.IsGroupSession() || runtime.AgentState() == StateRunning || runtime.FocusModeActive() ||
+	if !runtime.RuntimeRunning() || inPlannerTurn || !allowsWakeup || !runtime.IsGroupSession() || runtime.AgentState() == StateRunning || runtime.FocusModeActive() ||
 		runtime.MessageTurnScheduled() || runtime.IsReplyFrequencySilent() || lastReceived.IsZero() {
 		return
 	}
@@ -310,7 +329,10 @@ func (s *MessageTurnScheduler) checkSilence(ctx context.Context, generation uint
 		case <-timer.C:
 		}
 		runtime := s.runtime
-		if !runtime.LastMessageReceivedAt().Equal(receivedAt) || runtime.AgentState() == StateRunning ||
+		s.mu.Lock()
+		allowsWakeup := s.group.allowsTimedWakeup()
+		s.mu.Unlock()
+		if !runtime.LastMessageReceivedAt().Equal(receivedAt) || !allowsWakeup || runtime.AgentState() == StateRunning ||
 			runtime.FocusModeActive() || runtime.MessageTurnScheduled() || runtime.IsReplyFrequencySilent() {
 			return
 		}
